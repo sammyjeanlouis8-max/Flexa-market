@@ -7,6 +7,9 @@ import {
   usersTable,
   notificationsTable,
   adminLogsTable,
+  transactionsTable,
+  listingsTable,
+  supportKnowledgeTable,
 } from "@workspace/db";
 import { eq, and, or, desc, sql, inArray, ne } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireSuperAdmin, requireRole, hasRole, isAdminAccessSuspended } from "../middlewares/auth";
@@ -17,6 +20,14 @@ import {
   emitNewSupportThread,
 } from "../lib/socketServer";
 import { userInAdminScope } from "../lib/adminScope";
+import { buildTicketRef, displayTicketRef, parseTicketRef } from "../lib/supportTicketRef";
+import { classifySupportTicket } from "../lib/supportClassify";
+import { getSupportOpsSnapshot } from "../lib/supportOps";
+import { notifySupportTicketCreated, notifySupportAgentReply } from "../lib/supportNotify";
+import { pickAgentForRouting, setSupportAgentAvailable, listAvailableSupportAgents } from "../lib/supportPresence";
+import { runSupportCopilot, type CopilotAction } from "../lib/supportCopilot";
+import { KNOWLEDGE_CORPUS } from "../lib/chatbotKnowledge";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -55,17 +66,64 @@ function parseCreateThread(body: any):
   return { ok: true, subject, message, botHistory };
 }
 
+const ALLOWED_MEDIA_TYPES = new Set(["text", "image", "video", "document"]);
+const ALLOWED_MEDIA_MIME = /^(image\/(jpeg|png|gif|webp)|video\/(mp4|webm|quicktime)|application\/(pdf|msword|vnd\.openxmlformats.*)|text\/plain)$/i;
+const MAX_MEDIA_BYTES = 40 * 1024 * 1024; // 40MB
+
 function parseSendMessage(body: any):
-  | { ok: true; content: string; isInternal: boolean; clientMessageId: string | null }
+  | {
+      ok: true;
+      content: string;
+      isInternal: boolean;
+      clientMessageId: string | null;
+      messageType: string;
+      mediaUrl: string | null;
+      mediaName: string | null;
+      mediaMime: string | null;
+      mediaSize: number | null;
+    }
   | { ok: false; error: string } {
   if (!body || typeof body !== "object") return { ok: false, error: "Invalid body" };
   const content = typeof body.content === "string" ? body.content.trim() : "";
-  if (content.length < 1) return { ok: false, error: "Message required" };
+  const messageTypeRaw = typeof body.messageType === "string" ? body.messageType.trim().toLowerCase() : "text";
+  const messageType = ALLOWED_MEDIA_TYPES.has(messageTypeRaw) ? messageTypeRaw : "text";
+  // Voice messages are intentionally unsupported.
+  if (messageTypeRaw === "audio" || messageTypeRaw === "voice") {
+    return { ok: false, error: "Voice messages are not supported in support chat" };
+  }
+  const mediaUrl = typeof body.mediaUrl === "string" ? body.mediaUrl.trim().slice(0, 2000) : null;
+  const mediaName = typeof body.mediaName === "string" ? body.mediaName.trim().slice(0, 200) : null;
+  const mediaMime = typeof body.mediaMime === "string" ? body.mediaMime.trim().slice(0, 120) : null;
+  const mediaSize = Number.isFinite(Number(body.mediaSize)) ? Number(body.mediaSize) : null;
+
+  if (messageType !== "text") {
+    if (!mediaUrl || !/^https?:\/\//i.test(mediaUrl) && !mediaUrl.startsWith("/api/storage/")) {
+      return { ok: false, error: "Valid mediaUrl required for attachments" };
+    }
+    if (mediaMime && !ALLOWED_MEDIA_MIME.test(mediaMime)) {
+      return { ok: false, error: "Unsupported attachment type" };
+    }
+    if (mediaSize != null && (mediaSize < 1 || mediaSize > MAX_MEDIA_BYTES)) {
+      return { ok: false, error: "Attachment too large" };
+    }
+  } else if (content.length < 1) {
+    return { ok: false, error: "Message required" };
+  }
   if (content.length > 4000) return { ok: false, error: "Message too long" };
   const isInternal = body.isInternal === true;
   const rawId = typeof body.clientMessageId === "string" ? body.clientMessageId.trim() : "";
   const clientMessageId = rawId.length > 0 && rawId.length <= 64 ? rawId : null;
-  return { ok: true, content, isInternal, clientMessageId };
+  return {
+    ok: true,
+    content: content || (mediaName ? `[Attachment] ${mediaName}` : "[Attachment]"),
+    isInternal,
+    clientMessageId,
+    messageType,
+    mediaUrl: messageType === "text" ? null : mediaUrl,
+    mediaName: messageType === "text" ? null : mediaName,
+    mediaMime: messageType === "text" ? null : mediaMime,
+    mediaSize: messageType === "text" ? null : mediaSize,
+  };
 }
 
 /**
@@ -122,7 +180,7 @@ router.get("/support/unread-count", requireAuth, async (req, res): Promise<void>
       .select({ count: sql<number>`coalesce(sum(${supportThreadsTable.unreadByAdmin}), 0)::int` })
       .from(supportThreadsTable)
       .where(and(
-        eq(supportThreadsTable.status, "open"),
+        sql`${supportThreadsTable.status} IN ('open','in_progress','waiting_customer')`,
         inArray(supportThreadsTable.userId, ownerIds),
       ));
     res.json({ count: row?.count ?? 0 });
@@ -171,8 +229,12 @@ router.get("/support/threads", requireAuth, async (req, res): Promise<void> => {
 
   // Optional filters from query string
   const statusQ = typeof req.query["status"] === "string" ? req.query["status"] : null;
-  if (statusQ === "open" || statusQ === "closed") {
+  if (statusQ && ["open", "in_progress", "waiting_customer", "closed"].includes(statusQ)) {
     conditions.push(eq(supportThreadsTable.status, statusQ));
+  }
+  const categoryQ = typeof req.query["category"] === "string" ? req.query["category"] : null;
+  if (categoryQ) {
+    conditions.push(eq((supportThreadsTable as any).category, categoryQ));
   }
 
   const countryQ = typeof req.query["country"] === "string" ? req.query["country"] : null;
@@ -218,23 +280,31 @@ router.get("/support/threads", requireAuth, async (req, res): Promise<void> => {
 });
 
 function formatThread(t: typeof supportThreadsTable.$inferSelect, userMap: Map<number, any>) {
+  const ticketRef = displayTicketRef((t as any).ticketRef, t.id, t.createdAt);
   return {
     id: t.id,
+    ticketRef,
     subject: t.subject,
     status: t.status,
     priority: (t as any).priority ?? "normal",
+    category: (t as any).category ?? "other",
     userId: t.userId,
     userName: userMap.get(t.userId)?.name ?? "Unknown",
     userAvatar: userMap.get(t.userId)?.avatar ?? null,
     country: t.country ?? null,
     assignedAdminId: t.assignedAdminId,
     assignedAdminName: t.assignedAdminId ? userMap.get(t.assignedAdminId)?.name ?? null : null,
+    assignedAdminAvatar: t.assignedAdminId ? userMap.get(t.assignedAdminId)?.avatar ?? null : null,
     lastMessage: t.lastMessage,
     lastMessageAt: t.lastMessageAt?.toISOString() ?? null,
     unreadByUser: t.unreadByUser,
     unreadByAdmin: t.unreadByAdmin,
+    estimatedResponseMinutes: (t as any).estimatedResponseMinutes ?? null,
+    estimatedResponseLabel: (t as any).estimatedResponseLabel ?? null,
+    relatedOrderId: (t as any).relatedOrderId ?? null,
     rating: (t as any).rating ?? null,
     ratedAt: (t as any).ratedAt?.toISOString?.() ?? null,
+    feedback: (t as any).feedback ?? null,
     createdAt: t.createdAt.toISOString(),
     closedAt: t.closedAt?.toISOString() ?? null,
   };
@@ -251,20 +321,35 @@ router.post("/support/threads", requireAuth, async (req, res): Promise<void> => 
   const now = new Date();
 
   const [sender] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+  const classified = classifySupportTicket({ subject, message });
+  const ops = await getSupportOpsSnapshot(classified.priority);
+  const assignedAdminId = await pickAgentForRouting(classified.category);
 
   const [thread] = await db
     .insert(supportThreadsTable)
     .values({
       userId: req.userId!,
       subject,
-      status: "open",
+      status: assignedAdminId ? "in_progress" : "open",
+      priority: classified.priority,
+      category: classified.category,
       country: sender?.country ?? null,
       lastMessage: message,
       lastMessageAt: now,
       unreadByAdmin: 1,
       unreadByUser: 0,
-    })
+      assignedAdminId: assignedAdminId ?? null,
+      estimatedResponseMinutes: ops.eta.minutesMax,
+      estimatedResponseLabel: ops.eta.label,
+      relatedOrderId: classified.relatedOrderHint,
+    } as any)
     .returning();
+
+  const ticketRef = buildTicketRef(thread.id, thread.createdAt);
+  await db
+    .update(supportThreadsTable)
+    .set({ ticketRef } as any)
+    .where(eq(supportThreadsTable.id, thread.id));
 
   // If bot history provided, bulk-insert conversation; otherwise insert single message.
   if (parsed.botHistory.length > 0) {
@@ -287,6 +372,22 @@ router.post("/support/threads", requireAuth, async (req, res): Promise<void> => 
     });
   }
 
+  // Customer confirmations: email + Message System + bell (deduped)
+  void notifySupportTicketCreated({
+    threadId: thread.id,
+    ticketRef,
+    subject,
+    description: message,
+    status: "open",
+    estimatedLabel: ops.eta.label,
+    agentsOnline: ops.agentsOnline,
+    customerId: req.userId!,
+    customerName: sender?.name ?? "Customer",
+    customerEmail: sender?.email ?? null,
+    notifyEmail: (sender as any)?.notifyEmail,
+    createdAt: thread.createdAt,
+  }).catch((err) => logger.warn({ err }, "ticket confirmation fan-out failed"));
+
   // Notify scope-relevant admins.
   const adminIds = await getAdminIds(sender?.country);
   if (adminIds.length > 0) {
@@ -297,7 +398,7 @@ router.post("/support/threads", requireAuth, async (req, res): Promise<void> => 
     for (const aid of adminIds) {
       void sendPushToUser(aid, {
         title: "Nouvo demand sipò",
-        body: subject.length > 120 ? subject.slice(0, 117) + "..." : subject,
+        body: `#${ticketRef}: ${subject.length > 100 ? subject.slice(0, 97) + "..." : subject}`,
         url: `/admin/live-support?thread=${thread.id}`,
         tag: `support-${thread.id}`,
       });
@@ -307,18 +408,31 @@ router.post("/support/threads", requireAuth, async (req, res): Promise<void> => 
   // Real-time: notify admins of new thread
   emitNewSupportThread({
     id: thread.id,
+    ticketRef,
     subject: thread.subject,
     userId: thread.userId,
     userName: sender?.name ?? "Unknown",
     userAvatar: sender?.avatar ?? null,
     country: thread.country,
-    status: "open",
-    priority: "normal",
-    assignedAdminId: null,
+    status: assignedAdminId ? "in_progress" : "open",
+    priority: classified.priority,
+    category: classified.category,
+    assignedAdminId: assignedAdminId ?? null,
+    estimatedResponseLabel: ops.eta.label,
     createdAt: thread.createdAt.toISOString(),
   });
 
-  res.status(201).json({ id: thread.id });
+  res.status(201).json({
+    id: thread.id,
+    ticketRef,
+    status: assignedAdminId ? "in_progress" : "open",
+    priority: classified.priority,
+    category: classified.category,
+    estimatedResponseLabel: ops.eta.label,
+    estimatedResponseMinutes: ops.eta.minutesMax,
+    agentsOnline: ops.agentsOnline,
+    deepLink: `/support/${thread.id}`,
+  });
 });
 
 /**
@@ -399,19 +513,32 @@ router.get("/support/threads/:id", requireAuth, async (req, res): Promise<void> 
     ? rows
     : rows.filter((r) => !(r.support_messages as any).isInternal);
 
+  const ticketRef = displayTicketRef((thread as any).ticketRef, thread.id, thread.createdAt);
   res.json({
     id: thread.id,
+    ticketRef,
     subject: thread.subject,
     status: thread.status,
     priority: (thread as any).priority ?? "normal",
+    category: (thread as any).category ?? "other",
     userId: thread.userId,
     userName: owner?.name ?? "Unknown",
     userAvatar: owner?.avatar ?? null,
+    userCreatedAt: owner?.createdAt?.toISOString?.() ?? null,
+    userCountry: owner?.country ?? thread.country ?? null,
+    userVerified: !!owner?.isVerified,
     country: thread.country ?? null,
     assignedAdminId: thread.assignedAdminId,
     assignedAdminName: assignee?.name ?? null,
+    assignedAdminAvatar: assignee?.avatar ?? null,
+    assignedAdminRole: assignee ? ((assignee as any).role || (assignee.isSuperAdmin ? "superadmin" : assignee.isAdmin ? "admin" : "support")) : null,
+    estimatedResponseMinutes: (thread as any).estimatedResponseMinutes ?? null,
+    estimatedResponseLabel: (thread as any).estimatedResponseLabel ?? null,
+    relatedOrderId: (thread as any).relatedOrderId ?? null,
+    aiSummary: isAdmin ? ((thread as any).aiSummary ?? null) : null,
     rating: (thread as any).rating ?? null,
     ratedAt: (thread as any).ratedAt?.toISOString?.() ?? null,
+    feedback: (thread as any).feedback ?? null,
     createdAt: thread.createdAt.toISOString(),
     closedAt: thread.closedAt?.toISOString() ?? null,
     messages: visibleRows.map((r) => ({
@@ -425,13 +552,20 @@ router.get("/support/threads/:id", requireAuth, async (req, res): Promise<void> 
         (r.support_messages as any).isInternal
           ? (r.users?.name ?? "Agent")
           : r.support_messages.isAdminReply
-            ? (assignee?.name ?? r.users?.name ?? "Flexa Support")
+            ? (r.users?.name ?? assignee?.name ?? "Flexa Support")
             : r.support_messages.senderRole === "bot"
               ? "FlexaBot"
               : (r.users?.name ?? "Unknown"),
-      senderAvatar: r.support_messages.isAdminReply || r.support_messages.senderRole === "bot"
-        ? null
-        : (r.users?.avatar ?? null),
+      senderAvatar: r.support_messages.senderRole === "bot"
+        ? "/flexa-logo-v2.png"
+        : r.support_messages.isAdminReply
+          ? (r.users?.avatar ?? assignee?.avatar ?? null)
+          : (r.users?.avatar ?? null),
+      messageType: (r.support_messages as any).messageType ?? "text",
+      mediaUrl: (r.support_messages as any).mediaUrl ?? null,
+      mediaName: (r.support_messages as any).mediaName ?? null,
+      mediaMime: (r.support_messages as any).mediaMime ?? null,
+      mediaSize: (r.support_messages as any).mediaSize ?? null,
       isRead: r.support_messages.isRead,
       clientMessageId: (r.support_messages as any).clientMessageId ?? null,
       createdAt: r.support_messages.createdAt.toISOString(),
@@ -537,6 +671,11 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
         content: parsed.content,
         isInternal,
         clientMessageId: parsed.clientMessageId,
+        messageType: parsed.messageType,
+        mediaUrl: parsed.mediaUrl,
+        mediaName: parsed.mediaName,
+        mediaMime: parsed.mediaMime,
+        mediaSize: parsed.mediaSize,
       } as any)
       .returning();
     msg = inserted;
@@ -548,21 +687,36 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
         .set({ lastMessageAt: new Date() })
         .where(eq(supportThreadsTable.id, id));
     } else {
+      const preview =
+        parsed.messageType !== "text"
+          ? `[${parsed.messageType}] ${parsed.mediaName || parsed.content}`.slice(0, 240)
+          : parsed.content;
+      const nextStatus =
+        locked.status === "closed"
+          ? locked.status
+          : isAdmin
+            ? "in_progress"
+            : "waiting_customer";
+      const patch: Record<string, unknown> = {
+        lastMessage: preview,
+        lastMessageAt: new Date(),
+        status: nextStatus,
+        unreadByUser: isAdmin
+          ? sql`${supportThreadsTable.unreadByUser} + 1`
+          : supportThreadsTable.unreadByUser,
+        unreadByAdmin: isAdmin
+          ? supportThreadsTable.unreadByAdmin
+          : sql`${supportThreadsTable.unreadByAdmin} + 1`,
+        assignedAdminId: isAdmin
+          ? sql`COALESCE(${supportThreadsTable.assignedAdminId}, ${req.userId!})`
+          : supportThreadsTable.assignedAdminId,
+      };
+      if (isAdmin && !(locked as any).firstAdminReplyAt) {
+        patch.firstAdminReplyAt = new Date();
+      }
       await tx
         .update(supportThreadsTable)
-        .set({
-          lastMessage: parsed.content,
-          lastMessageAt: new Date(),
-          unreadByUser: isAdmin
-            ? sql`${supportThreadsTable.unreadByUser} + 1`
-            : supportThreadsTable.unreadByUser,
-          unreadByAdmin: isAdmin
-            ? supportThreadsTable.unreadByAdmin
-            : sql`${supportThreadsTable.unreadByAdmin} + 1`,
-          assignedAdminId: isAdmin
-            ? sql`COALESCE(${supportThreadsTable.assignedAdminId}, ${req.userId!})`
-            : supportThreadsTable.assignedAdminId,
-        })
+        .set(patch as any)
         .where(eq(supportThreadsTable.id, id));
     }
   });
@@ -581,7 +735,12 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
     senderRole,
     senderId: msg.senderId,
     senderName: isAdmin ? (me?.name ?? "Flexa Support") : (me?.name ?? "Unknown"),
-    senderAvatar: isAdmin ? null : (me?.avatar ?? null),
+    senderAvatar: me?.avatar ?? null,
+    messageType: parsed.messageType,
+    mediaUrl: parsed.mediaUrl,
+    mediaName: parsed.mediaName,
+    mediaMime: parsed.mediaMime,
+    mediaSize: parsed.mediaSize,
     isRead: false,
     clientMessageId: parsed.clientMessageId,
     createdAt: msg.createdAt.toISOString(),
@@ -605,15 +764,27 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
       targetId: id,
       details: `Replied to support thread ${id}`,
     }).catch(() => {});
-    await db
-      .insert(notificationsTable)
-      .values({ userId: thread.userId, actorId: req.userId!, type: "support_reply" })
-      .catch(() => {});
+
+    const [customer] = await db.select().from(usersTable).where(eq(usersTable.id, thread.userId));
+    const ticketRef = displayTicketRef((thread as any).ticketRef, thread.id, thread.createdAt);
+    void notifySupportAgentReply({
+      threadId: id,
+      ticketRef,
+      subject: thread.subject,
+      agentName: me?.name ?? "Flexa Support",
+      preview: parsed.content,
+      customerId: thread.userId,
+      customerName: customer?.name ?? "Customer",
+      customerEmail: customer?.email ?? null,
+      notifyEmail: (customer as any)?.notifyEmail,
+      messageId: msg.id,
+    }).catch((err) => logger.warn({ err }, "agent reply notify failed"));
+
     void sendPushToUser(thread.userId, {
-      title: `Repons sipò: ${thread.subject}`,
-      body: parsed.content.length > 120 ? parsed.content.slice(0, 117) + "..." : parsed.content,
+      title: "Flexa Market Support",
+      body: `Agent ${me?.name ?? "Support"} replied to ticket #${ticketRef}`,
       url: `/support/${id}`,
-      tag: `support-${id}`,
+      tag: `support-${id}-${msg.id}`,
     });
   } else {
     const [threadUser] = await db.select({ country: usersTable.country }).from(usersTable).where(eq(usersTable.id, thread.userId));
@@ -656,7 +827,10 @@ router.post("/support/threads/:id/close", requireRole("support"), async (req, re
   const result = await db
     .update(supportThreadsTable)
     .set({ status: "closed", closedAt: new Date() })
-    .where(and(eq(supportThreadsTable.id, id), eq(supportThreadsTable.status, "open")))
+    .where(and(
+      eq(supportThreadsTable.id, id),
+      sql`${supportThreadsTable.status} <> 'closed'`,
+    ))
     .returning({ id: supportThreadsTable.id });
   if (result.length === 0) {
     res.status(409).json({ error: "Already closed or not found" });
@@ -827,7 +1001,7 @@ router.post("/support/threads/:id/priority", requireRole("support"), async (req,
   res.json({ ok: true, priority });
 });
 
-/** POST /api/support/threads/:id/rate — customer CSAT after close (or anytime once assigned). */
+/** POST /api/support/threads/:id/rate — customer CSAT after close (agents cannot modify). */
 router.post("/support/threads/:id/rate", requireAuth, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const rating = Number(req.body?.rating);
@@ -836,6 +1010,8 @@ router.post("/support/threads/:id/rate", requireAuth, async (req, res): Promise<
     res.status(400).json({ error: "rating must be 1–5" });
     return;
   }
+  const feedback = typeof req.body?.feedback === "string" ? req.body.feedback.trim().slice(0, 2000) : null;
+  const customerReport = typeof req.body?.report === "string" ? req.body.report.trim().slice(0, 2000) : null;
   const [thread] = await db.select().from(supportThreadsTable).where(eq(supportThreadsTable.id, id));
   if (!thread) { res.status(404).json({ error: "Not found" }); return; }
   if (thread.userId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
@@ -844,10 +1020,321 @@ router.post("/support/threads/:id/rate", requireAuth, async (req, res): Promise<
     return;
   }
   await db.update(supportThreadsTable)
-    .set({ rating, ratedAt: new Date() } as any)
+    .set({
+      rating,
+      ratedAt: new Date(),
+      feedback: feedback || null,
+      customerReport: customerReport || null,
+    } as any)
     .where(eq(supportThreadsTable.id, id));
   emitSupportUpdate(id, { threadId: id, rating, event: "rated" });
-  res.json({ ok: true, rating });
+  res.json({ ok: true, rating, feedback, report: customerReport });
+});
+
+/** GET /api/support/availability — live agents online + ETA (auth). */
+router.get("/support/availability", requireAuth, async (_req, res): Promise<void> => {
+  const ops = await getSupportOpsSnapshot("normal");
+  res.json({
+    agentsOnline: ops.agentsOnline,
+    agents: ops.agents.map((a) => ({
+      id: a.id,
+      name: a.name,
+      avatar: a.avatar,
+      role: a.role,
+    })),
+    pendingTickets: ops.pendingTickets,
+    estimatedResponse: {
+      label: ops.eta.label,
+      minutesMin: ops.eta.minutesMin,
+      minutesMax: ops.eta.minutesMax,
+      band: ops.eta.band,
+    },
+    avgFirstResponseMin: ops.avgFirstResponseMin,
+  });
+});
+
+/** POST /api/support/availability — agent toggles own availability. */
+router.post("/support/availability", requireRole("support"), async (req, res): Promise<void> => {
+  const available = req.body?.available !== false;
+  setSupportAgentAvailable(req.userId!, available);
+  const agents = await listAvailableSupportAgents();
+  res.json({ ok: true, available, agentsOnline: agents.length });
+});
+
+/** GET /api/support/tickets/by-ref/:ref — resolve ticket ref to thread (owner or support). */
+router.get("/support/tickets/by-ref/:ref", requireAuth, async (req, res): Promise<void> => {
+  const parsed = parseTicketRef(String(req.params.ref || ""));
+  if (!parsed) {
+    res.status(400).json({ error: "Invalid ticket reference" });
+    return;
+  }
+  const [thread] = await db
+    .select()
+    .from(supportThreadsTable)
+    .where(
+      or(
+        eq((supportThreadsTable as any).ticketRef, buildTicketRef(parsed.id)),
+        eq(supportThreadsTable.id, parsed.id),
+      ),
+    )
+    .limit(1);
+  if (!thread) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+  const isOwner = thread.userId === req.userId;
+  const isSupport = hasActiveSupportAccess(me);
+  if (!isOwner && !isSupport) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  res.json({
+    id: thread.id,
+    ticketRef: displayTicketRef((thread as any).ticketRef, thread.id, thread.createdAt),
+    deepLink: `/support/${thread.id}`,
+  });
+});
+
+/** GET /api/support/threads/:id/customer — authorized agent customer + order context. */
+router.get("/support/threads/:id/customer", requireRole("support"), async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const scoped = await getScopedThread(req.user!, id);
+  if (!scoped) { res.status(403).json({ error: "Forbidden" }); return; }
+  const owner = scoped.owner;
+  const priorTickets = await db
+    .select({
+      id: supportThreadsTable.id,
+      ticketRef: (supportThreadsTable as any).ticketRef,
+      subject: supportThreadsTable.subject,
+      status: supportThreadsTable.status,
+      rating: (supportThreadsTable as any).rating,
+      createdAt: supportThreadsTable.createdAt,
+    })
+    .from(supportThreadsTable)
+    .where(eq(supportThreadsTable.userId, owner.id))
+    .orderBy(desc(supportThreadsTable.createdAt))
+    .limit(12);
+
+  const orders = await db
+    .select({
+      id: transactionsTable.id,
+      status: transactionsTable.status,
+      amount: transactionsTable.amount,
+      createdAt: transactionsTable.createdAt,
+      listingTitle: listingsTable.title,
+      listingId: listingsTable.id,
+    })
+    .from(transactionsTable)
+    .leftJoin(listingsTable, eq(transactionsTable.listingId, listingsTable.id))
+    .where(
+      or(
+        eq(transactionsTable.userId, owner.id),
+        eq(transactionsTable.sellerUserId, owner.id),
+      ),
+    )
+    .orderBy(desc(transactionsTable.createdAt))
+    .limit(15);
+
+  res.json({
+    customer: {
+      id: owner.id,
+      name: owner.name,
+      avatar: owner.avatar ?? null,
+      country: owner.country ?? null,
+      createdAt: owner.createdAt?.toISOString?.() ?? null,
+      isVerified: !!owner.isVerified,
+      email: owner.email && !String(owner.email).endsWith(".internal") ? owner.email : null,
+      phone: null, // private — never expose phone to support panel without separate authz
+    },
+    previousTickets: priorTickets.map((t) => ({
+      id: t.id,
+      ticketRef: displayTicketRef(t.ticketRef as any, t.id, t.createdAt),
+      subject: t.subject,
+      status: t.status,
+      rating: t.rating ?? null,
+      createdAt: t.createdAt.toISOString(),
+    })),
+    orders: orders.map((o) => ({
+      id: o.id,
+      orderRef: `#FM-${String(o.id).padStart(6, "0")}`,
+      status: o.status,
+      total: o.amount,
+      listingTitle: o.listingTitle ?? null,
+      listingId: o.listingId ?? null,
+      createdAt: o.createdAt?.toISOString?.() ?? null,
+      deepLink: `/orders/${o.id}`,
+    })),
+  });
+});
+
+/** GET /api/support/orders/:orderId — validate order for agent viewing a ticket context. */
+router.get("/support/orders/:orderId", requireRole("support"), async (req, res): Promise<void> => {
+  const orderId = Number(req.params.orderId);
+  const threadId = Number(req.query.threadId);
+  if (!Number.isFinite(orderId)) { res.status(400).json({ error: "Invalid order id" }); return; }
+  if (!Number.isFinite(threadId)) { res.status(400).json({ error: "threadId required" }); return; }
+  const scoped = await getScopedThread(req.user!, threadId);
+  if (!scoped) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const [order] = await db
+    .select({
+      id: transactionsTable.id,
+      status: transactionsTable.status,
+      amount: transactionsTable.amount,
+      userId: transactionsTable.userId,
+      sellerUserId: transactionsTable.sellerUserId,
+      createdAt: transactionsTable.createdAt,
+      listingTitle: listingsTable.title,
+    })
+    .from(transactionsTable)
+    .leftJoin(listingsTable, eq(transactionsTable.listingId, listingsTable.id))
+    .where(eq(transactionsTable.id, orderId))
+    .limit(1);
+  if (!order) { res.status(404).json({ error: "Order not found" }); return; }
+  const customerId = scoped.owner.id;
+  if (order.userId !== customerId && order.sellerUserId !== customerId) {
+    res.status(403).json({ error: "Order does not belong to this customer" });
+    return;
+  }
+  res.json({
+    id: order.id,
+    orderRef: `#FM-${String(order.id).padStart(6, "0")}`,
+    status: order.status,
+    total: order.amount,
+    listingTitle: order.listingTitle ?? null,
+    createdAt: order.createdAt?.toISOString?.() ?? null,
+    deepLink: `/orders/${order.id}`,
+  });
+});
+
+/** POST /api/support/copilot — AI suggestions for agents (must approve before send). */
+router.post("/support/copilot", requireRole("support"), async (req, res): Promise<void> => {
+  const action = String(req.body?.action || "suggest_reply") as CopilotAction;
+  const draft = typeof req.body?.draft === "string" ? req.body.draft : undefined;
+  const targetLang = typeof req.body?.targetLang === "string" ? req.body.targetLang : undefined;
+  const ticketSubject = typeof req.body?.ticketSubject === "string" ? req.body.ticketSubject : undefined;
+  const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+  const cleaned = messages
+    .filter((m: any) => m && typeof m.content === "string")
+    .slice(-40)
+    .map((m: any) => ({
+      role: (["customer", "agent", "bot", "system"].includes(m.role) ? m.role : "customer") as
+        | "customer"
+        | "agent"
+        | "bot"
+        | "system",
+      content: String(m.content).slice(0, 4000),
+    }));
+
+  const result = await runSupportCopilot({
+    action,
+    agentId: req.userId!,
+    draft,
+    targetLang,
+    ticketSubject,
+    messages: cleaned,
+  });
+  if (!result.ok && result.error) {
+    res.status(result.error.includes("limit") ? 429 : 400).json({ error: result.error });
+    return;
+  }
+  res.json({
+    suggestion: result.text,
+    classification: result.classification ?? null,
+    provider: result.provider ?? null,
+    requiresApproval: true,
+    disclaimer: "AI suggestion only — review before sending. Never auto-approves refunds or payment changes.",
+  });
+});
+
+/** Knowledge base list (published + static corpus). */
+router.get("/support/knowledge", requireAuth, async (req, res): Promise<void> => {
+  const q = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
+  let dbRows: any[] = [];
+  try {
+    dbRows = await db
+      .select()
+      .from(supportKnowledgeTable)
+      .where(eq(supportKnowledgeTable.isPublished, true))
+      .orderBy(desc(supportKnowledgeTable.updatedAt))
+      .limit(100);
+  } catch {
+    dbRows = [];
+  }
+  const staticRows = KNOWLEDGE_CORPUS.map((k) => ({
+    id: k.id,
+    slug: k.id,
+    title: k.title,
+    body: k.body,
+    topics: k.topics.join(","),
+    deepLink: k.deepLink,
+    source: "static" as const,
+  }));
+  const dynamic = dbRows.map((k) => ({
+    id: `db-${k.id}`,
+    slug: k.slug,
+    title: k.title,
+    body: k.body,
+    topics: k.topics,
+    deepLink: k.deepLink,
+    source: "db" as const,
+  }));
+  let all = [...dynamic, ...staticRows];
+  if (q) {
+    all = all.filter(
+      (k) =>
+        k.title.toLowerCase().includes(q) ||
+        k.body.toLowerCase().includes(q) ||
+        String(k.topics).toLowerCase().includes(q),
+    );
+  }
+  res.json(all.slice(0, 80));
+});
+
+/** Admin upsert knowledge entry. */
+router.post("/support/knowledge", requireRole("admin"), async (req, res): Promise<void> => {
+  const slug = typeof req.body?.slug === "string" ? req.body.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 80) : "";
+  const title = typeof req.body?.title === "string" ? req.body.title.trim().slice(0, 200) : "";
+  const body = typeof req.body?.body === "string" ? req.body.body.trim().slice(0, 8000) : "";
+  const topics = typeof req.body?.topics === "string" ? req.body.topics.trim().slice(0, 400) : "";
+  const deepLink = typeof req.body?.deepLink === "string" ? req.body.deepLink.trim().slice(0, 200) : null;
+  if (!slug || title.length < 3 || body.length < 10) {
+    res.status(400).json({ error: "slug, title, and body required" });
+    return;
+  }
+  const [existing] = await db.select().from(supportKnowledgeTable).where(eq(supportKnowledgeTable.slug, slug)).limit(1);
+  if (existing) {
+    const [updated] = await db
+      .update(supportKnowledgeTable)
+      .set({
+        title,
+        body,
+        topics,
+        deepLink,
+        updatedById: req.userId!,
+        updatedAt: new Date(),
+        isPublished: req.body?.isPublished !== false,
+      } as any)
+      .where(eq(supportKnowledgeTable.id, existing.id))
+      .returning();
+    res.json(updated);
+    return;
+  }
+  const [created] = await db
+    .insert(supportKnowledgeTable)
+    .values({
+      slug,
+      title,
+      body,
+      topics,
+      deepLink,
+      updatedById: req.userId!,
+      isPublished: req.body?.isPublished !== false,
+    } as any)
+    .returning();
+  res.status(201).json(created);
 });
 
 /**
@@ -865,7 +1352,10 @@ router.get("/admin/support/analytics", requireRole("support"), async (req, res):
   const [openRow] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(supportThreadsTable)
-    .where(and(eq(supportThreadsTable.status, "open"), ownerCondition));
+    .where(and(
+      sql`${supportThreadsTable.status} IN ('open','in_progress','waiting_customer')`,
+      ownerCondition,
+    ));
   const [closedTodayRow] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(supportThreadsTable)
@@ -888,12 +1378,65 @@ router.get("/admin/support/analytics", requireRole("support"), async (req, res):
   `);
   const avgRow = (avgResult as any).rows?.[0] ?? (Array.isArray(avgResult) ? (avgResult as any[])[0] : null);
 
+  const ops = await getSupportOpsSnapshot("normal");
+  const [pendingFirst] = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(supportThreadsTable)
+    .where(and(
+      ownerCondition,
+      sql`${supportThreadsTable.status} IN ('open','in_progress','waiting_customer')`,
+      sql`NOT EXISTS (
+        SELECT 1 FROM support_messages sm
+        WHERE sm.thread_id = ${supportThreadsTable.id}
+          AND sm.is_admin_reply = true
+          AND COALESCE(sm.is_internal, false) = false
+      )`,
+    ));
+  const [waitingCustomer] = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(supportThreadsTable)
+    .where(and(eq(supportThreadsTable.status, "waiting_customer"), ownerCondition));
+  const [inProgress] = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(supportThreadsTable)
+    .where(and(eq(supportThreadsTable.status, "in_progress"), ownerCondition));
+  const [csat] = await db
+    .select({
+      avg: sql<number>`AVG(${(supportThreadsTable as any).rating})::float`,
+      count: sql<number>`COUNT(${(supportThreadsTable as any).rating})::int`,
+    })
+    .from(supportThreadsTable)
+    .where(and(ownerCondition, sql`${(supportThreadsTable as any).rating} IS NOT NULL`));
+  const [overdue] = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(supportThreadsTable)
+    .where(and(
+      ownerCondition,
+      sql`${supportThreadsTable.status} IN ('open','in_progress')`,
+      sql`${supportThreadsTable.createdAt} < NOW() - INTERVAL '12 hours'`,
+    ));
+
+  const openLike = openRow?.count ?? 0;
+  const resolvedCount = Math.max(0, (totRow?.count ?? 0) - openLike);
   res.json({
     total: totRow?.count ?? 0,
-    open: openRow?.count ?? 0,
-    closed: (totRow?.count ?? 0) - (openRow?.count ?? 0),
+    open: openLike,
+    newTickets: openLike,
+    pendingFirstResponse: pendingFirst?.count ?? 0,
+    activeTickets: inProgress?.count ?? 0,
+    waitingForCustomer: waitingCustomer?.count ?? 0,
+    closed: resolvedCount,
+    resolved: resolvedCount,
+    overdue: overdue?.count ?? 0,
     closedToday: closedTodayRow?.count ?? 0,
     avgResponseMin: (avgRow as any)?.avg_min != null ? Number((avgRow as any).avg_min) : null,
+    avgFirstResponseMin: ops.avgFirstResponseMin,
+    agentsOnline: ops.agentsOnline,
+    estimatedResponseLabel: ops.eta.label,
+    customerSatisfaction: {
+      average: csat?.avg != null ? Number(Number(csat.avg).toFixed(2)) : null,
+      responses: csat?.count ?? 0,
+    },
   });
 });
 

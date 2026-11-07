@@ -108,9 +108,14 @@ export function useSocket() {
     socket.emit("leave-support", threadId);
   }, []);
 
-  const joinSupportAdmin = useCallback(() => {
+  const joinSupportAdmin = useCallback((userId?: number) => {
     const socket = socketRef.current ?? getSocket();
-    socket.emit("join-support-admin");
+    if (typeof userId === "number" && userId > 0) {
+      socket.emit("presence:join", userId);
+      socket.emit("join-support-admin", userId);
+    } else {
+      socket.emit("join-support-admin");
+    }
   }, []);
 
   const leaveSupportAdmin = useCallback(() => {

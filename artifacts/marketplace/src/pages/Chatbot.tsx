@@ -388,7 +388,13 @@ export default function Chatbot() {
       const message = t("chatbot.escalateBodyEmpty", {
         defaultValue: "Itilizatè a bezwen sipò yon ajan reyèl apre yon konvèsasyon FlexaBot.",
       });
-      const r = await apiFetch<{ id: number }>("/api/support/threads", {
+      const r = await apiFetch<{
+        id: number;
+        ticketRef?: string;
+        estimatedResponseLabel?: string;
+        agentsOnline?: number;
+        deepLink?: string;
+      }>("/api/support/threads", {
         method: "POST",
         body: JSON.stringify({
           subject,
@@ -396,7 +402,23 @@ export default function Chatbot() {
           botHistory: botHistory.length > 0 ? botHistory : undefined,
         }),
       });
-      setLocation(`/support/${r.id}`);
+      const ref = r.ticketRef ? `#${r.ticketRef}` : `#${r.id}`;
+      const eta = r.estimatedResponseLabel || "Approximately 3–7 hours";
+      setMessages((curr) => [
+        ...curr,
+        {
+          role: "assistant" as const,
+          content:
+            `Your support request has been received.\n\n` +
+            `Ticket: ${ref}\n` +
+            `Status: Pending Review\n` +
+            `Estimated Response: ${eta}\n` +
+            (typeof r.agentsOnline === "number" ? `Agents available: ${r.agentsOnline}\n` : "") +
+            `\nOpening your FlexaBot support conversation…`,
+          deepLinks: [r.deepLink || `/support/${r.id}`],
+        },
+      ].slice(-MAX_HISTORY));
+      setTimeout(() => setLocation(r.deepLink || `/support/${r.id}`), 700);
     } catch (err: any) {
       setError(err?.message ?? "Erè pandan koneksyon");
       setEscalating(false);

@@ -536,6 +536,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/wallet/,
     /^\/subscription\/?$/,
     /^\/chatbot/,
+    /^\/support/,
     /^\/calculator/,
     /^\/delivery\/apply/,
     /^\/delivery\/deliveries\/?$/,

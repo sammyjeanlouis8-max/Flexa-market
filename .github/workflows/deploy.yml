@@ -137,3 +137,5 @@ jobs:
 # Owner requested deploy of Wallet UI + Sales analytics + bottom-nav safe-area (#88–#90) (2026-11-05).
 # deploy-trigger: premium-side-menu-9bdb
 # deploy-trigger: boosted-listing-exact-card-9bdb
+
+# deploy-trigger: smart-support-platform-bc3f

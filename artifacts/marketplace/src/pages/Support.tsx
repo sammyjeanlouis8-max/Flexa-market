@@ -19,17 +19,22 @@ import { useToast } from "@/hooks/use-toast";
 
 type Thread = {
   id: number;
+  ticketRef?: string;
   subject: string;
-  status: "open" | "closed";
+  status: "open" | "in_progress" | "waiting_customer" | "closed";
+  priority?: string;
+  category?: string;
   userId: number;
   userName: string;
   userAvatar: string | null;
   assignedAdminId: number | null;
   assignedAdminName: string | null;
+  assignedAdminAvatar?: string | null;
   lastMessage: string | null;
   lastMessageAt: string | null;
   unreadByUser: number;
   unreadByAdmin: number;
+  estimatedResponseLabel?: string | null;
   rating?: number | null;
   createdAt: string;
   closedAt: string | null;
@@ -43,6 +48,9 @@ type Message = {
   senderId: number;
   senderName: string;
   senderAvatar: string | null;
+  messageType?: string;
+  mediaUrl?: string | null;
+  mediaName?: string | null;
   isRead: boolean;
   createdAt: string;
 };
@@ -241,13 +249,16 @@ function BotChatView({ user, onEscalate }: BotChatViewProps) {
     setBotTyping(true);
     await new Promise<void>((r) => setTimeout(r, 800));
     setBotTyping(false);
-    addBotMsg("Yon ajan pral reponn ou byento. Tanpri rete konekte. ⏳");
-    await new Promise<void>((r) => setTimeout(r, 700));
     try {
       const botHistory = currentMsgs.map((m) => ({ role: m.role, content: m.content }));
       const lastUserMsg =
         [...currentMsgs].reverse().find((m) => m.role === "user")?.content ?? "Eskalasyon bot";
-      const r = await apiFetch<{ id: number }>("/api/support/threads", {
+      const r = await apiFetch<{
+        id: number;
+        ticketRef?: string;
+        estimatedResponseLabel?: string;
+        agentsOnline?: number;
+      }>("/api/support/threads", {
         method: "POST",
         body: JSON.stringify({
           subject: topic.length > 3 ? topic : "Sipò jeneral",
@@ -255,6 +266,13 @@ function BotChatView({ user, onEscalate }: BotChatViewProps) {
           botHistory,
         }),
       });
+      const ref = r.ticketRef ? `#${r.ticketRef}` : `#${r.id}`;
+      const eta = r.estimatedResponseLabel || "Approximately 3–7 hours";
+      addBotMsg(
+        `Your support request has been received.\n\nTicket: ${ref}\nStatus: Pending Review\nEstimated Response: ${eta}` +
+          (typeof r.agentsOnline === "number" ? `\nAgents available: ${r.agentsOnline}` : "") +
+          `\n\nOur support team will review your request. Opening your FlexaBot ticket…`,
+      );
       setEscalated(true);
       setTimeout(() => onEscalate(r.id), 1000);
     } catch {
@@ -799,9 +817,19 @@ export default function Support() {
         </div>{/* end space-y-3 */}
       </div>
 
+      {detail.estimatedResponseLabel && detail.status !== "closed" ? (
+        <div className="mx-3 mb-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+          <p className="font-semibold">Estimated response time</p>
+          <p>{detail.estimatedResponseLabel}</p>
+          {detail.assignedAdminName ? (
+            <p className="mt-1">Agent: {detail.assignedAdminName}</p>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Input */}
-      {detail.status === "open" ? (
-        <div className="border-t border-border px-4 py-3 flex gap-2 flex-shrink-0 bg-background">
+      {detail.status !== "closed" ? (
+        <div className="border-t border-border px-4 py-3 flex gap-2 flex-shrink-0 bg-background pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <Input
             value={text}
             onChange={(e) => { setText(e.target.value); handleTyping(); }}
@@ -934,10 +962,11 @@ export default function Support() {
             data-testid={`thread-item-${th.id}`}
           >
             {/* Status indicator avatar */}
-            <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${th.status === "open" ? "bg-primary/10" : "bg-muted"}`}>
-              <MessageSquare className={`h-4.5 w-4.5 ${th.status === "open" ? "text-primary" : "text-muted-foreground"}`} style={{ width: "18px", height: "18px" }} />
+            <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${th.status !== "closed" ? "bg-primary/10" : "bg-muted"}`}>
+              <MessageSquare className={`h-4.5 w-4.5 ${th.status !== "closed" ? "text-primary" : "text-muted-foreground"}`} style={{ width: "18px", height: "18px" }} />
             </div>
             <div className="flex-1 min-w-0">
+              <p className="font-mono text-[10px] text-muted-foreground">#{th.ticketRef || th.id}</p>
               <div className="flex items-center justify-between gap-2 mb-0.5">
                 <span className="font-semibold text-sm truncate">{th.subject}</span>
                 <div className="flex items-center gap-1.5 flex-shrink-0">

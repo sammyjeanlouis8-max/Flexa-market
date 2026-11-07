@@ -781,7 +781,36 @@ function MsgBubble({
               wordBreak: "break-word", whiteSpace: "pre-wrap",
               color: textColor,
             }}>
-              {translation && !showOriginal ? translation.translatedText : msg.content}
+              {(() => {
+                const raw = translation && !showOriginal ? translation.translatedText : msg.content;
+                const cta = raw.match(/\[([^\]]+)\]\((\/support\/\d+)\)/);
+                if (!cta) return raw;
+                const without = raw.replace(cta[0], "").trimEnd();
+                return (
+                  <>
+                    {without}
+                    <div style={{ marginTop: 10 }}>
+                      <a
+                        href={cta[2]}
+                        style={{
+                          display: "inline-block",
+                          padding: "8px 14px",
+                          borderRadius: 10,
+                          background: isMe ? "rgba(255,255,255,0.18)" : "hsl(152,65%,18%)",
+                          color: "#fff",
+                          fontWeight: 700,
+                          fontSize: 12,
+                          textDecoration: "none",
+                          letterSpacing: "0.02em",
+                        }}
+                        data-testid="message-system-support-cta"
+                      >
+                        {cta[1]}
+                      </a>
+                    </div>
+                  </>
+                );
+              })()}
               {isMe && (
                 <span style={{ float: "right", display: "inline-flex", alignItems: "center", gap: 2, marginLeft: 8, marginTop: 4, transform: "translateY(2px)" }}>
                    <span style={{ fontSize: 9.5, color: timeColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>

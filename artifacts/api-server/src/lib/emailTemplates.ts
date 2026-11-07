@@ -598,3 +598,62 @@ export function broadcastEmail(opts: {
 
   return { subject: opts.subject, html, text };
 }
+
+// ─── SUPPORT TICKET RECEIVED ──────────────────────────────────────────────────
+
+export function supportTicketReceivedEmail(opts: {
+  customerName: string;
+  ticketRef: string;
+  subject: string;
+  description: string;
+  status: string;
+  estimatedResponse: string;
+  agentsOnline: number;
+  submittedAt: string;
+  ticketUrl: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Support ticket received — #${opts.ticketRef}`;
+  const when = new Date(opts.submittedAt);
+  const whenLabel = Number.isFinite(when.getTime()) ? when.toUTCString() : opts.submittedAt;
+  const html = base(subject, `
+    ${h1("Your support request has been received", SUCCESS)}
+    ${p(`Hello <strong style="color:${TEXT};">${opts.customerName}</strong>, we received your Flexa Market support request.`)}
+    ${divider()}
+    <table width="100%" cellpadding="0" cellspacing="0">${orderCard("Ticket", `#${opts.ticketRef}`)}${orderCard("Subject", opts.subject)}${orderCard("Status", opts.status)}${orderCard("Submitted", whenLabel)}${orderCard("Estimated response", opts.estimatedResponse)}${orderCard("Agents available", String(Math.max(0, opts.agentsOnline)))}</table>
+    ${divider()}
+    ${p(`<strong style="color:${TEXT};">Request</strong><br/>${opts.description.slice(0, 800).replace(/</g, "&lt;")}`)}
+    ${ctaButton("VIEW SUPPORT TICKET", opts.ticketUrl, SUCCESS)}
+    ${p("This estimate is based on current agent availability and is not a guaranteed deadline.", MUTED)}
+  `);
+  const text =
+    `Your support request has been received.\n\n` +
+    `Ticket: #${opts.ticketRef}\nSubject: ${opts.subject}\nStatus: ${opts.status}\n` +
+    `Submitted: ${whenLabel}\nEstimated response: ${opts.estimatedResponse}\n` +
+    `Agents available: ${Math.max(0, opts.agentsOnline)}\n\n` +
+    `Request:\n${opts.description.slice(0, 800)}\n\n` +
+    `Open ticket: ${opts.ticketUrl}\n`;
+  return { subject, html, text };
+}
+
+export function supportAgentReplyEmail(opts: {
+  customerName: string;
+  ticketRef: string;
+  agentName: string;
+  preview: string;
+  ticketUrl: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Flexa Market Support — reply on #${opts.ticketRef}`;
+  const html = base(subject, `
+    ${h1("New support reply", PRIMARY)}
+    ${p(`Hello <strong style="color:${TEXT};">${opts.customerName}</strong>, agent <strong style="color:${TEXT};">${opts.agentName}</strong> replied to your support request.`)}
+    ${divider()}
+    <table width="100%" cellpadding="0" cellspacing="0">${orderCard("Ticket", `#${opts.ticketRef}`)}${orderCard("Agent", opts.agentName)}</table>
+    ${divider()}
+    ${p(opts.preview.replace(/</g, "&lt;"))}
+    ${ctaButton("View Reply", opts.ticketUrl)}
+  `);
+  const text =
+    `Flexa Market Support\n\nAgent ${opts.agentName} replied to your support request.\n` +
+    `Ticket: #${opts.ticketRef}\n\n${opts.preview}\n\nView reply: ${opts.ticketUrl}\n`;
+  return { subject, html, text };
+}

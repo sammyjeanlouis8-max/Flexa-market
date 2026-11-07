@@ -15,7 +15,7 @@ import { isDomesticHaitiPinDelivery, type DeliveryConfirmationInput } from "./de
 import { logger } from "./logger";
 
 const SYSTEM_EMAIL = "system-notifications@flexamarket.internal";
-const SYSTEM_NAME = "System Notifications";
+const SYSTEM_NAME = "Message System";
 export const SYSTEM_NOTIFICATIONS_TYPE = "system_notifications";
 
 async function ensureSystemNotificationsUserId(): Promise<number> {

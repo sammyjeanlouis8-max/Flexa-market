@@ -6,6 +6,7 @@ import {
   Video, X, Upload, Loader2, Gift, Target, MessageCircle,
 } from "lucide-react";
 import "./boost-listing.css";
+import "./flexa-boost.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +29,9 @@ import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import { VideoUploadChooser } from "@/components/VideoUploadCenter";
+import { BoostProductCard } from "@/components/boost/BoostProductCard";
+import { BoostAdPreview } from "@/components/boost/BoostAdPreview";
+import { BoostAudiencePanel } from "@/components/boost/BoostAudiencePanel";
 
 const MIN_CAMPAIGN_BUDGET = 2;
 const BUDGET_PRESETS = [2, 5, 10, 20, 50, 100] as const;
@@ -80,7 +84,7 @@ const HAITI_DEPARTMENTS = [
   "Centre", "Sud", "Grand'Anse", "Nord-Ouest", "Nippes",
 ] as const;
 
-const RADIUS_OPTIONS = [5, 10, 20, 50, 100] as const;
+const RADIUS_OPTIONS = [5, 10, 20, 25, 50, 100] as const;
 
 const USDT_WALLET_DEFAULT = "";
 
@@ -1180,7 +1184,7 @@ export default function BoostPage() {
 
   // ── Main page ───────────────────────────────────────────────────────────────
   return (
-    <div className="boost-listing">
+    <div className="boost-listing flexa-boost">
     <div className="bl-shell">
       {/* ── Return-to-app banner ──────────────────────────────────────────── */}
       {showReturnApp && (
@@ -1333,457 +1337,142 @@ export default function BoostPage() {
         </div>
       </div>
 
-      {/* ── Step 1: Audience targeting — Meta Ads style ─────────────────────── */}
+      {/* ── Step 1: Flexa Boost redesign — product, video, audience, live preview ── */}
       {step === "audience" && (
-        <div className="bl-step-panel md:grid md:grid-cols-3 md:gap-6 space-y-0">
+        <div className="bl-step-panel space-y-4">
+          {listing && (
+            <BoostProductCard
+              listing={{
+                title: (listing as any).title,
+                price: (listing as any).price,
+                currency: (listing as any).currency,
+                country: (listing as any).country,
+                images: (listing as any).images,
+                description: (listing as any).description,
+              }}
+            />
+          )}
 
-          {/* ── LEFT: Main form ── */}
-          <div className="md:col-span-2 space-y-0">
+          {isSuperAdmin && (
+            <div className="bl-card p-3 space-y-2" style={{ borderColor: "#c4b5fd" }}>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold bg-violet-600 text-white rounded-full px-1.5 py-0.5">ADMIN</span>
+                <p className="text-xs font-semibold text-violet-700">{t("boost.audienceCountry")}</p>
+              </div>
+              <Select
+                value={adminCountry || user?.country || ""}
+                onValueChange={v => { setAdminCountry(v); setAdminCity("__all__"); setAudState(""); setAudCities([]); }}
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SUPPORTED_COUNTRIES.map(c => (
+                    <SelectItem key={c} value={c}>{COUNTRY_FLAGS[c]} {c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-            {/* ── Super-admin: audience country override ── */}
-            {isSuperAdmin && (
-              <div className="bl-section first:pt-0">
-                <div className="bl-card p-4 space-y-3" style={{ borderColor: "color-mix(in srgb, #ea580c 28%, var(--bl-border))" }}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold bg-orange-500 text-white rounded-full px-1.5 py-0.5 leading-none">ADMIN</span>
-                    <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">
-                      {t("boost.audienceCountry")}
-                    </p>
-                  </div>
-                  <Select
-                    value={adminCountry || user?.country || ""}
-                    onValueChange={v => { setAdminCountry(v); setAdminCity("__all__"); setAudState(""); setAudCities([]); }}
-                  >
-                    <SelectTrigger className="h-10 border-purple-300 dark:border-purple-700">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SUPPORTED_COUNTRIES.map(c => (
-                        <SelectItem key={c} value={c}>
-                          {COUNTRY_FLAGS[c]} {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {citiesFor(effectiveAudienceCountry).length > 0 && (
-                    <Select value={adminCity || "__all__"} onValueChange={v => setAdminCity(v === "__all__" ? "__all__" : v)}>
-                      <SelectTrigger className="h-10 border-purple-300 dark:border-purple-700">
-                        <SelectValue placeholder={t("boostWizard.audienceCityAll")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__all__">{t("boostWizard.audienceCityAll")}</SelectItem>
-                        {citiesFor(effectiveAudienceCountry).map(c => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+          <div>
+            <label className="fb-label">{t("boost.objective", { defaultValue: "Campaign objective" })}</label>
+            <select
+              className="fb-input"
+              value={objective}
+              onChange={(e) => setObjective(e.target.value as typeof objective)}
+              data-testid="boost-objective-select"
+            >
+              <option value="auto">{t("boost.objAuto", { defaultValue: "More Sales / Automatic" })}</option>
+              <option value="messages">{t("boost.objMessages", { defaultValue: "Get more messages" })}</option>
+              <option value="views">{t("boost.objViews", { defaultValue: "Get more views" })}</option>
+            </select>
+          </div>
+
+          <div className="fb-video-box" data-testid="boost-video-section">
+            <div className="flex items-center gap-2 mb-1">
+              <Video className="h-4 w-4 text-violet-600" />
+              <p className="text-sm font-bold text-slate-900">{t("boost.videoLabel", { defaultValue: "Promo Video" })}</p>
+              <span className="text-[11px] text-slate-500">({t("boost.optional")})</span>
+            </div>
+            <p className="text-xs text-slate-500 mb-2">
+              {t("boost.videoHelp", { defaultValue: "Max 2 minutes • MP4, MOV" })}
+            </p>
+            {videoUrl ? (
+              <div className="space-y-2">
+                <video src={videoUrl} controls playsInline className="w-full max-h-48 rounded-xl bg-black" />
+                <div className="fb-video-progress"><i style={{ width: "100%" }} /></div>
+                <p className="text-xs font-semibold text-green-600">
+                  {t("boost.videoUploadComplete", { defaultValue: "Upload complete 100%" })}
+                </p>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading}>
+                    {t("boost.replaceVideo", { defaultValue: "Replace" })}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="text-red-600 border-red-200" onClick={() => setVideoUrl(null)} data-testid="button-video-remove">
+                    {t("boost.removeVideo", { defaultValue: "Remove" })}
+                  </Button>
                 </div>
               </div>
-            )}
-
-            {/* Objective */}
-            <div className="bl-section first:pt-0">
-              <p className="bl-section-label">
-                {t("boost.objective", { defaultValue: "Objektif" })}
-              </p>
-              <div className="bl-choice-stack">
-                {([
-                  { id: "auto" as const, Icon: Target, label: t("boost.objAuto", { defaultValue: "Otomatik" }), sub: t("boost.objAutoSub", { defaultValue: "FLEXA MARKET chwazi pi bon rezilta pou ou" }) },
-                  { id: "messages" as const, Icon: MessageCircle, label: t("boost.objMessages", { defaultValue: "Resevwa plis mesaj" }), sub: t("boost.objMessagesSub", { defaultValue: "Sible moun ki ka voye ou mesaj rapidman" }) },
-                  { id: "views" as const, Icon: Eye, label: t("boost.objViews", { defaultValue: "Jwenn plis vi" }), sub: t("boost.objViewsSub", { defaultValue: "Montre lis ou a bay plis moun" }) },
-                ] as const).map(o => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => setObjective(o.id)}
-                    data-testid={`button-objective-${o.id}`}
-                    className={cn("bl-choice", objective === o.id && "on")}
-                  >
-                    <span className="bl-choice-icon"><o.Icon className="h-4 w-4" /></span>
-                    <div className="bl-choice-body">
-                      <strong>{o.label}</strong>
-                      <span>{o.sub}</span>
-                    </div>
-                    <div className="bl-radio"><i /></div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Audience type */}
-            <div className="bl-section">
-              <div className="flex items-center justify-between mb-3">
-                <p className="bl-section-label" style={{ marginBottom: 0 }}>
-                  {t("boost.audienceLabel", { defaultValue: "Audience" })}
-                </p>
-                <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                  {t("boost.audienceCountry")}: <strong>{effectiveAudienceCountry || "—"}</strong>
-                </span>
-              </div>
-
-              <div className="bl-choice-stack">
+            ) : (
               <button
                 type="button"
-                onClick={() => setAudienceType("advantage_plus")}
-                data-testid="button-audience-type-advantage"
-                className={cn("bl-choice", audienceType === "advantage_plus" && "on")}
+                className="bl-upload"
+                onClick={() => videoFileInputRef.current?.click()}
+                disabled={videoUploading}
+                data-testid="button-video-pick"
               >
-                <div className="bl-radio"><i /></div>
-                <div className="bl-choice-body">
-                  <strong className="inline-flex items-center gap-2">
-                    {t("boost.advantagePlus", { defaultValue: "Audience Advantage+" })}
-                    <span className="text-[10px] font-bold bg-orange-500/15 text-orange-700 dark:text-orange-300 px-1.5 py-0.5 rounded">AI</span>
-                  </strong>
-                  <span>
-                    {t("boost.advantagePlusSub", { defaultValue: "Sistèm otomatikman ajiste audience ou pou jwenn pi bon rezilta" })}
-                  </span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAudienceType("custom")}
-                data-testid="button-audience-type-custom"
-                className={cn("bl-choice", audienceType === "custom" && "on")}
-              >
-                <div className="bl-radio"><i /></div>
-                <div className="bl-choice-body">
-                  <strong>{t("boost.customAudience", { defaultValue: "Moun ou chwazi pou sible" })}</strong>
-                  <span>
-                    {t("boost.customAudienceSub", { defaultValue: "Konfigire laj, sèks, ak lokasyon moun ou vle rive" })}
-                  </span>
-                </div>
-              </button>
-              </div>
-
-              {/* Custom audience details — shown inline when custom selected */}
-              {audienceType === "custom" && (
-                <div className="mt-3 border border-border rounded-xl bg-muted/20 p-4 space-y-4">
-
-                  {/* Audience name */}
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground block mb-1.5">
-                      {t("boost.audienceName", { defaultValue: "Non Audience" })} <span className="opacity-60">({t("boost.optional")})</span>
-                    </label>
-                    <Input
-                      placeholder={`Audience-${new Date().toISOString().slice(0, 10)}`}
-                      value={audienceName}
-                      onChange={e => setAudienceName(e.target.value)}
-                      className="h-9 text-sm bg-background"
-                      data-testid="input-audience-name"
-                    />
-                  </div>
-
-                  {/* Age range */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs font-medium text-muted-foreground">
-                        {t("boost.ageRange", { defaultValue: "Laj" })}
-                      </label>
-                      <span className="text-xs font-bold text-primary tabular-nums">
-                        {ageMin} – {ageMax === 65 ? "65+" : ageMax}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground w-6 shrink-0">18</span>
-                      <div className="flex-1 relative h-5 flex items-center">
-                        <div className="absolute w-full h-1 bg-border rounded-full" />
-                        <div
-                          className="absolute h-1 bg-primary rounded-full"
-                          style={{ left: `${((ageMin - 18) / 47) * 100}%`, right: `${100 - ((ageMax - 18) / 47) * 100}%` }}
-                        />
-                        <input type="range" min={18} max={64} value={ageMin}
-                          onChange={e => { const v = parseInt(e.target.value); if (v < ageMax) setAgeMin(v); }}
-                          className="absolute w-full h-full opacity-0 cursor-pointer z-10"
-                          data-testid="slider-age-min"
-                        />
-                        <input type="range" min={19} max={65} value={ageMax}
-                          onChange={e => { const v = parseInt(e.target.value); if (v > ageMin) setAgeMax(v); }}
-                          className="absolute w-full h-full opacity-0 cursor-pointer z-20"
-                          data-testid="slider-age-max"
-                        />
-                      </div>
-                      <span className="text-xs text-muted-foreground w-7 shrink-0 text-right">65+</span>
-                    </div>
-                  </div>
-
-                  {/* Gender */}
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground block mb-2">
-                      {t("boost.gender", { defaultValue: "Sèks" })}
-                    </label>
-                    <div className="flex gap-2">
-                      {(["all", "male", "female"] as const).map(g => (
-                        <button
-                          key={g}
-                          type="button"
-                          onClick={() => setGender(g)}
-                          data-testid={`button-gender-${g}`}
-                          className={cn(
-                            "flex-1 py-2 rounded-lg border text-xs font-semibold transition-all",
-                            gender === g
-                              ? "bg-primary text-white border-primary shadow-sm"
-                              : "bg-background text-muted-foreground border-border hover:border-muted-foreground/40"
-                          )}
-                        >
-                          {g === "all" ? t("boost.genderAll", { defaultValue: "Tout" }) : g === "male" ? t("boost.genderMale", { defaultValue: "Gason" }) : t("boost.genderFemale", { defaultValue: "Fanm" })}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Location — Haiti */}
-                  {isHaiti ? (
-                    <>
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground block mb-1.5">
-                          {t("boost.department")} <span className="text-destructive">*</span>
-                        </label>
-                        <MobileSelect
-                          value={audState}
-                          onValueChange={setAudState}
-                          placeholder={t("boost.selectDepartment")}
-                          options={HAITI_DEPARTMENTS.map(d => ({ value: d, label: d }))}
-                          className="text-sm bg-background"
-                          data-testid="select-audience-state"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground block mb-2">
-                          {t("boost.commune")} <span className="opacity-60">({t("boost.optional")})</span>
-                        </label>
-                        <div className="flex flex-wrap gap-1.5 mb-2">
-                          {["Port-au-Prince","Cap-Haïtien","Pétion-Ville","Delmas","Carrefour","Jacmel","Les Cayes","Gonaïves"].map(city => (
-                            <button
-                              key={city}
-                              type="button"
-                              onClick={() => audCities.includes(city) ? removeCity(city) : addCity(city)}
-                              className={cn(
-                                "text-xs px-2.5 py-1 rounded-full border transition-all font-medium",
-                                audCities.includes(city)
-                                  ? "bg-primary text-white border-primary"
-                                  : "bg-background text-muted-foreground border-border hover:border-primary/40"
-                              )}
-                            >
-                              {audCities.includes(city) && <Check className="h-2.5 w-2.5 inline mr-0.5" />}
-                              {city}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="min-h-[38px] border border-input rounded-lg px-2 py-1.5 flex flex-wrap gap-1.5 items-center focus-within:ring-1 focus-within:ring-ring bg-background text-sm">
-                          {audCities.map(c => (
-                            <span key={c} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs font-medium px-2 py-0.5 rounded-full">
-                              {c}
-                              <button type="button" onClick={() => removeCity(c)} className="hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
-                            </span>
-                          ))}
-                          <input
-                            className="flex-1 min-w-[100px] text-sm bg-transparent outline-none placeholder:text-muted-foreground"
-                            placeholder={audCities.length === 0 ? "Lòt vil…" : ""}
-                            value={audCityInput}
-                            onChange={e => setAudCityInput(e.target.value)}
-                            onKeyDown={handleCityKeyDown}
-                            onBlur={() => addCity(audCityInput)}
-                            data-testid="input-audience-city"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground block mb-1.5">
-                          {t("boost.neighborhood")} <span className="opacity-60">({t("boost.optional")})</span>
-                        </label>
-                        <Input
-                          placeholder="Canapé-Vert, Turgeau…"
-                          value={audNeighborhood}
-                          onChange={e => setAudNeighborhood(e.target.value)}
-                          className="h-9 text-sm bg-background"
-                          data-testid="input-audience-neighborhood"
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground block mb-1.5">
-                          {t("boost.city")} <span className="opacity-60">({t("boost.optional")})</span>
-                        </label>
-                        <div className="min-h-[38px] border border-input rounded-lg px-2 py-1.5 flex flex-wrap gap-1.5 items-center focus-within:ring-1 focus-within:ring-ring bg-background text-sm">
-                          {audCities.map(c => (
-                            <span key={c} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs font-medium px-2 py-0.5 rounded-full">
-                              {c}
-                              <button type="button" onClick={() => removeCity(c)} className="hover:text-destructive"><X className="h-2.5 w-2.5" /></button>
-                            </span>
-                          ))}
-                          <input
-                            className="flex-1 min-w-[120px] text-sm bg-transparent outline-none placeholder:text-muted-foreground"
-                            placeholder={audCities.length === 0 ? "Miami, Brooklyn, Paris… (Enter)" : ""}
-                            value={audCityInput}
-                            onChange={e => setAudCityInput(e.target.value)}
-                            onKeyDown={handleCityKeyDown}
-                            onBlur={() => addCity(audCityInput)}
-                            data-testid="input-audience-city"
-                          />
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1">Peze Enter oswa virgule pou ajoute chak vil.</p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground block mb-1.5">
-                          {t("boost.stateRegion")} <span className="opacity-60">({t("boost.optional")})</span>
-                        </label>
-                        <Input
-                          placeholder="Florida, NY, Île-de-France…"
-                          value={audState}
-                          onChange={e => setAudState(e.target.value)}
-                          className="h-9 text-sm bg-background"
-                          data-testid="input-audience-state"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {/* Radius */}
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground block mb-2">
-                      {t("boost.radius")}
-                    </label>
-                    <div className="flex gap-2">
-                      {RADIUS_OPTIONS.map(r => (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => setAudRadiusKm(r)}
-                          data-testid={`button-radius-${r}`}
-                          className={cn(
-                            "flex-1 py-1.5 rounded-lg border text-xs font-semibold transition-all",
-                            audRadiusKm === r
-                              ? "bg-primary/10 border-primary text-primary"
-                              : "bg-background border-border text-muted-foreground hover:border-muted-foreground/40"
-                          )}
-                        >
-                          {r}km
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Audience details preview */}
-            <div className="bl-section">
-              <p className="bl-section-label">
-                {t("boost.audienceDetails", { defaultValue: "Detay Audience" })}
-              </p>
-              <div className="bl-details">
-                {[
-                  { label: t("boost.audienceCountry"), value: effectiveAudienceCountry || user?.country || "—" },
-                  { label: t("boost.audienceLabel", { defaultValue: "Type" }),
-                    value: audienceType === "advantage_plus" ? "Advantage+ (AI)" : t("boost.customAudience", { defaultValue: "Custom" }) },
-                  ...(audienceType === "custom" ? [
-                    { label: t("boost.ageRange", { defaultValue: "Laj" }), value: `${ageMin} – ${ageMax === 65 ? "65+" : ageMax}` },
-                    { label: t("boost.gender", { defaultValue: "Sèks" }), value: gender === "all" ? t("boost.genderAll", { defaultValue: "Tout" }) : gender === "male" ? t("boost.genderMale", { defaultValue: "Gason" }) : t("boost.genderFemale", { defaultValue: "Fanm" }) },
-                    ...(audState ? [{ label: t("boost.department"), value: audState }] : []),
-                    ...(audCities.length > 0 ? [{ label: t("boost.commune"), value: audCities.join(", ") }] : []),
-                    ...(audRadiusKm ? [{ label: t("boost.radius"), value: `+${audRadiusKm}km` }] : []),
-                  ] : []),
-                  { label: t("boost.objective", { defaultValue: "Objektif" }),
-                    value: objective === "auto" ? t("boost.objAuto", { defaultValue: "Otomatik" }) : objective === "messages" ? t("boost.objMessages", { defaultValue: "Plis mesaj" }) : t("boost.objViews", { defaultValue: "Plis vi" }) },
-                ].map(row => (
-                  <div key={row.label}>
-                    <span>{row.label}</span>
-                    <span>{row.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* ── Promo video (optional) ── */}
-            <div className="bl-section" data-testid="boost-video-section">
-              <div className="bl-section-head">
-                <div className="bl-icon-tile video">
-                  <Video className="h-3.5 w-3.5" />
-                </div>
-                <p className="bl-section-title">
-                  {t("boost.videoLabel", { defaultValue: "Videyo Promo" })}
-                </p>
-                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                  {t("boost.optional")}
-                </span>
-                {videoUrl && (
-                  <span className="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded">✓</span>
+                {videoUploading ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> {t("boost.videoUploading", { defaultValue: "Uploading…" })}</>
+                ) : (
+                  <><Upload className="h-4 w-4" /> {t("boost.videoPick", { defaultValue: "Upload Media" })}</>
                 )}
-              </div>
-              <p className="text-xs text-muted-foreground mb-3">
-                {t("boost.videoHelp", { defaultValue: "Max 2 minutes. Montre kòm overlay lè moun ap navige nan feed la." })}
-              </p>
-              {videoUrl ? (
-                <div className="flex items-center justify-between gap-3 bg-muted rounded-xl px-3 py-2.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Video className="h-4 w-4 text-orange-600 flex-shrink-0" />
-                    <span className="text-sm font-medium truncate" data-testid="text-video-attached">
-                      {t("boost.videoAttached", { defaultValue: "Videyo ajoute ✓" })}
-                    </span>
-                  </div>
-                  <button type="button" onClick={() => setVideoUrl(null)} className="text-muted-foreground hover:text-destructive p-1" data-testid="button-video-remove">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="bl-upload"
-                  onClick={() => videoFileInputRef.current?.click()}
-                  disabled={videoUploading}
-                  data-testid="button-video-pick"
-                >
-                  <Upload className="h-4 w-4" />
-                  {videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje…" }) : t("boost.videoPick", { defaultValue: "Chwazi videyo" })}
-                </button>
-              )}
-              <VideoUploadChooser purpose="boost" onUse={setVideoUrl} />
-            </div>
-
+              </button>
+            )}
+            <VideoUploadChooser purpose="boost" onUse={setVideoUrl} />
           </div>
 
-          {/* ── RIGHT: Estimated results panel (desktop only) ── */}
-          <div className="hidden md:block md:col-span-1">
-            <div className="sticky top-4 space-y-4">
-              <div className="rounded-xl border border-border bg-card p-4">
-                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-                  {t("boost.estimatedResults", { defaultValue: "Rezilta Estimé" })}
-                </p>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-2xl font-black text-foreground tabular-nums">
-                      {plan === "7day" ? "200K–400K" : plan === "3day" ? "20K–50K" : audienceType === "advantage_plus" ? "5K–10K" : audCities.length > 0 ? "2K–5K" : "3K–7K"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Views total</p>
-                  </div>
-                  <div className="h-px bg-border" />
-                  <div>
-                    <p className="text-xl font-bold text-foreground tabular-nums">
-                      {objective === "messages" ? "15–50" : objective === "views" ? "500–2K" : "80–250"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {objective === "messages" ? "Mesaj / jou" : objective === "views" ? "Vi / jou" : "Klik / jou"}
-                    </p>
-                  </div>
-                </div>
-              </div>
+          <BoostAudiencePanel
+            country={effectiveAudienceCountry || user?.country || ""}
+            audienceType={audienceType}
+            onAudienceType={setAudienceType}
+            audState={audState}
+            setAudState={setAudState}
+            audCities={audCities}
+            setAudCities={setAudCities}
+            audRadiusKm={audRadiusKm ?? 10}
+            setAudRadiusKm={(v) => setAudRadiusKm(v)}
+            ageMin={ageMin}
+            ageMax={ageMax}
+            setAgeMin={setAgeMin}
+            setAgeMax={setAgeMax}
+            gender={gender}
+            setGender={setGender}
+            estimatedLabel={
+              plan === "7day" ? "≈ 200K–400K people"
+              : plan === "3day" ? "≈ 20K–50K people"
+              : audienceType === "advantage_plus" ? "≈ 5K–10K people"
+              : audCities.length > 0 ? "≈ 2K–5K people" : "≈ 3K–7K people"
+            }
+            estimatedSize={plan === "7day" || audCities.length >= 3 ? "large" : audienceType === "advantage_plus" ? "medium" : "small"}
+          />
 
-              <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 text-center">
-                <Info className="h-4 w-4 text-primary mx-auto mb-2" />
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {t("boost.estimatedNote", { defaultValue: "Estimasyon yo baze sou pèfòmans mwayen nan peyi ou a. Rezilta reyèl yo ka varye." })}
-                </p>
-              </div>
+          {listing && (
+            <div>
+              <p className="fb-label">{t("boost.livePreview", { defaultValue: "Live ad preview" })}</p>
+              <BoostAdPreview
+                title={(listing as any).title}
+                price={(listing as any).price}
+                currency={(listing as any).currency}
+                country={(listing as any).country}
+                description={(listing as any).description}
+                images={(listing as any).images}
+                videoUrl={videoUrl}
+                sellerName={user?.name ?? null}
+              />
             </div>
-          </div>
+          )}
 
-          {/* Hidden file input — used by promo video section in audience step */}
           <input
             ref={videoFileInputRef}
             type="file"
@@ -1793,17 +1482,14 @@ export default function BoostPage() {
             data-testid="input-video-file"
           />
 
-          {/* CTA — full width below both columns */}
-          <div className="md:col-span-3 pt-2">
-            <button
-              type="button"
-              className="bl-cta"
-              onClick={handleAudienceNext}
-              data-testid="button-audience-next"
-            >
-              {t("boost.continueToBudget")}
-            </button>
-          </div>
+          <button
+            type="button"
+            className="fb-cta-primary"
+            onClick={handleAudienceNext}
+            data-testid="button-audience-next"
+          >
+            {t("boost.continueToBudget", { defaultValue: "Continue to Budget →" })}
+          </button>
         </div>
       )}
 

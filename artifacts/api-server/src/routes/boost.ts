@@ -134,25 +134,42 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     }
   }
 
-  // Admins can boost for any country; non-admins are locked to their own.
+  // Admins can boost for any country; non-admins are locked to their account country.
   const audienceCountry = isAdmin
     ? (typeof req.body.audience?.country === "string" ? req.body.audience.country : req.user?.country)
     : req.user?.country;
 
-  // Force state + city from the seller's own profile for non-admins so that
-  // every boost is automatically geo-targeted to the seller's actual region.
-  const forcedState = isAdmin
-    ? (typeof req.body.audience?.state === "string" ? req.body.audience.state : req.user?.state ?? null)
-    : req.user?.state ?? null;
-  const forcedCity = isAdmin
-    ? (typeof req.body.audience?.city === "string" ? req.body.audience.city : req.user?.location ?? null)
-    : req.user?.location ?? null;
+  // Custom / map targeting: honor wizard selections (department, cities, radius).
+  // Advantage+ (automatic): default to the seller's registered region when omitted.
+  const audienceType =
+    req.body.audience?.audienceType === "custom" ? "custom" : "advantage_plus";
+  const bodyState =
+    typeof req.body.audience?.state === "string" ? req.body.audience.state.trim() : "";
+  const bodyCity =
+    typeof req.body.audience?.city === "string" ? req.body.audience.city.trim() : "";
+  const bodyCities = Array.isArray(req.body.audience?.cities)
+    ? (req.body.audience.cities as unknown[]).filter((c): c is string => typeof c === "string" && c.trim().length > 0)
+    : [];
+
+  const resolvedState = isAdmin
+    ? (bodyState || req.user?.state || null)
+    : audienceType === "custom"
+      ? (bodyState || req.user?.state || null)
+      : (req.user?.state || bodyState || null);
+
+  const resolvedCity = isAdmin
+    ? (bodyCity || bodyCities[0] || req.user?.location || null)
+    : audienceType === "custom"
+      ? (bodyCity || bodyCities[0] || null)
+      : (req.user?.location || bodyCity || bodyCities[0] || null);
 
   const audienceBody = {
     ...req.body.audience,
+    audienceType,
     country: audienceCountry,
-    state: forcedState,
-    city: forcedCity,
+    state: resolvedState,
+    city: resolvedCity,
+    cities: audienceType === "custom" && bodyCities.length > 0 ? bodyCities : req.body.audience?.cities,
   };
   const audienceCheck = validateAudience(audienceBody, audienceCountry);
   if (!audienceCheck.ok) { res.status(400).json({ error: audienceCheck.error }); return; }

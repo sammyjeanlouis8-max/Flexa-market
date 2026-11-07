@@ -6,6 +6,7 @@
 /* Scoped page styles — imported here so @tailwindcss/vite includes them in
    the production CSS bundle (component-level CSS imports are dropped). */
 @import "./pages/boost-listing.css";
+@import "./pages/flexa-boost.css";
 @import "./pages/booster/booster.css";
 @import "./pages/commissionPromo.css";
 

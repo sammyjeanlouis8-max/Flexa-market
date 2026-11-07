@@ -584,6 +584,26 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     );
   }
 
+  // Customer Smart Support / FlexaBot — immersive chat shell (no marketplace header,
+  // no bottom nav, no storefront footer). Page owns its brand chrome.
+  const isSupportImmersive = /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location);
+  if (isSupportImmersive) {
+    return (
+      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
+        <div
+          className="app-shell support-immersive-shell w-full min-w-0 max-w-full overflow-x-hidden bg-[#F4F7F5] flex flex-col h-dvh overflow-clip"
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
+          data-testid="support-immersive-shell"
+        >
+          {children}
+        </div>
+      </DeliveryMenuCountryContext.Provider>
+    );
+  }
+
   return (
     <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
     <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col ${isMessages || isVideoFeed ? "h-dvh overflow-clip" : "min-h-dvh"} ${isCommissionPromoPage ? "bg-[#0B1B3A]" : "bg-background"}`}>
@@ -800,7 +820,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) ? "hidden" : ""}`}
         aria-label="Main navigation"
         data-testid="mobile-bottom-nav"
       >

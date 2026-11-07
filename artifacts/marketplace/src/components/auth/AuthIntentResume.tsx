@@ -24,7 +24,9 @@ export default function AuthIntentResume() {
     ran.current = true;
 
     if (intent.action === "addToCart" && intent.listingId && intent.title != null && intent.price != null && intent.sellerId != null) {
-      if (!isInCart(intent.listingId)) {
+      if (intent.sellerId === user.id) {
+        // Owner must never cart their own listing after login resume.
+      } else if (!isInCart(intent.listingId)) {
         addItem({
           listingId: intent.listingId,
           title: intent.title,

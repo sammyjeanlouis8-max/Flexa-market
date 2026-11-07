@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Heart, MapPin, Zap, BadgeCheck, Crown, Play, Eye, ImageIcon, ShoppingCart, Star } from "lucide-react";
+import { Heart, MapPin, Zap, Rocket, BadgeCheck, Crown, Play, Eye, ImageIcon, ShoppingCart, Star } from "lucide-react";
 import { formatViewCount } from "@/hooks/useViewTracker";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -502,70 +502,87 @@ export default function ListingCard({
             </Button>
           )}
 
-          {/* === BOOST BUTTON (only shown to the listing owner) === */}
-          {!preview && isOwner && listing.status !== "sold" && (!isAndroidApp() || listing.isBoosted) && (
-            <Button
-              size="sm"
-              variant="outline"
-              className={cn(
-                "listing-card-boost w-full mt-2 h-7 text-xs font-bold rounded-full border-amber-400 text-amber-500 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-500 gap-1",
-                listing.isBoosted && "border-green-400 text-green-500 hover:bg-green-50 hover:border-green-500 hover:text-green-700"
-              )}
-              onClick={handleBoostClick}
-              data-testid={`button-boost-${listing.id}`}
-            >
-              <Zap className={cn("h-3 w-3", listing.isBoosted ? "fill-green-500" : "fill-amber-400")} />
-              <span className="min-w-0">{listing.isBoosted ? t("buttons.boosted", { defaultValue: "Boosted ✓" }) : t("buttons.boost", { defaultValue: "Boost listing" })}</span>
-            </Button>
-          )}
-
-          {/* Marketplace Add to Cart — uses real cart; disabled when sold/owner */}
-          {showAddToCart && !preview && !isOwner && listing.status !== "sold" && (
-            <Button
-              size="sm"
-              className="w-full mt-2.5 h-9 text-xs font-bold rounded-lg bg-[#F5A623] hover:bg-[#e09410] text-slate-900 gap-1.5 shadow-sm"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!listing.sellerId) return;
-                if (!user) {
-                  requireAuth({
-                    action: "addToCart",
-                    next: `/listings/${listing.id}`,
+          {/* Single CTA slot: owner → Boost (replaces Add to Cart); buyer → Add to Cart */}
+          {!preview && listing.status !== "sold" && (
+            isOwner ? (
+              (!isAndroidApp() || listing.isBoosted) && (
+                <Button
+                  size="sm"
+                  className={cn(
+                    "listing-card-boost listing-card-cta w-full mt-2 h-10 text-sm font-bold rounded-full gap-1.5 shadow-sm border",
+                    listing.isBoosted
+                      ? "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                      : "bg-[#E8F1FF] border-[#BFD6FF] text-[#1D4ED8] hover:bg-[#DCEBFF]"
+                  )}
+                  onClick={handleBoostClick}
+                  data-testid={`button-boost-${listing.id}`}
+                >
+                  {listing.isBoosted ? (
+                    <Zap className="h-3.5 w-3.5 fill-emerald-500 text-emerald-500" />
+                  ) : (
+                    <Rocket className="h-3.5 w-3.5" />
+                  )}
+                  <span className="min-w-0 truncate">
+                    {listing.isBoosted
+                      ? t("buttons.boosted", { defaultValue: "Boosted ✓" })
+                      : t("buttons.boost", { defaultValue: "Boost" })}
+                  </span>
+                </Button>
+              )
+            ) : showAddToCart ? (
+              <Button
+                size="sm"
+                className="listing-card-cta w-full mt-2 h-10 text-sm font-bold rounded-full bg-[#FFE8C2] hover:bg-[#FFDFA8] text-slate-900 gap-1.5 shadow-sm border border-[#F5C97A]"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!listing.sellerId) return;
+                  if (user && listing.sellerId === user.id) {
+                    toast({
+                      title: t("cart.cannotAddOwn", { defaultValue: "You can't add your own product to the cart" }),
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  if (!user) {
+                    requireAuth({
+                      action: "addToCart",
+                      next: `/listings/${listing.id}`,
+                      listingId: listing.id,
+                      sellerId: listing.sellerId,
+                      title: listing.title,
+                      price: listing.price,
+                      currency: listing.currency ?? null,
+                      image: listing.images?.[0] ?? null,
+                      country: listing.country ?? null,
+                      quantity: 1,
+                    });
+                    return;
+                  }
+                  if (isInCart(listing.id)) {
+                    toast({ title: t("cart.alreadyInCart", { defaultValue: "Already in cart" }) });
+                    return;
+                  }
+                  addItem({
                     listingId: listing.id,
-                    sellerId: listing.sellerId,
                     title: listing.title,
                     price: listing.price,
                     currency: listing.currency ?? null,
                     image: listing.images?.[0] ?? null,
                     country: listing.country ?? null,
+                    sellerId: listing.sellerId,
                     quantity: 1,
                   });
-                  return;
-                }
-                if (isInCart(listing.id)) {
-                  toast({ title: t("cart.alreadyInCart", { defaultValue: "Already in cart" }) });
-                  return;
-                }
-                addItem({
-                  listingId: listing.id,
-                  title: listing.title,
-                  price: listing.price,
-                  currency: listing.currency ?? null,
-                  image: listing.images?.[0] ?? null,
-                  country: listing.country ?? null,
-                  sellerId: listing.sellerId,
-                  quantity: 1,
-                });
-                toast({ title: t("cart.added", { defaultValue: "Added to cart" }) });
-              }}
-              data-testid={`button-add-cart-${listing.id}`}
-            >
-              <ShoppingCart className="h-3.5 w-3.5" />
-              {isInCart(listing.id)
-                ? t("cart.inCart", { defaultValue: "In cart" })
-                : t("cart.addToCart", { defaultValue: "Add to Cart" })}
-            </Button>
+                  toast({ title: t("cart.added", { defaultValue: "Added to cart" }) });
+                }}
+                data-testid={`button-add-cart-${listing.id}`}
+              >
+                <ShoppingCart className="h-3.5 w-3.5" />
+                {isInCart(listing.id)
+                  ? t("cart.inCart", { defaultValue: "In cart" })
+                  : t("cart.addToCart", { defaultValue: "Add to Cart" })}
+              </Button>
+            ) : null
           )}
         </div>
       </div>

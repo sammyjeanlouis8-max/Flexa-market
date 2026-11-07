@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSEO } from "@/hooks/useSEO";
 import { useRoute, useLocation, Link } from "wouter";
-import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ArrowLeft, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal, Maximize2, Headphones } from "lucide-react";
+import { Heart, MapPin, Star, MessageCircle, Tag, Zap, Rocket, ArrowLeft, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal, Maximize2, Headphones } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -1451,6 +1451,13 @@ export default function ListingDetail() {
       toast({ title: t("checkout.soldBadge"), variant: "destructive" });
       return;
     }
+    if (user && listing.sellerId === user.id) {
+      toast({
+        title: t("cart.cannotAddOwn", { defaultValue: "You can't add your own product to the cart" }),
+        variant: "destructive",
+      });
+      return;
+    }
     const qty = Math.min(Math.max(1, buyQty), Math.max(1, maxBuyQty));
     if (!user) {
       if (!isLoading) {
@@ -1499,6 +1506,13 @@ export default function ListingDetail() {
       toast({ title: t("checkout.soldBadge"), variant: "destructive" });
       return;
     }
+    if (user && listing.sellerId === user.id) {
+      toast({
+        title: t("cart.cannotBuyOwn", { defaultValue: "You can't buy your own product" }),
+        variant: "destructive",
+      });
+      return;
+    }
     if (!user) {
       if (!isLoading) {
         requireAuth({
@@ -1517,6 +1531,10 @@ export default function ListingDetail() {
       return;
     }
     setPayStep("promo"); setPayDone(false); setBuyNowOpen(true);
+  };
+
+  const handleOwnerBoostClick = () => {
+    setLocation(`/boost/${id}`);
   };
 
   const renderThumb = (item: (typeof mediaItems)[number], i: number, sizeClass: string) => (
@@ -2087,6 +2105,25 @@ export default function ListingDetail() {
             <p className="text-[14px] font-bold text-red-600">{t("checkout.soldBadge")}</p>
           )}
 
+          {isOwner && listing.status === "available" && (!isAndroidApp() || listing.isBoosted) && (
+            <button
+              type="button"
+              onClick={handleOwnerBoostClick}
+              data-testid="button-boost-listing-desktop"
+              className={cn(
+                "w-full h-11 rounded-full font-bold text-[14px] flex items-center justify-center gap-2 transition-all shadow-sm border",
+                listing.isBoosted
+                  ? "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                  : "bg-[#E8F1FF] border-[#BFD6FF] text-[#1D4ED8] hover:bg-[#DCEBFF]",
+              )}
+            >
+              {listing.isBoosted ? <Zap className="h-4 w-4 fill-emerald-500" /> : <Rocket className="h-4 w-4" />}
+              {listing.isBoosted
+                ? t("buttons.boosted", { defaultValue: "Boosted ✓" })
+                : t("buttons.boost", { defaultValue: "Boost" })}
+            </button>
+          )}
+
           {!isOwner && listing.status === "available" && (
             <>
               <label className="block">
@@ -2094,7 +2131,7 @@ export default function ListingDetail() {
                   value={buyQty}
                   onChange={(e) => setBuyQty(Number(e.target.value))}
                   disabled={!canPurchaseQty}
-                  className="w-full appearance-none h-11 rounded-lg bg-muted/70 border border-border px-3 text-[14px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#F97316]/40"
+                  className="w-full appearance-none h-10 rounded-lg bg-muted/70 border border-border px-3 text-[14px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#F97316]/40"
                   data-testid="pdp-quantity-select-desktop"
                 >
                   {Array.from({ length: Math.max(1, maxBuyQty) }, (_, i) => i + 1).map((n) => (
@@ -2114,7 +2151,7 @@ export default function ListingDetail() {
                   "w-full h-11 rounded-full font-bold text-[14px] flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-sm",
                   isInCart(id)
                     ? "bg-[hsl(152,65%,22%)] text-white"
-                    : "bg-[#FFD814] hover:bg-[#F7CA00] text-foreground",
+                    : "bg-[#FFE8C2] hover:bg-[#FFDFA8] text-foreground border border-[#F5C97A]",
                 )}
               >
                 <ShoppingCart className="h-4 w-4" />
@@ -2547,9 +2584,6 @@ export default function ListingDetail() {
                 {t("buttons.relist", { defaultValue: "Re-list as available" })}
               </Button>
             ) : null}
-            {(!isAndroidApp() || listing.isBoosted) && <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => setLocation(`/boost/${id}`)} data-testid="button-boost-listing">
-              <Zap className="h-4 w-4 mr-1" /> {t("buttons.boostListing")}
-            </Button>}
           </div>
         )}
 
@@ -2659,40 +2693,61 @@ export default function ListingDetail() {
           </div>
         )}
 
-        {/* Spacer so scroll content clears the always-fixed mobile purchase bar. */}
-        {!isOwner && listing.status === "available" && (
-          <div className="h-[calc(4.75rem+env(safe-area-inset-bottom))] lg:hidden" aria-hidden="true" />
+        {/* Spacer so scroll content clears the always-fixed mobile action bar. */}
+        {listing.status === "available" && (isOwner ? (!isAndroidApp() || listing.isBoosted) : true) && (
+          <div className="h-[calc(4.25rem+env(safe-area-inset-bottom))] lg:hidden" aria-hidden="true" />
         )}
 
       </div>
 
-      {/* Always-fixed mobile Add to Cart / Buy — stays at bottom while the page scrolls.
+      {/* Owner: fixed Boost bar (replaces Add to Cart / Buy Now). */}
+      {isOwner && listing.status === "available" && (!isAndroidApp() || listing.isBoosted) && !buyNowOpen && createPortal(
+        <div data-testid="listing-owner-boost-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2 px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden">
+          <button
+            type="button"
+            onClick={handleOwnerBoostClick}
+            data-testid="button-boost-listing"
+            className={cn(
+              "w-full h-11 rounded-full font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm border",
+              listing.isBoosted
+                ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                : "bg-[#E8F1FF] border-[#BFD6FF] text-[#1D4ED8]",
+            )}
+          >
+            {listing.isBoosted ? <Zap className="h-4 w-4 fill-emerald-500" /> : <Rocket className="h-4 w-4" />}
+            {listing.isBoosted
+              ? t("buttons.boosted", { defaultValue: "Boosted ✓" })
+              : t("buttons.boost", { defaultValue: "Boost" })}
+          </button>
+        </div>,
+        document.body
+      )}
+
+      {/* Buyer: fixed Add to Cart / Buy — stays at bottom while the page scrolls.
           Portal escapes app-main-scroll paint containment. */}
       {!isOwner && listing.status === "available" && !buyNowOpen && createPortal(
-        <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2 px-3 py-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))] lg:hidden">
+        <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2 px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden">
 
-          {/* Add to Cart — Amazon yellow */}
           <button
             onClick={handleAddToCartClick}
             data-testid="button-add-to-cart"
             disabled={!canPurchaseQty}
             className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 h-12 rounded-full font-bold text-sm transition-all active:scale-95 disabled:opacity-50",
+              "flex-1 flex items-center justify-center gap-1.5 h-11 rounded-full font-bold text-sm transition-all active:scale-95 disabled:opacity-50",
               isInCart(id)
                 ? "bg-[hsl(152,65%,22%)] text-white"
-                : "bg-[#FFD814] hover:bg-[#F7CA00] text-foreground shadow-sm",
+                : "bg-[#FFE8C2] hover:bg-[#FFDFA8] text-foreground shadow-sm border border-[#F5C97A]",
             )}
           >
-            <ShoppingCart className="h-4 w-4 flex-shrink-0" />
+            <ShoppingCart className="h-3.5 w-3.5 flex-shrink-0" />
             <span className="text-[13px]">{isInCart(id) ? t("listing.inCart") : t("listing.addToCart")}</span>
           </button>
 
-          {/* Buy Now — Flexa orange */}
           <button
             onClick={handleBuyNowClick}
             data-testid="button-buy-now"
             disabled={!canPurchaseQty}
-            className="flex-[1.4] h-12 flex items-center justify-center gap-1.5 rounded-full font-bold text-sm text-white bg-[#F97316] hover:bg-[#ea6a0c] shadow-sm active:scale-95 transition-all disabled:opacity-50"
+            className="flex-[1.4] h-11 flex items-center justify-center gap-1.5 rounded-full font-bold text-sm text-white bg-[#F97316] hover:bg-[#ea6a0c] shadow-sm active:scale-95 transition-all disabled:opacity-50"
           >
             <div className="flex flex-col items-start leading-tight">
               <span className="text-[13px] font-bold">{t("buttons.buyNow")}</span>

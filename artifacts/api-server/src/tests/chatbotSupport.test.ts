@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectLang } from "../lib/chatbotLanguage";
+import { detectLang, detectLangFromMessages } from "../lib/chatbotLanguage";
 import {
   retrieveKnowledge,
   formatKnowledgeBlock,
@@ -16,6 +16,11 @@ describe("FlexaBot language detection", () => {
   it("detects Haitian Creole", () => {
     expect(detectLang("Kijan pou mwen swiv komann mwen?")).toBe("ht");
   });
+  it("detects short Creole help requests", () => {
+    expect(detectLang("ou ka edem")).toBe("ht");
+    expect(detectLang("ou pale kreyol")).toBe("ht");
+    expect(detectLang("banm ede sou pòtfèy mwen")).toBe("ht");
+  });
   it("detects French", () => {
     expect(detectLang("Comment puis-je voir mon paiement?")).toBe("fr");
   });
@@ -24,6 +29,28 @@ describe("FlexaBot language detection", () => {
   });
   it("defaults to English", () => {
     expect(detectLang("How do I track my order?")).toBe("en");
+  });
+  it("uses preferred lang when the message is ambiguous", () => {
+    expect(detectLang("ok", "ht")).toBe("ht");
+    expect(detectLang("ok", "fr")).toBe("fr");
+  });
+  it("keeps Creole across short follow-ups in a conversation", () => {
+    expect(
+      detectLangFromMessages(
+        [
+          { role: "user", content: "ou ka edem" },
+          { role: "assistant", content: "Wi, mwen ka ede w!" },
+          { role: "user", content: "ou pale kreyol" },
+        ],
+        "en",
+      ),
+    ).toBe("ht");
+  });
+  it("answers Creole greetings in Creole via knowledge fallback", () => {
+    const hits = retrieveKnowledge("ou ka edem");
+    const answer = composeKnowledgeAnswer({ lang: "ht", snippets: hits });
+    expect(answer.content.toLowerCase()).toMatch(/wi|mwen ka ede|kreyòl|kreyol/);
+    expect(answer.content.toLowerCase()).not.toMatch(/\bi can help with flexa market topics\b/);
   });
 });
 

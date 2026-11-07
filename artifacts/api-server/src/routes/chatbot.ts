@@ -7,7 +7,12 @@ import rateLimit from "express-rate-limit";
 import { requireAuth } from "../middlewares/auth";
 import { completeChat, getProviderStatus, publicAiStatus, type ChatTurn } from "../lib/flexaAi";
 import { assertWithinDailyQuota, recordAiUsage } from "../lib/flexaAiUsage";
-import { formatKnowledgeBlock, retrieveKnowledge, FLEXA_DEEP_LINKS } from "../lib/chatbotKnowledge";
+import {
+  formatKnowledgeBlock,
+  retrieveKnowledge,
+  composeKnowledgeAnswer,
+  FLEXA_DEEP_LINKS,
+} from "../lib/chatbotKnowledge";
 import {
   classifyIntent,
   formatToolBlock,
@@ -178,7 +183,7 @@ router.post("/chatbot/message", requireAuth, chatbotLimiter, async (req: Request
     intent,
   });
   const toolBlock = formatToolBlock(toolResults);
-  const deepLinks = Array.from(
+  let deepLinks = Array.from(
     new Set([
       ...toolLinks,
       ...knowledge.map((k) => k.deepLink),
@@ -203,6 +208,7 @@ router.post("/chatbot/message", requireAuth, chatbotLimiter, async (req: Request
   let provider: string | null = null;
   let model: string | null = null;
   let ok = false;
+  let usedKnowledgeFallback = false;
 
   try {
     const result = await completeChat({
@@ -215,24 +221,37 @@ router.post("/chatbot/message", requireAuth, chatbotLimiter, async (req: Request
     content = result.text || FALLBACK[lang];
     provider = result.provider;
     model = result.model;
-    ok = true;
+    ok = Boolean(result.text?.trim());
 
-    await recordAiUsage({
-      userId,
-      capability: "support",
-      model: result.model,
-      provider: result.provider,
-      inputChars: sanitized.length,
-      outputChars: content.length,
-    });
+    if (ok) {
+      await recordAiUsage({
+        userId,
+        capability: "support",
+        model: result.model,
+        provider: result.provider,
+        inputChars: sanitized.length,
+        outputChars: content.length,
+      });
+    }
   } catch (err: any) {
-    logger.warn({ err: err?.message }, "[chatbot] AI failed, using fallback");
+    logger.warn({ err: err?.message }, "[chatbot] AI failed, using knowledge fallback");
+  }
+
+  // When the LLM is down / empty, still answer from verified Flexa Market knowledge
+  // so customers never only see "assistant unavailable" for product questions.
+  if (!ok) {
+    const kb = composeKnowledgeAnswer({ lang, snippets: knowledge, deepLinks });
+    content = kb.content;
+    deepLinks = Array.from(new Set([...deepLinks, ...kb.deepLinks]));
+    usedKnowledgeFallback = kb.fromKnowledge;
+    provider = provider ?? "knowledge";
+    model = model ?? "verified_rag";
+    ok = usedKnowledgeFallback;
   }
 
   const escalateSuggested =
     intent === "escalate" ||
-    /support|agent|sipò|aide humaine|hablar con/i.test(content) ||
-    !ok;
+    /support|agent|sipò|aide humaine|hablar con/i.test(content);
 
   await writeAudit({
     userId,
@@ -254,6 +273,7 @@ router.post("/chatbot/message", requireAuth, chatbotLimiter, async (req: Request
     escalateSuggested,
     provider,
     verified: true,
+    knowledgeFallback: usedKnowledgeFallback,
     knowledgeIds: knowledge.map((k) => k.id),
   });
 });

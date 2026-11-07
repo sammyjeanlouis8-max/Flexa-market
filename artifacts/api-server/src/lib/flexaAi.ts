@@ -122,7 +122,9 @@ export function getProviderStatus() {
       ? "anthropic"
       : isGroqConfigured()
         ? "groq"
-        : null,
+        : isOpenAiConfigured()
+          ? "openai"
+          : null,
   };
 }
 
@@ -184,27 +186,80 @@ async function completeWithGroq(opts: CompleteOptions): Promise<{ text: string; 
   };
 }
 
+async function completeWithOpenAi(opts: CompleteOptions): Promise<{ text: string; model: string; provider: "openai" }> {
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY?.trim();
+  const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL?.trim();
+  if (!apiKey || !baseURL) {
+    throw Object.assign(new Error("OpenAI not configured"), { code: "AI_NOT_CONFIGURED" });
+  }
+  const model = process.env.FLEXA_AI_OPENAI_MODEL?.trim() || "gpt-4o-mini";
+  const res = await fetch(`${baseURL.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: opts.system }, ...opts.messages],
+      max_tokens: opts.maxTokens ?? 1024,
+      temperature: opts.temperature ?? 0.4,
+    }),
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 12_000),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw Object.assign(new Error(err?.error?.message ?? `OpenAI ${res.status}`), { status: res.status });
+  }
+  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  return {
+    text: (json.choices?.[0]?.message?.content ?? "").trim(),
+    model,
+    provider: "openai",
+  };
+}
+
 /**
- * Complete a chat using Anthropic Haiku when available, else Groq backup.
+ * Complete a chat using Anthropic Haiku → Groq → OpenAI (same integration keys).
  * Does not invent credentials; fails with AI_NOT_CONFIGURED when none exist.
  */
 export async function completeChat(opts: CompleteOptions): Promise<{
   text: string;
   model: string;
-  provider: "anthropic" | "groq";
+  provider: "anthropic" | "groq" | "openai";
 }> {
+  const errors: string[] = [];
   if (isAnthropicConfigured()) {
     try {
       return await completeWithAnthropic(opts);
     } catch (err) {
-      logger.warn({ err: (err as Error)?.message }, "Flexa AI Anthropic call failed");
-      if (!isGroqConfigured()) throw err;
+      const msg = (err as Error)?.message ?? "anthropic failed";
+      errors.push(msg);
+      logger.warn({ err: msg }, "Flexa AI Anthropic call failed");
     }
   }
   if (isGroqConfigured()) {
-    return completeWithGroq(opts);
+    try {
+      return await completeWithGroq(opts);
+    } catch (err) {
+      const msg = (err as Error)?.message ?? "groq failed";
+      errors.push(msg);
+      logger.warn({ err: msg }, "Flexa AI Groq call failed");
+    }
   }
-  throw Object.assign(new Error("No AI provider configured"), { code: "AI_NOT_CONFIGURED" });
+  if (isOpenAiConfigured()) {
+    try {
+      return await completeWithOpenAi(opts);
+    } catch (err) {
+      const msg = (err as Error)?.message ?? "openai failed";
+      errors.push(msg);
+      logger.warn({ err: msg }, "Flexa AI OpenAI call failed");
+    }
+  }
+  throw Object.assign(
+    new Error(errors[0] ? `No AI provider succeeded: ${errors[0]}` : "No AI provider configured"),
+    { code: "AI_NOT_CONFIGURED" },
+  );
 }
 
 export async function completeText(system: string, user: string, options?: Omit<CompleteOptions, "system" | "messages">) {

@@ -8,7 +8,6 @@ import {
 import { useSEO } from "@/hooks/useSEO";
 import { useAuth } from "@/contexts/auth";
 import { formatPrice } from "@/lib/currency";
-import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -67,7 +66,6 @@ export default function VideoDiscover() {
   useSEO({ title: t("videoFeed.title"), description: t("tr.videoFeedSeoDesc"), path: "/videos" });
   const [, navigate] = useLocation();
   const { token, user } = useAuth();
-  const purchasesDisabled = isAndroidApp();
 
   const [sort, setSort] = useState<DiscoverSort>(() => {
     try {
@@ -363,8 +361,7 @@ export default function VideoDiscover() {
       </div>
 
       <div className="mx-auto max-w-5xl px-3 pb-28 pt-3">
-        {!purchasesDisabled && (
-          <div className="mb-4 space-y-3">
+        <div className="mb-4 space-y-3">
             <div className="grid grid-cols-3 gap-2">
               {[
                 { icon: Eye, label: t("videoFeed.quickMoreViews", { defaultValue: "More Views" }) },
@@ -413,7 +410,6 @@ export default function VideoDiscover() {
               <Zap className="h-4 w-4 text-violet-600 shrink-0" />
             </button>
           </div>
-        )}
 
         {loading && videos.length === 0 ? (
           <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
@@ -426,16 +422,14 @@ export default function VideoDiscover() {
             </div>
             <h2 className="text-lg font-black text-foreground">{emptyTitle}</h2>
             <p className="mt-2 max-w-sm text-sm text-muted-foreground leading-relaxed">{emptyDesc}</p>
-            {!purchasesDisabled && (
-              <button
-                type="button"
-                onClick={() => navigate("/booster/create")}
-                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[hsl(152,65%,18%)] px-5 py-3 text-sm font-black text-white shadow-md"
-              >
-                <Zap className="h-4 w-4" />
-                {t("videoFeed.emptyCta")}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => navigate("/booster/create")}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[hsl(152,65%,18%)] px-5 py-3 text-sm font-black text-white shadow-md"
+            >
+              <Zap className="h-4 w-4" />
+              {t("videoFeed.emptyCta")}
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
@@ -524,7 +518,7 @@ export default function VideoDiscover() {
         )}
 
         {/* Boost CTA section */}
-        {!purchasesDisabled && videos.length > 0 && (
+        {videos.length > 0 && (
           <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50/70 dark:bg-emerald-950/20 dark:border-emerald-900/40 p-5 text-center">
             <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm dark:bg-card">
               <Film className="h-7 w-7 text-[hsl(152,65%,18%)]" />
@@ -548,17 +542,15 @@ export default function VideoDiscover() {
         )}
       </div>
 
-      {!purchasesDisabled && (
-        <button
-          type="button"
-          onClick={() => navigate("/booster/create")}
-          className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-violet-700 text-white shadow-xl md:bottom-8 hover:bg-violet-800"
-          aria-label={t("videoFeed.createPromo", { defaultValue: "Create Promotional Video" })}
-          data-testid="fab-boost-video"
-        >
-          <Plus className="h-7 w-7" />
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={() => navigate("/booster/create")}
+        className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-violet-700 text-white shadow-xl md:bottom-8 hover:bg-violet-800"
+        aria-label={t("videoFeed.createPromo", { defaultValue: "Create Promotional Video" })}
+        data-testid="fab-boost-video"
+      >
+        <Plus className="h-7 w-7" />
+      </button>
 
     </div>
   );

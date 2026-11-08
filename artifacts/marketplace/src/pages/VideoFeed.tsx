@@ -1801,7 +1801,7 @@ function VideoCard({
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 
-function EmptyFeed({ onBoostClick, purchasesDisabled }: { onBoostClick: () => void; purchasesDisabled: boolean }) {
+function EmptyFeed({ onBoostClick }: { onBoostClick: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center h-full text-white gap-5 px-8 text-center">
@@ -1810,14 +1810,14 @@ function EmptyFeed({ onBoostClick, purchasesDisabled }: { onBoostClick: () => vo
         <h2 className="text-xl font-black mb-2">{t("videoFeed.emptyTitle")}</h2>
         <p className="text-white/60 text-sm leading-relaxed max-w-xs">{t("videoFeed.emptyDesc")}</p>
       </div>
-      {!purchasesDisabled && <button
+      <button
         type="button"
         onClick={onBoostClick}
         className="flex items-center gap-2 bg-primary text-white font-bold px-6 py-3 rounded-full shadow-xl hover:opacity-90 transition-opacity active:scale-95"
       >
         <Zap className="h-4 w-4" />
         {t("videoFeed.emptyCta")}
-      </button>}
+      </button>
     </div>
   );
 }
@@ -1851,7 +1851,6 @@ export default function VideoFeed() {
     navigate(qs ? `/videos?${qs}` : "/videos");
   }, [navigate]);
   const { token } = useAuth();
-  const purchasesDisabled = isAndroidApp();
 
   // Native WebViews allow unmuted autoplay — unlock immediately so cards
   // never wait on a tap-for-sound permission gate.
@@ -1899,7 +1898,6 @@ export default function VideoFeed() {
     try { return sessionStorage.getItem("bw_open_vf") === "1"; } catch { return false; }
   });
   const openWizard = () => {
-    if (purchasesDisabled) return;
     navigate("/booster/create");
   };
   const closeWizard = () => {
@@ -2249,7 +2247,7 @@ export default function VideoFeed() {
             <span className="flex-1 text-white font-bold text-base text-center drop-shadow">{t("videoFeed.title")}</span>
             <div className="w-9 h-9" />
           </div>
-          <EmptyFeed onBoostClick={openWizard} purchasesDisabled={purchasesDisabled} />
+          <EmptyFeed onBoostClick={openWizard} />
         </>
       )}
 
@@ -2434,7 +2432,7 @@ export default function VideoFeed() {
         )}
 
         {/* FAB — Add boost */}
-        {!purchasesDisabled && <button
+        <button
           type="button"
           onClick={openWizard}
           className="absolute z-50 flex items-center justify-center w-12 h-12 bg-primary rounded-full shadow-2xl active:scale-95 transition-transform"
@@ -2447,7 +2445,7 @@ export default function VideoFeed() {
           data-testid="button-add-video-boost"
         >
           <Plus className="h-6 w-6 text-white" />
-        </button>}
+        </button>
 
         {/* Mobile feed navigation — the global marketplace nav is intentionally hidden on /videos */}
         <nav

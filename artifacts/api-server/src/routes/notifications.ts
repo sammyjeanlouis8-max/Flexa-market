@@ -71,8 +71,8 @@ router.post("/notifications/:id/read", requireAuth, async (req, res): Promise<vo
 /**
  * POST /api/notifications/video-ready
  * Client confirms a chunked video upload finished. Creates an in-app
- * notification pointing the seller to My Drafts. Idempotent per user+message
- * fingerprint within the last hour (best-effort duplicate suppression).
+ * notification for the bell only (no push / no Dynamic Island alert).
+ * Idempotent per user+message fingerprint (best-effort duplicate suppression).
  */
 router.post("/notifications/video-ready", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
@@ -97,6 +97,7 @@ router.post("/notifications/video-ready", requireAuth, async (req, res): Promise
     return;
   }
 
+  // In-app bell only — intentionally does NOT call sendPushToUser.
   const [row] = await db.insert(notificationsTable).values({
     userId,
     actorId: userId,

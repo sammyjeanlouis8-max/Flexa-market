@@ -159,7 +159,7 @@ async function notifyVideoReady(job: StoredJob) {
       body: JSON.stringify({ fileName: job.fileName, purpose: job.purpose }),
     });
   } catch {
-    /* non-fatal — toast / local state still inform the user */
+    /* non-fatal — in-app bell retry / local state still cover the user */
   }
 }
 

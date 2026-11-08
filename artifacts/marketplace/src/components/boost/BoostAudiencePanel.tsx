@@ -186,8 +186,16 @@ export const BoostAudiencePanel = forwardRef<BoostAudiencePanelHandle, Props>(fu
 
       {(tab === "manual" || tab === "map") && (
         <div ref={geoSectionRef} className="space-y-3" data-testid="boost-geo-section">
+          <div>
+            <p className="font-bold text-sm text-slate-900">
+              {t("boost.advancedGeoTitle", { defaultValue: "Advanced Geographic Targeting" })}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {t("boost.advancedGeoSubtitle", { defaultValue: "Choose where to show your ad." })}
+            </p>
+          </div>
           {isHaiti && (
-            <div className="fb-seg" role="tablist" aria-label="Geographic level">
+            <div className="fb-seg" role="tablist" aria-label={t("boost.geoLevelAria", { defaultValue: "Geographic level" })}>
               {([
                 ["country", t("boost.geoCountry", { defaultValue: "Country" })],
                 ["department", t("boost.geoDepartment", { defaultValue: "Department" })],
@@ -275,7 +283,7 @@ export const BoostAudiencePanel = forwardRef<BoostAudiencePanelHandle, Props>(fu
                         {d}
                         <button
                           type="button"
-                          aria-label={`Remove ${d}`}
+                          aria-label={t("boost.removeDepartment", { defaultValue: "Remove {{name}}", name: d })}
                           onClick={() => toggleDepartment(d)}
                         >
                           ×
@@ -313,7 +321,7 @@ export const BoostAudiencePanel = forwardRef<BoostAudiencePanelHandle, Props>(fu
                   >
                     {t("boost.radiusTool", { defaultValue: "Radius" })}
                   </button>
-                  <button type="button" className="fb-tool" disabled title="Coming soon">
+                  <button type="button" className="fb-tool" disabled title={t("boost.comingSoon", { defaultValue: "Coming soon" })}>
                     {t("boost.drawArea", { defaultValue: "Draw Area" })}
                   </button>
                 </div>

@@ -311,7 +311,7 @@ export default function BoosterCreate() {
       if (!url) throw new Error("no url");
       setVideoUrl(url);
       setUploadPercent(100);
-      toast({ title: t("booster.create.videoReady") });
+      toast({ title: t("boost.videoReadyPreview", { defaultValue: "Video ready for preview." }) });
     } catch {
       toast({ title: t("booster.create.uploadFailed"), variant: "destructive" });
       setVideoUrl(null);
@@ -348,8 +348,8 @@ export default function BoosterCreate() {
     }
     if (s === "audience") {
       if (accountCountry === "Haiti" && audienceType === "custom" && departments.length === 0) {
-        const msg = t("boost.geoSelectDepartmentError", {
-          defaultValue: "Please select at least one department to continue.",
+        const msg = t("boost.geoSelectAreaError", {
+          defaultValue: "Please select at least one geographic area to continue.",
         });
         next.geo = msg;
         setGeoError(msg);
@@ -442,8 +442,8 @@ export default function BoosterCreate() {
         return;
       }
       if (accountCountry === "Haiti" && audienceType === "custom" && departments.length === 0) {
-        const msg = t("boost.geoSelectDepartmentError", {
-          defaultValue: "Please select at least one department to continue.",
+        const msg = t("boost.geoSelectAreaError", {
+          defaultValue: "Please select at least one geographic area to continue.",
         });
         setGeoError(msg);
         setStep("audience");
@@ -729,7 +729,11 @@ export default function BoosterCreate() {
               {uploading ? (
                 <div className="bp-upload">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-violet-600" />
-                  <div className="text-xs font-semibold text-violet-700 mt-2">{uploadPercent}%</div>
+                  <div className="text-xs font-semibold text-violet-700 mt-2">
+                    {uploadPercent < 100
+                      ? t("boost.videoUploadingPct", { percent: uploadPercent, defaultValue: "Uploading video: {{percent}}%" })
+                      : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
+                  </div>
                   <div className="h-1.5 rounded-full bg-violet-100 overflow-hidden max-w-xs mx-auto mt-2">
                     <div className="h-full bg-violet-600 transition-all" style={{ width: `${uploadPercent}%` }} />
                   </div>

@@ -536,8 +536,11 @@ export default function BoostWizard({ open, onClose }: Props) {
               <Loader2 className="h-7 w-7 text-white animate-spin" />
               <div className="w-full">
                 <div className="flex justify-between text-white text-xs mb-1.5 font-medium">
-                  <span>{t("boostWizard.uploadingVideo")}</span>
-                  <span>{uploadPercent}%</span>
+                  <span>
+                    {uploadPercent < 100
+                      ? t("boost.videoUploadingPct", { percent: uploadPercent, defaultValue: "Uploading video: {{percent}}%" })
+                      : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
+                  </span>
                 </div>
                 <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
                   <div

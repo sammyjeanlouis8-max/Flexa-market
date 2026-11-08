@@ -526,8 +526,8 @@ export default function BoostPage() {
     }
     // Department only required for custom audience in Haiti — inline, scroll to map
     if (effectiveAudienceCountry === "Haiti" && audienceType === "custom" && audStates.length === 0) {
-      const msg = t("boost.geoSelectDepartmentError", {
-        defaultValue: "Please select at least one department to continue.",
+      const msg = t("boost.geoSelectAreaError", {
+        defaultValue: "Please select at least one geographic area to continue.",
       });
       setGeoError(msg);
       const el = audiencePanelRef.current?.getGeoSectionEl() ?? null;
@@ -541,12 +541,12 @@ export default function BoostPage() {
   const handleInitiate = async () => {
     if (purchasesDisabled) return;
     if (videoUploading) {
-      toast({ title: t("boost.videoStillUploading", { defaultValue: "Videyo a ap telechaje toujou. Tann li fini avant ou kontinye." }), variant: "destructive" });
+      toast({ title: t("boost.videoStillUploading", { defaultValue: "Your video is still uploading. Wait until it finishes before continuing." }), variant: "destructive" });
       return;
     }
     if (effectiveAudienceCountry === "Haiti" && audienceType === "custom" && audStates.length === 0) {
-      const msg = t("boost.geoSelectDepartmentError", {
-        defaultValue: "Please select at least one department to continue.",
+      const msg = t("boost.geoSelectAreaError", {
+        defaultValue: "Please select at least one geographic area to continue.",
       });
       setGeoError(msg);
       setStep("audience");
@@ -584,13 +584,16 @@ export default function BoostPage() {
       const err = e as any;
       if (err?.code === "INSUFFICIENT_WALLET") {
         toast({
-          title: "Balans Kont pa ase",
-          description: `Ou bezwen $${err.shortfallUsd?.toFixed(2) ?? "?"} plis. Rechaje kont ou.`,
+          title: t("boost.walletInsufficientTitle", { defaultValue: "Insufficient wallet balance" }),
+          description: t("boost.walletInsufficientDesc", {
+            amount: err.shortfallUsd?.toFixed(2) ?? "?",
+            defaultValue: "You need ${{amount}} more. Top up your wallet.",
+          }),
           variant: "destructive",
         });
         return;
       }
-      toast({ title: "Error", description: err?.error ?? "Could not initiate boost", variant: "destructive" });
+      toast({ title: t("errors.somethingWrong", { defaultValue: "Something went wrong" }), description: err?.error ?? t("boost.initiateError", { defaultValue: "Could not initiate boost" }), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -722,9 +725,9 @@ export default function BoostPage() {
     } catch (e: any) {
       if (e?.used !== undefined && e?.limit !== undefined) {
         toast({
-          title: t("boost.adminQuotaReached", { defaultValue: "Limit mansyèl atenn" }),
+          title: t("boost.adminQuotaReached", { defaultValue: "Monthly limit reached" }),
           description: t("boost.adminQuotaDesc", {
-            defaultValue: "Ou te itilize {{used}}/{{limit}} boost gratis mwa sa. Eseye mwa pwochen.",
+            defaultValue: "You used {{used}}/{{limit}} free boosts this month. Try again next month.",
             used: e.used,
             limit: e.limit,
           }),
@@ -852,22 +855,22 @@ export default function BoostPage() {
                 <div className="core"><CheckCheck className="h-11 w-11" /></div>
               </div>
               <div>
-                <h1>{t("boost.videoAdded", { defaultValue: "Videyo Ajoute!" })}</h1>
+                <h1>{t("boost.videoAdded", { defaultValue: "Video Added!" })}</h1>
                 <p className="sub">
-                  {t("boost.videoAddedDesc", { defaultValue: "Videyo promo ou a ap parèt nan feed la imedyatman." })}
+                  {t("boost.videoAddedDesc", { defaultValue: "Your promo video will appear in the feed right away." })}
                 </p>
               </div>
               <div className="bl-active-banner" style={{ textAlign: "left" }}>
                 <div className="mark"><Check className="h-3.5 w-3.5" /></div>
                 <p style={{ margin: 0 }}>
-                  {t("boost.videoLiveDesc", { defaultValue: "Listing ou a kounye a ap parèt nan video feed la" })}
+                  {t("boost.videoLiveDesc", { defaultValue: "Your listing is now appearing in the video feed" })}
                 </p>
               </div>
               <button type="button" className="bl-cta" onClick={() => setLocation("/booster")}>
-                {t("myBoosts.title", { defaultValue: "Mes Boosts" })}
+                {t("myBoosts.title", { defaultValue: "My Boosts" })}
               </button>
               <Button variant="ghost" className="w-full" onClick={() => setLocation(`/listings/${listingId}`)}>
-                {t("boost.viewListing", { defaultValue: "Wè lis la" })}
+                {t("boost.viewListing", { defaultValue: "View listing" })}
               </Button>
             </div>
           </div>
@@ -903,12 +906,12 @@ export default function BoostPage() {
               <div className="bl-hero-budget">
                 <span>
                   {daysLeft === 0
-                    ? t("myBoosts.expiresIn", { defaultValue: "Jodi a" })
+                    ? t("myBoosts.expiresIn", { defaultValue: "Today" })
                     : daysLeft === 1
-                    ? t("myBoosts.daysLeft", { n: 1, defaultValue: "1 jou" })
+                    ? t("myBoosts.daysLeft", { n: 1, defaultValue: "1 day" })
                     : t("myBoosts.daysLeftPlural", { n: daysLeft, defaultValue: `${daysLeft} jou` })}
                 </span>
-                <strong>{t("myBoosts.activeLabel", { defaultValue: "Aktif" })}</strong>
+                <strong>{t("myBoosts.activeLabel", { defaultValue: "Active" })}</strong>
               </div>
             )}
           </div>
@@ -919,9 +922,9 @@ export default function BoostPage() {
             <Zap className="h-3.5 w-3.5 fill-current" />
           </div>
           <div className="flex-1 min-w-0">
-            <strong>{t("boost.alreadyActive", { defaultValue: "Boost la deja aktif" })}</strong>
+            <strong>{t("boost.alreadyActive", { defaultValue: "Boost already active" })}</strong>
             <p>
-              {t("boost.alreadyActiveDesc", { defaultValue: "Anons ou a deja ap parèt. Ajoute oswa ranplase videyo promo a san nouvo peman." })}
+              {t("boost.alreadyActiveDesc", { defaultValue: "Your ad is already live. Add or replace the promo video without a new payment." })}
             </p>
           </div>
         </div>
@@ -933,7 +936,7 @@ export default function BoostPage() {
               <Video className="h-3.5 w-3.5 text-white" />
             </div>
             <p className="text-sm font-bold text-foreground">
-              {t("boost.videoLabel", { defaultValue: "Videyo Promo" })}
+              {t("boost.videoLabel", { defaultValue: "Promo Video" })}
             </p>
             {hasVideo && (
               <span className="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded">✓</span>
@@ -945,7 +948,7 @@ export default function BoostPage() {
               <div className="flex items-center gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
                 <Check className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
                 <span className="text-sm font-medium text-foreground flex-1">
-                  {t("boost.videoAttached", { defaultValue: "Videyo ajoute ✓" })}
+                  {t("boost.videoAttached", { defaultValue: "Video attached ✓" })}
                 </span>
               </div>
               {abvUploading && (
@@ -955,8 +958,7 @@ export default function BoostPage() {
                   aria-live="polite"
                 >
                   <div className="mb-2 flex items-center justify-between text-xs font-semibold text-primary">
-                    <span>{t("boost.videoUploading", { defaultValue: "Ap telechaje videyo a…" })}</span>
-                    <span>{abvUploadPercent}%</span>
+                    <span>{t("boost.videoUploadingPct", { percent: abvUploadPercent, defaultValue: "Uploading video: {{percent}}%" })}</span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-primary/15">
                     <div
@@ -966,13 +968,13 @@ export default function BoostPage() {
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     {abvUploadPercent < 100
-                      ? t("boost.videoUploadKeepOpen", { defaultValue: "Pa fèmen paj la pandan videyo a ap telechaje." })
-                      : t("boost.videoUploadFinishing", { defaultValue: "Videyo a telechaje. N ap fini prepare li…" })}
+                      ? t("boost.videoUploadKeepOpen", { defaultValue: "Keep this page open while the video uploads." })
+                      : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
                   </p>
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                {t("boost.replaceVideoDesc", { defaultValue: "Ou ka ranplase videyo a nenpòt ki lè. Nouvo videyo a ap parèt imedyatman." })}
+                {t("boost.replaceVideoDesc", { defaultValue: "You can replace the video anytime. The new video appears immediately." })}
               </p>
               <Button
                 type="button"
@@ -982,9 +984,9 @@ export default function BoostPage() {
                 disabled={abvUploading}
               >
                 {abvUploading ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boost.videoUploading", { defaultValue: "Ap telechaje…" })}</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boost.videoUploading", { defaultValue: "Uploading…" })}</>
                 ) : (
-                  <><Upload className="h-4 w-4 mr-2" />{t("boost.replaceVideo", { defaultValue: "Ranplase Videyo" })}</>
+                  <><Upload className="h-4 w-4 mr-2" />{t("boost.replaceVideo", { defaultValue: "Replace Video" })}</>
                 )}
               </Button>
               {abvUploading && (
@@ -994,8 +996,7 @@ export default function BoostPage() {
                   aria-live="polite"
                 >
                   <div className="mb-2 flex items-center justify-between text-xs font-semibold text-primary">
-                    <span>{t("boost.videoUploading", { defaultValue: "Ap telechaje videyo a…" })}</span>
-                    <span>{abvUploadPercent}%</span>
+                    <span>{t("boost.videoUploadingPct", { percent: abvUploadPercent, defaultValue: "Uploading video: {{percent}}%" })}</span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-primary/15">
                     <div
@@ -1005,8 +1006,8 @@ export default function BoostPage() {
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
                     {abvUploadPercent < 100
-                      ? t("boost.videoUploadKeepOpen", { defaultValue: "Pa fèmen paj la pandan videyo a ap telechaje." })
-                      : t("boost.videoUploadFinishing", { defaultValue: "Videyo a telechaje. N ap fini prepare li…" })}
+                      ? t("boost.videoUploadKeepOpen", { defaultValue: "Keep this page open while the video uploads." })
+                      : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
                   </p>
                 </div>
               )}
@@ -1014,7 +1015,7 @@ export default function BoostPage() {
           ) : (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                {t("boost.videoHelp", { defaultValue: "Max 2 minutes. Montre kòm overlay lè moun ap navige nan feed la." })}
+                {t("boost.videoHelp", { defaultValue: "Max 2 minutes. Shown as an overlay while people browse the feed." })}
               </p>
               <Button
                 type="button"
@@ -1023,9 +1024,9 @@ export default function BoostPage() {
                 disabled={abvUploading}
               >
                 {abvUploading ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boost.videoUploading", { defaultValue: "Ap telechaje…" })}</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boost.videoUploading", { defaultValue: "Uploading…" })}</>
                 ) : (
-                  <><Upload className="h-4 w-4 mr-2" />{t("boost.videoPick", { defaultValue: "Chwazi videyo" })}</>
+                  <><Upload className="h-4 w-4 mr-2" />{t("boost.videoPick", { defaultValue: "Choose video" })}</>
                 )}
               </Button>
             </div>
@@ -1035,7 +1036,7 @@ export default function BoostPage() {
 
         {/* Back to My Boosts */}
         <Button variant="ghost" className="w-full" onClick={() => setLocation("/booster")}>
-          {t("myBoosts.title", { defaultValue: "Retounen nan Mes Boosts" })}
+          {t("myBoosts.title", { defaultValue: "Back to My Boosts" })}
         </Button>
 
         {/* Hidden file input */}
@@ -1316,7 +1317,7 @@ export default function BoostPage() {
                 )
               )}
               <p className="bl-admin-note" style={{ marginTop: "0.55rem" }}>
-                {t("boost.adminFreeWizardHint", { defaultValue: "Swiv étap yo anba a pou konfigire audience, dire, ak vidyo promo ou." })}
+                {t("boost.adminFreeWizardHint", { defaultValue: "Follow the steps below to configure audience, duration, and promo video." })}
               </p>
             </div>
           )}
@@ -1342,7 +1343,7 @@ export default function BoostPage() {
               audience: t("boost.stepAudience"),
               budget: t("boost.stepBudget"),
               pay: (isAdmin && adminMode === "free")
-                ? t("boost.stepConfirm", { defaultValue: "Konfime" })
+                ? t("boost.stepConfirm", { defaultValue: "Confirm" })
                 : t("boost.stepPay"),
             };
             return (
@@ -1525,7 +1526,7 @@ export default function BoostPage() {
                   <Zap className="h-3.5 w-3.5 fill-white" />
                 </div>
                 <p className="bl-section-title">
-                  {t("boost.chooseDuration", { defaultValue: "Dire Boost" })}
+                  {t("boost.chooseDuration", { defaultValue: "Boost Duration" })}
                 </p>
               </div>
 
@@ -1755,7 +1756,7 @@ export default function BoostPage() {
                   <CreditCard className="h-3.5 w-3.5 text-white" />
                 </div>
                 <p className="text-sm font-bold text-foreground">
-                  {t("boost.paymentMethod", { defaultValue: "Metòd Peman" })}
+                  {t("boost.paymentMethod", { defaultValue: "Payment Method" })}
                 </p>
               </div>
               <div className="space-y-2">
@@ -1798,12 +1799,16 @@ export default function BoostPage() {
                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800/40 p-3 flex items-start gap-2">
                   <span className="text-amber-400 text-sm shrink-0">⚠️</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Balans pa ase</p>
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{t("boost.walletBalanceLow", { defaultValue: "Insufficient balance" })}</p>
                     <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                      Ou gen <strong>${walletBalance.toFixed(2)}</strong>, ou bezwen <strong>${budget.toFixed(2)}</strong>.
-                      Ou bezwen rechaje <strong>${(budget - walletBalance).toFixed(2)}</strong> plis.
+                      {t("boost.walletBalanceDetail", {
+                        have: walletBalance.toFixed(2),
+                        need: budget.toFixed(2),
+                        shortfall: (budget - walletBalance).toFixed(2),
+                        defaultValue: "You have ${{have}}, you need ${{need}}. Top up ${{shortfall}} more.",
+                      })}
                     </p>
-                    <a href="/wallet" className="text-xs text-primary font-bold underline mt-1 block">→ Rechaje Kont Promosyon</a>
+                    <a href="/wallet" className="text-xs text-primary font-bold underline mt-1 block">{t("boost.rechargePromoWallet", { defaultValue: "Top up Promo Wallet →" })}</a>
                   </div>
                 </div>
               )}
@@ -1812,7 +1817,7 @@ export default function BoostPage() {
                 <div className="mt-3 rounded-xl border border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-800/40 p-3 flex items-center gap-2">
                   <span className="text-green-400 text-sm">✓</span>
                   <p className="text-sm text-green-800 dark:text-green-300 font-medium">
-                    Balans ase — Boost pral aktive imedyatman apre ou klike "Kontinye".
+                    {t("boost.walletSufficientBanner", { defaultValue: "Balance OK — Boost activates immediately after you tap Continue." })}
                   </p>
                 </div>
               )}
@@ -1829,7 +1834,7 @@ export default function BoostPage() {
               {estimatedReach && estimatedReach > 0 ? (
                 <div className="rounded-xl border border-border bg-card p-4">
                   <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-                    {t("boost.estimatedResults", { defaultValue: "Rezilta Estimé / Jou" })}
+                    {t("boost.estimatedResults", { defaultValue: "Estimated Results / Day" })}
                   </p>
                   <div className="space-y-2.5">
                     <div>
@@ -1852,11 +1857,11 @@ export default function BoostPage() {
               {/* Payment summary — always shown */}
               <div className="rounded-xl border border-border bg-card p-4">
                 <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-                  {t("boost.paymentSummary", { defaultValue: "Rezime Peman" })}
+                  {t("boost.paymentSummary", { defaultValue: "Payment Summary" })}
                 </p>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("boost.objective", { defaultValue: "Objektif" })}</span>
+                    <span className="text-muted-foreground">{t("boost.objective", { defaultValue: "Objective" })}</span>
                     <span className="font-medium text-foreground">
                       {objective === "auto" ? "Otomatik" : objective === "messages" ? "Plis mesaj" : "Plis vi"}
                     </span>
@@ -1874,7 +1879,7 @@ export default function BoostPage() {
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("boost.duration", { defaultValue: "Dire" })}</span>
+                    <span className="text-muted-foreground">{t("boost.duration", { defaultValue: "Duration" })}</span>
                     <span className="font-medium text-foreground">
                       {(isSuperAdmin && adminMode === "free")
                         ? `${parseInt(adminFreeDays, 10) || 7} jou`
@@ -1921,7 +1926,7 @@ export default function BoostPage() {
                 >
                   <span className="inline-flex items-center justify-center gap-1.5">
                     <Zap className="h-4 w-4" />
-                    {t("boost.continueToConfirm", { defaultValue: "Ale nan Konfirmasyon →" })}
+                    {t("boost.continueToConfirm", { defaultValue: "Continue to Confirm →" })}
                   </span>
                 </button>
               ) : (
@@ -1932,7 +1937,7 @@ export default function BoostPage() {
                   disabled={loading || videoUploading}
                   data-testid="button-proceed-to-pay"
                 >
-                  {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : t("boost.publishAd", { amount: budget.toFixed(2) })}
+                  {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploading", { defaultValue: "Uploading video…" }) : t("boost.publishAd", { amount: budget.toFixed(2) })}
                 </button>
               )}
               <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
@@ -1953,7 +1958,7 @@ export default function BoostPage() {
               >
                 <span className="inline-flex items-center justify-center gap-1.5">
                   <Zap className="h-4 w-4" />
-                  {t("boost.continueToConfirm", { defaultValue: "Ale nan Konfirmasyon →" })}
+                  {t("boost.continueToConfirm", { defaultValue: "Continue to Confirm →" })}
                 </span>
               </button>
             ) : (
@@ -1964,7 +1969,7 @@ export default function BoostPage() {
                 disabled={loading || videoUploading}
                 data-testid="button-proceed-to-pay-mobile"
               >
-                {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : `${t("boost.continue")} — $${budget.toFixed(2)}`}
+                {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploading", { defaultValue: "Uploading video…" }) : `${t("boost.continue")} — $${budget.toFixed(2)}`}
               </button>
             )}
             <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-2">
@@ -1987,7 +1992,7 @@ export default function BoostPage() {
             </div>
             <div>
               <p className="text-sm font-bold text-green-800 dark:text-green-300">
-                {t("boost.adminFreeConfirmTitle", { defaultValue: "Konfime Boost Gratis" })}
+                {t("boost.adminFreeConfirmTitle", { defaultValue: "Confirm Free Boost" })}
               </p>
               <p className="text-xs text-green-700 dark:text-green-400">
                 {t("boost.adminFreeNote", { defaultValue: "Boost activates immediately with no payment required." })}
@@ -2001,8 +2006,8 @@ export default function BoostPage() {
               <div className="flex items-center gap-2 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 px-4 py-3">
                 <span className="text-lg">♾</span>
                 <div>
-                  <p className="text-sm font-bold text-purple-800 dark:text-purple-300">Super Admin — Limit san bout</p>
-                  <p className="text-xs text-purple-600 dark:text-purple-400">Ou ka kreye kantite boost gratis ou vle.</p>
+                  <p className="text-sm font-bold text-purple-800 dark:text-purple-300">{t("boost.adminUnlimitedTitle", { defaultValue: "Super Admin — Unlimited" })}</p>
+                  <p className="text-xs text-purple-600 dark:text-purple-400">{t("boost.adminUnlimitedDesc", { defaultValue: "You can create as many free boosts as you want." })}</p>
                 </div>
               </div>
             ) : (
@@ -2014,13 +2019,13 @@ export default function BoostPage() {
                 <div>
                   <p className={`text-sm font-bold ${quotaData.used >= (quotaData.limit ?? 3) ? "text-red-800 dark:text-red-300" : "text-blue-800 dark:text-blue-300"}`}>
                     {quotaData.used >= (quotaData.limit ?? 3)
-                      ? t("boost.adminQuotaReached", { defaultValue: "Limit mansyèl atenn" })
-                      : t("boost.adminQuotaRemaining", { defaultValue: "Boost gratis restant mwa sa" })}
+                      ? t("boost.adminQuotaReached", { defaultValue: "Monthly limit reached" })
+                      : t("boost.adminQuotaRemaining", { defaultValue: "Free boosts remaining this month" })}
                   </p>
                   <p className={`text-xs ${quotaData.used >= (quotaData.limit ?? 3) ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"}`}>
                     {quotaData.used >= (quotaData.limit ?? 3)
-                      ? "Eseye mwa pwochen."
-                      : `${(quotaData.limit ?? 3) - quotaData.used} restant`}
+                      ? t("boost.adminQuotaTryNextMonth", { defaultValue: "Try again next month." })
+                      : t("boost.adminQuotaRemainingCount", { count: (quotaData.limit ?? 3) - quotaData.used, defaultValue: "{{count}} remaining" })}
                   </p>
                 </div>
                 <div className={`text-2xl font-black tabular-nums ${quotaData.used >= (quotaData.limit ?? 3) ? "text-red-600 dark:text-red-400" : "text-blue-700 dark:text-blue-300"}`}>
@@ -2033,11 +2038,11 @@ export default function BoostPage() {
           {/* Boost summary */}
           <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              {t("boost.paymentSummary", { defaultValue: "Rezime Boost" })}
+              {t("boost.paymentSummary", { defaultValue: "Boost Summary" })}
             </p>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">{t("boost.objective", { defaultValue: "Objektif" })}</span>
+                <span className="text-muted-foreground">{t("boost.objective", { defaultValue: "Objective" })}</span>
                 <span className="font-medium text-foreground">
                   {objective === "auto" ? "Otomatik" : objective === "messages" ? "Plis mesaj" : "Plis vi"}
                 </span>
@@ -2069,7 +2074,7 @@ export default function BoostPage() {
                 </div>
               )}
               <div className="flex justify-between">
-                <span className="text-muted-foreground">{t("boost.duration", { defaultValue: "Dire" })}</span>
+                <span className="text-muted-foreground">{t("boost.duration", { defaultValue: "Duration" })}</span>
                 <span className="font-medium text-foreground">
                   {(isSuperAdmin && adminMode === "free")
                     ? `${parseInt(adminFreeDays, 10) || 7} jou`
@@ -2099,11 +2104,11 @@ export default function BoostPage() {
             data-testid="button-admin-free-boost"
           >
             {adminFreeLoading ? (
-              t("boost.boosting", { defaultValue: "Ap aktive…" })
+              t("boost.boosting", { defaultValue: "Activating…" })
             ) : (
               <span className="inline-flex items-center justify-center gap-2">
                 <Zap className="h-5 w-5 fill-white" />
-                {t("boost.adminBoostNow", { defaultValue: "Aktive Boost Gratis Kounye a" })}
+                {t("boost.adminBoostNow", { defaultValue: "Activate Free Boost Now" })}
               </span>
             )}
           </button>
@@ -2122,20 +2127,20 @@ export default function BoostPage() {
           <div className="flex items-center justify-between bg-gradient-to-r from-primary/10 to-orange-500/10 border border-primary/20 rounded-2xl px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="text-xl">💰</span>
-              <span className="text-sm font-bold text-foreground">{t("boost.walletMethod", "Kont Promosyon")}</span>
+              <span className="text-sm font-bold text-foreground">{t("boost.walletMethod", { defaultValue: "Promo Wallet" })}</span>
             </div>
             <span className="text-lg font-black text-primary">${budget.toFixed(2)}</span>
           </div>
 
           <div className="rounded-2xl border-2 border-dashed border-border bg-gradient-to-br from-muted/30 to-card p-6 text-center space-y-4">
             <div className="flex flex-col items-center gap-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-widest">Balans disponib</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-widest">{t("boost.walletAvailable", { defaultValue: "Available balance" })}</p>
               <p className={cn("text-4xl font-black tabular-nums", walletSufficient ? "text-green-600 dark:text-green-400" : "text-destructive")}>
                 ${walletBalance.toFixed(2)}
               </p>
               {!walletSufficient && (
                 <p className="text-xs text-muted-foreground">
-                  Bezwen <strong>${(budget - walletBalance).toFixed(2)}</strong> plis
+                  {t("boost.walletNeedMore", { amount: (budget - walletBalance).toFixed(2), defaultValue: "Need ${{amount}} more" })}
                 </p>
               )}
             </div>
@@ -2143,12 +2148,12 @@ export default function BoostPage() {
             {walletSufficient ? (
               <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-xl p-3">
                 <p className="text-sm text-green-700 dark:text-green-400 font-medium">
-                  ✓ Balans ase — Boost pral aktive imedyatman
+                  {t("boost.walletSufficientShort", { defaultValue: "Balance OK — Boost activates immediately" })}
                 </p>
               </div>
             ) : (
               <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
-                <p className="text-sm text-red-700 dark:text-red-400 font-medium">Balans pa ase — rechaje kont ou</p>
+                <p className="text-sm text-red-700 dark:text-red-400 font-medium">{t("boost.walletInsufficientShort", { defaultValue: "Insufficient balance — top up your wallet" })}</p>
               </div>
             )}
           </div>
@@ -2159,14 +2164,14 @@ export default function BoostPage() {
               onClick={handleInitiate}
               disabled={loading || videoUploading}
             >
-              {loading ? "Ap tretman…" : videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : `⚡ Aktive Boost — $${budget.toFixed(2)}`}
+              {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploadingPct", { percent: abvUploadPercent || 0, defaultValue: "Uploading video: {{percent}}%" }) : t("boost.activateBoost", { amount: budget.toFixed(2), defaultValue: "Activate Boost — ${{amount}}" })}
             </Button>
           ) : (
             <a
               href="/wallet"
               className="flex items-center justify-center w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold text-base hover:opacity-90 transition-opacity"
             >
-              Rechaje Kont Promosyon →
+              {t("boost.rechargePromoWallet", { defaultValue: "Top up Promo Wallet →" })}
             </a>
           )}
           <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
@@ -2202,7 +2207,7 @@ export default function BoostPage() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              {t("boost.stripeCardDesc", { defaultValue: "Ou pral redirijé vè paj peman Stripe ki sekirize pou antre enfòmasyon kat ou a." })}
+              {t("boost.stripeCardDesc", { defaultValue: "You will be redirected to a secure Stripe payment page to enter your card details." })}
             </p>
           </div>
 

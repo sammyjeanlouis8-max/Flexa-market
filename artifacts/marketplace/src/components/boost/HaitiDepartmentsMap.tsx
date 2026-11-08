@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { HAITI_DEPARTMENTS } from "@/lib/haitiCommunes";
 
@@ -57,13 +58,14 @@ type Props = {
 };
 
 export function HaitiDepartmentsMap({ selected, onToggle, className, invalid }: Props) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn("fb-map-frame", invalid && "fb-map-frame-invalid", className)}
       data-testid="haiti-departments-map"
       aria-invalid={invalid || undefined}
     >
-      <svg viewBox="0 0 400 320" className="w-full h-auto" role="img" aria-label="Haiti departments map">
+      <svg viewBox="0 0 400 320" className="w-full h-auto" role="img" aria-label={t("boost.haitiMapAria", { defaultValue: "Haiti departments map" })}>
         <defs>
           <linearGradient id="fb-map-sea" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#dbeafe" />

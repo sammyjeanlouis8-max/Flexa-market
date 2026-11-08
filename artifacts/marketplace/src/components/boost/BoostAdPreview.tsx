@@ -48,7 +48,7 @@ export function BoostAdPreview({
             {img ? (
               <img src={img} alt={title} {...listingImageProps({ variant: "card" })} />
             ) : (
-              <div className="fb-product-thumb-empty">No image</div>
+              <div className="fb-product-thumb-empty">{t("boost.noImage", { defaultValue: "No image" })}</div>
             )}
             {img2 ? <img src={img2} alt="" {...listingImageProps({ variant: "card" })} /> : null}
           </div>

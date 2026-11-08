@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Loader2, Pause, Play, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,7 @@ export function AdaptiveVideoPlayer({
   loop = false,
   "data-testid": testId = "adaptive-video-player",
 }: Props) {
+  const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [ratio, setRatio] = useState(16 / 9);
   const [ready, setReady] = useState(false);
@@ -136,7 +138,9 @@ export function AdaptiveVideoPlayer({
             type="button"
             onClick={toggle}
             className="h-12 w-12 rounded-full bg-black/55 text-white grid place-items-center"
-            aria-label={playing ? "Pause" : "Play"}
+            aria-label={playing
+              ? t("boostAd.pause", { defaultValue: "Pause" })
+              : t("boostAd.play", { defaultValue: "Play" })}
           >
             {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 fill-current ml-0.5" />}
           </button>
@@ -152,7 +156,7 @@ export function AdaptiveVideoPlayer({
           type="button"
           onClick={replay}
           className="absolute bottom-2 left-2 z-[2] h-8 w-8 rounded-full bg-black/55 text-white grid place-items-center"
-          aria-label="Replay"
+          aria-label={t("boostAd.replay", { defaultValue: "Replay" })}
         >
           <RotateCcw className="h-3.5 w-3.5" />
         </button>

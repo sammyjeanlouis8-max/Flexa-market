@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { formatPrice } from "@/lib/currency";
 import { listingImageProps } from "@/lib/listingImage";
 
@@ -11,6 +12,7 @@ type ListingLike = {
 };
 
 export function BoostProductCard({ listing }: { listing: ListingLike }) {
+  const { t } = useTranslation();
   const img = listing.images?.find((i) => i && i.trim()) ?? null;
   return (
     <div className="fb-product-card" data-testid="boost-product-card">
@@ -18,7 +20,7 @@ export function BoostProductCard({ listing }: { listing: ListingLike }) {
         {img ? (
           <img src={img} alt={listing.title} {...listingImageProps({ variant: "card" })} />
         ) : (
-          <div className="fb-product-thumb-empty">No image</div>
+          <div className="fb-product-thumb-empty">{t("boost.noImage", { defaultValue: "No image" })}</div>
         )}
       </div>
       <div className="fb-product-meta">

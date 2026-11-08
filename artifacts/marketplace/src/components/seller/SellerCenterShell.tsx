@@ -97,19 +97,28 @@ export default function SellerCenterShell({
       {/* Top header */}
       <header
         className="sticky top-0 z-50 text-white shadow-sm"
-        style={{ background: `linear-gradient(180deg, ${GREEN} 0%, ${GREEN_DARK} 100%)` }}
+        style={{
+          background: `linear-gradient(180deg, ${GREEN} 0%, ${GREEN_DARK} 100%)`,
+          // Keep Back/logo/bell clear of iOS Dynamic Island / notch.
+          paddingTop: "max(env(safe-area-inset-top, 0px), var(--sat, 0px))",
+        }}
       >
-        <div className="h-14 md:h-16 px-3 md:px-4 flex items-center gap-2 md:gap-4 max-w-[1600px] mx-auto w-full">
+        <div
+          className={cn(
+            "relative px-3 md:px-4 flex items-center gap-2 md:gap-4 max-w-[1600px] mx-auto w-full",
+            onBack ? "h-12 md:h-14" : "h-14 md:h-16",
+          )}
+        >
           {onBack ? (
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 h-9 px-2.5 rounded-full border border-white/35 bg-white/10 hover:bg-white/15 text-white text-[13px] font-semibold shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 h-9 min-w-[76px] px-3 rounded-full border-[1.5px] border-white/90 bg-transparent hover:bg-white/10 active:bg-white/15 text-white text-[14px] font-semibold shrink-0 leading-none"
               data-testid="seller-back-button"
               aria-label={t("common.back", { defaultValue: "Back" })}
             >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden xs:inline sm:inline">{t("common.back", { defaultValue: "Back" })}</span>
+              <ArrowLeft className="h-[18px] w-[18px] shrink-0" strokeWidth={2.25} />
+              <span>{t("common.back", { defaultValue: "Back" })}</span>
             </button>
           ) : (
             <button
@@ -123,50 +132,63 @@ export default function SellerCenterShell({
             </button>
           )}
 
-          <Link href="/sell" className="flex items-center gap-2 shrink-0 min-w-0 mx-auto md:mx-0">
+          <Link
+            href="/sell"
+            className={cn(
+              "flex items-center gap-2 shrink-0 min-w-0",
+              onBack ? "absolute left-1/2 -translate-x-1/2" : "mx-auto md:mx-0",
+            )}
+          >
             <img src="/flexa-logo-v2.png" alt="" className="h-8 w-auto md:h-9" width="36" height="36" />
             <div className="min-w-0 leading-tight">
               <p className="font-bold text-[13px] md:text-[15px] truncate">Flexa Market</p>
-              <p className="hidden md:block text-[10px] md:text-[11px] text-white/80 truncate">
-                {t("sell.sellerCenter")}
-              </p>
+              {!onBack && (
+                <p className="hidden md:block text-[10px] md:text-[11px] text-white/80 truncate">
+                  {t("sell.sellerCenter")}
+                </p>
+              )}
             </div>
           </Link>
 
-          <form
-            className="hidden md:flex flex-1 max-w-xl mx-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const query = q.trim();
-              setLocation(query ? `/search?q=${encodeURIComponent(query)}` : "/sales");
-            }}
-          >
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={searchPlaceholder || t("sell.sellerSearch", { defaultValue: "Search products, orders, and more..." })}
-              className="w-full h-10 rounded-lg bg-white text-foreground px-3 text-sm outline-none focus:ring-2 focus:ring-[#F97316]/50"
-              data-testid="seller-search"
-            />
-          </form>
+          {!onBack && (
+            <form
+              className="hidden md:flex flex-1 max-w-xl mx-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const query = q.trim();
+                setLocation(query ? `/search?q=${encodeURIComponent(query)}` : "/sales");
+              }}
+            >
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder={searchPlaceholder || t("sell.sellerSearch", { defaultValue: "Search products, orders, and more..." })}
+                className="w-full h-10 rounded-lg bg-white text-foreground px-3 text-sm outline-none focus:ring-2 focus:ring-[#F97316]/50"
+                data-testid="seller-search"
+              />
+            </form>
+          )}
 
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-0.5 shrink-0">
             {user && <NotificationsDropdown light />}
             {!user && (
               <button type="button" className="p-2 rounded-lg hover:bg-white/10" aria-label="Notifications">
                 <Bell className="h-5 w-5" />
               </button>
             )}
-            <Link
-              href="/settings"
-              className="flex items-center gap-1.5 p-2 rounded-lg hover:bg-white/10"
-              data-testid="seller-my-store"
-            >
-              <Store className="h-5 w-5" />
-              <span className="hidden sm:inline text-[12px] font-semibold">
-                {t("sell.myStore", { defaultValue: "My Store" })}
-              </span>
-            </Link>
+            {/* Reference Sell header shows Back | Logo | Bell only on mobile. */}
+            {!onBack && (
+              <Link
+                href="/settings"
+                className="flex items-center gap-1.5 p-2 rounded-lg hover:bg-white/10"
+                data-testid="seller-my-store"
+              >
+                <Store className="h-5 w-5" />
+                <span className="hidden sm:inline text-[12px] font-semibold">
+                  {t("sell.myStore", { defaultValue: "My Store" })}
+                </span>
+              </Link>
+            )}
           </div>
         </div>
         {showSellHero && (

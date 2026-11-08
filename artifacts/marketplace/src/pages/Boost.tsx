@@ -1850,38 +1850,40 @@ export default function BoostPage() {
                 </div>
               </div>
 
-              {/* CTA */}
-              {(isAdmin && adminMode === "free") ? (
-                <button
-                  type="button"
-                  className="bl-cta success"
-                  onClick={() => setStep("pay")}
-                  data-testid="button-proceed-to-confirm"
-                >
-                  <span className="inline-flex items-center justify-center gap-1.5">
-                    <Zap className="h-4 w-4" />
-                    {t("boost.continueToConfirm", { defaultValue: "Continue to Confirm →" })}
-                  </span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="bl-cta"
-                  onClick={handleInitiate}
-                  disabled={loading || videoUploading}
-                  data-testid="button-proceed-to-pay"
-                >
-                  {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploadingPct", { percent: videoUploadPercent, defaultValue: "Uploading video: {{percent}}%" }) : t("boost.publishAd", { amount: budget.toFixed(2) })}
-                </button>
-              )}
-              <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                <Shield className="h-3 w-3" />
-                {(isAdmin && adminMode === "free") ? t("boost.adminFreeNote", { defaultValue: "Boost activates immediately with no payment required." }) : t("boost.securePay")}
+              {/* Desktop CTA — mobile uses the single CTA below the columns */}
+              <div className="hidden md:block space-y-2">
+                {(isAdmin && adminMode === "free") ? (
+                  <button
+                    type="button"
+                    className="bl-cta success"
+                    onClick={() => setStep("pay")}
+                    data-testid="button-proceed-to-confirm"
+                  >
+                    <span className="inline-flex items-center justify-center gap-1.5">
+                      <Zap className="h-4 w-4" />
+                      {t("boost.continueToConfirm", { defaultValue: "Continue to Confirm →" })}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="bl-cta"
+                    onClick={handleInitiate}
+                    disabled={loading || videoUploading}
+                    data-testid="button-proceed-to-pay"
+                  >
+                    {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploadingPct", { percent: videoUploadPercent, defaultValue: "Uploading video: {{percent}}%" }) : t("boost.publishAd", { amount: budget.toFixed(2) })}
+                  </button>
+                )}
+                <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                  <Shield className="h-3 w-3" />
+                  {(isAdmin && adminMode === "free") ? t("boost.adminFreeNote", { defaultValue: "Boost activates immediately with no payment required." }) : t("boost.securePay")}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Mobile CTA (below both columns) */}
+          {/* Mobile CTA — only one confirm/pay button on small screens */}
           <div className="md:hidden mt-6">
             {(isAdmin && adminMode === "free") ? (
               <button

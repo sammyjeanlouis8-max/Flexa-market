@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import {
   cancelVideoUpload,
   defaultReturnPathForPurpose,
@@ -316,10 +317,18 @@ export default function VideoUploadCenter() {
     if (celebratedRef.current !== fingerprint) {
       celebratedRef.current = fingerprint;
       toast({
-        title: t("videoUploads.allCompleteTitle", { defaultValue: "Videos ready" }),
-        description: t("videoUploads.allCompleteDesc", {
-          defaultValue: "All uploads finished. Open Bouillon in the menu to use them.",
+        title: t("myDrafts.videoReadyTitle", { defaultValue: "Video Ready" }),
+        description: t("myDrafts.videoReadyMessage", {
+          defaultValue: "Your video has finished uploading and is ready to use.",
         }),
+        action: (
+          <ToastAction
+            altText={t("myDrafts.viewDraft", { defaultValue: "View Draft" })}
+            onClick={() => setLocation("/my-drafts")}
+          >
+            {t("myDrafts.viewDraft", { defaultValue: "View Draft" })}
+          </ToastAction>
+        ),
       });
     }
     setExpanded(false);
@@ -329,7 +338,7 @@ export default function VideoUploadCenter() {
     } catch {
       /* ignore */
     }
-  }, [allSettled, completeCount, ownJobs, t, toast]);
+  }, [allSettled, completeCount, ownJobs, t, toast, setLocation]);
 
   const hideBar = () => {
     // Visibility only — never cancels uploads.

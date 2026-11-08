@@ -66,7 +66,8 @@ const SettingsPayments   = lazy(() => import("@/pages/SettingsPayments"));
 const SettingsIdentity   = lazy(() => import("@/pages/SettingsIdentity"));
 const SettingsPrivacy    = lazy(() => import("@/pages/SettingsPrivacy"));
 const SettingsVideos     = lazy(() => import("@/pages/SettingsVideos"));
-const Bouillon           = lazy(() => import("@/pages/Bouillon"));
+const MyDrafts           = lazy(() => import("@/pages/MyDrafts"));
+const DevSettingsQuickActionsPreview = lazy(() => import("@/pages/DevSettingsQuickActionsPreview"));
 const SellerAnalytics    = lazy(() => import("@/pages/SellerAnalytics"));
 const Support            = lazy(() => import("@/pages/Support"));
 const NotFound           = lazy(() => import("@/pages/NotFound"));
@@ -226,6 +227,7 @@ function LayoutRoutes() {
           <Route path="/auth/set-new-password" component={SetNewPassword} />
           <Route path="/" component={Home} />
           <Route path="/dev/boosted-deal-preview" component={BoostedDealPreview} />
+          <Route path="/dev/settings-quick-actions-preview" component={DevSettingsQuickActionsPreview} />
           <Route path="/dev/flexa-control-preview" component={FlexaControlPreview} />
           <Route path="/dev/checkout-redesign-preview" component={CheckoutRedesignPreview} />
           <Route path="/search" component={Search} />
@@ -288,9 +290,10 @@ function LayoutRoutes() {
           <Route path="/settings/videos" component={SettingsVideos} />
           <Route path="/settings/analytics" component={SellerAnalytics} />
           <Route path="/settings" component={Settings} />
-          <Route path="/bouillon" component={Bouillon} />
+          <Route path="/my-drafts" component={MyDrafts} />
+          <Route path="/bouillon" component={MyDrafts} />
           <Route path="/brouillon">
-            {() => { setLocation("/bouillon"); return null; }}
+            {() => { setLocation("/my-drafts"); return null; }}
           </Route>
           <Route path="/support" component={Support} />
           <Route path="/support/:id" component={Support} />

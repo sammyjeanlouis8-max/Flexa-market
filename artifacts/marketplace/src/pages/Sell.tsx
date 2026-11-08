@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
 import { useRestriction } from "@/hooks/useRestriction";
 import { Children, type ReactNode, useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle, Package, Tag, Truck, Eye, Sparkles, FileText, Send, CircleAlert } from "lucide-react";
+import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle, Package, Tag, Truck, Eye, Sparkles, FileText, Send, CircleAlert, Lock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor, stateForCity, statesFor } from "@/lib/countries";
@@ -2138,6 +2138,19 @@ export default function Sell() {
               </FormItem>
             )} />
           </div>
+
+          <p
+            className="flex items-start gap-1.5 text-[11px] leading-snug text-muted-foreground"
+            data-testid="sell-location-privacy-notice"
+          >
+            <Lock className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span>
+              {t("sell.locationPrivacyNotice", {
+                defaultValue:
+                  "Your exact address is private and will not be visible to buyers. Only your city, state, and country may be displayed.",
+              })}
+            </span>
+          </p>
 
           {/* ── Package weight & dimensions ───────────────────────────────────── */}
           {selectedCountry && (

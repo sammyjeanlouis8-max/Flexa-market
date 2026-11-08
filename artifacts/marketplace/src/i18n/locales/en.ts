@@ -799,6 +799,8 @@ export default {
     fromProfile: "From your profile",
     location: "Location",
     locationPlaceholder: "Neighborhood, area...",
+    locationPrivacyNotice:
+      "Your exact address is private and will not be visible to buyers. Only your city, state, and country may be displayed.",
     photos: "Photos",
     camera: "Camera",
     gallery: "Gallery",

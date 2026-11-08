@@ -297,17 +297,14 @@ export default function BoosterCreate() {
     }
     setMediaPreview(objectUrl);
     setUploading(true);
-    setUploadPercent(5);
+    setUploadPercent(0);
     try {
       if (!user?.id || !token) throw new Error("auth");
-      const progressTimer = setInterval(() => {
-        setUploadPercent((p) => (p < 90 ? p + 7 : p));
-      }, 400);
       const url = await startVideoUpload(file, token, {
         ownerId: user.id,
         purpose: "boost",
+        onProgress: setUploadPercent,
       });
-      clearInterval(progressTimer);
       if (!url) throw new Error("no url");
       setVideoUrl(url);
       setUploadPercent(100);

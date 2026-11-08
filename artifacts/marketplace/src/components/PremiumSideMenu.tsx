@@ -300,7 +300,7 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
       items: [
         { icon: User, label: t("nav.profile"), href: "/settings", testId: "drawer-profile" },
         { icon: Heart, label: t("nav.saved"), href: "/saved", testId: "drawer-saved" },
-        { icon: FileVideo, label: t("nav.bouillon", { defaultValue: "Bouillon" }), href: "/bouillon", testId: "drawer-bouillon" },
+        { icon: FileVideo, label: t("myDrafts.title", { defaultValue: "My Drafts" }), href: "/my-drafts", testId: "drawer-my-drafts" },
         { icon: Wallet, label: t("nav.walletLabel", { defaultValue: "Wallet" }), href: "/wallet", testId: "drawer-wallet" },
         { icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), href: "/wallet", testId: "drawer-promo-account" },
         { icon: Crown, label: t("nav.subscription"), href: "/subscription", testId: "drawer-subscription" },

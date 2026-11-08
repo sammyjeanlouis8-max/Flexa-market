@@ -147,6 +147,22 @@ async function status(job: StoredJob, signal: AbortSignal): Promise<ServerStatus
 function assertCurrentRun(job: StoredJob, signal: AbortSignal) {
   if (signal.aborted || job.ownerId !== identity?.ownerId) throw new DOMException("Aborted", "AbortError");
 }
+async function notifyVideoReady(job: StoredJob) {
+  if (!identity || identity.ownerId !== job.ownerId) return;
+  try {
+    await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/notifications/video-ready`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${identity.token}`,
+      },
+      body: JSON.stringify({ fileName: job.fileName, purpose: job.purpose }),
+    });
+  } catch {
+    /* non-fatal — toast / local state still inform the user */
+  }
+}
+
 async function complete(job: StoredJob, url: string, signal: AbortSignal) {
   assertCurrentRun(job, signal);
   await update(job, { state: "complete", progress: 100, url, error: undefined });
@@ -155,6 +171,8 @@ async function complete(job: StoredJob, url: string, signal: AbortSignal) {
   await removeVideoFile(job.id).catch(() => {});
   waiters.get(job.id)?.resolve(url);
   waiters.delete(job.id);
+  // Persist an in-app notification only after backend finalize confirmed the URL.
+  void notifyVideoReady(job);
 }
 async function execute(job: StoredJob, signal: AbortSignal) {
   const file = await loadVideoFile(job.id);

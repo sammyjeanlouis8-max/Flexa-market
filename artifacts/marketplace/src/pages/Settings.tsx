@@ -20,6 +20,7 @@ import {
   Lock,
   Pencil,
   Info,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -194,8 +195,8 @@ export default function Settings() {
         )}
       </Card>
 
-      {/* Quick actions */}
-      <div className="grid grid-cols-3 gap-2.5">
+      {/* Quick actions — 2×2 on narrow screens, 4-col from sm up */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <Link
           href="/sell"
           className="min-h-[76px] rounded-2xl bg-[hsl(152,65%,18%)] text-white flex flex-col items-center justify-center gap-1.5 px-2 py-3 text-center shadow-sm"
@@ -219,6 +220,17 @@ export default function Settings() {
         >
           <Megaphone className="h-5 w-5 text-orange-500" aria-hidden />
           <span className="text-[11px] font-semibold leading-tight">{t("accountCenter.quickBoosts")}</span>
+        </Link>
+        <Link
+          href="/my-drafts"
+          className="relative min-h-[76px] rounded-2xl bg-violet-50 dark:bg-violet-950/30 text-violet-950 dark:text-violet-100 border border-violet-100 dark:border-violet-900 flex flex-col items-center justify-center gap-1.5 px-2 py-3 text-center"
+          data-testid="button-settings-my-drafts"
+        >
+          <span className="absolute top-1.5 right-1.5 text-[9px] font-black uppercase tracking-wide bg-red-500 text-white px-1.5 py-0.5 rounded-full leading-none">
+            {t("myDrafts.newBadge", { defaultValue: "New" })}
+          </span>
+          <Layers className="h-5 w-5 text-violet-600" aria-hidden />
+          <span className="text-[11px] font-semibold leading-tight">{t("accountCenter.quickDrafts", { defaultValue: "My Drafts" })}</span>
         </Link>
       </div>
 

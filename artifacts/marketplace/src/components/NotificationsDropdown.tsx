@@ -16,6 +16,7 @@ interface Notification {
   isRead: boolean;
   listingId: number | null;
   commentId: number | null;
+  referenceId?: number | null;
   message: string | null;
   createdAt: string;
   actorName: string;
@@ -132,6 +133,8 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
       case "driver_assigned": return n.message || t("notifications.driverAssigned");
       case "boost_approved":
       case "boost_activated": return t("notifications.boostActivated");
+      case "boost_expired": return n.message || t("myDrafts.boostExpired", { defaultValue: "Boost Expired" });
+      case "video_ready": return n.message || t("myDrafts.videoReadyMessage", { defaultValue: "Your video has finished uploading and is ready to use." });
       case "transfer_received": return n.message
         ? t("notifications.transferReceivedDetail", { amount: n.message })
         : t("notifications.transferReceived");
@@ -181,6 +184,10 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
       case "boost_approved":
       case "boost_activated":
         return n.listingId ? `/listings/${n.listingId}/video` : "/sell";
+      case "boost_expired":
+        return n.listingId ? `/boost/${n.listingId}` : "/my-drafts";
+      case "video_ready":
+        return "/my-drafts";
 
       // Delivery tracking
       case "card_refund":

@@ -1491,6 +1491,24 @@ export default function ListingDetail() {
         quantity: qty,
       });
       toast({ title: `✅ ${t("listing.addedToCart")}`, description: `${listing.title} ×${qty}` });
+      if (listing.isBoosted || (listing as any).boostVideoUrl) {
+        const source =
+          new URLSearchParams(window.location.search).get("ref") ||
+          (document.referrer.includes("/videos") ? "promo_feed" : "product_page");
+        fetch("/api/boost-analytics/events", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            listingId: id,
+            type: "add_to_cart",
+            source,
+            device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
+          }),
+        }).catch(() => {});
+      }
     }
   };
 

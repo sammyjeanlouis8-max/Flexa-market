@@ -2009,6 +2009,7 @@ export default {
     trafficUnavailable: "Sous trafik parèt lè gen evènman plasman anrejistre. Yo pa janm envante pousantaj.",
     searchAnalytics: "Mo rechèch",
     searchUnavailable: "Atribisyon rechèch parèt lè view yo gen sous rechèch.",
+    wantMoreTraffic: "Ou vle plis trafik?",
     audienceUnavailable: "Odyans lan parèt lè gen evènman geo/aparèy anrejistre.",
     campaigns: "Kanpay",
     noCampaigns: "Pa gen kanpay ki matche filtè sa yo.",

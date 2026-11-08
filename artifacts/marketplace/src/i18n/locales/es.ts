@@ -1612,6 +1612,7 @@ export default {
     trafficUnavailable: "Las fuentes aparecen cuando hay eventos de placement registrados. Nunca se inventan porcentajes.",
     searchAnalytics: "Términos de búsqueda",
     searchUnavailable: "La atribución de búsqueda aparece cuando las vistas incluyen fuente de búsqueda.",
+    wantMoreTraffic: "¿Quieres más tráfico?",
     audienceUnavailable: "La audiencia aparece cuando hay eventos geo/dispositivo registrados.",
     campaigns: "Campañas",
     noCampaigns: "Ninguna campaña coincide con estos filtros.",

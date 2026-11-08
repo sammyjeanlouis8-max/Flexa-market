@@ -2012,6 +2012,7 @@ export default {
     trafficUnavailable: "Les sources de trafic apparaissent dès que des événements de placement sont enregistrés. Aucun pourcentage inventé.",
     searchAnalytics: "Termes de recherche",
     searchUnavailable: "L’attribution recherche apparaît lorsque les vues incluent une source recherche.",
+    wantMoreTraffic: "Tu veux plus de trafic?",
     audienceUnavailable: "Les audiences apparaissent dès que des événements geo/appareil sont enregistrés.",
     campaigns: "Campagnes",
     noCampaigns: "Aucune campagne ne correspond à ces filtres.",

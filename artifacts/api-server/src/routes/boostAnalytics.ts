@@ -270,8 +270,12 @@ router.get("/boost-analytics", requireAuth, async (req, res): Promise<void> => {
         .map(([date, v]) => ({ date, ...v }));
     }
 
-    // Traffic sources from recorded events only
+    // Traffic sources / ATC / search / audience from recorded events only
     let trafficSources: Array<{ source: BoostTrafficSource; count: number; pct: number }> = [];
+    let addToCartCount = 0;
+    let searchTerms: Array<{ query: string; count: number; pct: number }> = [];
+    let audienceCountries: Array<{ key: string; count: number; pct: number }> = [];
+    let audienceDevices: Array<{ key: string; count: number; pct: number }> = [];
     if (boostIds.length > 0) {
       const srcConds = [
         inArray(boostAnalyticsEventsTable.boostId, boostIds),
@@ -291,6 +295,88 @@ router.get("/boost-analytics", requireAuth, async (req, res): Promise<void> => {
         const count = Number(srcRows.find((r) => r.source === source)?.count ?? 0);
         return { source, count, pct: totalSrc > 0 ? Math.round((count / totalSrc) * 1000) / 10 : 0 };
       }).filter((r) => r.count > 0);
+
+      const atcConds = [
+        inArray(boostAnalyticsEventsTable.boostId, boostIds),
+        eq(boostAnalyticsEventsTable.eventType, "add_to_cart"),
+      ];
+      if (range.from) atcConds.push(gte(boostAnalyticsEventsTable.createdAt, range.from));
+      const [atcRow] = await db
+        .select({ n: sql<number>`COUNT(*)::int` })
+        .from(boostAnalyticsEventsTable)
+        .where(and(...atcConds));
+      addToCartCount = Number(atcRow?.n ?? 0);
+
+      const searchConds = [
+        inArray(boostAnalyticsEventsTable.boostId, boostIds),
+        sql`${boostAnalyticsEventsTable.searchQuery} IS NOT NULL`,
+        sql`length(trim(${boostAnalyticsEventsTable.searchQuery})) > 0`,
+      ];
+      if (range.from) searchConds.push(gte(boostAnalyticsEventsTable.createdAt, range.from));
+      const searchRows = await db
+        .select({
+          query: boostAnalyticsEventsTable.searchQuery,
+          count: sql<number>`COUNT(*)::int`,
+        })
+        .from(boostAnalyticsEventsTable)
+        .where(and(...searchConds))
+        .groupBy(boostAnalyticsEventsTable.searchQuery)
+        .orderBy(sql`COUNT(*) DESC`)
+        .limit(20);
+      const searchTotal = searchRows.reduce((s, r) => s + Number(r.count), 0);
+      searchTerms = searchRows.map((r) => ({
+        query: String(r.query),
+        count: Number(r.count),
+        pct: searchTotal > 0 ? Math.round((Number(r.count) / searchTotal) * 1000) / 10 : 0,
+      }));
+
+      const countryConds = [
+        inArray(boostAnalyticsEventsTable.boostId, boostIds),
+        sql`${boostAnalyticsEventsTable.country} IS NOT NULL`,
+      ];
+      if (range.from) countryConds.push(gte(boostAnalyticsEventsTable.createdAt, range.from));
+      const countryRows = await db
+        .select({
+          key: boostAnalyticsEventsTable.country,
+          count: sql<number>`COUNT(*)::int`,
+        })
+        .from(boostAnalyticsEventsTable)
+        .where(and(...countryConds))
+        .groupBy(boostAnalyticsEventsTable.country)
+        .orderBy(sql`COUNT(*) DESC`)
+        .limit(12);
+      const countryTotal = countryRows.reduce((s, r) => s + Number(r.count), 0);
+      audienceCountries = countryRows
+        .filter((r) => r.key)
+        .map((r) => ({
+          key: String(r.key),
+          count: Number(r.count),
+          pct: countryTotal > 0 ? Math.round((Number(r.count) / countryTotal) * 1000) / 10 : 0,
+        }));
+
+      const deviceConds = [
+        inArray(boostAnalyticsEventsTable.boostId, boostIds),
+        sql`${boostAnalyticsEventsTable.device} IS NOT NULL`,
+      ];
+      if (range.from) deviceConds.push(gte(boostAnalyticsEventsTable.createdAt, range.from));
+      const deviceRows = await db
+        .select({
+          key: boostAnalyticsEventsTable.device,
+          count: sql<number>`COUNT(*)::int`,
+        })
+        .from(boostAnalyticsEventsTable)
+        .where(and(...deviceConds))
+        .groupBy(boostAnalyticsEventsTable.device)
+        .orderBy(sql`COUNT(*) DESC`)
+        .limit(8);
+      const deviceTotal = deviceRows.reduce((s, r) => s + Number(r.count), 0);
+      audienceDevices = deviceRows
+        .filter((r) => r.key)
+        .map((r) => ({
+          key: String(r.key),
+          count: Number(r.count),
+          pct: deviceTotal > 0 ? Math.round((Number(r.count) / deviceTotal) * 1000) / 10 : 0,
+        }));
     }
 
     const conversionRate = pct(purchases, totalClicks);
@@ -313,7 +399,13 @@ router.get("/boost-analytics", requireAuth, async (req, res): Promise<void> => {
         totalShares: metric(totalShares, true),
         totalSaves: metric(totalLikes, true, "Same as likes/favorites in Flexa Market"),
         productClicks: metric(totalClicks, true),
-        addToCartEvents: metric(null, false, "Add-to-cart attribution is not recorded yet"),
+        addToCartEvents: metric(
+          addToCartCount,
+          addToCartCount > 0,
+          addToCartCount > 0
+            ? "Recorded add-to-cart events on boosted listings"
+            : "No add-to-cart events recorded yet",
+        ),
         purchases: metric(purchases, true, "Paid purchases of boosted products within campaign + 7-day window; cancelled/refunded excluded"),
         attributedRevenue: metric(attributedRevenue, true, "Gross paid purchase amount in attribution window"),
         clickThroughRate: metric(pct(totalClicks, totalImpressions), totalImpressions > 0),
@@ -335,14 +427,18 @@ router.get("/boost-analytics", requireAuth, async (req, res): Promise<void> => {
       series,
       trafficSources,
       trafficSourcesAvailable: trafficSources.length > 0,
-      searchTerms: [] as Array<{ query: string; count: number; pct: number }>,
-      searchTermsAvailable: false,
-      searchTermsNote: "Search-to-boost attribution requires recorded search-source events",
+      searchTerms,
+      searchTermsAvailable: searchTerms.length > 0,
+      searchTermsNote: searchTerms.length > 0
+        ? "Aggregated search queries from recorded boost events only"
+        : "Search-to-boost attribution requires recorded search-source events",
       audience: {
-        available: false,
-        note: "Audience breakdowns require privacy-safe aggregated device/geo events",
-        countries: [] as Array<{ key: string; count: number; pct: number }>,
-        devices: [] as Array<{ key: string; count: number; pct: number }>,
+        available: audienceCountries.length > 0 || audienceDevices.length > 0,
+        note: audienceCountries.length > 0 || audienceDevices.length > 0
+          ? "Aggregated from recorded events only"
+          : "Audience breakdowns require privacy-safe aggregated device/geo events",
+        countries: audienceCountries,
+        devices: audienceDevices,
       },
       campaigns,
       definitions: {
@@ -538,6 +634,39 @@ router.get("/boost-analytics/:boostId", requireAuth, async (req, res): Promise<v
     const audienceTotal = audienceCountries.reduce((s, r) => s + Number(r.count), 0)
       + audienceDevices.reduce((s, r) => s + Number(r.count), 0);
 
+    const progressRows = await db
+      .select({
+        marker: boostAnalyticsEventsTable.progressMarker,
+        count: sql<number>`COUNT(*)::int`,
+        watchMs: sql<number>`COALESCE(SUM(${boostAnalyticsEventsTable.watchMs}), 0)::bigint`,
+      })
+      .from(boostAnalyticsEventsTable)
+      .where(
+        and(
+          eq(boostAnalyticsEventsTable.boostId, boostId),
+          inArray(boostAnalyticsEventsTable.eventType, ["video_view", "watch_progress"]),
+          sql`${boostAnalyticsEventsTable.progressMarker} IS NOT NULL`,
+        ),
+      )
+      .groupBy(boostAnalyticsEventsTable.progressMarker);
+
+    const progressByMarker = new Map<number, number>();
+    let totalWatchMs = 0;
+    for (const r of progressRows) {
+      if (r.marker != null) progressByMarker.set(Number(r.marker), Number(r.count));
+      totalWatchMs += Number(r.watchMs ?? 0);
+    }
+    const baseViews = Math.max(videoViews, progressByMarker.get(3) ?? 0, 1);
+    const retentionPct = (marker: number) => {
+      const n = progressByMarker.get(marker);
+      if (n == null || n <= 0) return metric(null, false);
+      return metric(Math.round((n / baseViews) * 1000) / 10, true);
+    };
+    const watchAvailable = totalWatchMs > 0;
+    const avgWatch = watchAvailable && videoViews > 0
+      ? Math.round(totalWatchMs / Math.max(videoViews, progressByMarker.get(3) ?? 1))
+      : null;
+
     res.json({
       campaign: {
         boostId: row.boostId,
@@ -570,15 +699,15 @@ router.get("/boost-analytics/:boostId", requireAuth, async (req, res): Promise<v
         skips: metric(row.skips ?? 0, true),
         ctr: metric(pct(clicks, impressions), impressions > 0),
         spend: metric(spend, true),
-        totalWatchTime: metric(null, false),
-        averageWatchDuration: metric(null, false),
-        videoCompletionRate: metric(null, false),
-        retention3s: metric(null, false),
-        retention5s: metric(null, false),
-        completion25: metric(null, false),
-        completion50: metric(null, false),
-        completion75: metric(null, false),
-        completion100: metric(null, false),
+        totalWatchTime: metric(watchAvailable ? Math.round(totalWatchMs / 1000) : null, watchAvailable, watchAvailable ? "Seconds of recorded watch progress" : undefined),
+        averageWatchDuration: metric(avgWatch != null ? Math.round(avgWatch / 1000) : null, avgWatch != null, avgWatch != null ? "Average seconds from recorded watch events" : undefined),
+        videoCompletionRate: retentionPct(100),
+        retention3s: retentionPct(3),
+        retention5s: retentionPct(5),
+        completion25: retentionPct(25),
+        completion50: retentionPct(50),
+        completion75: retentionPct(75),
+        completion100: retentionPct(100),
         newFollowers: metric(null, false),
       },
       series: daily.map((d) => ({
@@ -620,7 +749,19 @@ router.get("/boost-analytics/:boostId", requireAuth, async (req, res): Promise<v
       },
       sales: {
         productClicks: metric(clicks, true),
-        addToCartEvents: metric(null, false),
+        addToCartEvents: await (async () => {
+          const [row] = await db
+            .select({ n: sql<number>`COUNT(*)::int` })
+            .from(boostAnalyticsEventsTable)
+            .where(
+              and(
+                eq(boostAnalyticsEventsTable.boostId, boostId),
+                eq(boostAnalyticsEventsTable.eventType, "add_to_cart"),
+              ),
+            );
+          const n = Number(row?.n ?? 0);
+          return metric(n, n > 0, n > 0 ? undefined : "No add-to-cart events recorded yet");
+        })(),
         checkoutStarts: metric(null, false),
         purchases: metric(purchases, true),
         attributedRevenue: metric(attributedRevenue, true),

@@ -201,15 +201,20 @@ export default function BoostAnalytics() {
           </div>
 
           <div className="ba-card">
-            <h2>{t("boostAnalytics.trafficSources")}</h2>
+            <h2 className="ba-card-title">
+              <span>{t("boostAnalytics.trafficSources")}</span>
+              <span className="ba-info">i</span>
+            </h2>
             {data?.trafficSourcesAvailable && data.trafficSources.length > 0 ? (
-              data.trafficSources.map((src) => (
-                <div className="ba-src-row" key={src.source}>
-                  <span className="label">{t(`boostAnalytics.sources.${src.source}`, { defaultValue: src.source })}</span>
-                  <span className="pct">{src.pct}%</span>
-                  <div className="ba-track"><div className="ba-fill" style={{ width: `${Math.min(100, src.pct)}%` }} /></div>
-                </div>
-              ))
+              <div className="ba-src-list">
+                {data.trafficSources.map((src) => (
+                  <div className="ba-src-row" key={src.source}>
+                    <span className="label">{t(`boostAnalytics.sources.${src.source}`, { defaultValue: src.source })}</span>
+                    <span className="pct">{src.pct.toFixed(1)}%</span>
+                    <div className="ba-track"><div className="ba-fill" style={{ width: `${Math.min(100, src.pct)}%` }} /></div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <p className="ba-note">{t("boostAnalytics.trafficUnavailable")}</p>
             )}

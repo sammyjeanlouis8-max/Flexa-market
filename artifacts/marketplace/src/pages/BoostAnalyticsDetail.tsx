@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import "./boostAnalytics.css";
+
+function SectionTitle({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <h2 className="ba-card-title" title={hint}>
+      <span>{children}</span>
+      {hint ? <span className="ba-info" aria-label={hint}>i</span> : null}
+    </h2>
+  );
+}
 
 type Metric = { value: number | null; available: boolean; note?: string };
 type Tab = "overview" | "audience" | "traffic" | "engagement" | "sales";
@@ -241,33 +250,45 @@ export default function BoostAnalyticsDetail() {
           {tab === "traffic" && (
             <>
               <div className="ba-card">
-                <h2>{t("boostAnalytics.trafficSources")}</h2>
+                <SectionTitle hint={t("boostAnalytics.trafficUnavailable")}>
+                  {t("boostAnalytics.trafficSources")}
+                </SectionTitle>
                 {data.trafficSourcesAvailable ? (
-                  data.trafficSources.map((src) => (
-                    <div className="ba-src-row" key={src.source}>
-                      <span className="label">{t(`boostAnalytics.sources.${src.source}`, { defaultValue: src.source })}</span>
-                      <span className="pct">{src.pct}%</span>
-                      <div className="ba-track"><div className="ba-fill" style={{ width: `${Math.min(100, src.pct)}%` }} /></div>
-                    </div>
-                  ))
+                  <div className="ba-src-list">
+                    {data.trafficSources.map((src) => (
+                      <div className="ba-src-row" key={src.source}>
+                        <span className="label">{t(`boostAnalytics.sources.${src.source}`, { defaultValue: src.source })}</span>
+                        <span className="pct">{src.pct.toFixed(1)}%</span>
+                        <div className="ba-track"><div className="ba-fill" style={{ width: `${Math.min(100, src.pct)}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <p className="ba-note">{t("boostAnalytics.trafficUnavailable")}</p>
                 )}
               </div>
               <div className="ba-card">
-                <h2>{t("boostAnalytics.searchAnalytics")}</h2>
+                <SectionTitle hint={t("boostAnalytics.searchUnavailable")}>
+                  {t("boostAnalytics.searchAnalytics")}
+                </SectionTitle>
                 {data.searchTermsAvailable ? (
-                  data.searchTerms.map((s) => (
-                    <div className="ba-src-row" key={s.query}>
-                      <span className="label">{s.query}</span>
-                      <span className="pct">{s.count}</span>
-                      <div className="ba-track"><div className="ba-fill" style={{ width: `${Math.min(100, s.pct)}%` }} /></div>
-                    </div>
-                  ))
+                  <div className="ba-src-list">
+                    {data.searchTerms.map((s) => (
+                      <div className="ba-src-row" key={s.query}>
+                        <span className="label">{s.query}</span>
+                        <span className="pct">{s.pct.toFixed(1)}%</span>
+                        <div className="ba-track"><div className="ba-fill" style={{ width: `${Math.min(100, s.pct)}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <p className="ba-note">{t("boostAnalytics.searchUnavailable")}</p>
                 )}
               </div>
+              <Link href={`/boost/${data.campaign.listingId}`} className="ba-card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", textDecoration: "none", color: "inherit" }}>
+                <span className="font-extrabold text-[0.95rem]">{t("boostAnalytics.wantMoreTraffic")}</span>
+                <ChevronRight className="h-5 w-5 text-slate-400" />
+              </Link>
             </>
           )}
 

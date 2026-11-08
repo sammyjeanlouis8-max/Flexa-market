@@ -326,6 +326,44 @@
         // Android WebView/standalone shells can draw behind the system
         // navigation bar while still reporting safe-area-inset-bottom as 0.
         root.style.setProperty('--flexa-android-bottom', isAndroid ? '32px' : '0px');
+
+        // --sab (safe-area-bottom) mirrors --sat for the home indicator.
+        // FlexaMarket / RN WebViews often report env(safe-area-inset-bottom)=0
+        // while still drawing under the iOS home indicator — that clips Sell
+        // action buttons in half. Heuristic only when env() is unavailable.
+        function setSab(px) {
+          root.style.setProperty('--sab', Math.max(0, Math.round(px)) + 'px');
+        }
+        if (typeof window.__flexaNativeSafeBottom === 'number' && window.__flexaNativeSafeBottom > 0) {
+          setSab(window.__flexaNativeSafeBottom);
+        } else if (/FlexaMarket/i.test(navigator.userAgent) && !isAndroid) {
+          setSab(34);
+        } else if (!isAndroid && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+          // Safari/PWA: leave 0 and trust env(); reconcile clears if env works.
+          setSab(0);
+        } else {
+          setSab(0);
+        }
+        function reconcileSab() {
+          try {
+            var probeB = document.createElement('div');
+            probeB.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px);';
+            document.documentElement.appendChild(probeB);
+            var envBottom = parseFloat(getComputedStyle(probeB).paddingBottom) || 0;
+            probeB.remove();
+            if (envBottom > 0) {
+              setSab(0);
+            } else if (/FlexaMarket/i.test(navigator.userAgent) && !isAndroid) {
+              setSab(34);
+            }
+          } catch (e) { /* ignore */ }
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', reconcileSab, { once: true });
+        } else {
+          reconcileSab();
+        }
+        window.addEventListener('resize', reconcileSab, { passive: true });
       })();
     </script>
     <!-- Keep fixed mobile controls inside Safari's visual viewport. Safari can

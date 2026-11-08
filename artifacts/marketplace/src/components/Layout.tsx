@@ -594,7 +594,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   if (isSellRoute && !showInlineSell) {
     return (
       <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
-        <div className="app-shell seller-center-shell w-full min-w-0 max-w-full overflow-hidden bg-[#F3F4F6] flex flex-col h-dvh max-h-dvh">
+        {/* Prefer svh so iOS URL-bar / home-indicator cannot clip the action footer. */}
+        <div className="app-shell seller-center-shell w-full min-w-0 max-w-full overflow-hidden bg-[#F3F4F6] flex flex-col h-dvh max-h-dvh supports-[height:100svh]:h-svh supports-[height:100svh]:max-h-svh">
           {children}
         </div>
       </DeliveryMenuCountryContext.Provider>
@@ -923,7 +924,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
           client-side route changes. Keep the add-product flow in the current
           document so installed builds do not reopen their startup overlay. */}
       {showInlineSell && (
-        <div className="fixed inset-0 z-[70] flex flex-col h-dvh max-h-dvh overflow-hidden bg-background md:hidden">
+        <div className="fixed inset-0 z-[70] flex flex-col h-dvh max-h-dvh overflow-hidden bg-background md:hidden supports-[height:100svh]:h-svh supports-[height:100svh]:max-h-svh">
           <div className="shrink-0 z-10 flex h-12 items-center gap-3 border-b border-border bg-background/95 px-3 backdrop-blur">
             <button
               type="button"

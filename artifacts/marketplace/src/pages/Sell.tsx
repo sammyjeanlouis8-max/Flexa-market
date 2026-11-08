@@ -1005,13 +1005,51 @@ export default function Sell() {
     }
   };
 
+  const actionFooter = (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={handleSaveDraftClick}
+        className="flex-1 h-9 min-h-9 px-2.5 text-[13px] border-[hsl(152,65%,28%)] text-[hsl(152,65%,28%)] font-semibold rounded-full gap-1"
+        data-testid="button-save-draft-mobile"
+      >
+        <FileText className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{t("sell.saveDraft", { defaultValue: "Save Draft" })}</span>
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        onClick={handlePublishClick}
+        disabled={isPublishBusy}
+        className="flex-[1.15] h-9 min-h-9 px-2.5 text-[13px] bg-gradient-to-r from-[#F97316] to-[#FBBF24] hover:from-[#ea6a0c] hover:to-[#f59e0b] text-white font-semibold rounded-full gap-1 shadow-sm"
+        data-testid="button-publish-mobile"
+      >
+        {isPublishBusy ? (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+        ) : (
+          <Send className="h-3.5 w-3.5 shrink-0" />
+        )}
+        <span className="truncate">
+          {isPublishBusy
+            ? (publishBusyLabel || t("sell.publishing", { defaultValue: "Publishing..." }))
+            : isEditMode
+              ? t("sell.saveChanges")
+              : t("sell.publishProduct", { defaultValue: "Publish Product" })}
+        </span>
+      </Button>
+    </>
+  );
+
   return (
     <SellerCenterShell
       onBack={handleSilentBack}
       heroTitle={isEditMode ? t("sell.editTitle") : t("sell.addNewProduct", { defaultValue: "Add New Product" })}
       heroSubtitle={t("sell.addNewProductDesc", { defaultValue: "Create a new product listing for your store." })}
+      footer={actionFooter}
     >
-      <div className="px-3 md:px-6 py-3 md:py-5 pb-28">
+      <div className="px-3 md:px-6 py-3 md:py-5 pb-4">
         {/* Compact page title for desktop / screen readers — mobile hero lives in the shell */}
         <div className="mb-3 md:mb-4">
           <h1 className="sr-only md:not-sr-only text-[22px] md:text-[26px] font-extrabold text-slate-900 tracking-tight">
@@ -2601,37 +2639,6 @@ export default function Sell() {
       </aside>
       </div>
 
-      {/* Single Save Draft + Publish action bar (mobile + desktop) */}
-      <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-border px-3 py-2.5 pb-[calc(0.6rem+env(safe-area-inset-bottom))] flex gap-2 md:max-w-[1600px] md:mx-auto md:left-0 md:right-0 lg:pl-56 xl:pl-60">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={handleSaveDraftClick}
-          className="flex-1 h-11 border-[hsl(152,65%,28%)] text-[hsl(152,65%,28%)] font-bold rounded-full gap-1.5"
-          data-testid="button-save-draft-mobile"
-        >
-          <FileText className="h-4 w-4" />
-          {t("sell.saveDraft", { defaultValue: "Save Draft" })}
-        </Button>
-        <Button
-          type="button"
-          onClick={handlePublishClick}
-          disabled={isPublishBusy}
-          className="flex-[1.35] h-11 bg-gradient-to-r from-[#F97316] to-[#FBBF24] hover:from-[#ea6a0c] hover:to-[#f59e0b] text-white font-bold rounded-full gap-1.5 shadow-sm"
-          data-testid="button-publish-mobile"
-        >
-          {isPublishBusy ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
-          )}
-          {isPublishBusy
-            ? (publishBusyLabel || t("sell.publishing", { defaultValue: "Publishing..." }))
-            : isEditMode
-              ? t("sell.saveChanges")
-              : t("sell.publishProduct", { defaultValue: "Publish Product" })}
-        </Button>
-      </div>
       </div>
     </SellerCenterShell>
   );

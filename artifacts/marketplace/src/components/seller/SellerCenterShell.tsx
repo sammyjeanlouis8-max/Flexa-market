@@ -26,6 +26,7 @@ export default function SellerCenterShell({
   onBack,
   heroTitle,
   heroSubtitle,
+  footer,
 }: {
   children: ReactNode;
   searchPlaceholder?: string;
@@ -33,6 +34,11 @@ export default function SellerCenterShell({
   onBack?: () => void;
   heroTitle?: string;
   heroSubtitle?: string;
+  /**
+   * Optional bottom action bar. Rendered in document flow (not position:fixed)
+   * so Android WebViews cannot float it mid-screen over the form.
+   */
+  footer?: ReactNode;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -93,10 +99,13 @@ export default function SellerCenterShell({
   const showSellHero = Boolean(onBack || heroTitle);
 
   return (
-    <div className="min-h-dvh flex flex-col bg-[#F3F4F6]" data-testid="seller-center-shell">
+    <div
+      className="h-full max-h-full min-h-0 flex flex-col bg-[#F3F4F6] overflow-hidden"
+      data-testid="seller-center-shell"
+    >
       {/* Top header */}
       <header
-        className="sticky top-0 z-50 text-white shadow-sm"
+        className="shrink-0 z-50 text-white shadow-sm"
         style={{
           background: `linear-gradient(180deg, ${GREEN} 0%, ${GREEN_DARK} 100%)`,
           // Keep Back/logo/bell clear of iOS Dynamic Island / notch.
@@ -220,7 +229,7 @@ export default function SellerCenterShell({
       <div className="flex flex-1 min-h-0 max-w-[1600px] mx-auto w-full">
         {/* Desktop sidebar */}
         <aside
-          className="hidden lg:flex w-56 xl:w-60 shrink-0 flex-col sticky top-16 self-start h-[calc(100dvh-4rem)] overflow-y-auto"
+          className="hidden lg:flex w-56 xl:w-60 shrink-0 flex-col self-stretch overflow-y-auto"
           style={{ background: GREEN_DARK }}
           data-testid="seller-sidebar"
         >
@@ -232,8 +241,24 @@ export default function SellerCenterShell({
           </div>
         </aside>
 
-        {/* Main */}
-        <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
+        {/* Column: scrollable form + in-flow action footer (avoids Android fixed bugs). */}
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+          <main className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain">
+            {children}
+          </main>
+          {footer ? (
+            <div
+              className="shrink-0 z-40 border-t border-border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90"
+              style={{
+                paddingBottom:
+                  "max(0.35rem, env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px))",
+              }}
+              data-testid="seller-action-footer"
+            >
+              <div className="w-full px-3 py-1.5 flex gap-2 items-center">{footer}</div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* Mobile drawer */}

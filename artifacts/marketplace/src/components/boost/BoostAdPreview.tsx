@@ -1,8 +1,8 @@
 import { ShoppingCart } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { formatPrice } from "@/lib/currency";
-import { listingImageProps } from "@/lib/listingImage";
 import { AdaptiveVideoPlayer } from "@/components/media/AdaptiveVideoPlayer";
+import { AdaptiveImage } from "@/components/media/AdaptiveImage";
 
 type Props = {
   title: string;
@@ -38,19 +38,20 @@ export function BoostAdPreview({
           <AdaptiveVideoPlayer
             src={videoUrl}
             poster={img}
-            maxHeight={360}
-            muted
+            maxHeight={320}
+            muted={false}
             controls={false}
+            showMuteToggle
             className="rounded-none"
           />
         ) : (
           <div className={img2 ? "fb-ad-images dual" : "fb-ad-images"}>
             {img ? (
-              <img src={img} alt={title} {...listingImageProps({ variant: "card" })} />
+              <AdaptiveImage src={img} alt={title} maxHeight={280} />
             ) : (
               <div className="fb-product-thumb-empty">{t("boost.noImage", { defaultValue: "No image" })}</div>
             )}
-            {img2 ? <img src={img2} alt="" {...listingImageProps({ variant: "card" })} /> : null}
+            {img2 ? <AdaptiveImage src={img2} alt="" maxHeight={280} /> : null}
           </div>
         )}
       </div>

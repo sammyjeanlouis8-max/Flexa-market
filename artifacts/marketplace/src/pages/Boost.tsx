@@ -31,10 +31,9 @@ import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { BoostProductCard } from "@/components/boost/BoostProductCard";
 import { BoostAdPreview } from "@/components/boost/BoostAdPreview";
+import { BoostPromoVideoPanel } from "@/components/boost/BoostPromoVideoPanel";
 import { BoostAudiencePanel, type BoostAudiencePanelHandle } from "@/components/boost/BoostAudiencePanel";
 import { scrollToInvalidField } from "@/lib/formValidation";
-import { AdaptiveVideoPlayer } from "@/components/media/AdaptiveVideoPlayer";
-
 const MIN_CAMPAIGN_BUDGET = 2;
 const BUDGET_PRESETS = [2, 5, 10, 20, 50, 100] as const;
 
@@ -955,28 +954,6 @@ export default function BoostPage() {
                   {t("boost.videoAttached", { defaultValue: "Video attached ✓" })}
                 </span>
               </div>
-              {abvUploading && (
-                <div
-                  className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-3"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <div className="mb-2 flex items-center justify-between text-xs font-semibold text-primary">
-                    <span>{t("boost.videoUploadingPct", { percent: abvUploadPercent, defaultValue: "Uploading video: {{percent}}%" })}</span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-primary/15">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all duration-200 ease-out"
-                      style={{ width: `${abvUploadPercent}%` }}
-                    />
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {abvUploadPercent < 100
-                      ? t("boost.videoUploadKeepOpen", { defaultValue: "Keep this page open while the video uploads." })
-                      : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
-                  </p>
-                </div>
-              )}
               <p className="text-xs text-muted-foreground">
                 {t("boost.replaceVideoDesc", { defaultValue: "You can replace the video anytime. The new video appears immediately." })}
               </p>
@@ -999,13 +976,13 @@ export default function BoostPage() {
                   role="status"
                   aria-live="polite"
                 >
-                  <div className="mb-2 flex items-center justify-between text-xs font-semibold text-primary">
-                    <span>{t("boost.videoUploadingPct", { percent: abvUploadPercent, defaultValue: "Uploading video: {{percent}}%" })}</span>
+                  <div className="mb-2 text-xs font-semibold text-primary">
+                    {t("boost.videoUploadingPct", { percent: abvUploadPercent, defaultValue: "Uploading video: {{percent}}%" })}
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-primary/15">
                     <div
                       className="h-full rounded-full bg-primary transition-all duration-200 ease-out"
-                      style={{ width: `${abvUploadPercent}%` }}
+                      style={{ width: `${Math.max(2, abvUploadPercent)}%` }}
                     />
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
@@ -1019,7 +996,7 @@ export default function BoostPage() {
           ) : (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                {t("boost.videoHelp", { defaultValue: "Max 2 minutes. Shown as an overlay while people browse the feed." })}
+                {t("boost.videoHelp", { defaultValue: "Add a video to showcase your product. Max duration: 2 minutes." })}
               </p>
               <Button
                 type="button"
@@ -1052,7 +1029,9 @@ export default function BoostPage() {
               )}
             </div>
           )}
-          <VideoUploadChooser purpose="boost" onUse={handleAbvVideoUsed} />
+          <div className="mt-3">
+            <VideoUploadChooser purpose="boost" onUse={handleAbvVideoUsed} compact />
+          </div>
         </div>
 
         {/* Back to My Boosts */}
@@ -1431,70 +1410,15 @@ export default function BoostPage() {
             </select>
           </div>
 
-          <div className="fb-video-box" data-testid="boost-video-section">
-            <div className="flex items-center gap-2 mb-1">
-              <Video className="h-4 w-4 text-violet-600" />
-              <p className="text-sm font-bold text-slate-900">{t("boost.videoLabel", { defaultValue: "Promo Video" })}</p>
-              <span className="text-[11px] text-slate-500">({t("boost.optional")})</span>
-            </div>
-            <p className="text-xs text-slate-500 mb-2">
-              {t("boost.videoHelp", { defaultValue: "Max 2 minutes • MP4, MOV" })}
-            </p>
-            {videoUrl ? (
-              <div className="space-y-2">
-                <AdaptiveVideoPlayer src={videoUrl} maxHeight={280} muted controls />
-                <div className="fb-video-progress"><i style={{ width: "100%" }} /></div>
-                <p className="text-xs font-semibold text-green-600">
-                  {t("boost.videoReadyPreview", { defaultValue: "Video ready for preview." })}
-                </p>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading}>
-                    {t("boost.replaceVideo", { defaultValue: "Replace" })}
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" className="text-red-600 border-red-200" onClick={() => setVideoUrl(null)} data-testid="button-video-remove">
-                    {t("boost.removeVideo", { defaultValue: "Remove" })}
-                  </Button>
-                </div>
-              </div>
-            ) : videoUploading ? (
-              <div
-                className="bl-upload bl-upload-progress space-y-2 pointer-events-none"
-                role="status"
-                aria-live="polite"
-                data-testid="boost-video-upload-progress"
-              >
-                <div className="flex items-center justify-center gap-2 text-sm font-semibold text-violet-700">
-                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                  <span>
-                    {videoUploadPercent < 100
-                      ? t("boost.videoUploadingPct", { percent: videoUploadPercent, defaultValue: "Uploading video: {{percent}}%" })
-                      : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
-                  </span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-violet-100">
-                  <div
-                    className="h-full rounded-full bg-violet-600 transition-all duration-200 ease-out"
-                    style={{ width: `${Math.max(2, videoUploadPercent)}%` }}
-                  />
-                </div>
-                <p className="text-[11px] text-muted-foreground text-center">
-                  {videoUploadPercent < 100
-                    ? t("boost.videoUploadKeepOpen", { defaultValue: "Keep this page open while the video uploads." })
-                    : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
-                </p>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="bl-upload"
-                onClick={() => videoFileInputRef.current?.click()}
-                data-testid="button-video-pick"
-              >
-                <Upload className="h-4 w-4" /> {t("boost.videoPick", { defaultValue: "Upload Media" })}
-              </button>
-            )}
-            <VideoUploadChooser purpose="boost" onUse={setVideoUrl} />
-          </div>
+          <BoostPromoVideoPanel
+            videoUrl={videoUrl}
+            uploading={videoUploading}
+            uploadPercent={videoUploadPercent}
+            onPick={() => videoFileInputRef.current?.click()}
+            onRemove={() => setVideoUrl(null)}
+            onUseSaved={setVideoUrl}
+            maxPreviewHeight={420}
+          />
 
           <BoostAudiencePanel
             ref={audiencePanelRef}

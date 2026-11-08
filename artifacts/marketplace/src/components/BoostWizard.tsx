@@ -288,7 +288,7 @@ export default function BoostWizard({ open, onClose }: Props) {
           if (["VIDEO_TYPE_UNSUPPORTED", "VIDEO_CONVERSION_FAILED"].includes(code))
             return t("boost.videoConversionFailed", { defaultValue: "Format vidéo non supporté. Utilisez MP4 ou MOV." });
           if (code === "VIDEO_DURATION_EXCEEDED")
-            return t("boost.videoTooLong", { defaultValue: "Video must be 5 minutes or shorter." });
+            return t("boost.videoTooLong", { defaultValue: "Video cannot exceed 2 minutes." });
           if (["UPLOAD_SERVICE_STARTING", "VIDEO_STORAGE_UNAVAILABLE", "VIDEO_STORAGE_FAILED", "CHUNK_STORAGE_FAILED"].includes(code))
             return t("boost.videoStorageFailed", { defaultValue: "Stockage vidéo indisponible. Réessayez dans quelques secondes." });
           if (code === "UPLOAD_INCOMPLETE" || code === "CHUNK_SIZE_INVALID")

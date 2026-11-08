@@ -34,7 +34,14 @@
 .fb-product-thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: transparent;
+}
+.fb-ad-images {
+  background: transparent !important;
+}
+.fb-ad-media {
+  background: transparent;
 }
 
 .fb-product-thumb-empty {
@@ -468,3 +475,267 @@
 .fb-cta-primary:disabled { opacity: 0.55; }
 .fb-field-error { border-color: #dc2626 !important; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12); }
 .fb-error-text { color: #dc2626; font-size: 0.75rem; font-weight: 600; margin-top: 0.35rem; }
+
+/* ── Boost Promo Video — crystal glassmorphism ───────────────────────────── */
+.bpv-glass {
+  --bpv-violet: #7c3aed;
+  --bpv-violet-deep: #5b21b6;
+  --bpv-glass: rgba(255, 255, 255, 0.72);
+  --bpv-glass-border: rgba(167, 139, 250, 0.45);
+  position: relative;
+  border-radius: 22px;
+  padding: 1rem 1rem 1.1rem;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(237, 233, 254, 0.55) 55%, rgba(219, 234, 254, 0.35)),
+    radial-gradient(120% 80% at 10% 0%, rgba(196, 181, 253, 0.35), transparent 55%),
+    radial-gradient(90% 70% at 100% 100%, rgba(147, 197, 253, 0.28), transparent 50%);
+  border: 1px solid var(--bpv-glass-border);
+  box-shadow:
+    0 18px 40px -28px rgba(91, 33, 182, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  overflow: hidden;
+}
+
+.bpv-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.bpv-head-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  box-shadow: 0 10px 18px -12px rgba(109, 40, 217, 0.9);
+  flex-shrink: 0;
+}
+
+.bpv-title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: var(--bpv-violet-deep);
+  letter-spacing: -0.01em;
+}
+
+.bpv-optional {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--bpv-violet);
+  background: rgba(237, 233, 254, 0.95);
+  border: 1px solid rgba(196, 181, 253, 0.7);
+}
+
+.bpv-help {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.bpv-help strong {
+  color: var(--bpv-violet);
+  font-weight: 800;
+}
+
+.bpv-body {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .bpv-body {
+    grid-template-columns: minmax(0, 1.4fr) minmax(12rem, 0.8fr);
+    grid-template-areas:
+      "player meta"
+      "status status"
+      "progress progress"
+      "actions actions";
+    align-items: start;
+  }
+  .bpv-player-col { grid-area: player; }
+  .bpv-meta-col { grid-area: meta; }
+  .bpv-status-row { grid-area: status; }
+  .bpv-progress-full { grid-area: progress; }
+  .bpv-actions { grid-area: actions; }
+}
+
+.bpv-player-col {
+  min-width: 0;
+}
+
+.bpv-meta-col {
+  display: none;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+@media (min-width: 768px) {
+  .bpv-meta-col { display: flex; }
+  .bpv-status-row { display: none; }
+  .bpv-progress-full { display: none; }
+}
+
+.bpv-status-card,
+.bpv-specs,
+.bpv-saved-panel {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  padding: 0.75rem;
+}
+
+.bpv-specs {
+  list-style: none;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.bpv-specs li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.bpv-specs span { color: #64748b; font-weight: 600; }
+.bpv-specs strong { color: #0f172a; font-weight: 800; text-align: right; }
+
+.bpv-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  align-items: center;
+}
+
+.bpv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #047857;
+}
+
+.bpv-chip.bad { color: #dc2626; }
+.bpv-chip-right { margin-left: auto; }
+
+.bpv-progress {
+  height: 0.38rem;
+  border-radius: 999px;
+  background: rgba(221, 214, 254, 0.85);
+  overflow: hidden;
+}
+
+.bpv-progress > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #34d399, #059669);
+  transition: width 0.2s ease;
+}
+
+.bpv-progress-done > i { width: 100%; }
+
+.bpv-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+@media (min-width: 480px) {
+  .bpv-actions {
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.bpv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 2.45rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  background: rgba(255, 255, 255, 0.85);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.bpv-btn-replace {
+  color: var(--bpv-violet);
+  border: 1.5px solid rgba(139, 92, 246, 0.55);
+}
+.bpv-btn-replace:hover { background: #f5f3ff; }
+
+.bpv-btn-remove {
+  color: #dc2626;
+  border: 1.5px solid rgba(248, 113, 113, 0.65);
+}
+.bpv-btn-remove:hover { background: #fef2f2; }
+
+.bpv-btn-saved {
+  width: 100%;
+  color: #fff;
+  border: 0;
+  background: linear-gradient(135deg, #a78bfa, #7c3aed);
+  box-shadow: 0 12px 22px -16px rgba(109, 40, 217, 0.8);
+}
+
+.bpv-saved-slot,
+.bpv-saved-wrap { min-width: 0; }
+
+@media (max-width: 479px) {
+  .bpv-saved-slot { grid-column: 1 / -1; }
+}
+
+.bpv-pick,
+.bpv-upload-progress {
+  width: 100%;
+  min-height: 3.4rem;
+  border-radius: 16px;
+  border: 1.5px dashed rgba(139, 92, 246, 0.55);
+  background: rgba(245, 243, 255, 0.75);
+  color: var(--bpv-violet-deep);
+  font-weight: 750;
+  font-size: 0.88rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.9rem;
+}
+
+.bpv-pick {
+  flex-direction: row;
+  gap: 0.5rem;
+}
+
+.bpv-pick:hover {
+  background: rgba(237, 233, 254, 0.95);
+  border-color: #8b5cf6;
+}
+
+.bpv-upload-progress .bpv-progress { width: 100%; max-width: 18rem; }
+
+.bpv-saved-panel {
+  margin-top: 0.35rem;
+}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronUp, FileVideo, Loader2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, FileVideo, Loader2, X } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import {
   cancelVideoUpload,
@@ -272,49 +272,103 @@ export function VideoUploadChooser({
   purpose,
   onUse,
   className,
+  compact = false,
 }: {
   purpose: VideoUploadPurpose;
   onUse: (url: string) => void;
   className?: string;
+  /** Compact glass CTA that expands into a deduped saved-video list. */
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [open, setOpen] = useState(false);
   const jobs = useSyncExternalStore(
     subscribeVideoUploads,
     getVideoUploads,
     getVideoUploads,
   );
-  const completed = useMemo(
-    () => user
-      ? jobs.filter(job => job.ownerId === user.id && job.purpose === purpose && job.state === "complete" && !!job.url)
-      : [],
-    [jobs, purpose, user?.id],
-  );
+  const completed = useMemo(() => {
+    if (!user) return [];
+    const list = jobs
+      .filter((job) => job.ownerId === user.id && job.purpose === purpose && job.state === "complete" && !!job.url)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    // Dedupe by resolved URL so the same upload record is not listed twice.
+    const seen = new Set<string>();
+    const unique: typeof list = [];
+    for (const job of list) {
+      const key = String(job.url);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(job);
+    }
+    return unique;
+  }, [jobs, purpose, user?.id]);
 
   if (completed.length === 0) return null;
+
+  const list = (
+    <div className="space-y-1.5">
+      {completed.map((job) => (
+        <div key={job.id} className="flex items-center gap-2">
+          <FileVideo className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-xs text-foreground" title={job.fileName}>
+            {job.fileName}
+          </span>
+          <button
+            type="button"
+            className="shrink-0 rounded-md border border-border bg-background px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
+            onClick={() => {
+              if (job.url) onUse(job.url);
+              setOpen(false);
+            }}
+            data-testid={`button-use-video-upload-${job.id}`}
+          >
+            {t("boost.useVideo", { defaultValue: "Use" })}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div className={cn("bpv-saved-wrap", className)} data-testid={`video-upload-chooser-${purpose}`}>
+        <button
+          type="button"
+          className="bpv-btn bpv-btn-saved"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          data-testid="boost-saved-videos-toggle"
+        >
+          <FileVideo className="h-3.5 w-3.5" />
+          {t("boost.savedVideosCount", {
+            count: completed.length,
+            defaultValue: "Saved Videos ({{count}})",
+          })}
+          {open
+            ? <ChevronDown className="h-3.5 w-3.5 ml-auto opacity-90" />
+            : <ChevronRight className="h-3.5 w-3.5 ml-auto opacity-90" />}
+        </button>
+        {open ? (
+          <div className="bpv-saved-panel mt-2 space-y-2">
+            <p className="text-[11px] text-slate-500">
+              {t("boost.completedUploadsHint", {
+                defaultValue: "Use a completed video without publishing or purchasing anything.",
+              })}
+            </p>
+            {list}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className={cn("space-y-2 rounded-lg border border-border/70 bg-muted/30 p-3", className)} data-testid={`video-upload-chooser-${purpose}`}>
       <p className="text-xs font-semibold text-foreground">{t("boost.completedUploads", { defaultValue: "Completed uploads" })}</p>
       <p className="text-xs text-muted-foreground">{t("boost.completedUploadsHint", { defaultValue: "Use a completed video without publishing or purchasing anything." })}</p>
-      <div className="space-y-1.5">
-        {completed.map(job => (
-          <div key={job.id} className="flex items-center gap-2">
-            <FileVideo className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate text-xs text-foreground" title={job.fileName}>
-              {job.fileName}
-            </span>
-            <button
-              type="button"
-              className="shrink-0 rounded-md border border-border bg-background px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
-              onClick={() => job.url && onUse(job.url)}
-              data-testid={`button-use-video-upload-${job.id}`}
-            >
-              {t("boost.useVideo", { defaultValue: "Use" })}
-            </button>
-          </div>
-        ))}
-      </div>
+      {list}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { MAX_BOOST_VIDEO_BYTES } from "@/lib/boostVideoUpload";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { BoostAudiencePanel, type BoostAudiencePanelHandle } from "@/components/boost/BoostAudiencePanel";
 import { AdaptiveVideoPlayer } from "@/components/media/AdaptiveVideoPlayer";
+import { extractVideoPoster } from "@/lib/videoPoster";
 import { scrollToInvalidField } from "@/lib/formValidation";
 import { formatPrice } from "@/lib/currency";
 import { cn } from "@/lib/utils";
@@ -92,6 +93,7 @@ export default function BoosterCreate() {
 
   // Video
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoPoster, setVideoPoster] = useState<string | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
@@ -295,9 +297,15 @@ export default function BoosterCreate() {
       toast({ title: t("booster.create.videoTooLong"), variant: "destructive" });
       return;
     }
+    // Capture a clear still immediately so the preview is never a blank white box.
+    const posterPromise = extractVideoPoster(file);
     setMediaPreview(objectUrl);
+    setVideoPoster(null);
     setUploading(true);
     setUploadPercent(0);
+    void posterPromise.then((frame) => {
+      if (frame) setVideoPoster(frame);
+    });
     try {
       if (!user?.id || !token) throw new Error("auth");
       const url = await startVideoUpload(file, token, {
@@ -308,11 +316,18 @@ export default function BoosterCreate() {
       });
       if (!url) throw new Error("no url");
       setVideoUrl(url);
+      // Keep the local blob for a crisp preview; remote signed URLs can be slow to paint.
+      setMediaPreview(objectUrl);
+      const frame = await posterPromise;
+      if (frame) setVideoPoster(frame);
       setUploadPercent(100);
       toast({ title: t("boost.videoReadyPreview", { defaultValue: "Video ready for preview." }) });
     } catch {
       toast({ title: t("booster.create.uploadFailed"), variant: "destructive" });
       setVideoUrl(null);
+      setVideoPoster(null);
+      setMediaPreview(null);
+      URL.revokeObjectURL(objectUrl);
     } finally {
       setUploading(false);
     }
@@ -321,6 +336,10 @@ export default function BoosterCreate() {
   const selectLibraryVideo = (url: string, titleHint?: string) => {
     setVideoUrl(url);
     setMediaPreview(url);
+    setVideoPoster(null);
+    void extractVideoPoster(url).then((frame) => {
+      if (frame) setVideoPoster(frame);
+    });
     if (!adTitle.trim() && titleHint) setAdTitle(titleHint);
   };
 
@@ -725,20 +744,62 @@ export default function BoosterCreate() {
                 }}
               />
               {uploading ? (
-                <div className="bp-upload">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-violet-600" />
-                  <div className="text-xs font-semibold text-violet-700 mt-2">
-                    {uploadPercent < 100
-                      ? t("boost.videoUploadingPct", { percent: uploadPercent, defaultValue: "Uploading video: {{percent}}%" })
-                      : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
-                  </div>
-                  <div className="h-1.5 rounded-full bg-violet-100 overflow-hidden max-w-xs mx-auto mt-2">
-                    <div className="h-full bg-violet-600 transition-all" style={{ width: `${uploadPercent}%` }} />
-                  </div>
+                <div className="space-y-2">
+                  {(mediaPreview || videoPoster) ? (
+                    <div className="relative overflow-hidden rounded-2xl bg-slate-900">
+                      {videoPoster ? (
+                        <img
+                          src={videoPoster}
+                          alt=""
+                          className="mx-auto max-h-[420px] w-full object-contain"
+                          data-testid="booster-upload-poster"
+                        />
+                      ) : mediaPreview ? (
+                        <AdaptiveVideoPlayer
+                          src={mediaPreview}
+                          poster={videoPoster}
+                          maxHeight={420}
+                          muted
+                          controls={false}
+                          onPoster={setVideoPoster}
+                        />
+                      ) : null}
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-3">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {uploadPercent < 100
+                            ? t("boost.videoUploadingPct", { percent: uploadPercent, defaultValue: "Uploading video: {{percent}}%" })
+                            : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
+                        </div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/20">
+                          <div className="h-full bg-violet-400 transition-all" style={{ width: `${uploadPercent}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bp-upload">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto text-violet-600" />
+                      <div className="text-xs font-semibold text-violet-700 mt-2">
+                        {uploadPercent < 100
+                          ? t("boost.videoUploadingPct", { percent: uploadPercent, defaultValue: "Uploading video: {{percent}}%" })
+                          : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
+                      </div>
+                      <div className="h-1.5 rounded-full bg-violet-100 overflow-hidden max-w-xs mx-auto mt-2">
+                        <div className="h-full bg-violet-600 transition-all" style={{ width: `${uploadPercent}%` }} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : mediaPreview ? (
                 <div className="space-y-2">
-                  <AdaptiveVideoPlayer src={mediaPreview} maxHeight={420} muted={false} controls />
+                  <AdaptiveVideoPlayer
+                    src={mediaPreview}
+                    poster={videoPoster}
+                    maxHeight={420}
+                    muted={false}
+                    controls
+                    onPoster={setVideoPoster}
+                  />
                   <button
                     type="button"
                     className="bp-btn bp-btn-ghost w-full"
@@ -945,10 +1006,11 @@ export default function BoosterCreate() {
               {mediaPreview || videoUrl ? (
                 <AdaptiveVideoPlayer
                   src={mediaPreview || videoUrl || ""}
-                  poster={resolvedImages[0]}
+                  poster={videoPoster || resolvedImages[0] || null}
                   maxHeight={360}
                   muted={false}
                   controls
+                  onPoster={setVideoPoster}
                 />
               ) : (
                 <div className="bp-preview-media" />

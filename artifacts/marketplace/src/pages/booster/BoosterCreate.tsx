@@ -737,7 +737,7 @@ export default function BoosterCreate() {
                 </div>
               ) : mediaPreview ? (
                 <div className="space-y-2">
-                  <AdaptiveVideoPlayer src={mediaPreview} maxHeight={280} muted controls />
+                  <AdaptiveVideoPlayer src={mediaPreview} maxHeight={420} muted={false} controls />
                   <button
                     type="button"
                     className="bp-btn bp-btn-ghost w-full"
@@ -945,8 +945,8 @@ export default function BoosterCreate() {
                 <AdaptiveVideoPlayer
                   src={mediaPreview || videoUrl || ""}
                   poster={resolvedImages[0]}
-                  maxHeight={320}
-                  muted
+                  maxHeight={360}
+                  muted={false}
                   controls
                 />
               ) : (

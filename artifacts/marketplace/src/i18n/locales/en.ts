@@ -605,6 +605,9 @@ export default {
     insufficientBalance: "Insufficient balance — you need ${{amount}}",
   
     quantity: "Quantity",
+    decreaseQty: "Decrease quantity",
+    increaseQty: "Increase quantity",
+    searchSimilar: "Search for similar items",
     freeShipping: "Free Shipping",
     addToWishlist: "Add to Wishlist",
     hoverToZoom: "Hover to zoom",

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef } from "react";
 import { useExpoPushToken } from "@/hooks/useExpoPushToken";
 import { usePushNavigation } from "@/hooks/usePushNavigation";
 import { initNotificationSound } from "@/lib/push";
-import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation, useSearch } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -24,6 +24,11 @@ import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { prefetchCriticalRoutes } from "@/lib/prefetchRoutes";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { trackSiteVisit } from "@/lib/siteVisit";
+import {
+  recordMarketplaceLocation,
+  takeBackNavigation,
+  takeScrollRestore,
+} from "@/lib/marketplaceNavHistory";
 
 // ── All auth pages are lazy — they are visited rarely and should not bloat
 // the main bundle that must download before the home page can render.
@@ -397,6 +402,7 @@ function LayoutRoutes() {
 function Router() {
   const { user, isLoading, token: authToken } = useAuth();
   const [location, setLocation] = useLocation();
+  const searchString = useSearch();
   useExpoPushToken();
   usePushNavigation(user, isLoading);
 
@@ -426,16 +432,78 @@ function Router() {
   // Register SW message listener so push notifications play a sound in-tab.
   useEffect(() => { initNotificationSound(); }, []);
 
-  // Scroll to top instantly on genuine navigation (not on initial mount)
+  // Track browse paths + scroll so PDP Back can restore filters / position.
   const isFirstRender = useRef(true);
+  const lastScrollRef = useRef(0);
+  const prevFullPathRef = useRef(`${location}${searchString || ""}`);
+
   useEffect(() => {
-    if (isFirstRender.current) { isFirstRender.current = false; return; }
     const pageScroller = document.querySelector<HTMLElement>("main.app-main-scroll");
+    const readScroll = () => {
+      if (pageScroller) return pageScroller.scrollTop;
+      return window.scrollY || document.documentElement.scrollTop || 0;
+    };
+    lastScrollRef.current = readScroll();
+    const onScroll = () => {
+      lastScrollRef.current = readScroll();
+    };
+    pageScroller?.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      pageScroller?.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    const pageScroller = document.querySelector<HTMLElement>("main.app-main-scroll");
+    // wouter useSearch() includes the leading "?" when present.
+    const nextFull = `${location}${searchString || ""}`;
+    const prevFull = prevFullPathRef.current;
+    const isBackNav = takeBackNavigation();
+
+    // Flush the page we are leaving (with its last known scroll / query string).
+    // Skip when this transition is PDP Back — consume() already updated the stack
+    // and re-recording the left listing would create A↔B navigation loops.
+    if (prevFull && prevFull !== nextFull && !isBackNav) {
+      recordMarketplaceLocation(prevFull, lastScrollRef.current);
+    }
+
+    const restore = isFirstRender.current ? null : takeScrollRestore();
+
+    // Re-seed the current page so a later PDP visit can return here
+    // (same-listing entries are skipped by consumeMarketplaceBackPath).
+    recordMarketplaceLocation(nextFull, restore ?? 0);
+
+    prevFullPathRef.current = nextFull;
+
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
+    // Query-only updates on the same pathname should keep scroll position.
+    const prevPathname = (prevFull.split("?")[0] || prevFull);
+    if (prevPathname === location && restore == null) {
+      return;
+    }
+
+    const applyScroll = (top: number) => {
       if (pageScroller) {
-        pageScroller.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        pageScroller.scrollTo({ top, left: 0, behavior: "auto" });
       }
-      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-  }, [location]);
+      window.scrollTo({ top, left: 0, behavior: "instant" as ScrollBehavior });
+    };
+
+    if (restore != null) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => applyScroll(restore));
+      });
+      return;
+    }
+
+    applyScroll(0);
+  }, [location, searchString]);
 
   // Redirect to profile completion only after auth has settled
   useEffect(() => {

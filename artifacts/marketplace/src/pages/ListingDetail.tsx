@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSEO } from "@/hooks/useSEO";
 import { useRoute, useLocation, Link } from "wouter";
-import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ArrowLeft, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal, Maximize2, Headphones } from "lucide-react";
+import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ArrowLeft, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal, Maximize2, Headphones, Minus, Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,11 @@ import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedChecko
 
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
 import { listingImageProps } from "@/lib/listingImage";
+import {
+  consumeMarketplaceBackPath,
+  markBackNavigation,
+  markScrollRestore,
+} from "@/lib/marketplaceNavHistory";
 import {
   CheckoutOutlineButton,
   CheckoutPrimaryButton,
@@ -92,7 +97,7 @@ export default function ListingDetail() {
   const [, setLocation] = useLocation();
   const { user, token } = useAuth();
   const { requireAuth } = useAuthRequired();
-  const { country: shoppingCountry } = useShoppingLocation();
+  const { country: shoppingCountry, city: shoppingCity } = useShoppingLocation();
   const { addItem, removeItem, isInCart, updateQuantity, items: cartItems } = useCart();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -1100,16 +1105,24 @@ export default function ListingDetail() {
     window.open(`https://wa.me/${phone}?text=${msg}`, "_blank", "noopener,noreferrer");
   };
 
-  /** Mobile PDP Back — history when available, otherwise marketplace home. */
+  /**
+   * PDP Back — return to the real previous marketplace page (search filters,
+   * category, seller profile, videos, home) with scroll restored when possible.
+   * Falls back to Home and refuses same-listing loops.
+   */
   const handlePdpBack = () => {
     try {
-      if (typeof window !== "undefined" && window.history.length > 1) {
-        window.history.back();
+      const target = consumeMarketplaceBackPath(id);
+      if (target?.path) {
+        markBackNavigation();
+        markScrollRestore(target.scroll ?? 0);
+        setLocation(target.path);
         return;
       }
     } catch {
       /* ignore */
     }
+    markBackNavigation();
     setLocation("/");
   };
 
@@ -1446,6 +1459,23 @@ export default function ListingDetail() {
     listing.status === "available"
     && (rawStock == null || maxBuyQty > 0);
 
+  const adjustBuyQty = (delta: number) => {
+    if (!canPurchaseQty) return;
+    setBuyQty((q) => Math.min(Math.max(1, q + delta), Math.max(1, maxBuyQty)));
+  };
+
+  const handleSearchSimilar = () => {
+    const params = new URLSearchParams();
+    const category = listing.categorySlug || listing.category;
+    if (category) params.set("category", category);
+    if (listing.subcategorySlug || listing.subcategory) {
+      params.set("subcategory", String(listing.subcategorySlug || listing.subcategory));
+    }
+    if (!category && listing.title) params.set("q", listing.title);
+    const qs = params.toString();
+    setLocation(qs ? `/search?${qs}` : "/search");
+  };
+
   const handleAddToCartClick = () => {
     if (!canPurchaseQty) {
       toast({ title: t("checkout.soldBadge"), variant: "destructive" });
@@ -1594,60 +1624,70 @@ export default function ListingDetail() {
             <Input
               value={pdpSearchQ}
               onChange={(e) => setPdpSearchQ(e.target.value)}
-              placeholder={t("home.searchPlaceholder", { defaultValue: "Search for products, brands, and more..." })}
-              className="pl-9 pr-3 h-11 rounded-lg bg-white border-0 text-sm text-foreground shadow-sm focus-visible:ring-2 focus-visible:ring-[#F97316]"
+              placeholder={t("home.searchPlaceholder", { defaultValue: "Search for anything..." })}
+              className="pl-9 pr-3 h-10 rounded-lg bg-white border-0 text-sm text-foreground shadow-sm focus-visible:ring-2 focus-visible:ring-[#F97316]"
               data-testid="input-search-pdp-mobile"
             />
           </div>
           <Button
             type="submit"
             size="icon"
-            className="h-11 w-11 rounded-lg bg-[#F97316] hover:bg-[#ea6a0c] text-white shrink-0"
+            className="h-10 w-10 rounded-lg bg-[#F97316] hover:bg-[#ea6a0c] text-white shrink-0"
             data-testid="button-search-pdp-mobile"
             aria-label={t("buttons.search")}
           >
-            <Search className="h-5 w-5" />
+            <Search className="h-4 w-4" />
           </Button>
         </form>
-        {((listing as any).city || listing.location || country) && (
+        {(shoppingCity || user?.location || (listing as any).city || listing.location || shoppingCountry || country) && (
           <div className="flex items-center gap-1.5 text-[12px] text-white/95" data-testid="pdp-deliver-to">
             <MapPin className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">
               {t("home.deliverTo", { defaultValue: "Deliver to" })}{" "}
-              <strong>{(listing as any).city ?? listing.location ?? country}</strong>
+              <strong>{shoppingCity || user?.location || (listing as any).city || listing.location || shoppingCountry || country}</strong>
             </span>
             <ChevronRight className="h-3.5 w-3.5 ml-auto shrink-0 opacity-80" />
           </div>
         )}
       </div>
 
-      {/* Breadcrumbs */}
+      {/* Breadcrumbs — Back precedes Home / category trail */}
       <nav
-        className="px-3 py-2 text-[12px] text-[#0066c0] bg-white border-b border-border/40 overflow-x-auto scrollbar-none whitespace-nowrap"
+        className="px-3 py-1.5 text-[12px] text-[#0066c0] bg-white border-b border-border/40 overflow-x-auto scrollbar-none whitespace-nowrap flex items-center gap-0"
         aria-label="Breadcrumb"
         data-testid="pdp-breadcrumbs"
       >
-        <Link href="/" className="hover:underline text-[#0066c0]">{t("nav.home")}</Link>
-        <span className="mx-1.5 text-muted-foreground">›</span>
+        <button
+          type="button"
+          onClick={handlePdpBack}
+          aria-label={t("common.back", { defaultValue: "Back" })}
+          data-testid="button-pdp-back"
+          className="inline-flex items-center gap-0.5 shrink-0 font-semibold text-[#0066c0] hover:underline mr-1.5 pr-1.5 border-r border-border/50"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
+          <span>{t("common.back", { defaultValue: "Back" })}</span>
+        </button>
+        <Link href="/" className="hover:underline text-[#0066c0] shrink-0">{t("nav.home")}</Link>
+        <span className="mx-1.5 text-muted-foreground shrink-0">›</span>
         <Link
           href={`/search?category=${encodeURIComponent(listing.categorySlug || listing.category)}`}
-          className="hover:underline text-[#0066c0]"
+          className="hover:underline text-[#0066c0] shrink-0"
         >
           {listing.category}
         </Link>
         {listing.subcategory && (
           <>
-            <span className="mx-1.5 text-muted-foreground">›</span>
+            <span className="mx-1.5 text-muted-foreground shrink-0">›</span>
             <Link
               href={`/search?category=${encodeURIComponent(listing.categorySlug || listing.category)}&subcategory=${encodeURIComponent(listing.subcategorySlug || listing.subcategory)}`}
-              className="hover:underline text-[#0066c0]"
+              className="hover:underline text-[#0066c0] shrink-0"
             >
               {listing.subcategory}
             </Link>
           </>
         )}
-        <span className="mx-1.5 text-muted-foreground">›</span>
-        <span className="text-foreground/80 truncate inline-block max-w-[40vw] lg:max-w-none align-bottom">{listing.title}</span>
+        <span className="mx-1.5 text-muted-foreground shrink-0">›</span>
+        <span className="text-foreground/80 truncate inline-block max-w-[42vw] lg:max-w-[28rem] align-bottom">{listing.title}</span>
       </nav>
 
       {/* Desktop three-column product stage */}
@@ -1730,37 +1770,28 @@ export default function ListingDetail() {
               </div>
             )}
 
-            {/* Mobile Back — top left of media (does not replace header hamburger) */}
-            <button
-              type="button"
-              onClick={handlePdpBack}
-              aria-label={t("common.back", { defaultValue: "Back" })}
-              data-testid="button-pdp-back"
-              className="lg:hidden absolute top-2 left-2 z-20 w-9 h-9 rounded-full bg-white border border-border/70 shadow-sm flex items-center justify-center active:scale-90 transition-transform"
-            >
-              <ArrowLeft className="h-4 w-4 text-[hsl(152,65%,18%)]" strokeWidth={2.5} aria-hidden="true" />
-            </button>
-
-            {/* Share + Favorite — top right of media */}
-            <div className="absolute top-2 right-2 z-20 flex flex-col gap-2">
+            {/* Share + Favorite — compact top-right controls */}
+            <div className="absolute top-2 right-2 z-20 flex flex-col gap-1.5">
               <button
+                type="button"
                 onClick={handleShare}
-                aria-label="Share listing"
+                aria-label={t("buttons.share")}
                 data-testid="button-share-listing"
-                className="w-9 h-9 rounded-full bg-white border border-border/70 shadow-sm flex items-center justify-center active:scale-90 transition-transform"
+                className="w-8 h-8 rounded-full bg-white/95 border border-border/60 shadow-sm flex items-center justify-center active:scale-90 transition-transform"
               >
-                <Share2 className="h-4 w-4 text-foreground" aria-hidden="true" />
+                <Share2 className="h-3.5 w-3.5 text-foreground" aria-hidden="true" />
               </button>
               <button
+                type="button"
                 onClick={handleFav}
-                aria-label={isFav ? "Remove favorite" : "Add to favorites"}
+                aria-label={isFav ? t("listing.inWishlist", { defaultValue: "In Wishlist" }) : t("listing.addToWishlist", { defaultValue: "Add to Wishlist" })}
                 data-testid="button-favorite"
                 className={cn(
-                  "w-9 h-9 rounded-full border shadow-sm flex items-center justify-center active:scale-90 transition-all",
-                  isFav ? "bg-red-500 border-red-500" : "bg-white border-border/70",
+                  "w-8 h-8 rounded-full border shadow-sm flex items-center justify-center active:scale-90 transition-all",
+                  isFav ? "bg-red-500 border-red-500" : "bg-white/95 border-border/60",
                 )}
               >
-                <Heart className={cn("h-4 w-4", isFav ? "text-white fill-white" : "text-foreground")} aria-hidden="true" />
+                <Heart className={cn("h-3.5 w-3.5", isFav ? "text-white fill-white" : "text-foreground")} aria-hidden="true" />
               </button>
             </div>
 
@@ -1768,16 +1799,18 @@ export default function ListingDetail() {
             {totalMedia > 1 && (
               <>
                 <button
+                  type="button"
                   onClick={() => setImgIndex(i => (i - 1 + totalMedia) % totalMedia)}
-                  aria-label="Previous image"
+                  aria-label={t("search.previous", { defaultValue: "Previous" })}
                   className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white border border-border shadow-sm text-foreground rounded-full p-2 z-10 transition-colors"
                   data-testid="button-img-prev"
                 >
                   <ChevronLeft className="h-5 w-5" aria-hidden="true" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => setImgIndex(i => (i + 1) % totalMedia)}
-                  aria-label="Next image"
+                  aria-label={t("search.next", { defaultValue: "Next" })}
                   className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white border border-border shadow-sm text-foreground rounded-full p-2 z-10 transition-colors"
                   data-testid="button-img-next"
                 >
@@ -1787,16 +1820,27 @@ export default function ListingDetail() {
             )}
 
             {listing.isBoosted && (
-              <div className="absolute top-2 left-2 z-10 bg-[hsl(152,65%,22%)] text-white text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-sm flex items-center gap-1 shadow-sm">
+              <div className="absolute top-2 left-2 z-10 bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white text-[10px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
                 <Zap className="h-3 w-3" aria-hidden="true" /> {t("listing.featured")}
               </div>
             )}
 
             {currentMedia?.isPromo && (
-              <div className="absolute bottom-10 left-2 z-10 bg-orange-500 text-white text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-sm flex items-center gap-1 shadow-sm">
+              <div className="absolute bottom-12 left-2 z-10 bg-orange-500 text-white text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-sm flex items-center gap-1 shadow-sm">
                 <Film className="h-3 w-3" aria-hidden="true" /> {t("tr.promoVideo")}
               </div>
             )}
+
+            {/* Search similar items — category/subcategory browse from real listing data */}
+            <button
+              type="button"
+              onClick={handleSearchSimilar}
+              data-testid="button-search-similar"
+              className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 inline-flex items-center gap-1.5 max-w-[min(92%,280px)] px-3 py-1.5 rounded-full bg-white/92 backdrop-blur-sm border border-border/50 shadow-sm text-[11px] font-semibold text-foreground hover:bg-white active:scale-[0.98] transition-all"
+            >
+              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="truncate">{t("listing.searchSimilar")}</span>
+            </button>
 
             {/* Desktop hover-to-zoom */}
             {currentMedia?.type !== "video" && (
@@ -1865,12 +1909,12 @@ export default function ListingDetail() {
       <div className="min-w-0">
 
         {/* ── TITLE + RATING + PRICE ── */}
-        <div className="px-4 py-3 space-y-2.5 border-b border-border/60 lg:border-0 lg:px-0 lg:pt-0">
-          <h1 className="text-[17px] md:text-[22px] lg:text-[24px] font-bold text-foreground leading-snug tracking-tight" data-testid="pdp-title">
+        <div className="px-4 py-2.5 space-y-1.5 border-b border-border/60 lg:border-0 lg:px-0 lg:pt-0">
+          <h1 className="text-[16px] md:text-[22px] lg:text-[24px] font-bold text-foreground leading-snug tracking-tight" data-testid="pdp-title">
             {listing.title}
           </h1>
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
             <button
               type="button"
               onClick={() => setLocation(`/profile/${listing.sellerId}`)}
@@ -1880,39 +1924,44 @@ export default function ListingDetail() {
               {t("listing.soldBy")} {listing.sellerName}
               {listing.sellerIsVerified && <BadgeCheck className="inline h-3.5 w-3.5 ml-1 fill-blue-500 text-white align-text-bottom" />}
             </button>
-            <button
-              type="button"
-              onClick={() => handlePdpTabClick("reviews")}
-              className="flex items-center gap-1 text-[#0066c0] hover:underline"
-              data-testid="pdp-rating-link"
-            >
-              <span className="flex items-center gap-0.5" aria-hidden>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <Star
-                    key={n}
-                    className={cn(
-                      "h-3.5 w-3.5",
-                      n <= Math.round(listing.sellerRating)
-                        ? "fill-amber-400 text-amber-400"
-                        : "fill-muted text-muted-foreground/40",
-                    )}
-                  />
-                ))}
-              </span>
-              <span className="tabular-nums font-medium">{listing.sellerRating.toFixed(1)}</span>
-            </button>
-            {listing.isBoosted && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-[#F97316] text-white px-2 py-0.5 rounded-sm">
-                <Zap className="h-3 w-3" /> {t("listing.featured")}
-              </span>
-            )}
           </div>
+          <button
+            type="button"
+            onClick={() => handlePdpTabClick("reviews")}
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="pdp-rating-link"
+          >
+            <span className="flex items-center gap-0.5" aria-hidden>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Star
+                  key={n}
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    n <= Math.round(listing.sellerRating)
+                      ? "fill-amber-400 text-amber-400"
+                      : "fill-transparent text-muted-foreground/45",
+                  )}
+                />
+              ))}
+            </span>
+            <span className="tabular-nums text-[13px] text-muted-foreground">
+              {listing.sellerRating.toFixed(1)}
+              {typeof (listing as any).sellerReviewCount === "number" && (
+                <span>
+                  {" "}({t("profile.reviewCount", {
+                    count: (listing as any).sellerReviewCount,
+                    defaultValue: "{{count}} reviews",
+                  })})
+                </span>
+              )}
+            </span>
+          </button>
 
           {/* Price — real promo savings only */}
-          <div className="flex items-baseline gap-2.5 flex-wrap pt-0.5">
+          <div className="flex items-baseline gap-2.5 flex-wrap pt-1">
             <span
               className={cn(
-                "text-[28px] font-bold tabular-nums leading-none",
+                "text-[26px] md:text-[28px] font-bold tabular-nums leading-none",
                 promoValidation?.valid ? "text-[hsl(152,65%,22%)]" : "text-foreground",
               )}
               data-testid="pdp-price"
@@ -2020,34 +2069,13 @@ export default function ListingDetail() {
           {promoError && <p className="text-xs text-red-500">{promoError}</p>}
         </div>
 
-        {/* ── QUANTITY (mobile / tablet) — Add/Buy stay in the fixed bottom bar ── */}
-        {!isOwner && listing.status === "available" && (
-          <div className="px-4 py-3 space-y-3 border-b border-border/60 lg:hidden">
-            <label className="block">
-              <span className="sr-only">{t("listing.quantity", { defaultValue: "Quantity" })}</span>
-              <div className="relative">
-                <select
-                  value={buyQty}
-                  onChange={(e) => setBuyQty(Number(e.target.value))}
-                  disabled={!canPurchaseQty}
-                  className="w-full appearance-none h-11 rounded-lg bg-muted/60 border border-border px-3 pr-10 text-[14px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-[#F97316]/40 disabled:opacity-50"
-                  data-testid="pdp-quantity-select"
-                >
-                  {Array.from({ length: Math.max(1, maxBuyQty) }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>
-                      {t("listing.quantity", { defaultValue: "Quantity" })}: {n}
-                    </option>
-                  ))}
-                </select>
-                <ChevronRight className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 rotate-90 text-muted-foreground" />
-              </div>
-            </label>
-            {rawStock != null && (
-              <p className="text-[12px] text-muted-foreground tabular-nums">
-                {t("listing.stockCurrent", { count: maxBuyQty })} · {conditionLabel}
-                {(listing as any).weightLbs != null && <> · {(listing as any).weightLbs} lbs</>}
-              </p>
-            )}
+        {/* Stock hint on mobile — quantity lives in the sticky purchase bar */}
+        {!isOwner && listing.status === "available" && rawStock != null && (
+          <div className="px-4 py-2 border-b border-border/60 lg:hidden">
+            <p className="text-[12px] text-muted-foreground tabular-nums">
+              {t("listing.stockCurrent", { count: maxBuyQty })} · {conditionLabel}
+              {(listing as any).weightLbs != null && <> · {(listing as any).weightLbs} lbs</>}
+            </p>
           </div>
         )}
       </div>{/* end center column */}
@@ -2107,21 +2135,35 @@ export default function ListingDetail() {
 
           {!isOwner && listing.status === "available" && (
             <>
-              <label className="block">
-                <select
-                  value={buyQty}
-                  onChange={(e) => setBuyQty(Number(e.target.value))}
-                  disabled={!canPurchaseQty}
-                  className="w-full appearance-none h-11 rounded-lg bg-muted/70 border border-border px-3 text-[14px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#F97316]/40"
-                  data-testid="pdp-quantity-select-desktop"
+              <div
+                className="flex items-center justify-between h-11 rounded-full border border-border bg-muted/40 px-1.5"
+                data-testid="pdp-quantity-select-desktop"
+              >
+                <span className="sr-only">{t("listing.quantity", { defaultValue: "Quantity" })}</span>
+                <button
+                  type="button"
+                  onClick={() => adjustBuyQty(-1)}
+                  disabled={!canPurchaseQty || buyQty <= 1}
+                  aria-label={t("listing.decreaseQty")}
+                  className="h-9 w-9 rounded-full flex items-center justify-center text-foreground hover:bg-muted disabled:opacity-40"
+                  data-testid="button-qty-decrease-desktop"
                 >
-                  {Array.from({ length: Math.max(1, maxBuyQty) }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>
-                      {t("listing.quantity", { defaultValue: "Quantity" })}: {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <Minus className="h-4 w-4" aria-hidden="true" />
+                </button>
+                <span className="min-w-[2ch] text-center text-[15px] font-bold tabular-nums" aria-live="polite">
+                  {buyQty}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => adjustBuyQty(1)}
+                  disabled={!canPurchaseQty || buyQty >= maxBuyQty}
+                  aria-label={t("listing.increaseQty")}
+                  className="h-9 w-9 rounded-full flex items-center justify-center text-foreground hover:bg-muted disabled:opacity-40"
+                  data-testid="button-qty-increase-desktop"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
 
               <button
                 type="button"
@@ -2143,9 +2185,15 @@ export default function ListingDetail() {
                 onClick={handleBuyNowClick}
                 disabled={!canPurchaseQty}
                 data-testid="button-buy-now-desktop"
-                className="w-full h-11 rounded-full font-bold text-[14px] text-white bg-[#F97316] hover:bg-[#ea6a0c] flex items-center justify-center transition-all disabled:opacity-50 shadow-sm"
+                className="w-full h-[46px] rounded-full font-bold text-[14px] text-white bg-[#F97316] hover:bg-[#ea6a0c] flex flex-col items-center justify-center leading-tight transition-all disabled:opacity-50 shadow-sm"
               >
-                {t("buttons.buyNow")}
+                <span>{t("buttons.buyNow")}</span>
+                <span className="text-[11px] font-semibold opacity-90">
+                  {promoValidation?.valid
+                    ? `$${promoValidation.finalPrice.toFixed(2)}`
+                    : formatPrice(listing.price, country, (listing as any).currency)}
+                  {buyQty > 1 ? ` ×${buyQty}` : ""}
+                </span>
               </button>
             </>
           )}
@@ -2679,48 +2727,85 @@ export default function ListingDetail() {
 
         {/* Spacer so scroll content clears the always-fixed mobile purchase bar. */}
         {!isOwner && listing.status === "available" && (
-          <div className="h-[calc(4.75rem+env(safe-area-inset-bottom))] lg:hidden" aria-hidden="true" />
+          <div className="h-[calc(4.25rem+env(safe-area-inset-bottom,0px))] lg:hidden" aria-hidden="true" />
         )}
 
       </div>
 
-      {/* Always-fixed mobile Add to Cart / Buy — stays at bottom while the page scrolls.
-          Portal escapes app-main-scroll paint containment. */}
+      {/* Compact sticky purchase bar: Qty | Add to Cart | Buy Now */}
       {!isOwner && listing.status === "available" && !buyNowOpen && createPortal(
-        <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2 px-3 py-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))] lg:hidden">
+        <div
+          data-testid="listing-purchase-bar"
+          className="fm-pdp-purchase-bar fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_16px_rgba(0,0,0,0.07)] flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] lg:hidden"
+        >
+          {/* Quantity stepper */}
+          <div
+            className="flex items-center h-11 min-h-[44px] max-h-[46px] rounded-full border border-border bg-muted/50 shrink-0"
+            data-testid="pdp-quantity-stepper"
+          >
+            <button
+              type="button"
+              onClick={() => adjustBuyQty(-1)}
+              disabled={!canPurchaseQty || buyQty <= 1}
+              aria-label={t("listing.decreaseQty")}
+              data-testid="button-qty-decrease"
+              className="h-11 w-9 sm:w-10 flex items-center justify-center rounded-l-full text-foreground disabled:opacity-40 active:bg-muted"
+            >
+              <Minus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
+            </button>
+            <span
+              className="min-w-[1.5rem] sm:min-w-[1.75rem] text-center text-[14px] font-bold tabular-nums text-foreground"
+              aria-live="polite"
+              aria-label={t("listing.quantity", { defaultValue: "Quantity" })}
+            >
+              {buyQty}
+            </span>
+            <button
+              type="button"
+              onClick={() => adjustBuyQty(1)}
+              disabled={!canPurchaseQty || buyQty >= maxBuyQty}
+              aria-label={t("listing.increaseQty")}
+              data-testid="button-qty-increase"
+              className="h-11 w-9 sm:w-10 flex items-center justify-center rounded-r-full text-foreground disabled:opacity-40 active:bg-muted"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
+            </button>
+          </div>
 
-          {/* Add to Cart — Amazon yellow */}
+          {/* Add to Cart — compact yellow */}
           <button
+            type="button"
             onClick={handleAddToCartClick}
             data-testid="button-add-to-cart"
             disabled={!canPurchaseQty}
             className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 h-12 rounded-full font-bold text-sm transition-all active:scale-95 disabled:opacity-50",
+              "flex-[1.05] min-w-0 h-11 min-h-[44px] max-h-[46px] flex items-center justify-center gap-1 sm:gap-1.5 px-2 rounded-full font-bold transition-all active:scale-[0.98] disabled:opacity-50",
               isInCart(id)
                 ? "bg-[hsl(152,65%,22%)] text-white"
                 : "bg-[#FFD814] hover:bg-[#F7CA00] text-foreground shadow-sm",
             )}
           >
-            <ShoppingCart className="h-4 w-4 flex-shrink-0" />
-            <span className="text-[13px]">{isInCart(id) ? t("listing.inCart") : t("listing.addToCart")}</span>
+            <ShoppingCart className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+            <span className="text-[12px] sm:text-[13px] truncate">
+              {isInCart(id) ? t("listing.inCart") : t("listing.addToCart")}
+            </span>
           </button>
 
-          {/* Buy Now — Flexa orange */}
+          {/* Buy Now — compact orange with live price */}
           <button
+            type="button"
             onClick={handleBuyNowClick}
             data-testid="button-buy-now"
             disabled={!canPurchaseQty}
-            className="flex-[1.4] h-12 flex items-center justify-center gap-1.5 rounded-full font-bold text-sm text-white bg-[#F97316] hover:bg-[#ea6a0c] shadow-sm active:scale-95 transition-all disabled:opacity-50"
+            className="flex-[1.15] min-w-0 h-11 min-h-[44px] max-h-[46px] px-2 flex flex-col items-center justify-center rounded-full font-bold text-white bg-[#F97316] hover:bg-[#ea6a0c] shadow-sm active:scale-[0.98] transition-all disabled:opacity-50 leading-tight"
           >
-            <div className="flex flex-col items-start leading-tight">
-              <span className="text-[13px] font-bold">{t("buttons.buyNow")}</span>
-              <span className="text-[10px] font-semibold opacity-90">
-                {promoValidation?.valid
-                  ? `$${promoValidation.finalPrice.toFixed(2)}`
-                  : formatPrice(listing.price, country, (listing as any).currency)}
-                {buyQty > 1 ? ` ×${buyQty}` : ""}
-              </span>
-            </div>
+            <span className="text-[12px] sm:text-[13px] font-bold truncate max-w-full">{t("buttons.buyNow")}</span>
+            <span className="text-[10px] font-semibold opacity-95 tabular-nums truncate max-w-full">
+              {promoValidation?.valid
+                ? `$${promoValidation.finalPrice.toFixed(2)}`
+                : formatPrice(listing.price, country, (listing as any).currency)}
+              {buyQty > 1 ? ` ×${buyQty}` : ""}
+            </span>
           </button>
         </div>,
         document.body

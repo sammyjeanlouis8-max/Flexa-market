@@ -312,25 +312,33 @@ describe("video upload queue persistence and resume", () => {
     expect(memory.jobs.get(id)).toMatchObject({ state: "complete", progress: 100 });
   });
 
-  it("keeps the source blob after a network failure so retry remains possible", async () => {
+  it("keeps the source blob after a network failure and does not reject the waiter", async () => {
     vi.useFakeTimers();
     const queue = await queueModule();
     setFetch(() => {
       throw new TypeError("offline");
     });
 
+    let settled = false;
     const upload = queue.startVideoUpload(videoFile(), "token-a", {
       ownerId: 7,
       purpose: "listing",
     });
-    const rejection = expect(upload).rejects.toThrow("offline");
+    void upload.then(
+      () => { settled = true; },
+      () => { settled = true; },
+    );
     await Promise.resolve();
     await vi.advanceTimersByTimeAsync(20_000);
-    await rejection;
 
     const id = [...memory.jobs.keys()][0];
-    expect(memory.fetchCalls).toHaveLength(4);
-    expect(memory.jobs.get(id)).toMatchObject({ state: "paused", error: "offline" });
+    // Background uploads stay pending so Boost/Sell do not toast mid-transfer.
+    expect(settled).toBe(false);
+    expect(memory.fetchCalls.length).toBeGreaterThanOrEqual(4);
+    expect(memory.jobs.get(id)).toMatchObject({
+      state: "waiting_for_connection",
+      error: "Waiting for connection.",
+    });
     expect(memory.files.has(id)).toBe(true);
   });
 });

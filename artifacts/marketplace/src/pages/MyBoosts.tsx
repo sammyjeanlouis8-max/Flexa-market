@@ -140,7 +140,7 @@ export default function MyBoosts() {
       toast({ title: t("myBoosts.videoAdded", { defaultValue: "Videyo ajoute ✓" }) });
       fetchBoosts();
     } catch {
-      toast({ title: t("myBoosts.videoUploadFailed", { defaultValue: "Echèk telechajman videyo" }), variant: "destructive" });
+      // Background queue owns the transfer; no dynamic failure toast.
     } finally {
       setUploadingBoostId(null);
       pendingBoostRef.current = null;

@@ -271,30 +271,50 @@ function run(job: StoredJob) {
         });
       } else await execute(job, controller.signal);
     } catch (error) {
+      let hardFail = false;
+      let recoverable = false;
       if (job.state !== "cancelled") {
         const message = error instanceof Error ? error.message : "Upload interrupted. Try again.";
         const offline =
           (error instanceof BoostVideoUploadError && error.code === "UPLOAD_NETWORK_ERROR") ||
           isOfflineError(error) ||
           (typeof navigator !== "undefined" && navigator.onLine === false);
-        const hardFail =
+        hardFail =
           error instanceof BoostVideoUploadError && !error.retryable && error.status !== 401 && !offline;
+        // Aborts (identity switch / cancel) are terminal for the waiter; network
+        // blips and soft pauses stay in the background queue and must not reject
+        // callers — otherwise Boost/Sell fire dynamic error toasts while the
+        // transfer is still recoverable on Bouillon.
+        const aborted = controller.signal.aborted;
         const state: VideoUploadState = hardFail
           ? "failed"
           : offline
             ? "waiting_for_connection"
             : "paused";
+        recoverable = !hardFail && !aborted;
         await update(job, {
           state,
-          error: controller.signal.aborted
+          error: aborted
             ? "Upload paused. Sign in to resume."
             : offline
               ? "Waiting for connection."
               : message,
         }).catch(() => {});
       }
-      waiters.get(job.id)?.reject(error);
-      waiters.delete(job.id);
+      if (!recoverable) {
+        waiters.get(job.id)?.reject(error);
+        waiters.delete(job.id);
+      } else {
+        // Soft failure: keep the waiter and retry shortly in the background.
+        window.setTimeout(() => {
+          if (
+            identity?.ownerId === job.ownerId &&
+            (job.state === "waiting_for_connection" || job.state === "paused")
+          ) {
+            retryVideoUpload(job.id);
+          }
+        }, 2_500);
+      }
     } finally {
       controller.abort();
       active.delete(job.id);

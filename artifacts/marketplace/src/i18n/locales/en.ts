@@ -1594,6 +1594,7 @@ export default {
     videoUploadAuth: "Sign in again before uploading this video.",
     videoUploadExpired: "This upload expired. Select the video again to restart safely.",
     videoUploadNetwork: "The connection was interrupted. Check your internet connection and try again.",
+    videoUploadBackground: "Upload continues in the background. Open Bouillon in the menu to check status.",
     videoConversionFailed: "This video could not be converted. Export it as MP4 or MOV, then try again.",
     videoStorageFailed: "The video could not be saved right now. Your account was not charged; please retry.",
     videoUploadIncomplete: "Part of the video did not arrive correctly. Please select it again.",

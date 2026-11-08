@@ -21,10 +21,7 @@ import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
 import { formatHTG, formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { SUPPORTED_COUNTRIES, COUNTRY_FLAGS, citiesFor } from "@/lib/countries";
-import {
-  BoostVideoUploadError,
-  MAX_BOOST_VIDEO_BYTES,
-} from "@/lib/boostVideoUpload";
+import { MAX_BOOST_VIDEO_BYTES } from "@/lib/boostVideoUpload";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { probeVideoDuration } from "@/lib/probeVideoDuration";
@@ -292,24 +289,10 @@ export default function BoostPage() {
         onProgress: setVideoUploadPercent,
       }));
       setVideoUploadPercent(100);
-    } catch (error) {
-      const code = error instanceof BoostVideoUploadError ? error.code : "VIDEO_UPLOAD_FAILED";
-      const descriptionKey = (() => {
-        if (["UPLOAD_AUTH_REQUIRED", "UPLOAD_OWNER_MISMATCH"].includes(code)) return "boost.videoUploadAuth";
-        if (["UPLOAD_SESSION_EXPIRED", "UPLOAD_SESSION_NOT_FOUND"].includes(code)) return "boost.videoUploadExpired";
-        if (["UPLOAD_NETWORK_ERROR", "UPLOAD_STATUS_UNAVAILABLE"].includes(code)) return "boost.videoUploadNetwork";
-        if (["VIDEO_TYPE_UNSUPPORTED", "VIDEO_CONVERSION_FAILED"].includes(code)) return "boost.videoConversionFailed";
-        if (code === "VIDEO_DURATION_EXCEEDED") return "boost.videoTooLong";
-        if (["UPLOAD_SERVICE_STARTING", "VIDEO_STORAGE_UNAVAILABLE", "VIDEO_STORAGE_FAILED", "CHUNK_STORAGE_FAILED"].includes(code)) return "boost.videoStorageFailed";
-        if (code === "UPLOAD_INCOMPLETE" || code === "CHUNK_SIZE_INVALID") return "boost.videoUploadIncomplete";
-        if (code === "VIDEO_PROCESSING_TIMEOUT") return "boost.videoProcessingTimeout";
-        return "boost.videoUploadRetry";
-      })();
-      toast({
-        title: t("boost.videoUploadFailed"),
-        description: t(descriptionKey),
-        variant: "destructive",
-      });
+    } catch {
+      // Background queue owns retries / failures — no dynamic toast here.
+      // Open Bouillon in the menu to see waiting or failed uploads.
+      setVideoUrl(null);
     } finally {
       setVideoUploading(false);
     }
@@ -795,22 +778,8 @@ export default function BoostPage() {
         queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(listingId) });
         setAbvUploadPercent(100);
         setAbvSuccess(true);
-      } catch (error) {
-        const code = error instanceof BoostVideoUploadError ? error.code : "VIDEO_UPLOAD_FAILED";
-        const descKey = ((): string => {
-          if (["UPLOAD_AUTH_REQUIRED", "UPLOAD_OWNER_MISMATCH"].includes(code)) return "boost.videoUploadAuth";
-          if (["UPLOAD_SESSION_EXPIRED", "UPLOAD_SESSION_NOT_FOUND"].includes(code)) return "boost.videoUploadExpired";
-          if (["UPLOAD_NETWORK_ERROR", "UPLOAD_STATUS_UNAVAILABLE"].includes(code)) return "boost.videoUploadNetwork";
-          if (["VIDEO_TYPE_UNSUPPORTED", "VIDEO_CONVERSION_FAILED"].includes(code)) return "boost.videoConversionFailed";
-          if (code === "VIDEO_DURATION_EXCEEDED") return "boost.videoTooLong";
-          if (["UPLOAD_SERVICE_STARTING", "VIDEO_STORAGE_UNAVAILABLE", "VIDEO_STORAGE_FAILED", "CHUNK_STORAGE_FAILED"].includes(code)) return "boost.videoStorageFailed";
-          return "boost.videoUploadRetry";
-        })();
-        toast({
-          title: t("boost.videoUploadFailed"),
-          description: t(descKey),
-          variant: "destructive",
-        });
+      } catch {
+        // Keep upload in the background queue; surface status on Bouillon only.
       } finally {
         setAbvUploading(false);
       }
@@ -837,11 +806,7 @@ export default function BoostPage() {
         queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(listingId) });
         setAbvSuccess(true);
       } catch {
-        toast({
-          title: t("boost.videoUploadFailed"),
-          description: t("boost.videoUploadRetry"),
-          variant: "destructive",
-        });
+        // Attach failures stay on Bouillon / retry — no dynamic toast overlay.
       } finally {
         setAbvUploading(false);
       }

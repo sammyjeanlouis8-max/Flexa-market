@@ -36,6 +36,25 @@ describe("video upload Home / Bouillon separation", () => {
     expect(center).not.toMatch(/toast\s*\(/);
   });
 
+  it("keeps recoverable network failures in the background queue", () => {
+    const queue = readFileSync(
+      resolve(__dirname, "../../../marketplace/src/lib/videoUploadQueue.ts"),
+      "utf8",
+    );
+    expect(queue).toMatch(/recoverable = !hardFail && !aborted/);
+    expect(queue).toMatch(/Soft failure: keep the waiter/);
+    expect(queue).toMatch(/retryVideoUpload\(job\.id\)/);
+  });
+
+  it("does not raise dynamic title\+description upload failure toasts in Boost", () => {
+    const boost = readFileSync(
+      resolve(__dirname, "../../../marketplace/src/pages/Boost.tsx"),
+      "utf8",
+    );
+    expect(boost).not.toMatch(/title:\s*t\("boost\.videoUploadFailed"\)/);
+    expect(boost).not.toMatch(/description:\s*t\(desc/);
+  });
+
   it("suppresses floating chrome on Home and Bouillon", () => {
     expect(center).toMatch(/shouldSuppressFloatingBar/);
     expect(center).toMatch(/clean === "\/"/);

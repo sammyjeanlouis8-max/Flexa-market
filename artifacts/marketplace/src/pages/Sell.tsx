@@ -794,7 +794,8 @@ export default function Sell() {
       });
       setListingVideoUrl(uploadedUrl);
     } catch {
-      toast({ title: validationMessages.videoUploadFailed, variant: "destructive" });
+      // Transfer stays in the background queue — check Bouillon, no dynamic toast.
+      setListingVideoUrl(null);
     } finally {
       setVideoUploading(false);
     }

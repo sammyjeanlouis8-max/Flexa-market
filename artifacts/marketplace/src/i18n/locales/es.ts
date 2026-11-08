@@ -1362,6 +1362,7 @@ export default {
     videoUploadExpired: "Esta subida expiró. Selecciona el vídeo de nuevo para reiniciar de forma segura.",
     videoUploadIncomplete: "Parte del vídeo no llegó correctamente. Selecciónalo de nuevo.",
     videoUploadNetwork: "Se interrumpió la conexión. Comprueba tu internet e inténtalo de nuevo.",
+    videoUploadBackground: "La subida continúa en segundo plano. Abre Bouillon en el menú para ver el estado.",
     videoUploadRetry: "No se pudo subir el vídeo. Selecciónalo e inténtalo de nuevo.",
     videoUploadKeepOpen: "Mantén esta página abierta mientras se sube el vídeo.",
     videoUploadFinishing: "Subida completa. Finalizando el procesamiento…",

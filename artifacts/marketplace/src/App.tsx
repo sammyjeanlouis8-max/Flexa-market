@@ -66,6 +66,7 @@ const SettingsPayments   = lazy(() => import("@/pages/SettingsPayments"));
 const SettingsIdentity   = lazy(() => import("@/pages/SettingsIdentity"));
 const SettingsPrivacy    = lazy(() => import("@/pages/SettingsPrivacy"));
 const SettingsVideos     = lazy(() => import("@/pages/SettingsVideos"));
+const Bouillon           = lazy(() => import("@/pages/Bouillon"));
 const SellerAnalytics    = lazy(() => import("@/pages/SellerAnalytics"));
 const Support            = lazy(() => import("@/pages/Support"));
 const NotFound           = lazy(() => import("@/pages/NotFound"));
@@ -287,6 +288,10 @@ function LayoutRoutes() {
           <Route path="/settings/videos" component={SettingsVideos} />
           <Route path="/settings/analytics" component={SellerAnalytics} />
           <Route path="/settings" component={Settings} />
+          <Route path="/bouillon" component={Bouillon} />
+          <Route path="/brouillon">
+            {() => { setLocation("/bouillon"); return null; }}
+          </Route>
           <Route path="/support" component={Support} />
           <Route path="/support/:id" component={Support} />
           <Route path="/wallet" component={WalletPage} />

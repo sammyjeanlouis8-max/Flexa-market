@@ -4,7 +4,7 @@ import { useBroadcast } from "@/contexts/broadcast";
 import {
   Home, Search, Plus, MessageCircle, User,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase, Menu, LayoutGrid,
-  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award,
+  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import LanguagePickerModal from "@/components/LanguagePickerModal";
@@ -270,6 +270,7 @@ function getPageTitle(loc: string, t: (key: string) => string): string {
   if (loc.startsWith("/sales")) return t("page.sales");
   if (loc.startsWith("/offers")) return t("page.offers");
   if (loc.startsWith("/saved")) return t("page.saved");
+  if (loc.startsWith("/bouillon") || loc.startsWith("/brouillon")) return t("nav.bouillon", { defaultValue: "Bouillon" });
   if (loc.startsWith("/jobs")) return t("page.jobs");
   if (loc.startsWith("/support")) return t("page.support");
   if (loc.startsWith("/boost")) return t("page.boost");
@@ -451,6 +452,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       items: [
         { href: "/settings", icon: User, label: t("nav.profile"), key: "profile" },
         { href: "/saved", icon: Heart, label: t("nav.saved"), key: "saved" },
+        { href: "/bouillon", icon: FileVideo, label: t("nav.bouillon", { defaultValue: "Bouillon" }), key: "bouillon" },
         { href: "/wallet", icon: Wallet, label: t("nav.walletLabel", { defaultValue: "Wallet" }), key: "wallet" },
         { href: "/wallet", icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), key: "promo-account" },
         { href: "/subscription", icon: Crown, label: t("nav.subscription"), key: "subscription" },
@@ -501,7 +503,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     return location === path || location.startsWith(`${path}/`) || location.startsWith(`${path}?`);
   };
 
-  const moreActive = ["/settings", "/saved", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos"].some(p =>
+  const moreActive = ["/settings", "/saved", "/bouillon", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos"].some(p =>
     location.startsWith(p)
   );
   const isHomePage = location === "/";

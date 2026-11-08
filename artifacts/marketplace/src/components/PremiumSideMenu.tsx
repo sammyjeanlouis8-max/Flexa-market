@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
-  Home, Search, Film, Tv, Music2, Zap, Gift, Coins, ShoppingBag, TrendingUp,
+  Home, Search, Film, FileVideo, Tv, Music2, Zap, Gift, Coins, ShoppingBag, TrendingUp,
   Truck, ShieldCheck, User, Heart, Wallet, Crown, Settings, HelpCircle,
   Briefcase, Globe, LogOut, X, ChevronRight, Moon, Sun, Plus, Package,
   Store, Bell, Lock, MapPinned, Sparkles, Landmark, Tag, Award, LayoutGrid,
@@ -300,6 +300,7 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
       items: [
         { icon: User, label: t("nav.profile"), href: "/settings", testId: "drawer-profile" },
         { icon: Heart, label: t("nav.saved"), href: "/saved", testId: "drawer-saved" },
+        { icon: FileVideo, label: t("nav.bouillon", { defaultValue: "Bouillon" }), href: "/bouillon", testId: "drawer-bouillon" },
         { icon: Wallet, label: t("nav.walletLabel", { defaultValue: "Wallet" }), href: "/wallet", testId: "drawer-wallet" },
         { icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), href: "/wallet", testId: "drawer-promo-account" },
         { icon: Crown, label: t("nav.subscription"), href: "/subscription", testId: "drawer-subscription" },

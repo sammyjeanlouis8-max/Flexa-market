@@ -81,6 +81,7 @@ export default {
     videosSection: "Videyo Pwomosyon",
     ordersSalesSection: "Kòmand ak Vant",
     myBoosts: "Boost Aktif Mwen",
+    bouillon: "Bouillon",
     promoAccount: "Kont Promo",
     commissionPromo: "Komisyon Promo",
     promoBalanceAvail: "Balans Promo disponib",
@@ -2017,7 +2018,13 @@ export default {
     closeBarHint: "Kache ba a. Telechajman yo kontinye an bak.",
     managerHint: "Fèmen ba sa pa anile telechajman. Sèvi ak Anile telechajman sèlman si ou vle sispann.",
     allCompleteTitle: "Videyo pare",
-    allCompleteDesc: "Tout telechajman fini. Ou ka kontinye sèvi ak yo nan Videyo sove.",
+    allCompleteDesc: "Tout telechajman fini. Louvri Bouillon nan meni an pou sèvi ak yo.",
+  },
+  bouillon: {
+    subtitle: "Bouyon ak videyo ki fini, pare pou Boost oswa Vann.",
+    empty: "Pa gen videyo nan Bouillon ankò",
+    emptyHint: "Lè ou telechaje yon videyo Boost oswa anons, li rete la jiskaske ou sèvi ak li oswa retire li.",
+    hint: "Sèvi ak Kontinye pou tounen nan Boost oswa Vann. Fèmen retire yon videyo ki fini nan lis sa.",
   },
   errors: {
     notFound: "Paj pa jwenn",

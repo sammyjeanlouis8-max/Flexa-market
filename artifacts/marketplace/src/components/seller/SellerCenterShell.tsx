@@ -247,17 +247,12 @@ export default function SellerCenterShell({
             {children}
           </main>
           {footer ? (
-            <div
-              className="sell-action-footer shrink-0 z-40 border-t border-border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90"
-              data-testid="seller-action-footer"
-            >
-              {/*
-                Safe-area padding belongs on this white footer (same pattern as
-                .chat-input-bar / PDP purchase bar) — NOT on the overflow:hidden
-                shell. Padding on the shell was clipping these buttons mid-label
-                on iPhone while leaving a white strip over the lower half.
-              */}
-              <div className="w-full px-3 pt-2 flex gap-2 items-center min-w-0">{footer}</div>
+            <div className="sell-action-footer shrink-0 z-40" data-testid="seller-action-footer">
+              {/* White only behind the button row — never paint a white bar into the home-indicator zone. */}
+              <div className="sell-action-footer-row w-full px-3 py-2 flex gap-2 items-center min-w-0 border-t border-border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
+                {footer}
+              </div>
+              <div className="sell-action-footer-safe" aria-hidden="true" />
             </div>
           ) : null}
         </div>

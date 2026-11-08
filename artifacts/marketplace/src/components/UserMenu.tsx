@@ -20,6 +20,7 @@ import {
   Settings as SettingsIcon,
   LogOut,
   Heart,
+  FileVideo,
   Package,
   ShoppingBag,
   Tag,
@@ -84,6 +85,7 @@ export default function UserMenu({ onNavigate }: { onNavigate?: (href: string) =
     { icon: UserIcon, label: t("userMenu.profile"), to: `/profile/${user.id}`, testid: "menu-profile" },
     { icon: Tag, label: t("userMenu.myListings"), to: `/profile/${user.id}`, testid: "menu-listings" },
     { icon: Heart, label: t("userMenu.saved"), to: "/saved", testid: "menu-saved" },
+    { icon: FileVideo, label: t("nav.bouillon", { defaultValue: "Bouillon" }), to: "/bouillon", testid: "menu-bouillon" },
     { icon: ShoppingBag, label: t("userMenu.orders"), to: "/orders", testid: "menu-orders" },
     { icon: Package, label: t("userMenu.sales"), to: "/sales", testid: "menu-sales" },
   ];

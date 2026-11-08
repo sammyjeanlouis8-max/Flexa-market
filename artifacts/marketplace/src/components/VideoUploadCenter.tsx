@@ -11,7 +11,6 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
-import { useToast } from "@/hooks/use-toast";
 import {
   cancelVideoUpload,
   defaultReturnPathForPurpose,
@@ -27,6 +26,12 @@ import { cn } from "@/lib/utils";
 import "@/components/video-upload-center.css";
 
 const HIDE_KEY = "flexa_video_upload_bar_hidden";
+
+/** Routes where the floating upload chrome must never cover the UI. */
+function shouldSuppressFloatingBar(path: string): boolean {
+  const clean = path.split("?")[0].replace(/\/+$/, "") || "/";
+  return clean === "/" || clean === "/bouillon" || clean === "/brouillon";
+}
 
 const ACTIVE_STATES = new Set<VideoUploadJob["state"]>([
   "draft",
@@ -250,8 +255,7 @@ export function VideoUploadJobRow({
  */
 export default function VideoUploadCenter() {
   const { t } = useTranslation();
-  const { toast } = useToast();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, token } = useAuth();
   const jobs = useSyncExternalStore(
     subscribeVideoUploads,
@@ -268,7 +272,7 @@ export default function VideoUploadCenter() {
   });
   const [actionError, setActionError] = useState<string | null>(null);
   const autoHideTimer = useRef<number | null>(null);
-  const celebratedRef = useRef<string>("");
+  const suppressFloating = shouldSuppressFloatingBar(location);
 
   useEffect(() => {
     setVideoUploadIdentity(user?.id ?? null, token ?? null);
@@ -308,20 +312,10 @@ export default function VideoUploadCenter() {
     }
   }, [activeJobs.length, attentionJobs.length, ownJobs.map((j) => `${j.id}:${j.state}`).join("|")]);
 
-  // When everything settles, toast once and drop the floating bar.
-  // Completed leftovers live on the Bouillon menu page — not above the nav.
+  // When everything settles, drop the floating bar silently.
+  // Finished uploads belong on /bouillon in the menu — never toast over Home.
   useEffect(() => {
-    if (!allSettled || completeCount === 0) return;
-    const fingerprint = ownJobs.map((j) => `${j.id}:${j.state}`).join("|");
-    if (celebratedRef.current !== fingerprint) {
-      celebratedRef.current = fingerprint;
-      toast({
-        title: t("videoUploads.allCompleteTitle", { defaultValue: "Videos ready" }),
-        description: t("videoUploads.allCompleteDesc", {
-          defaultValue: "All uploads finished. Open Bouillon in the menu to use them.",
-        }),
-      });
-    }
+    if (!allSettled) return;
     setExpanded(false);
     setHidden(true);
     try {
@@ -329,7 +323,7 @@ export default function VideoUploadCenter() {
     } catch {
       /* ignore */
     }
-  }, [allSettled, completeCount, ownJobs, t, toast]);
+  }, [allSettled]);
 
   const hideBar = () => {
     // Visibility only — never cancels uploads.
@@ -342,15 +336,9 @@ export default function VideoUploadCenter() {
     }
   };
 
-  const openManager = () => {
-    setHidden(false);
-    setExpanded(true);
-    setActionError(null);
-    try {
-      sessionStorage.removeItem(HIDE_KEY);
-    } catch {
-      /* ignore */
-    }
+  const openBouillon = () => {
+    setExpanded(false);
+    setLocation("/bouillon");
   };
 
   const continueJob = (job: VideoUploadJob) => {
@@ -362,17 +350,24 @@ export default function VideoUploadCenter() {
     setLocation(path);
   };
 
-  // Never park completed-only leftovers above the nav — those belong on /bouillon.
-  if (!user || (activeJobs.length === 0 && attentionJobs.length === 0)) return null;
+  // Never park completed leftovers (or any chrome) on Home / Bouillon —
+  // Home must stay clear; Bouillon is the dedicated menu page for uploads.
+  if (
+    !user ||
+    suppressFloating ||
+    (activeJobs.length === 0 && attentionJobs.length === 0)
+  ) {
+    return null;
+  }
 
-  // If hidden but still active, show a tiny restore chip above the nav.
+  // If hidden but still active, offer a chip that opens Bouillon (not Home overlay).
   if (hidden) {
     return (
       <aside
         className="vuc-restore"
         data-testid="video-upload-center-restore"
       >
-        <button type="button" className="vuc-restore-btn" onClick={openManager}>
+        <button type="button" className="vuc-restore-btn" onClick={openBouillon}>
           <FileVideo className="h-3.5 w-3.5" />
           <span>
             {activeJobs.length > 0
@@ -380,7 +375,7 @@ export default function VideoUploadCenter() {
                   percent: leadPercent,
                   defaultValue: "Uploading video: {{percent}}%",
                 })
-              : t("boost.videoUploadsTitle", { defaultValue: "Video uploads" })}
+              : t("nav.bouillon", { defaultValue: "Bouillon" })}
           </span>
         </button>
       </aside>

@@ -1,4 +1,5 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, PlusCircle, Package, ShoppingBag, MessageCircle,
@@ -35,8 +36,9 @@ export default function SellerCenterShell({
   heroTitle?: string;
   heroSubtitle?: string;
   /**
-   * Optional bottom action bar. Rendered in document flow (not position:fixed)
-   * so Android WebViews cannot float it mid-screen over the form.
+   * Optional bottom action bar. Portaled + fixed to the viewport (same pattern
+   * as the PDP purchase bar) so iOS WKWebView cannot clip it under the home
+   * indicator / white system strip. Escapes overflow:hidden ancestors.
    */
   footer?: ReactNode;
 }) {
@@ -45,6 +47,10 @@ export default function SellerCenterShell({
   const [location, setLocation] = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [footerMounted, setFooterMounted] = useState(false);
+  useEffect(() => {
+    setFooterMounted(true);
+  }, []);
 
   const nav: NavItem[] = [
     { href: "/sales", label: t("nav.dashboard", { defaultValue: "Dashboard" }), icon: LayoutDashboard },
@@ -241,22 +247,30 @@ export default function SellerCenterShell({
           </div>
         </aside>
 
-        {/* Column: scrollable form + in-flow action footer (avoids Android fixed bugs). */}
+        {/* Column: scrollable form; action bar is portaled fixed (see below). */}
         <div className="flex-1 min-w-0 min-h-0 flex flex-col">
           <main className="flex-1 min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain">
             {children}
+            {/* Reserve space so the last fields are not hidden under the fixed bar. */}
+            {footer ? <div className="sell-action-footer-spacer" aria-hidden="true" /> : null}
           </main>
-          {footer ? (
-            <div className="sell-action-footer shrink-0 z-40" data-testid="seller-action-footer">
-              {/* White only behind the button row — never paint a white bar into the home-indicator zone. */}
-              <div className="sell-action-footer-row w-full px-3 py-2 flex gap-2 items-center min-w-0 border-t border-border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
-                {footer}
-              </div>
-              <div className="sell-action-footer-safe" aria-hidden="true" />
-            </div>
-          ) : null}
         </div>
       </div>
+
+      {footer && footerMounted
+        ? createPortal(
+            <div
+              className="sell-action-footer fixed inset-x-0 z-[60] lg:left-56 xl:left-60"
+              style={{ bottom: "var(--flexa-vv-bottom, 0px)" }}
+              data-testid="seller-action-footer"
+            >
+              <div className="sell-action-footer-row w-full max-w-[1600px] mx-auto px-3 pt-2 flex gap-2 items-center min-w-0 border-t border-border bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+                {footer}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {/* Mobile drawer */}
       {mobileNavOpen && (

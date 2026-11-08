@@ -1198,25 +1198,51 @@ main {
 }
 
 /*
- * Sell — Save Draft / Publish action footer.
- * Button row is white; home-indicator gap is transparent so no white bar
- * covers the CTAs. Height uses env() with --sab / Android fallbacks.
+ * Sell — Save Draft / Publish (portaled fixed bar).
+ * iOS WKWebView often reports env(safe-area-inset-bottom)=0 and may not have
+ * --sab yet. Use a 34px floor on small screens so buttons clear the home
+ * indicator / white system strip. Same idea as .fm-pdp-purchase-bar.
  */
 .sell-action-footer {
   box-sizing: border-box;
   max-width: 100%;
-  background: transparent;
+  pointer-events: none;
 }
-.sell-action-footer-safe {
+.sell-action-footer-row {
+  pointer-events: auto;
+  box-sizing: border-box;
+  /* Desktop / large: modest pad only */
+  padding-bottom: 0.5rem;
+}
+@media (max-width: 767px) {
+  .sell-action-footer-row {
+    padding-bottom: calc(
+      0.5rem + max(
+        34px,
+        env(safe-area-inset-bottom, 0px),
+        var(--sab, 0px),
+        var(--flexa-android-bottom, 0px)
+      )
+    );
+  }
+}
+.sell-action-footer-spacer {
   width: 100%;
   flex-shrink: 0;
+  height: calc(3.25rem + 0.5rem);
   pointer-events: none;
-  background: transparent;
-  height: max(
-    env(safe-area-inset-bottom, 0px),
-    var(--sab, 0px),
-    var(--flexa-android-bottom, 0px)
-  );
+}
+@media (max-width: 767px) {
+  .sell-action-footer-spacer {
+    height: calc(
+      3.25rem + 0.5rem + max(
+        34px,
+        env(safe-area-inset-bottom, 0px),
+        var(--sab, 0px),
+        var(--flexa-android-bottom, 0px)
+      )
+    );
+  }
 }
 
 /* Product details — compact sticky purchase bar (mobile) */

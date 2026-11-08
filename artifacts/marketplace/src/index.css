@@ -1189,3 +1189,20 @@ main {
     animation: none !important;
   }
 }
+
+/* Product details — compact sticky purchase bar (mobile) */
+.fm-pdp-purchase-bar {
+  max-width: 100vw;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.fm-pdp-amazon {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+@media (max-width: 380px) {
+  .fm-pdp-purchase-bar [data-testid="button-add-to-cart"] span,
+  .fm-pdp-purchase-bar [data-testid="button-buy-now"] span:first-child {
+    font-size: 11px;
+  }
+}

@@ -1,0 +1,1 @@
+const t={primary:"hsl(152,65%,18%)",soft:"hsl(152,40%,94%)",softBorder:"hsl(152,30%,85%)",success:"hsl(152,55%,36%)",danger:"hsl(0,72%,48%)"};function o(s){return`${Math.round(Number(s)||0).toLocaleString()} HTG`}export{t as D,o as f};

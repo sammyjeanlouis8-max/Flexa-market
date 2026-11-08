@@ -1,0 +1,1 @@
+const t=e=>`flexamarket_saved_checkout_address_${e}`;function a(e){if(e==null)return{};try{return JSON.parse(localStorage.getItem(t(e))??"{}")}catch{return{}}}function c(e,r){if(e!=null)try{localStorage.setItem(t(e),JSON.stringify(r))}catch{}}export{a as r,c as s};

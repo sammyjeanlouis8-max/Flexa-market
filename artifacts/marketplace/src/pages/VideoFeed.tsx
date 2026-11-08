@@ -4,14 +4,16 @@ import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
   Heart, MessageCircle, Share2, Eye,
-  Play, BadgeCheck, Loader2, X, ArrowLeft,
+  Play, Pause, BadgeCheck, Loader2, X, ArrowLeft,
   SendHorizontal, ChevronDown, Zap, Plus, ShoppingBag,
-  MoreVertical, Pencil, Trash2, Check,
-  VolumeX, Volume2, Bookmark, Home,
+  MoreVertical, Pencil, Trash2, Check, Search,
+  VolumeX, Volume2, Bookmark, Home, Compass, User,
+  ShoppingCart, Maximize2, Captions, ThumbsUp, Flag, Link2, EyeOff,
 } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth";
 import { useFavorites } from "@/contexts/favorites";
+import { useCart } from "@/contexts/cart";
 import { useToast } from "@/hooks/use-toast";
 import { useRestriction } from "@/hooks/useRestriction";
 import { RestrictionBanner } from "@/components/RestrictionBanner";
@@ -24,7 +26,34 @@ import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
 import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import BoostWizard from "@/components/BoostWizard";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
-import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+import { prefersSound, setAudioUnlocked } from "@/lib/audioUnlocked";
+import "./promo-videos.css";
+
+const HIDDEN_VIDEOS_KEY = "flexa_pv_hidden_ids";
+
+function readHiddenVideoIds(): number[] {
+  try {
+    const raw = localStorage.getItem(HIDDEN_VIDEOS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((n) => Number.isFinite(n)).map(Number) : [];
+  } catch {
+    return [];
+  }
+}
+
+function hideVideoId(id: number): void {
+  const next = Array.from(new Set([...readHiddenVideoIds(), id]));
+  try { localStorage.setItem(HIDDEN_VIDEOS_KEY, JSON.stringify(next.slice(-200))); } catch { /* ok */ }
+}
+
+function formatClock(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return "00:00";
+  const s = Math.floor(sec);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -424,6 +453,9 @@ interface VideoItem {
   description: string;
   price: number;
   currency: string;
+  country?: string | null;
+  stockQuantity?: number | null;
+  isVideoOnly?: boolean;
   originalPrice?: number | null;
   discountPct?: number | null;
   sellerId: number;
@@ -820,13 +852,11 @@ function VideoCard({
   isActive,
   isNext,
   onCommentOpen,
-  onNext,
 }: {
   video: VideoItem;
   isActive: boolean;
   isNext: boolean;
   onCommentOpen: (id: number) => void;
-  onNext: () => void;
 }) {
   const { user, token, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -834,18 +864,23 @@ function VideoCard({
   const { t } = useTranslation();
   const { isRestricted, showRestrictionToast } = useRestriction();
   const { isFavorited, markFavorited, markUnfavorited } = useFavorites();
+  const { addItem, isInCart, count: cartCount } = useCart();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const cardRootRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [pausedByUser, setPausedByUser] = useState(false);
   const liked = isFavorited(video.id);
+  const saved = liked; // marketplace favorites are the durable saved-items model
   const [likeCount, setLikeCount] = useState(video.likeCount);
   const [shareCount, setShareCount] = useState(video.sharesCount);
   const [showComments, setShowComments] = useState(false);
-  const [showWhatsAppBtn, setShowWhatsAppBtn] = useState(false);
-  const [whatsAppDismissed, setWhatsAppDismissed] = useState(false);
   const [showHeartFlash, setShowHeartFlash] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
-  const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showControls, setShowControls] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [needsGestureForSound, setNeedsGestureForSound] = useState(false);
+  const controlsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapRef = useRef<number>(0);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPausedByHoldRef = useRef(false);
@@ -865,13 +900,16 @@ function VideoCard({
   const stallAttemptsRef = useRef(0);
   const hardReloadTriedRef = useRef(false);
   const [following, setFollowing] = useState(video.sellerIsFollowing ?? false);
+  const [followPending, setFollowPending] = useState(false);
   const [messagePending, setMessagePending] = useState(false);
-  const [muted, setMuted] = useState(false);
+  // Prefer sound unless the user explicitly muted this session.
+  const [muted, setMuted] = useState(!prefersSound());
   const [generatedThumbnail, setGeneratedThumbnail] = useState<string | null>(null);
   const [videoBuffering, setVideoBuffering] = useState(true);
   const [hasVisibleFrame, setHasVisibleFrame] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   isActiveRef.current = isActive;
+  void cartCount;
 
   useEffect(() => {
     if (!isActive && !isNext && !video.thumbnailUrl) {
@@ -879,13 +917,13 @@ function VideoCard({
     }
   }, [isActive, isNext, video.thumbnailUrl]);
 
-  // Sync muted state across all VideoCard instances when audio is unlocked
+  // Sync muted state across VideoCard instances when the session audio pref changes
   useEffect(() => {
     const handler = (e: Event) => {
       if (!isActiveRef.current || !visibleFrameRef.current) return;
-      const unlocked = (e as CustomEvent<boolean>).detail;
-      setMuted(!unlocked);
-      if (videoRef.current) videoRef.current.muted = !unlocked;
+      const wantSound = (e as CustomEvent<boolean>).detail;
+      setMuted(!wantSound);
+      if (videoRef.current) videoRef.current.muted = !wantSound;
     };
     window.addEventListener("flexa:audio-unlocked", handler);
     return () => window.removeEventListener("flexa:audio-unlocked", handler);
@@ -931,9 +969,10 @@ function VideoCard({
     setHasVisibleFrame(true);
     setVideoBuffering(false);
     setLoadFailed(false);
-    const shouldMute = !isAudioUnlocked();
-    el.muted = shouldMute;
-    setMuted(shouldMute);
+    // Preserve the user's session audio preference; do not re-mute after unlock.
+    const wantSound = prefersSound();
+    el.muted = !wantSound;
+    setMuted(!wantSound);
     return true;
   }, [cancelVisualReadinessChecks]);
 
@@ -1052,80 +1091,80 @@ function VideoCard({
     if (videoRef.current) videoRef.current.muted = !nowUnlocked;
   }, [muted]);
 
-  // Auto-play / pause + WhatsApp overlay + impression tracking + skip countdown
+  // Auto-play / pause + impression tracking
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
     isActiveRef.current = isActive;
     activationGenerationRef.current += 1;
     cancelPendingReloadResume();
-    if (isActive) {
-      // A newly visible card always starts in autoplay mode. Do not carry the
-      // previous card's paused UI into this one while its first frame buffers.
-      setPausedByUser(false);
-      setPlaying(true);
-      activatedAtRef.current = Date.now();
-      stallAttemptsRef.current = 0;
-      hardReloadTriedRef.current = false;
-      visibleFrameRef.current = false;
-      setHasVisibleFrame(false);
-      setVideoBuffering(true);
-      setLoadFailed(false);
-
-      const tryPlay = () => {
-        if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
-        // Every automatically activated card starts muted until its first visible
-        // frame. If the user had already unlocked audio, markVisibleFrame restores
-        // sound as soon as video and audio can begin together.
-        el.muted = true;
-        setMuted(true);
-
-        // Safari/WebViews commonly reject play() transiently while a newly active
-        // element is changing source or has not loaded data yet. Keep the card in
-        // autoplay mode and retry from media-readiness events; only an actual media
-        // error or the bounded visible-frame timeout should enter retry UI.
-        void el.play().catch(() => {});
-      };
-      const activationGeneration = activationGenerationRef.current;
-      el.addEventListener("canplay", tryPlay);
-      el.addEventListener("loadeddata", tryPlay);
-
-      // Always call play() immediately — on iOS Safari this is what triggers buffering.
-      // Do NOT wait for canplay: if readyState is low, calling play() causes the browser
-      // to start loading and fire onplay/canplay automatically.
-      tryPlay();
-      armVisualReadinessCheck(el);
-
-      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-      overlayTimerRef.current = setTimeout(() => setShowWhatsAppBtn(true), 1500);
-      fetch(`/api/videos/${video.id}/impression`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      }).catch(() => {});
-
-      return () => {
-        el.removeEventListener("canplay", tryPlay);
-        el.removeEventListener("loadeddata", tryPlay);
-        activationGenerationRef.current += 1;
-        isActiveRef.current = false;
-        cancelPendingReloadResume();
-        cancelVisualReadinessChecks();
-        if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-      };
-    } else {
-      cancelPendingReloadResume();
+    if (!isActive) {
       cancelVisualReadinessChecks();
       el.pause();
       setPlaying(false);
       setShowComments(false);
-      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-      setShowWhatsAppBtn(false);
-      setWhatsAppDismissed(false);
+      return;
     }
-    return () => {
-      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+
+    // A newly visible card always starts in autoplay mode. Do not carry the
+    // previous card's paused UI into this one while its first frame buffers.
+    setPausedByUser(false);
+    setPlaying(true);
+    activatedAtRef.current = Date.now();
+    stallAttemptsRef.current = 0;
+    hardReloadTriedRef.current = false;
+    visibleFrameRef.current = false;
+    setHasVisibleFrame(false);
+    setVideoBuffering(true);
+    setLoadFailed(false);
+
+    const activationGeneration = activationGenerationRef.current;
+    const tryPlay = () => {
+      if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
+      // Prefer unmuted playback by default. Only start muted when the user
+      // explicitly muted this session. If unmuted autoplay is blocked, fall
+      // back to muted + a clear Play-with-Sound CTA — never claim sound is on.
+      const wantSound = prefersSound();
+      el.muted = !wantSound;
+      setMuted(!wantSound);
+      setNeedsGestureForSound(false);
+
+      void el.play().catch(() => {
+        if (!wantSound) {
+          // Already muted and still blocked — leave retry to media events.
+          return;
+        }
+        // Unmuted autoplay blocked: fall back to muted playback + visible unmute.
+        // Do NOT persist "off" — that would force every subsequent video muted.
+        el.muted = true;
+        setMuted(true);
+        setNeedsGestureForSound(true);
+        void el.play().catch(() => {});
+      });
     };
-  }, [armVisualReadinessCheck, cancelPendingReloadResume, cancelVisualReadinessChecks, isActive]);
+    el.addEventListener("canplay", tryPlay);
+    el.addEventListener("loadeddata", tryPlay);
+
+    // Always call play() immediately — on iOS Safari this is what triggers buffering.
+    // Do NOT wait for canplay: if readyState is low, calling play() causes the browser
+    // to start loading and fire onplay/canplay automatically.
+    tryPlay();
+    armVisualReadinessCheck(el);
+
+    fetch(`/api/videos/${video.id}/impression`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).catch(() => {});
+
+    return () => {
+      el.removeEventListener("canplay", tryPlay);
+      el.removeEventListener("loadeddata", tryPlay);
+      activationGenerationRef.current += 1;
+      isActiveRef.current = false;
+      cancelPendingReloadResume();
+      cancelVisualReadinessChecks();
+    };
+  }, [armVisualReadinessCheck, cancelPendingReloadResume, cancelVisualReadinessChecks, isActive, token, video.id]);
 
   // Touch handlers: hold-to-pause + double-tap like + single-tap mute
   const handleTouchStart = useCallback(() => {
@@ -1212,8 +1251,82 @@ function VideoCard({
   };
 
   const handleSave = () => {
+    // Favorites power both like counts and the Saved list in this marketplace.
     void handleLike();
   };
+
+  const handleFollowToggle = async () => {
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
+    if (!token || user.id === video.sellerId || followPending) return;
+    if (isRestricted) { showRestrictionToast(); return; }
+    const next = !following;
+    setFollowing(next);
+    setFollowPending(true);
+    try {
+      const response = await fetch(`/api/users/${video.sellerId}/follow`, {
+        method: next ? "POST" : "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error("Follow request failed");
+    } catch {
+      setFollowing(!next);
+      toast({ title: t("errors.serverError"), variant: "destructive" });
+    } finally {
+      setFollowPending(false);
+    }
+  };
+
+  const handleAddToCart = () => {
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
+    if (user.id === video.sellerId) return;
+    if (isRestricted) { showRestrictionToast(); return; }
+    if (video.isVideoOnly || video.price <= 0) return;
+    if (isInCart(video.id)) {
+      toast({ title: t("videoFeed.alreadyInCart", { defaultValue: "Already in cart" }) });
+      return;
+    }
+    addItem({
+      listingId: video.id,
+      title: video.title,
+      price: video.price,
+      currency: video.currency,
+      image: video.thumbnailUrl,
+      country: video.country ?? null,
+      sellerId: video.sellerId,
+      quantity: 1,
+    });
+    toast({ title: t("videoFeed.addedToCart", { defaultValue: "Added to cart" }) });
+  };
+
+  const handleBuyNow = () => {
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
+    if (user.id === video.sellerId) {
+      setLocation(`/listings/${video.id}`);
+      return;
+    }
+    trackBuyClick();
+    setLocation(`/listings/${video.id}?buy=1`);
+  };
+
+  const handleFullscreen = () => {
+    const node = cardRootRef.current;
+    if (!node) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen?.();
+    } else {
+      void node.requestFullscreen?.();
+    }
+  };
+
+  const scheduleHideControls = useCallback(() => {
+    if (controlsHideTimerRef.current) clearTimeout(controlsHideTimerRef.current);
+    controlsHideTimerRef.current = setTimeout(() => setShowControls(false), 2800);
+  }, []);
+
+  const revealControls = useCallback(() => {
+    setShowControls(true);
+    scheduleHideControls();
+  }, [scheduleHideControls]);
 
   const handleMessageSeller = async () => {
     if (!user) {
@@ -1303,15 +1416,17 @@ function VideoCard({
   const hasWhatsApp = !!video.sellerWhatsapp;
   // For video-only ghost boosts, price is always 0 — hide price + cart in that case
   const hasPrice = video.price > 0;
-  const hasCta = hasWhatsApp || hasPrice;
-  const showWhatsAppOverlay = hasCta && showWhatsAppBtn && !whatsAppDismissed && !showComments;
   const posterUrl = video.thumbnailUrl ?? generatedThumbnail ?? null;
+
+  const isOwner = !!user && user.id === video.sellerId;
+  const canPurchase = hasPrice && !video.isVideoOnly && !isOwner;
 
   return (
     <div
-      className="relative w-full h-full flex-shrink-0 bg-black overflow-hidden"
+      ref={cardRootRef}
+      className="pv-root relative w-full h-full flex-shrink-0 bg-black overflow-hidden"
       onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
+      onTouchEnd={(e) => { revealControls(); handleTouchEnd(); }}
     >
       {/* ── Thumbnail fallback layer ──
           Always rendered behind the video so the frame is never pure black while
@@ -1329,12 +1444,13 @@ function VideoCard({
       <video
         ref={(el) => {
           (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
-          if (el) el.muted = !isAudioUnlocked();
+          if (el) el.muted = !prefersSound();
         }}
         src={video.videoUrl ?? undefined}
         playsInline
         preload={isActive ? "auto" : isNext ? "metadata" : "none"}
         poster={video.thumbnailUrl ?? generatedThumbnail ?? undefined}
+        muted={muted}
         className={`absolute inset-0 w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
         style={{
           willChange: "transform, opacity",
@@ -1370,6 +1486,10 @@ function VideoCard({
         onTimeUpdate={e => {
           if (!visibleFrameRef.current && e.currentTarget.currentTime > 0) {
             scheduleFramePresentationCheck(e.currentTarget);
+          }
+          setCurrentTime(e.currentTarget.currentTime || 0);
+          if (e.currentTarget.duration && Number.isFinite(e.currentTarget.duration)) {
+            setDuration(e.currentTarget.duration);
           }
         }}
         onStalled={handleVideoStall}
@@ -1424,294 +1544,272 @@ function VideoCard({
         style={{ height: "120px", background: "linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 100%)" }}
       />
 
-      {/* ── Mute / unmute toggle (top-right) ── */}
-      {/* onClick fires once on both desktop (click) and mobile (tap-end), so we      */}
-      {/* stop touch propagation without calling the handler — avoiding a double-toggle */}
-      <button
-        className="absolute top-3 right-3 z-20 bg-black/40 backdrop-blur-sm rounded-full p-2 text-white"
-        onClick={e => { e.stopPropagation(); handleMuteToggle(); }}
-        onTouchStart={e => e.stopPropagation()}
-        onTouchEnd={e => e.stopPropagation()}
-        aria-label={muted ? "Unmute" : "Mute"}
-      >
-        {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-      </button>
-
-      {/* ── "Tap for sound" hint — only while muted & active, so users discover audio ── */}
-      {muted && isActive && !loadFailed && (
+      {/* ── Play with sound CTA when autoplay-with-audio was blocked ── */}
+      {needsGestureForSound && muted && isActive && !loadFailed && (
         <button
-          className="absolute left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 bg-black/55 backdrop-blur-sm rounded-full pl-2.5 pr-3 py-1.5 text-white text-xs font-semibold shadow-lg animate-pulse"
+          className="absolute left-1/2 z-30 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/60 px-3.5 py-2 text-xs font-bold text-white shadow-lg backdrop-blur-md"
           style={{ top: "calc(env(safe-area-inset-top, 16px) + 64px)" }}
-          onClick={e => { e.stopPropagation(); handleMuteToggle(); }}
+          onClick={e => { e.stopPropagation(); handleMuteToggle(); setNeedsGestureForSound(false); }}
           onTouchStart={e => e.stopPropagation()}
           onTouchEnd={e => e.stopPropagation()}
-          aria-label="Unmute"
+          aria-label={t("videoFeed.playWithSound", { defaultValue: "Play with sound" })}
+          data-testid="button-play-with-sound"
         >
-          <VolumeX className="h-4 w-4" />
-          {t("videoFeed.tapForSound", { defaultValue: "Tape pou son" })}
+          <Volume2 className="h-4 w-4" />
+          {t("videoFeed.playWithSound", { defaultValue: "Play with sound" })}
         </button>
       )}
 
       {/* ── Bottom gradient ── */}
       <div
         className="absolute inset-x-0 bottom-0 pointer-events-none"
-        style={{ height: "260px", background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)" }}
+        style={{ height: "320px", background: "linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.45) 55%, transparent 100%)" }}
       />
 
       {/* ── Pause overlay ── */}
       {isActive && pausedByUser && !loadFailed && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-black/30 backdrop-blur-sm rounded-full p-5">
-            <Play className="h-10 w-10 text-white fill-white drop-shadow-lg" />
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <div className="rounded-full bg-black/35 p-5 backdrop-blur-sm">
+            <Play className="h-10 w-10 fill-white text-white drop-shadow-lg" />
           </div>
         </div>
       )}
 
       {/* ── Double-tap heart flash ── */}
       {showHeartFlash && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
           <Heart
-            className="h-28 w-28 fill-red-500 text-red-500 drop-shadow-2xl animate-ping"
+            className="h-28 w-28 animate-ping fill-red-500 text-red-500 drop-shadow-2xl"
             style={{ animationDuration: "0.6s", animationIterationCount: 1 }}
           />
         </div>
       )}
 
-      {/* ── Right-side engagement column — pure TikTok style ── */}
+      {/* ── Right-side engagement column ── */}
       <div
-        className="absolute right-2 z-10 flex flex-col items-center gap-3.5"
-        style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }}
+        className="absolute right-2 z-20 flex flex-col items-center gap-3.5"
+        style={{ bottom: "calc(118px + env(safe-area-inset-bottom, 0px))" }}
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
         onTouchEnd={e => e.stopPropagation()}
       >
-        {/* Seller avatar + follow "+" badge overlapping bottom */}
-        <div className="flex flex-col items-center mb-1">
+        <div className="mb-1 flex flex-col items-center">
           <Link href={`/profile/${video.sellerId}`}>
             <div className="relative">
               <Avatar className="h-12 w-12 border-2 border-white shadow-lg">
                 <AvatarImage src={video.sellerAvatar ?? undefined} />
-                <AvatarFallback className="bg-primary text-primary-foreground font-bold text-sm">
+                <AvatarFallback className="bg-[#2563eb] text-sm font-bold text-white">
                   {video.sellerName?.[0] ?? "?"}
                 </AvatarFallback>
               </Avatar>
-              {!following && user?.id !== video.sellerId && (
+              {!following && !isOwner && (
                 <button
                   type="button"
-                  onClick={async e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (!user) {
-                      if (!isLoading) setLocation("/auth/login");
-                      return;
-                    }
-                    if (!token) return;
-                    setFollowing(true);
-                    try {
-                      const response = await fetch(`/api/users/${video.sellerId}/follow`, {
-                        method: "POST",
-                        headers: { Authorization: `Bearer ${token}` },
-                      });
-                      if (!response.ok) throw new Error("Follow request failed");
-                    } catch {
-                      setFollowing(false);
-                    }
-                  }}
-                  className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow border-[1.5px] border-black active:scale-90 transition-transform z-10"
-                  aria-label={t("videoFeed.follow", { defaultValue: "Swiv" })}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); void handleFollowToggle(); }}
+                  className="absolute -bottom-2 left-1/2 z-10 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border-[1.5px] border-black bg-[#ec4899] shadow transition-transform active:scale-90"
+                  aria-label={t("videoFeed.follow")}
                   data-testid={`button-follow-seller-${video.sellerId}`}
                 >
-                  <span className="text-white text-[11px] font-black leading-none">+</span>
+                  <span className="text-[11px] font-black leading-none text-white">+</span>
                 </button>
               )}
             </div>
           </Link>
         </div>
 
-        {/* Like */}
-        <button type="button" onClick={handleLike} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform" data-testid={`button-like-video-${video.id}`}>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
-            <Heart className={cn("h-[27px] w-[27px] drop-shadow-lg transition-colors", liked ? "fill-red-500 text-red-500" : "text-white")} />
-          </span>
-          <span className="text-white text-[12px] font-semibold drop-shadow-md tabular-nums">{formatCount(likeCount)}</span>
+        <button type="button" onClick={handleLike} className="flex flex-col items-center gap-0.5 active:scale-90" data-testid={`button-like-video-${video.id}`}>
+          <Heart className={cn("h-7 w-7 drop-shadow-lg", liked ? "fill-red-500 text-red-500" : "text-white")} />
+          <span className="text-[11px] font-semibold tabular-nums text-white drop-shadow-md">{formatCount(likeCount)}</span>
         </button>
 
-        {/* Comment */}
-        <button
-          type="button"
-          onClick={event => {
-            event.stopPropagation();
-            handleCommentOpen();
-          }}
-          aria-expanded={showComments}
-          className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
-          data-testid={`button-comments-video-${video.id}`}
-        >
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
-            <MessageCircle className="h-[27px] w-[27px] text-white" />
-          </span>
-          <span className="text-white text-[12px] font-semibold drop-shadow-md tabular-nums">{formatCount(video.commentCount)}</span>
+        <button type="button" onClick={(e) => { e.stopPropagation(); handleCommentOpen(); }} className="flex flex-col items-center gap-0.5 active:scale-90" data-testid={`button-comments-video-${video.id}`}>
+          <MessageCircle className="h-7 w-7 text-white drop-shadow-lg" />
+          <span className="text-[11px] font-semibold tabular-nums text-white drop-shadow-md">{formatCount(video.commentCount)}</span>
         </button>
 
-        {/* Save — favorites are the marketplace's persisted saved-items model */}
-        <button type="button" onClick={handleSave} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform" data-testid={`button-save-video-${video.id}`}>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
-            <Bookmark className={cn("h-[25px] w-[25px] transition-colors", liked ? "fill-amber-400 text-amber-400" : "text-white")} />
-          </span>
-          <span className="text-[10px] font-semibold text-white drop-shadow-md">{t("videoFeed.save", { defaultValue: "Sove" })}</span>
+        <button type="button" onClick={handleShare} className="flex flex-col items-center gap-0.5 active:scale-90" data-testid={`button-share-video-${video.id}`}>
+          <Share2 className="h-6.5 w-6.5 text-white drop-shadow-lg" />
+          <span className="text-[11px] font-semibold tabular-nums text-white drop-shadow-md">{formatCount(shareCount)}</span>
         </button>
 
-        {/* Share */}
-        <button type="button" onClick={handleShare} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform" data-testid={`button-share-video-${video.id}`}>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
-            <Share2 className="h-[25px] w-[25px] text-white" />
-          </span>
-          <span className="text-white text-[12px] font-semibold drop-shadow-md tabular-nums">{formatCount(shareCount)}</span>
+        <button type="button" onClick={handleSave} className="flex flex-col items-center gap-0.5 active:scale-90" data-testid={`button-save-video-${video.id}`}>
+          <Bookmark className={cn("h-6.5 w-6.5 drop-shadow-lg", saved ? "fill-amber-400 text-amber-400" : "text-white")} />
+          <span className="text-[10px] font-semibold text-white drop-shadow-md">{t("videoFeed.save")}</span>
         </button>
-
       </div>
 
-      {/* ── Product CTA Card — slides up after 1.5s ── */}
+      {/* ── Bottom chrome: controls + creator + shop + row ── */}
       <div
-        className="absolute left-3 right-16 z-20"
-        style={{
-          bottom: showWhatsAppOverlay
-            ? "calc(104px + env(safe-area-inset-bottom, 0px))"
-            : "calc(80px + env(safe-area-inset-bottom, 0px))",
-          opacity: showWhatsAppOverlay ? 1 : 0,
-          transform: showWhatsAppOverlay ? "translateY(0px) scale(1)" : "translateY(14px) scale(0.97)",
-          transition: "opacity 0.4s cubic-bezier(0.16,1,0.3,1), transform 0.4s cubic-bezier(0.16,1,0.3,1), bottom 0.4s cubic-bezier(0.16,1,0.3,1)",
-          pointerEvents: showWhatsAppOverlay ? "auto" : "none",
-        }}
+        className="absolute inset-x-0 bottom-0 z-20 px-3"
+        style={{ paddingBottom: "calc(70px + env(safe-area-inset-bottom, 0px))" }}
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
         onTouchEnd={e => e.stopPropagation()}
       >
-        <div className="relative flex items-center gap-2.5 bg-black/72 backdrop-blur-xl rounded-2xl p-2 border border-white/12 shadow-2xl overflow-hidden">
-          {/* Dismiss button */}
+        {/* Playback controls */}
+        <div
+          className={cn(
+            "mb-2 flex items-center gap-2 rounded-xl bg-black/35 px-2.5 py-1.5 backdrop-blur-md transition-opacity",
+            showControls || pausedByUser ? "opacity-100" : "opacity-0 pointer-events-none",
+          )}
+        >
           <button
             type="button"
-            onClick={e => { e.stopPropagation(); setWhatsAppDismissed(true); }}
-            className="absolute -top-2 -right-1.5 w-5 h-5 rounded-full bg-zinc-900/90 border border-white/20 flex items-center justify-center z-10 shadow"
+            className="text-white"
+            aria-label={playing ? t("videoFeed.pause", { defaultValue: "Pause" }) : t("videoFeed.play", { defaultValue: "Play" })}
+            onClick={() => {
+              const el = videoRef.current;
+              if (!el) return;
+              if (el.paused) { setPausedByUser(false); el.play().catch(() => {}); setPlaying(true); }
+              else { setPausedByUser(true); el.pause(); setPlaying(false); }
+              revealControls();
+            }}
           >
-            <X className="h-2.5 w-2.5 text-white/70" />
+            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 fill-white" />}
           </button>
-
-          {/* Product thumbnail */}
-          {video.thumbnailUrl && (
-            <div className="shrink-0 w-12 h-12 rounded-xl overflow-hidden border border-white/10">
-              <img
-                src={video.thumbnailUrl}
-                alt=""
-                className="w-full h-full object-cover"
-                draggable={false}
-              />
-            </div>
-          )}
-
-          {/* Title + price */}
-          <div className="flex-1 min-w-0">
-            <p className="text-white font-semibold text-[11px] leading-tight line-clamp-1 mb-0.5">{video.title}</p>
-            {hasPrice && (
-              <span className="text-primary font-black text-[13px] leading-none">{formatPrice(video.price, null, video.currency)}</span>
-            )}
-          </div>
-
-          {/* Action buttons */}
-          <div className="shrink-0 flex flex-col gap-1.5">
-            {/* Achte — only for product boosts (price > 0) */}
-            {hasPrice && (
-              <Link href={`/listings/${video.id}`} onClick={trackBuyClick}>
-                <span className="flex items-center gap-1.5 bg-primary text-white font-black px-3 py-1.5 rounded-lg shadow-lg text-[11px] leading-none whitespace-nowrap">
-                  <ShoppingBag className="h-3 w-3" />
-                  {t("videoFeed.buy")}
-                </span>
-              </Link>
-            )}
-            {/* WhatsApp — only when boost CTA = whatsapp */}
-            {hasWhatsApp && (
-              <button
-                type="button"
-                onClick={handleWhatsApp}
-                className="flex items-center gap-1.5 bg-[#25D366] text-white font-black px-3 py-1.5 rounded-lg shadow-lg active:scale-95 transition-all text-[11px] leading-none whitespace-nowrap"
-              >
-                <WhatsAppIcon className="h-3 w-3" />
-                WhatsApp
-              </button>
-            )}
-          </div>
+          <span className="min-w-[72px] text-[10px] font-semibold tabular-nums text-white/90">
+            {formatClock(currentTime)} / {formatClock(duration)}
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={Math.max(duration, 0.1)}
+            step={0.1}
+            value={Math.min(currentTime, duration || 0)}
+            className="pv-progress h-1 flex-1 cursor-pointer"
+            aria-label={t("videoFeed.seek", { defaultValue: "Seek" })}
+            onChange={(e) => {
+              const el = videoRef.current;
+              const next = Number(e.target.value);
+              if (el && Number.isFinite(next)) {
+                el.currentTime = next;
+                setCurrentTime(next);
+              }
+              revealControls();
+            }}
+          />
+          <button type="button" className="text-white/80" aria-label={t("videoFeed.captions", { defaultValue: "Captions" })} disabled>
+            <Captions className="h-4 w-4 opacity-50" />
+          </button>
+          <button
+            type="button"
+            className="text-white"
+            aria-label={muted ? t("videoFeed.unmute", { defaultValue: "Unmute" }) : t("videoFeed.mute", { defaultValue: "Mute" })}
+            onClick={() => { handleMuteToggle(); setNeedsGestureForSound(false); revealControls(); }}
+            data-testid="button-video-mute"
+          >
+            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+          </button>
+          <button type="button" className="text-white" aria-label={t("videoFeed.fullscreen", { defaultValue: "Fullscreen" })} onClick={handleFullscreen}>
+            <Maximize2 className="h-4 w-4" />
+          </button>
         </div>
-      </div>
 
-      {/* ── Bottom info overlay — TikTok exact layout ── */}
-      <div
-        className="absolute bottom-0 left-0 right-14 px-4 z-10"
-        style={{ paddingBottom: "calc(76px + env(safe-area-inset-bottom, 0px))" }}
-        onClick={e => e.stopPropagation()}
-        onTouchStart={e => e.stopPropagation()}
-        onTouchEnd={e => e.stopPropagation()}
-      >
-        {/* @username + verified */}
-        <div className="mb-1 flex items-center gap-2">
-          <Link href={`/profile/${video.sellerId}`}>
-            <p className="flex w-fit items-center gap-1.5 text-[15px] font-bold text-white drop-shadow-md">
-              @{video.sellerName}
-              {video.sellerIsVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-primary" />}
-            </p>
+        {/* Creator row */}
+        <div className="mb-2 flex items-center gap-2">
+          <Link href={`/profile/${video.sellerId}`} className="shrink-0">
+            <Avatar className="h-8 w-8 border border-white/40">
+              <AvatarImage src={video.sellerAvatar ?? undefined} />
+              <AvatarFallback className="bg-[#2563eb] text-[11px] font-bold text-white">{video.sellerName?.[0] ?? "?"}</AvatarFallback>
+            </Avatar>
           </Link>
-          {user?.id !== video.sellerId && (
+          <div className="min-w-0 flex-1">
+            <Link href={`/profile/${video.sellerId}`} className="flex w-fit max-w-full items-center gap-1">
+              <span className="truncate text-[13px] font-bold text-white drop-shadow">@{video.sellerName}</span>
+              {video.sellerIsVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#2563eb]" />}
+            </Link>
+            <p className="text-[11px] font-medium text-white/70">{t("videoFeed.promotionalVideoLabel", { defaultValue: "Promotional Video" })}</p>
+          </div>
+          {!isOwner && (
             <button
               type="button"
-              onClick={handleMessageSeller}
-              disabled={messagePending}
-              className="flex items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-md transition-transform active:scale-95 disabled:opacity-50"
-              data-testid={`button-message-seller-${video.sellerId}`}
+              disabled={followPending}
+              onClick={() => void handleFollowToggle()}
+              className={cn("pv-follow-pill", following && "following")}
+              data-testid={`button-follow-inline-${video.sellerId}`}
             >
-              {messagePending
-                ? <Loader2 className="h-3 w-3 animate-spin" />
-                : <SendHorizontal className="h-3 w-3" />}
-              {t("videoFeed.message", { defaultValue: "Mesaj" })}
+              {following ? t("videoFeed.following", { defaultValue: "Following" }) : t("videoFeed.follow")}
             </button>
           )}
         </div>
 
-        {/* Caption with "...plus" expand */}
-        <ExpandableCaption text={video.title} />
-
-        {/* Boosted / promotional badge */}
-        {video.isBoosted && (
-          <p className="text-white/55 text-[12px] mt-1 flex items-center gap-1">
-            <Zap className="h-3 w-3 text-primary" />
-            {t("videoFeed.promotionalContent")}
-          </p>
-        )}
-
-        {/* Views row */}
-        <div className="flex items-center gap-1.5 mt-1">
-          <Eye className="h-3 w-3 text-white/45" />
-          <span className="text-white/45 text-[11px] tabular-nums">{formatCount(video.viewCount)}</span>
-        </div>
-
-        {/* Price + WhatsApp — only shown when relevant */}
-        {(hasPrice || hasWhatsApp) && (
-          <div className="flex items-center gap-2.5 mt-2">
-            {hasPrice && (
-              <span className="text-white font-black text-[15px] drop-shadow-md">
-                {formatPrice(video.price, null, video.currency)}
-              </span>
-            )}
-            {hasWhatsApp && !showWhatsAppOverlay && (
-              <button
-                type="button"
-                onClick={handleWhatsApp}
-                className="flex items-center gap-1.5 bg-[#25D366]/90 backdrop-blur-sm text-white font-bold text-[11px] px-3 py-1.5 rounded-full active:scale-95 transition-all"
-              >
-                <WhatsAppIcon className="h-3.5 w-3.5" />
-                WhatsApp
-              </button>
-            )}
+        {(video.description || video.title) && (
+          <div className="mb-2 pr-12">
+            <ExpandableCaption text={video.description?.trim() || video.title} />
           </div>
         )}
+
+        {/* Shopping card — only when a real product is linked */}
+        {hasPrice && !video.isVideoOnly && (
+          <div className="pv-shop-card mb-2 flex items-center gap-2.5 p-2">
+            {video.thumbnailUrl ? (
+              <button type="button" className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-white/10" onClick={() => setLocation(`/listings/${video.id}`)}>
+                <img src={video.thumbnailUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+              </button>
+            ) : null}
+            <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setLocation(`/listings/${video.id}`)}>
+              <p className="line-clamp-1 text-[11px] font-semibold text-white">{video.title}</p>
+              <p className="text-[13px] font-black text-[#60a5fa]">{formatPrice(video.price, null, video.currency)}</p>
+            </button>
+            <div className="flex shrink-0 flex-col gap-1">
+              {isOwner ? (
+                <>
+                  <button type="button" className="pv-btn-buy" onClick={() => setLocation(`/listings/${video.id}`)}>
+                    <Eye className="h-3 w-3" /> {t("videoFeed.viewProduct")}
+                  </button>
+                  <button type="button" className="pv-btn-cart" onClick={() => setLocation(`/sell?edit=${video.id}`)}>
+                    <Pencil className="h-3 w-3" /> {t("videoFeed.editProduct")}
+                  </button>
+                  <button type="button" className="pv-btn-cart" onClick={() => setLocation(`/booster/create?listingId=${video.id}`)}>
+                    <Zap className="h-3 w-3" /> {t("videoFeed.boostProduct")}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {canPurchase && (
+                    <button type="button" className="pv-btn-buy" onClick={handleBuyNow} data-testid={`button-buy-now-${video.id}`}>
+                      <ShoppingCart className="h-3 w-3" /> {t("videoFeed.buyNow")}
+                    </button>
+                  )}
+                  {canPurchase && (
+                    <button type="button" className="pv-btn-cart" onClick={handleAddToCart} data-testid={`button-add-cart-${video.id}`}>
+                      <ShoppingBag className="h-3 w-3" />
+                      {isInCart(video.id) ? t("videoFeed.inCart") : t("videoFeed.addToCart")}
+                    </button>
+                  )}
+                  {!canPurchase && hasWhatsApp && (
+                    <button type="button" className="pv-btn-cart" style={{ background: "#25D366", borderColor: "#25D366" }} onClick={handleWhatsApp}>
+                      <WhatsAppIcon className="h-3 w-3" /> WhatsApp
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+            <button type="button" className="shrink-0 text-white/70" aria-label={t("videoFeed.viewListing")} onClick={() => setLocation(`/listings/${video.id}`)}>
+              <ChevronDown className="h-4 w-4 -rotate-90" />
+            </button>
+          </div>
+        )}
+
+        {/* Compact bottom interaction row */}
+        <div className="pv-bottom-actions mb-1">
+          <button type="button" className="pv-bottom-action" onClick={handleLike}>
+            <ThumbsUp className={cn("h-3.5 w-3.5", liked && "fill-white")} />
+            <span className="label">{t("videoFeed.like", { defaultValue: "Like" })}</span>
+          </button>
+          <button type="button" className="pv-bottom-action" onClick={handleCommentOpen}>
+            <MessageCircle className="h-3.5 w-3.5" />
+            <span className="label">{t("videoFeed.comment", { defaultValue: "Comment" })}</span>
+          </button>
+          <button type="button" className="pv-bottom-action" onClick={handleShare}>
+            <Share2 className="h-3.5 w-3.5" />
+            <span className="label">{t("videoFeed.share", { defaultValue: "Share" })}</span>
+          </button>
+          <button type="button" className="pv-bottom-action" onClick={handleSave}>
+            <Bookmark className={cn("h-3.5 w-3.5", saved && "fill-white")} />
+            <span className="label">{t("videoFeed.save")}</span>
+          </button>
+        </div>
       </div>
 
       {/* ── Comment panel ── */}
@@ -1765,19 +1863,23 @@ export default function VideoFeed() {
   const { t } = useTranslation();
   useSEO({ title: t("tr.promoVideo"), description: t("tr.videoFeedSeoDesc"), path: "/videos/watch" });
   const [, navigate] = useLocation();
-  // Prefer returning to the Promotional Videos discovery grid (preserving
-  // filter/search). Fall back to history / home when opened from elsewhere.
+  // Prefer in-app history; otherwise homepage — never blank / never close the app.
   const handleBack = useCallback(() => {
-    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-    const sort = params?.get("sort");
-    const q = params?.get("q");
-    const discover = new URLSearchParams();
-    if (sort && sort !== "all") discover.set("sort", sort);
-    if (q) discover.set("q", q);
-    const qs = discover.toString();
-    navigate(qs ? `/videos?${qs}` : "/videos");
+    try {
+      if (typeof window !== "undefined") {
+        const referrer = document.referrer || "";
+        const sameOrigin = referrer.startsWith(window.location.origin);
+        if (sameOrigin && window.history.length > 1) {
+          window.history.back();
+          return;
+        }
+      }
+    } catch { /* fall through */ }
+    navigate("/");
   }, [navigate]);
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const { count: cartCount } = useCart();
+  const { toast } = useToast();
   const purchasesDisabled = isAndroidApp();
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [page, setPage] = useState(1);
@@ -1786,6 +1888,7 @@ export default function VideoFeed() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [initialBatchLoaded, setInitialBatchLoaded] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(() => {
     try { return sessionStorage.getItem("bw_open_vf") === "1"; } catch { return false; }
   });
@@ -1793,6 +1896,23 @@ export default function VideoFeed() {
     if (purchasesDisabled) return;
     navigate("/booster/create");
   };
+  const openCreate = () => {
+    navigate(user ? "/booster/create" : "/auth/login");
+  };
+
+  useEffect(() => {
+    if (!headerMenuOpen) return;
+    const close = () => setHeaderMenuOpen(false);
+    const timer = window.setTimeout(() => {
+      document.addEventListener("mousedown", close);
+      document.addEventListener("touchstart", close, { passive: true });
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+    };
+  }, [headerMenuOpen]);
   const closeWizard = () => {
     try { sessionStorage.removeItem("bw_open_vf"); } catch { /* ok */ }
     setWizardOpen(false);
@@ -1883,7 +2003,8 @@ export default function VideoFeed() {
       if (!res.ok) return;
       const data = await res.json();
       if (requestGeneration !== feedGenerationRef.current) return;
-      const incoming: VideoItem[] = data.videos ?? [];
+      const hidden = new Set(readHiddenVideoIds());
+      const incoming: VideoItem[] = (data.videos ?? []).filter((v: VideoItem) => !hidden.has(v.id));
       if (replace) {
         const currentActiveId = initialSelectionAppliedRef.current
           ? activeVideoIdRef.current
@@ -1898,7 +2019,7 @@ export default function VideoFeed() {
         incoming.forEach(v => seenIdsRef.current.add(v.id));
         setVideos(prev => (
           requestGeneration === feedGenerationRef.current
-            ? [...prev, ...incoming]
+            ? [...prev, ...incoming.filter(v => !prev.some(p => p.id === v.id))]
             : prev
         ));
       }
@@ -2073,24 +2194,28 @@ export default function VideoFeed() {
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loadingInitial) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-black gap-4">
-        {/* Transparent header on loading too */}
+      <div className="relative flex h-full flex-col items-center justify-center gap-4 bg-black">
         <div
-          className="absolute inset-x-0 top-0 z-50 flex items-center px-4 gap-3"
+          className="pv-header absolute inset-x-0 top-0 z-50 flex items-center gap-2 px-3"
           style={{ paddingTop: "env(safe-area-inset-top, 16px)", height: "calc(56px + env(safe-area-inset-top, 0px))" }}
         >
           <button
             type="button"
             onClick={handleBack}
-            className="w-9 h-9 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white border border-white/15"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-md"
+            aria-label={t("common.back", { defaultValue: "Back" })}
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <span className="flex-1 text-white font-bold text-base text-center drop-shadow">{t("videoFeed.title")}</span>
-          <div className="w-9 h-9" />
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+            <Play className="h-3.5 w-3.5 shrink-0 fill-white text-white" />
+            <span className="truncate text-center text-[15px] font-bold text-white drop-shadow-md">{t("videoFeed.title")}</span>
+          </div>
+          <div className="w-9" />
+          <div className="w-9" />
         </div>
         <Loader2 className="h-9 w-9 animate-spin text-white/60" />
-        <p className="text-white/40 text-sm">{t("videoFeed.loading", { defaultValue: "Chajman..." })}</p>
+        <p className="text-sm text-white/40">{t("videoFeed.loading")}</p>
       </div>
     );
   }
@@ -2107,18 +2232,30 @@ export default function VideoFeed() {
       {videos.length === 0 && (
         <>
           <div
-            className="absolute inset-x-0 top-0 z-50 flex items-center px-4 gap-3"
+            className="pv-header absolute inset-x-0 top-0 z-50 flex items-center gap-2 px-3"
             style={{ paddingTop: "env(safe-area-inset-top, 16px)", height: "calc(56px + env(safe-area-inset-top, 0px))" }}
           >
             <button
               type="button"
               onClick={handleBack}
-              className="w-9 h-9 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white border border-white/15"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-md"
+              aria-label={t("common.back", { defaultValue: "Back" })}
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
-            <span className="flex-1 text-white font-bold text-base text-center drop-shadow">{t("videoFeed.title")}</span>
-            <div className="w-9 h-9" />
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+              <Play className="h-3.5 w-3.5 shrink-0 fill-white text-white" />
+              <span className="truncate text-center text-[15px] font-bold text-white drop-shadow-md">{t("videoFeed.title")}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate("/videos")}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-md"
+              aria-label={t("common.search", { defaultValue: "Search" })}
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            <div className="w-9" />
           </div>
           <EmptyFeed onBoostClick={openWizard} purchasesDisabled={purchasesDisabled} />
         </>
@@ -2231,35 +2368,111 @@ export default function VideoFeed() {
       <div className="relative h-full w-full lg:w-[430px] lg:shrink-0 overflow-hidden bg-black">
         {/* Transparent overlay header */}
         <div
-          className="absolute inset-x-0 top-0 z-50 flex items-center px-4 gap-3"
+          className="pv-header absolute inset-x-0 top-0 z-50 flex items-center gap-2 px-3"
           style={{
             paddingTop: "env(safe-area-inset-top, 16px)",
             height: "calc(56px + env(safe-area-inset-top, 0px))",
             background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, transparent 100%)",
-            pointerEvents: "none",
           }}
         >
           <button
             type="button"
             onClick={handleBack}
-            className="w-9 h-9 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white border border-white/15 shrink-0"
-            style={{ pointerEvents: "auto" }}
-            aria-label={t("common.back", { defaultValue: "Retounen" })}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-md"
+            aria-label={t("common.back", { defaultValue: "Back" })}
             data-testid="button-video-feed-back"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <span className="flex-1 text-white font-bold text-base text-center drop-shadow-md">{t("videoFeed.title")}</span>
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+            <Play className="h-3.5 w-3.5 shrink-0 fill-white text-white" />
+            <span className="truncate text-center text-[15px] font-bold text-white drop-shadow-md">{t("videoFeed.title")}</span>
+          </div>
           <button
             type="button"
-            onClick={() => navigate("/")}
+            onClick={() => {
+              const q = feedSearchRef.current;
+              navigate(q ? `/videos?q=${encodeURIComponent(q)}` : "/videos");
+            }}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-md"
-            style={{ pointerEvents: "auto" }}
-            aria-label={t("common.close", { defaultValue: "Fèmen" })}
-            data-testid="button-video-feed-close"
+            aria-label={t("common.search", { defaultValue: "Search" })}
+            data-testid="button-video-feed-search"
           >
-            <X className="h-4 w-4" />
+            <Search className="h-4 w-4" />
           </button>
+          <button
+            type="button"
+            onClick={() => setHeaderMenuOpen((v) => !v)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-md"
+            aria-label={t("videoFeed.moreOptions", { defaultValue: "More options" })}
+            data-testid="button-video-feed-menu"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+          {headerMenuOpen && videos[activeIdx] && (
+            <div className="pv-menu" role="menu">
+              <button type="button" role="menuitem" onClick={async () => {
+                const v = videos[activeIdx];
+                setHeaderMenuOpen(false);
+                if (!token) { navigate("/auth/login"); return; }
+                try {
+                  const res = await fetch("/api/reports", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ targetType: "listing", targetId: v.id, reason: "Inappropriate promotional video" }),
+                  });
+                  if (!res.ok) throw new Error("fail");
+                  toast({ title: t("videoFeed.reportSubmitted", { defaultValue: "Report submitted" }) });
+                } catch {
+                  toast({ title: t("errors.serverError"), variant: "destructive" });
+                }
+              }}>
+                <span className="inline-flex items-center gap-2"><Flag className="h-3.5 w-3.5" />{t("videoFeed.reportVideo", { defaultValue: "Report Video" })}</span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => {
+                const v = videos[activeIdx];
+                hideVideoId(v.id);
+                setVideos((prev) => prev.filter((x) => x.id !== v.id));
+                setHeaderMenuOpen(false);
+                toast({ title: t("videoFeed.notInterested", { defaultValue: "Marked not interested" }) });
+              }}>
+                <span className="inline-flex items-center gap-2"><EyeOff className="h-3.5 w-3.5" />{t("videoFeed.notInterestedAction", { defaultValue: "Not Interested" })}</span>
+              </button>
+              <button type="button" role="menuitem" onClick={async () => {
+                const url = `${window.location.origin}/videos/watch?video=${videos[activeIdx].id}`;
+                setHeaderMenuOpen(false);
+                try {
+                  await navigator.clipboard.writeText(url);
+                  toast({ title: t("videoFeed.shareLinkCopied") });
+                } catch { /* ok */ }
+              }}>
+                <span className="inline-flex items-center gap-2"><Link2 className="h-3.5 w-3.5" />{t("videoFeed.copyLink", { defaultValue: "Copy Link" })}</span>
+              </button>
+              <button type="button" role="menuitem" onClick={async () => {
+                const v = videos[activeIdx];
+                const url = `${window.location.origin}/videos/watch?video=${v.id}`;
+                setHeaderMenuOpen(false);
+                try {
+                  if (navigator.share) await navigator.share({ title: v.title, url });
+                  else {
+                    await navigator.clipboard.writeText(url);
+                    toast({ title: t("videoFeed.shareLinkCopied") });
+                  }
+                } catch { /* cancelled */ }
+              }}>
+                <span className="inline-flex items-center gap-2"><Share2 className="h-3.5 w-3.5" />{t("videoFeed.share", { defaultValue: "Share" })}</span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => {
+                const v = videos[activeIdx];
+                hideVideoId(v.id);
+                setVideos((prev) => prev.filter((x) => x.id !== v.id));
+                setHeaderMenuOpen(false);
+                toast({ title: t("videoFeed.videoHidden", { defaultValue: "Video hidden" }) });
+              }}>
+                <span className="inline-flex items-center gap-2"><EyeOff className="h-3.5 w-3.5" />{t("videoFeed.hideVideo", { defaultValue: "Hide Video" })}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Scroll container */}
@@ -2280,7 +2493,6 @@ export default function VideoFeed() {
                 isActive={activeIdx === idx}
                 isNext={activeIdx + 1 === idx}
                 onCommentOpen={() => {}}
-                onNext={() => scrollTo(idx + 1)}
               />
             </div>
           ))}
@@ -2296,54 +2508,49 @@ export default function VideoFeed() {
 
         {/* Scroll hint */}
         {videos.length > 1 && activeIdx === 0 && (
-          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 pointer-events-none animate-bounce">
+          <div className="pointer-events-none absolute bottom-28 left-1/2 z-20 -translate-x-1/2 animate-bounce">
             <div className="flex flex-col items-center gap-0.5">
               <ChevronDown className="h-5 w-5 text-white/40" />
-              <ChevronDown className="h-5 w-5 text-white/20 -mt-2" />
+              <ChevronDown className="-mt-2 h-5 w-5 text-white/20" />
             </div>
           </div>
         )}
 
-        {/* FAB — Add boost */}
-        {!purchasesDisabled && <button
-          type="button"
-          onClick={openWizard}
-          className="absolute z-50 flex items-center justify-center w-12 h-12 bg-primary rounded-full shadow-2xl active:scale-95 transition-transform"
-          style={{
-            right: "16px",
-            bottom: "calc(76px + env(safe-area-inset-bottom, 0px))",
-            boxShadow: "0 0 24px rgba(249,115,22,0.5)",
-          }}
-          aria-label={t("videoFeed.addBoost", { defaultValue: "Ajoute yon videyo" })}
-          data-testid="button-add-video-boost"
-        >
-          <Plus className="h-6 w-6 text-white" />
-        </button>}
-
-        {/* Mobile feed navigation — the global marketplace nav is intentionally hidden on /videos */}
+        {/* Fixed bottom navigation — Home / Explore / Create / Cart / Profile */}
         <nav
-          className="absolute inset-x-0 bottom-0 z-40 flex items-start justify-around border-t border-white/10 bg-black/80 px-2 pt-2 backdrop-blur-xl lg:hidden"
+          className="pv-bottom-nav absolute inset-x-0 bottom-0 z-40 flex items-start justify-around px-1 pt-1.5 lg:hidden"
           style={{
-            height: "calc(64px + env(safe-area-inset-bottom, 0px))",
+            height: "calc(58px + env(safe-area-inset-bottom, 0px))",
             paddingBottom: "env(safe-area-inset-bottom, 0px)",
           }}
-          aria-label={t("nav.main", { defaultValue: "Navigasyon prensipal" })}
+          aria-label={t("nav.main", { defaultValue: "Main navigation" })}
         >
-          <button type="button" onClick={() => navigate("/")} className="flex min-w-14 flex-col items-center gap-1 text-white/65" data-testid="nav-video-home">
+          <button type="button" onClick={() => navigate("/")} className="flex min-w-12 flex-col items-center gap-0.5 text-white/70" data-testid="nav-video-home">
             <Home className="h-5 w-5" />
             <span className="text-[9px] font-semibold">{t("nav.home")}</span>
           </button>
-          <button type="button" className="flex min-w-14 flex-col items-center gap-1 text-primary" aria-current="page" data-testid="nav-video-feed">
-            <Play className="h-5 w-5 fill-current" />
-            <span className="text-[9px] font-black">{t("tr.promoVideo")}</span>
+          <button type="button" onClick={() => navigate("/videos")} className="flex min-w-12 flex-col items-center gap-0.5 text-[#2563eb]" aria-current="page" data-testid="nav-video-explore">
+            <Compass className="h-5 w-5" />
+            <span className="text-[9px] font-black">{t("nav.explore", { defaultValue: "Explore" })}</span>
           </button>
-          <button type="button" onClick={() => navigate("/saved")} className="flex min-w-14 flex-col items-center gap-1 text-white/65" data-testid="nav-video-saved">
-            <Bookmark className="h-5 w-5" />
-            <span className="text-[9px] font-semibold">{t("nav.saved")}</span>
+          <button type="button" onClick={openCreate} className="flex min-w-12 flex-col items-center gap-0.5 text-white/70" data-testid="nav-video-create" aria-label={t("nav.create", { defaultValue: "Create" })}>
+            <span className="pv-nav-create"><Plus className="h-6 w-6" /></span>
           </button>
-          <button type="button" onClick={() => navigate("/messages")} className="flex min-w-14 flex-col items-center gap-1 text-white/65" data-testid="nav-video-messages">
-            <MessageCircle className="h-5 w-5" />
-            <span className="text-[9px] font-semibold">{t("nav.messages")}</span>
+          <button type="button" onClick={() => navigate("/cart")} className="relative flex min-w-12 flex-col items-center gap-0.5 text-white/70" data-testid="nav-video-cart">
+            <ShoppingCart className="h-5 w-5" />
+            {cartCount > 0 && (
+              <span className="absolute -right-0.5 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{cartCount > 99 ? "99+" : cartCount}</span>
+            )}
+            <span className="text-[9px] font-semibold">{t("nav.cart", { defaultValue: "Cart" })}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(user ? `/profile/${user.id}` : "/auth/login")}
+            className="flex min-w-12 flex-col items-center gap-0.5 text-white/70"
+            data-testid="nav-video-profile"
+          >
+            <User className="h-5 w-5" />
+            <span className="text-[9px] font-semibold">{t("nav.profile", { defaultValue: "Profile" })}</span>
           </button>
         </nav>
       </div>

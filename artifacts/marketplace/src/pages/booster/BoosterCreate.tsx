@@ -10,7 +10,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useUpload } from "@workspace/object-storage-web";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { MAX_BOOST_VIDEO_BYTES } from "@/lib/boostVideoUpload";
-import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { BoostAudiencePanel, type BoostAudiencePanelHandle } from "@/components/boost/BoostAudiencePanel";
 import { AdaptiveVideoPlayer } from "@/components/media/AdaptiveVideoPlayer";
 import { extractVideoPoster } from "@/lib/videoPoster";
@@ -57,7 +56,6 @@ export default function BoosterCreate() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const { uploadFile } = useUpload();
-  const purchasesDisabled = isAndroidApp();
   const videoInputRef = useRef<HTMLInputElement>(null);
   const audiencePanelRef = useRef<BoostAudiencePanelHandle>(null);
   const createSectionRef = useRef<HTMLDivElement>(null);
@@ -449,7 +447,9 @@ export default function BoosterCreate() {
       navigate(`/auth/login?next=${encodeURIComponent("/booster/create")}`);
       return;
     }
-    if (purchasesDisabled) return;
+    // Boost launch debits the Flexa wallet (same API as iOS / mobile web).
+    // Do not hard-block the Android WebView create UI — that hid the entire
+    // workflow. Subscriptions remain on Google Play Billing separately.
     if (mode === "launch") {
       if (ctaType === "buy_now" && !listingId) {
         toast({
@@ -532,14 +532,6 @@ export default function BoosterCreate() {
       setBusy(false);
     }
   };
-
-  if (purchasesDisabled) {
-    return (
-      <BoosterLayout title={t("booster.create.title")} subtitle={t("androidPurchasePolicy.unavailable")}>
-        <div className="bp-card text-sm text-slate-600">{t("androidPurchasePolicy.unavailable")}</div>
-      </BoosterLayout>
-    );
-  }
 
   return (
     <BoosterLayout

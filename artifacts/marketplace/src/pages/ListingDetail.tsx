@@ -33,7 +33,6 @@ import { useTranslation } from "react-i18next";
 import { useViewTracker, formatViewCount } from "@/hooks/useViewTracker";
 import { formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { cn } from "@/lib/utils";
-import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
 
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
@@ -2613,9 +2612,9 @@ export default function ListingDetail() {
                 {t("buttons.relist", { defaultValue: "Re-list as available" })}
               </Button>
             ) : null}
-            {(!isAndroidApp() || listing.isBoosted) && <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => setLocation(`/boost/${id}`)} data-testid="button-boost-listing">
+            <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => setLocation(`/boost/${id}`)} data-testid="button-boost-listing">
               <Zap className="h-4 w-4 mr-1" /> {t("buttons.boostListing")}
-            </Button>}
+            </Button>
           </div>
         )}
 
@@ -2667,7 +2666,7 @@ export default function ListingDetail() {
                   <AlertTriangle className="h-3.5 w-3.5 mr-2" />
                   {t("listing.adminReject")}
                 </DropdownMenuItem>
-                {canAdminBoost && !isAndroidApp() && (
+                {canAdminBoost && (
                   <DropdownMenuItem
                     onClick={() => setLocation(`/boost/${id}`)}
                     data-testid="button-admin-boost-listing"

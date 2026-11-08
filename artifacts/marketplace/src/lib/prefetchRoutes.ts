@@ -39,6 +39,7 @@ const ROUTE_IMPORTERS: Record<string, () => Promise<unknown>> = {
   "/orders": () => import("@/pages/Orders"),
   "/sales": () => import("@/pages/Sales"),
   "/saved": () => import("@/pages/Saved"),
+  "/bouillon": () => import("@/pages/Bouillon"),
   "/settings": () => import("@/pages/Settings"),
   "/subscription": () => import("@/pages/Subscription"),
   "/videos": () =>

@@ -27,7 +27,6 @@ import { cn } from "@/lib/utils";
 import "@/components/video-upload-center.css";
 
 const HIDE_KEY = "flexa_video_upload_bar_hidden";
-const AUTO_HIDE_MS = 3000;
 
 const ACTIVE_STATES = new Set<VideoUploadJob["state"]>([
   "draft",
@@ -93,7 +92,7 @@ function stateLabel(job: VideoUploadJob, translate: (key: string, opts?: object)
   }
 }
 
-function JobRow({
+export function VideoUploadJobRow({
   job,
   onActionError,
   onContinue,
@@ -283,13 +282,17 @@ export default function VideoUploadCenter() {
   const activeJobs = ownJobs.filter((job) => ACTIVE_STATES.has(job.state));
   const attentionJobs = ownJobs.filter((job) => NEEDS_ATTENTION.has(job.state));
   const completeCount = ownJobs.filter((job) => job.state === "complete").length;
+  const inFlight =
+    ownJobs.length > 0 &&
+    ownJobs.some((job) => ACTIVE_STATES.has(job.state) || NEEDS_ATTENTION.has(job.state));
   const allSettled =
     ownJobs.length > 0 &&
+    !inFlight &&
     ownJobs.every((job) => job.state === "complete" || job.state === "cancelled");
   const leadActive = activeJobs.slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
   const leadPercent = leadActive ? progressFor(leadActive) : 0;
 
-  // Re-show the bar when something needs attention or a new active upload starts.
+  // Re-show the bar only while uploads are active or need attention.
   useEffect(() => {
     if (activeJobs.length > 0 || attentionJobs.length > 0) {
       setHidden(false);
@@ -305,7 +308,8 @@ export default function VideoUploadCenter() {
     }
   }, [activeJobs.length, attentionJobs.length, ownJobs.map((j) => `${j.id}:${j.state}`).join("|")]);
 
-  // Auto-hide 3s after everything is complete/cancelled (keep jobs accessible).
+  // When everything settles, toast once and drop the floating bar.
+  // Completed leftovers live on the Bouillon menu page — not above the nav.
   useEffect(() => {
     if (!allSettled || completeCount === 0) return;
     const fingerprint = ownJobs.map((j) => `${j.id}:${j.state}`).join("|");
@@ -314,23 +318,17 @@ export default function VideoUploadCenter() {
       toast({
         title: t("videoUploads.allCompleteTitle", { defaultValue: "Videos ready" }),
         description: t("videoUploads.allCompleteDesc", {
-          defaultValue: "All uploads finished. You can keep using them from Saved Videos.",
+          defaultValue: "All uploads finished. Open Bouillon in the menu to use them.",
         }),
       });
     }
-    if (autoHideTimer.current) window.clearTimeout(autoHideTimer.current);
-    autoHideTimer.current = window.setTimeout(() => {
-      setExpanded(false);
-      setHidden(true);
-      try {
-        sessionStorage.setItem(HIDE_KEY, "1");
-      } catch {
-        /* ignore */
-      }
-    }, AUTO_HIDE_MS);
-    return () => {
-      if (autoHideTimer.current) window.clearTimeout(autoHideTimer.current);
-    };
+    setExpanded(false);
+    setHidden(true);
+    try {
+      sessionStorage.setItem(HIDE_KEY, "1");
+    } catch {
+      /* ignore */
+    }
   }, [allSettled, completeCount, ownJobs, t, toast]);
 
   const hideBar = () => {
@@ -364,8 +362,8 @@ export default function VideoUploadCenter() {
     setLocation(path);
   };
 
-  if (!user || ownJobs.length === 0) return null;
-  if (hidden && activeJobs.length === 0 && attentionJobs.length === 0) return null;
+  // Never park completed-only leftovers above the nav — those belong on /bouillon.
+  if (!user || (activeJobs.length === 0 && attentionJobs.length === 0)) return null;
 
   // If hidden but still active, show a tiny restore chip above the nav.
   if (hidden) {
@@ -476,9 +474,10 @@ export default function VideoUploadCenter() {
             </p>
           )}
           {[...ownJobs]
+            .filter((job) => ACTIVE_STATES.has(job.state) || NEEDS_ATTENTION.has(job.state))
             .sort((a, b) => b.updatedAt - a.updatedAt)
             .map((job) => (
-              <JobRow
+              <VideoUploadJobRow
                 key={job.id}
                 job={job}
                 onActionError={setActionError}

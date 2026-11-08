@@ -65,6 +65,7 @@ export default {
     videos: "Videos promocionales",
     videosSection: "Videos promocionales",
     myBoosts: "Mis promociones activas",
+    bouillon: "Bouillon",
     promoAccount: "Cuenta promocional",
     promoBalanceAvail: "Saldo promocional disponible",
     loanApply: "Solicitar préstamo",
@@ -1620,7 +1621,13 @@ export default {
     closeBarHint: "Oculta la barra. Las subidas siguen en segundo plano.",
     managerHint: "Cerrar esta barra no cancela las subidas. Usa Cancelar subida solo para detener una transferencia.",
     allCompleteTitle: "Vídeos listos",
-    allCompleteDesc: "Todas las subidas terminaron. Puedes seguir usándolas en Vídeos guardados.",
+    allCompleteDesc: "Todas las subidas terminaron. Abre Bouillon en el menú para usarlos.",
+  },
+  bouillon: {
+    subtitle: "Borradores y vídeos terminados listos para Boost o Vender.",
+    empty: "Aún no hay vídeos en Bouillon",
+    emptyHint: "Cuando subas un vídeo de Boost o anuncio, se queda aquí hasta que lo uses o lo quites.",
+    hint: "Usa Continuar para volver a Boost o Vender. Descartar quita un vídeo terminado de esta lista.",
   },
   errors: {
     notFound: "Página no encontrada",

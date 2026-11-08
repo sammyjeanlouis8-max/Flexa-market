@@ -121,6 +121,7 @@ export default {
     videosSection: "Vidéos promotionnelles",
     ordersSalesSection: "Commandes et ventes",
     myBoosts: "Mes Boosts Actifs",
+    bouillon: "Bouillon",
     promoAccount: "Compte Promo",
     commissionPromo: "Commission Promo",
     promoBalanceAvail: "Solde Promo disponible",
@@ -2020,7 +2021,13 @@ export default {
     closeBarHint: "Masque la barre. Les téléversements continuent en arrière-plan.",
     managerHint: "Fermer cette barre n'annule pas les téléversements. Utilisez Annuler uniquement pour arrêter un transfert.",
     allCompleteTitle: "Vidéos prêtes",
-    allCompleteDesc: "Tous les téléversements sont terminés. Vous pouvez les réutiliser dans Vidéos enregistrées.",
+    allCompleteDesc: "Tous les téléversements sont terminés. Ouvrez Bouillon dans le menu pour les utiliser.",
+  },
+  bouillon: {
+    subtitle: "Brouillons et vidéos terminées prêtes pour Boost ou Vendre.",
+    empty: "Aucune vidéo dans Bouillon pour le moment",
+    emptyHint: "Quand vous téléversez une vidéo Boost ou annonce, elle reste ici jusqu'à ce que vous l'utilisiez ou la retiriez.",
+    hint: "Utilisez Continuer pour reprendre Boost ou Vendre. Masquer retire une vidéo terminée de cette liste.",
   },
   errors: {
     notFound: "Page introuvable",

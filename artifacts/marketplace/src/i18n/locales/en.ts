@@ -121,6 +121,7 @@ export default {
     videosSection: "Promotional Videos",
     ordersSalesSection: "Orders & Sales",
     myBoosts: "My Active Boosts",
+    bouillon: "Bouillon",
     promoAccount: "Promo Account",
     commissionPromo: "Commission Promo",
     promoBalanceAvail: "Promo Balance available",
@@ -2028,7 +2029,13 @@ export default {
     closeBarHint: "Hide the bar. Uploads keep running in the background.",
     managerHint: "Closing this bar does not cancel uploads. Use Cancel upload only when you want to stop a transfer.",
     allCompleteTitle: "Videos ready",
-    allCompleteDesc: "All uploads finished. You can keep using them from Saved Videos.",
+    allCompleteDesc: "All uploads finished. Open Bouillon in the menu to use them.",
+  },
+  bouillon: {
+    subtitle: "Drafts and finished video uploads ready to use in Boost or Sell.",
+    empty: "No videos in Bouillon yet",
+    emptyHint: "When you upload a boost or listing video, it stays here until you use or remove it.",
+    hint: "Use Continue to return to your Boost or Sell flow. Dismiss removes a finished upload from this list.",
   },
   errors: {
     notFound: "Page not found",

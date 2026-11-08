@@ -98,15 +98,9 @@ export default function SellerCenterShell({
 
   const showSellHero = Boolean(onBack || heroTitle);
 
-  // Bottom inset lives on the shell (not only the footer) so overflow:hidden
-  // cannot clip Save/Publish under the home indicator when env() is 0.
-  const shellBottomInset =
-    "max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px))";
-
   return (
     <div
       className="h-full max-h-full min-h-0 flex flex-col bg-[#F3F4F6] overflow-hidden"
-      style={{ paddingBottom: shellBottomInset }}
       data-testid="seller-center-shell"
     >
       {/* Top header */}
@@ -253,12 +247,12 @@ export default function SellerCenterShell({
             {children}
           </main>
           {footer ? (
-            <div
-              className="shrink-0 z-40 border-t border-border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90"
-              data-testid="seller-action-footer"
-            >
-              {/* Shell owns home-indicator inset; keep a comfortable pad above it. */}
-              <div className="w-full px-3 pt-2.5 pb-2.5 flex gap-2 items-center">{footer}</div>
+            <div className="sell-action-footer shrink-0 z-40" data-testid="seller-action-footer">
+              {/* White only behind the button row — never paint a white bar into the home-indicator zone. */}
+              <div className="sell-action-footer-row w-full px-3 py-2 flex gap-2 items-center min-w-0 border-t border-border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
+                {footer}
+              </div>
+              <div className="sell-action-footer-safe" aria-hidden="true" />
             </div>
           ) : null}
         </div>

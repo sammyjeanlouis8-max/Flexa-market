@@ -20,7 +20,11 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  initialWindowMetrics,
+} from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 import * as Notifications from "expo-notifications";
 import { usePushNotifications } from "./hooks/usePushNotifications";
@@ -197,6 +201,20 @@ export default function App() {
       setIsLoading(false);
       setIsRetrying(false);
     }
+
+    // iOS SafeAreaView only reserves the top edge so the WebView can paint
+    // edge-to-edge at the bottom. CSS must own the home-indicator inset via
+    // --sab (env(safe-area-inset-bottom) is often 0 inside WKWebView).
+    const sat = Math.round(initialWindowMetrics?.insets.top ?? 0);
+    const sab = Math.round(
+      initialWindowMetrics?.insets.bottom ?? (Platform.OS === "ios" ? 34 : 0),
+    );
+    webRef.current?.injectJavaScript(
+      `(function(){` +
+        `document.documentElement.style.setProperty('--sat','${sat}px');` +
+        `document.documentElement.style.setProperty('--sab','${sab}px');` +
+      `})();true;`,
+    );
 
     // Drain any script that arrived before the page was ready
     if (pendingScript.current && isTrustedFlexaUrl(currentUrlRef.current)) {

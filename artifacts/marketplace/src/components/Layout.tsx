@@ -586,11 +586,15 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     );
   }
 
-  // Seller Center (Add Product) — full-bleed chrome lives inside Sell.tsx
-  if (isSellPage) {
+  // Seller Center (Add Product) — full-bleed chrome lives inside Sell.tsx.
+  // Do NOT early-return when showInlineSell: that overlay is rendered further
+  // down, and Android WebViews need a flex-height parent (not overflow-y-auto
+  // on a fixed shell) so the action footer stays at the bottom.
+  const isSellRoute = /^\/sell\/?(?:\?.*)?$/.test(inlineRoute ?? location);
+  if (isSellRoute && !showInlineSell) {
     return (
       <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
-        <div className="app-shell seller-center-shell w-full min-w-0 max-w-full overflow-x-hidden bg-[#F3F4F6] flex flex-col min-h-dvh">
+        <div className="app-shell seller-center-shell w-full min-w-0 max-w-full overflow-hidden bg-[#F3F4F6] flex flex-col h-dvh max-h-dvh">
           {children}
         </div>
       </DeliveryMenuCountryContext.Provider>
@@ -919,21 +923,23 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
           client-side route changes. Keep the add-product flow in the current
           document so installed builds do not reopen their startup overlay. */}
       {showInlineSell && (
-        <div className="fixed inset-0 z-[70] overflow-y-auto bg-background md:hidden">
-          <div className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur">
+        <div className="fixed inset-0 z-[70] flex flex-col h-dvh max-h-dvh overflow-hidden bg-background md:hidden">
+          <div className="shrink-0 z-10 flex h-12 items-center gap-3 border-b border-border bg-background/95 px-3 backdrop-blur">
             <button
               type="button"
               aria-label={t("common.back")}
               onClick={() => setShowInlineSell(false)}
-              className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-accent"
+              className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-accent"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <span className="font-semibold">{t("page.sell")}</span>
+            <span className="font-semibold text-sm">{t("page.sell")}</span>
           </div>
-          <Suspense fallback={<div className="p-6 text-center text-muted-foreground">{t("common.loading")}</div>}>
-            <InlineSell />
-          </Suspense>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <Suspense fallback={<div className="p-6 text-center text-muted-foreground">{t("common.loading")}</div>}>
+              <InlineSell />
+            </Suspense>
+          </div>
         </div>
       )}
 

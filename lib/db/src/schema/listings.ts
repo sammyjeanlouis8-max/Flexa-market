@@ -94,6 +94,11 @@ export const listingsTable = pgTable("listings", {
   favoriteCount: integer("favorite_count").notNull().default(0),
   sharesCount: integer("shares_count").notNull().default(0),
   sellerId: integer("seller_id").notNull().references(() => usersTable.id),
+  /**
+   * Client-supplied publish key. Retries with the same key return the original
+   * listing instead of creating duplicates when the network flakes.
+   */
+  publishIdempotencyKey: text("publish_idempotency_key"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => ({
@@ -101,6 +106,9 @@ export const listingsTable = pgTable("listings", {
   // sorts by createdAt, so a partial index on (country, createdAt desc) where
   // status='available' covers the vast majority of marketplace traffic.
   listingsSellerIdx: index("listings_seller_id_idx").on(t.sellerId),
+  listingsPublishIdempotencyIdx: uniqueIndex("listings_seller_publish_idempotency_uidx")
+    .on(t.sellerId, t.publishIdempotencyKey)
+    .where(sql`${t.publishIdempotencyKey} IS NOT NULL`),
   listingsCategoryIdx: index("listings_category_id_idx").on(t.categoryId),
   listingsStatusIdx: index("listings_status_idx").on(t.status),
   listingsCountryIdx: index("listings_country_idx").on(t.country),

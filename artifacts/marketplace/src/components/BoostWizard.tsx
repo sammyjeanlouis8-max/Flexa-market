@@ -142,20 +142,22 @@ export default function BoostWizard({ open, onClose }: Props) {
     } catch { /* sessionStorage unavailable */ }
   }, [open, step, boostType, videoUrl]);
 
-  // Reset on close
+  // Reset on close — keep videoUrl when an upload is still in flight so the
+  // global VideoUploadCenter can re-attach the completed asset later.
   useEffect(() => {
     if (!open) {
       setStep("type");
       setBoostType(null);
       setSelectedListing(null);
       setVideoUploadError(null);
+      const keepVideo = videoUploading || !!videoUrl;
       try {
         sessionStorage.removeItem("bw_step");
         sessionStorage.removeItem("bw_type");
-        sessionStorage.removeItem("bw_video_url");
+        if (!keepVideo) sessionStorage.removeItem("bw_video_url");
       } catch { /* ok */ }
       if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
-      setVideoUrl(null);
+      if (!keepVideo) setVideoUrl(null);
       setVideoObjectUrl(null);
       setNewTitle(""); setNewPrice(""); setNewDesc(""); setCreatedListingId(null);
       setNewCondition("new"); setNewLocation(""); setNewStock("");

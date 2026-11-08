@@ -42,7 +42,12 @@ import {
 import { getBoostVideoUploadReadiness } from "../lib/boostVideoUploadReadiness";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { optionalAuth, requireAuth } from "../middlewares/auth";
-import { consumeUploadProxyToken, issueUploadProxyToken } from "../lib/uploadProxyTokens";
+import {
+  consumeUploadProxyToken,
+  issueUploadProxyToken,
+  markUploadProxyTokenUsed,
+  peekUploadProxyToken,
+} from "../lib/uploadProxyTokens";
 import { recordCompletedMusicUploadClaim } from "../lib/musicUploadClaims";
 
 const router: IRouter = Router();
@@ -169,7 +174,10 @@ router.put("/storage/uploads/put-proxy/:token", optionalAuth, async (req: Reques
   const token = String(req.params["token"]);
   const rawContentType = (req.headers["content-type"] ?? "application/octet-stream") as string;
   const contentType = rawContentType.split(";")[0].trim();
-  const uploadToken = consumeUploadProxyToken(token);
+  // Peek first so a failed PUT does not burn a valid multi-instance token.
+  // Music tokens still consume on first successful claim via consumeUploadProxyToken.
+  const peeked = peekUploadProxyToken(token);
+  const uploadToken = peeked?.purpose === "music" ? consumeUploadProxyToken(token) : peeked;
   if (!uploadToken) {
     req.resume();
     res.status(404).json({ error: "Upload link is invalid, expired, or already used." });
@@ -207,32 +215,34 @@ router.put("/storage/uploads/put-proxy/:token", optionalAuth, async (req: Reques
       return;
     }
 
-// For Wasabi: stream request body directly (no memory buffering).
-      // This fixes long-video upload timeouts on DO App Platform.
-      if (USE_WASABI) {
-        const key = await streamToWasabi(req, uploadToken.contentType, contentLength);
-        if (uploadToken.purpose === "music") {
-          if (!uploadToken.ownerId || !uploadToken.musicKind) {
-            throw new Error("Music upload token metadata is incomplete.");
-          }
-          await recordCompletedMusicUploadClaim({
-            uploadToken: token,
-            ownerUserId: uploadToken.ownerId,
-            storageKey: key,
-            kind: uploadToken.musicKind,
-            contentType: uploadToken.contentType,
-            sizeBytes: contentLength,
-          });
+    // For Wasabi: stream request body directly (no memory buffering).
+    // This fixes long-video upload timeouts on DO App Platform.
+    if (USE_WASABI) {
+      const key = await streamToWasabi(req, uploadToken.contentType, contentLength);
+      if (uploadToken.purpose === "music") {
+        if (!uploadToken.ownerId || !uploadToken.musicKind) {
+          throw new Error("Music upload token metadata is incomplete.");
         }
-        const url = `/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
-        req.log.info({ token, key, purpose: uploadToken.purpose, backend: "wasabi-stream" }, "Proxy upload complete (streamed)");
-        res.status(200).json({ url });
-        return;
+        await recordCompletedMusicUploadClaim({
+          uploadToken: token,
+          ownerUserId: uploadToken.ownerId,
+          storageKey: key,
+          kind: uploadToken.musicKind,
+          contentType: uploadToken.contentType,
+          sizeBytes: contentLength,
+        });
+      } else {
+        markUploadProxyTokenUsed(token);
       }
+      const url = `/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
+      req.log.info({ token, key, purpose: uploadToken.purpose, backend: "wasabi-stream" }, "Proxy upload complete (streamed)");
+      res.status(200).json({ url });
+      return;
+    }
 
-      return res.status(503).json({
-        error: "Wasabi storage is not configured. Uploads are not sent to Cloudinary.",
-      });
+    return res.status(503).json({
+      error: "Wasabi storage is not configured. Uploads are not sent to Cloudinary.",
+    });
   } catch (err: any) {
     req.log.error({ err, token }, "Proxy upload failed");
     const msg: string = err?.message ?? "Upload failed";
@@ -257,8 +267,6 @@ const MAX_QUEUED_VIDEO_NORMALIZATIONS = 24;
 const MAX_MARKETPLACE_VIDEO_SECONDS = 5 * 60;
 /** Promotional / Booster Pro campaigns: 120 seconds max. */
 const MAX_BOOST_PROMO_VIDEO_SECONDS = 120;
-/** Per-session duration caps (purpose from chunk-init). Survives for process lifetime of the upload. */
-const uploadMaxSecondsById = new Map<string, number>();
 const CHUNK_ROOT = join(tmpdir(), "flexa-boost-video-processing");
 mkdirSync(CHUNK_ROOT, { recursive: true });
 
@@ -405,7 +413,10 @@ async function processChunkUpload(
     if (!await heartbeatBoostVideoProcessing(uploadId, processingToken)) return;
 
     stage = "validation";
-    const maxSeconds = uploadMaxSecondsById.get(uploadId) ?? MAX_MARKETPLACE_VIDEO_SECONDS;
+    const maxSeconds =
+      typeof session.maxSeconds === "number" && Number.isFinite(session.maxSeconds)
+        ? session.maxSeconds
+        : MAX_MARKETPLACE_VIDEO_SECONDS;
     const durationSeconds = await assertVideoDurationAtMost(
       sourcePath,
       maxSeconds,
@@ -460,8 +471,16 @@ async function processChunkUpload(
       : stage === "storage"
         ? "VIDEO_STORAGE_FAILED"
         : "UPLOAD_ASSEMBLY_FAILED";
+    const exceededCap =
+      typeof session.maxSeconds === "number" && Number.isFinite(session.maxSeconds)
+        ? session.maxSeconds
+        : MAX_MARKETPLACE_VIDEO_SECONDS;
+    const durationLimitLabel =
+      exceededCap <= MAX_BOOST_PROMO_VIDEO_SECONDS
+        ? "2 minutes or shorter"
+        : "5 minutes or shorter";
     const errorMessage = errorCode === "VIDEO_DURATION_EXCEEDED"
-      ? "Video must be 5 minutes or shorter."
+      ? `Video must be ${durationLimitLabel}.`
       : errorCode === "VIDEO_CONVERSION_FAILED"
       ? "This video could not be converted. Try exporting it as MP4 or MOV."
       : errorCode === "VIDEO_STORAGE_FAILED"
@@ -668,8 +687,9 @@ router.post("/storage/uploads/chunk-init", requireAuth, async (req: Request, res
       totalChunks,
       totalBytes,
       expiresAt,
+      purpose: purpose === "boost" || purpose === "listing" ? purpose : "listing",
+      maxSeconds,
     });
-    uploadMaxSecondsById.set(uploadId, maxSeconds);
     res.json({
       uploadId,
       // Retained only as an opaque, pre-completion compatibility placeholder.

@@ -774,6 +774,7 @@ export default {
       deliveryRequired: "Veuillez sélectionner une option de livraison.",
       networkError: "Impossible de publier votre produit. Vérifiez votre connexion et réessayez.",
       serverError: "Une erreur s'est produite. Veuillez réessayer.",
+      authError: "Votre session a expiré. Reconnectez-vous, puis réessayez de publier. Votre brouillon est enregistré.",
       fieldsMissing: "{{count}} champs manquants",
       fieldMissingOne: "1 champ manquant",
       completed: "Terminé",

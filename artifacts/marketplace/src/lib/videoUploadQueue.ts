@@ -266,6 +266,8 @@ async function execute(job: StoredJob, signal: AbortSignal) {
     if (current.status === "complete" && current.url) { await complete(job, current.url, signal); return; }
     if (current.status === "failed") throw new BoostVideoUploadError(current.errorCode ?? "VIDEO_CONVERSION_FAILED",
       current.error ?? "Video processing failed. Try again.", undefined, current.retryable);
+    // Transfer is done; creep 90→99 based on elapsed processing polls (not fake upload bytes).
+    progress(job, Math.min(99, 90 + Math.floor(attempt / 12)));
     await delay(2500, signal);
   }
   throw new Error("Processing is taking longer than expected. Your upload is saved. Try again to check its status.");

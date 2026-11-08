@@ -9,6 +9,8 @@ import {
 import { MUSIC_COMMERCE_ENABLED } from "../lib/musicCommerce";
 import { consumeUploadProxyToken, issueUploadProxyToken } from "../lib/uploadProxyTokens";
 
+process.env.SESSION_SECRET ??= "artist-plan-upload-token-test-secret";
+
 const NOW = new Date("2026-08-19T12:00:00.000Z");
 
 describe("Artist Plan upload eligibility", () => {

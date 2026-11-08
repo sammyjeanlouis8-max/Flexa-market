@@ -1042,9 +1042,41 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
     return;
   }
    const imageUrls = cleanListingImages(parsed.data.images);
-   if (imageUrls.length < 2 || !hasUsableListingImage(imageUrls)) {
-     res.status(400).json({ error: "At least two valid product photos are required." });
+   if (imageUrls.length < 1 || !hasUsableListingImage(imageUrls)) {
+     res.status(400).json({ error: "At least one valid product photo is required." });
     return;
+  }
+
+  const rawIdempotencyKey = String(
+    req.header("Idempotency-Key") ??
+      (req.body as { idempotencyKey?: unknown } | undefined)?.idempotencyKey ??
+      "",
+  ).trim();
+  const publishIdempotencyKey =
+    rawIdempotencyKey && /^[a-zA-Z0-9_-]{8,128}$/.test(rawIdempotencyKey)
+      ? rawIdempotencyKey
+      : null;
+
+  if (publishIdempotencyKey) {
+    const [existingByKey] = await db
+      .select()
+      .from(listingsTable)
+      .where(and(
+        eq(listingsTable.sellerId, req.userId!),
+        eq(listingsTable.publishIdempotencyKey, publishIdempotencyKey),
+      ))
+      .limit(1);
+    if (existingByKey) {
+      const [existingSeller] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+      const [existingCat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, existingByKey.categoryId));
+      let existingSub: { name: string; slug: string } | null = null;
+      if (existingByKey.subcategoryId) {
+        const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, existingByKey.subcategoryId));
+        existingSub = sc ? { name: sc.name, slug: sc.slug } : null;
+      }
+      res.status(200).json(await formatListing(existingByKey, existingSeller, existingCat, existingSub));
+      return;
+    }
   }
 
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, parsed.data.categoryId));
@@ -1192,29 +1224,57 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
   // Derive state from city if not explicitly provided
   const listingState = ((parsed.data as any).state ?? "").trim() || STATE_BY_CITY[rawCity] || null;
 
-  const [listing] = await db.insert(listingsTable).values({
-    ...parsed.data,
-    ...(canonicalListingVideoUrl ? { listingVideoUrl: canonicalListingVideoUrl } : {}),
-    images: imageUrls,
-    subcategoryId: parsed.data.subcategoryId ?? null,
-    city: rawCity || null,
-    state: listingState,
-    country: listingCountry,
-    requiresStripePayout,
-    deliveryMethod: listingDeliveryMethod,
-    sellerId: req.userId!,
-    status: insertStatus,
-    moderationStatus,
-    moderationRiskLevel: eligibility.riskLevel,
-    moderationReason: eligibility.reason,
-    moderationConfidence: eligibility.confidence,
-    moderationFlags: eligibility.flags,
-    moderationSource: eligibility.source === "policy" ? "rules" : eligibility.source,
-    moderatedAt: new Date(),
-    eligibilityClass: eligibility.eligibilityClass.toLowerCase(),
-    lifecycleStatus: eligibility.lifecycleOnInsert,
-    rejectionCode: eligibility.rejectionCode,
-  }).returning();
+  let listing;
+  try {
+    [listing] = await db.insert(listingsTable).values({
+      ...parsed.data,
+      ...(canonicalListingVideoUrl ? { listingVideoUrl: canonicalListingVideoUrl } : {}),
+      images: imageUrls,
+      subcategoryId: parsed.data.subcategoryId ?? null,
+      city: rawCity || null,
+      state: listingState,
+      country: listingCountry,
+      requiresStripePayout,
+      deliveryMethod: listingDeliveryMethod,
+      sellerId: req.userId!,
+      publishIdempotencyKey,
+      status: insertStatus,
+      moderationStatus,
+      moderationRiskLevel: eligibility.riskLevel,
+      moderationReason: eligibility.reason,
+      moderationConfidence: eligibility.confidence,
+      moderationFlags: eligibility.flags,
+      moderationSource: eligibility.source === "policy" ? "rules" : eligibility.source,
+      moderatedAt: new Date(),
+      eligibilityClass: eligibility.eligibilityClass.toLowerCase(),
+      lifecycleStatus: eligibility.lifecycleOnInsert,
+      rejectionCode: eligibility.rejectionCode,
+    }).returning();
+  } catch (insertErr: any) {
+    // Concurrent retries with the same Idempotency-Key race the unique index.
+    if (publishIdempotencyKey && String(insertErr?.message ?? "").toLowerCase().includes("listings_seller_publish_idempotency")) {
+      const [replay] = await db
+        .select()
+        .from(listingsTable)
+        .where(and(
+          eq(listingsTable.sellerId, req.userId!),
+          eq(listingsTable.publishIdempotencyKey, publishIdempotencyKey),
+        ))
+        .limit(1);
+      if (replay) {
+        const [existingSeller] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+        const [existingCat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, replay.categoryId));
+        let existingSub: { name: string; slug: string } | null = null;
+        if (replay.subcategoryId) {
+          const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, replay.subcategoryId));
+          existingSub = sc ? { name: sc.name, slug: sc.slug } : null;
+        }
+        res.status(200).json(await formatListing(replay, existingSeller, existingCat, existingSub));
+        return;
+      }
+    }
+    throw insertErr;
+  }
 
   // Fraud: assess listing for scam content + rapid posting (fire-and-forget)
   void import("../lib/fraudEngine").then(({ assessListing }) => {

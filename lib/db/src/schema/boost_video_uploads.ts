@@ -20,6 +20,10 @@ export const boostVideoUploadsTable = pgTable(
     contentType: text("content_type").notNull(),
     totalChunks: integer("total_chunks").notNull(),
     totalBytes: integer("total_bytes").notNull(),
+    /** boost | listing — drives the durable duration cap across process restarts. */
+    purpose: text("purpose").notNull().default("listing"),
+    /** Max allowed duration in seconds (120 for boost promo, 300 for listing). */
+    maxSeconds: integer("max_seconds").notNull().default(300),
     status: text("status").notNull().default("uploading"),
     finalStorageKey: text("final_storage_key"),
     errorCode: text("error_code"),

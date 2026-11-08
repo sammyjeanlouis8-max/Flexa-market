@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, PlusCircle, Package, ShoppingBag, MessageCircle,
   Wallet, Settings, HelpCircle, Menu, Bell, Store, X, BarChart3,
-  Boxes,
+  Boxes, ArrowLeft,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
@@ -23,9 +23,16 @@ type NavItem = {
 export default function SellerCenterShell({
   children,
   searchPlaceholder,
+  onBack,
+  heroTitle,
+  heroSubtitle,
 }: {
   children: ReactNode;
   searchPlaceholder?: string;
+  /** When set, shows a top-left Back control in the sell hero. */
+  onBack?: () => void;
+  heroTitle?: string;
+  heroSubtitle?: string;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -83,29 +90,44 @@ export default function SellerCenterShell({
     </nav>
   );
 
+  const showSellHero = Boolean(onBack || heroTitle);
+
   return (
     <div className="min-h-dvh flex flex-col bg-[#F3F4F6]" data-testid="seller-center-shell">
       {/* Top header */}
       <header
         className="sticky top-0 z-50 text-white shadow-sm"
-        style={{ background: GREEN }}
+        style={{ background: `linear-gradient(180deg, ${GREEN} 0%, ${GREEN_DARK} 100%)` }}
       >
         <div className="h-14 md:h-16 px-3 md:px-4 flex items-center gap-2 md:gap-4 max-w-[1600px] mx-auto w-full">
-          <button
-            type="button"
-            className="lg:hidden p-2 rounded-lg hover:bg-white/10"
-            onClick={() => setMobileNavOpen(true)}
-            aria-label={t("nav.menu")}
-            data-testid="seller-hamburger"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-1.5 h-9 px-2.5 rounded-full border border-white/35 bg-white/10 hover:bg-white/15 text-white text-[13px] font-semibold shrink-0"
+              data-testid="seller-back-button"
+              aria-label={t("common.back", { defaultValue: "Back" })}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden xs:inline sm:inline">{t("common.back", { defaultValue: "Back" })}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="lg:hidden p-2 rounded-lg hover:bg-white/10"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label={t("nav.menu")}
+              data-testid="seller-hamburger"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          )}
 
-          <Link href="/sell" className="flex items-center gap-2 shrink-0 min-w-0">
+          <Link href="/sell" className="flex items-center gap-2 shrink-0 min-w-0 mx-auto md:mx-0">
             <img src="/flexa-logo-v2.png" alt="" className="h-8 w-auto md:h-9" width="36" height="36" />
             <div className="min-w-0 leading-tight">
               <p className="font-bold text-[13px] md:text-[15px] truncate">Flexa Market</p>
-              <p className="text-[10px] md:text-[11px] text-white/80 truncate">
+              <p className="hidden md:block text-[10px] md:text-[11px] text-white/80 truncate">
                 {t("sell.sellerCenter")}
               </p>
             </div>
@@ -147,6 +169,30 @@ export default function SellerCenterShell({
             </Link>
           </div>
         </div>
+        {showSellHero && (
+          <div className="md:hidden px-4 pb-4 pt-1 max-w-[1600px] mx-auto w-full">
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                {heroTitle && (
+                  <h1 className="text-[22px] font-extrabold leading-tight tracking-tight text-white">
+                    {heroTitle}
+                  </h1>
+                )}
+                {heroSubtitle && (
+                  <p className="text-[12px] text-white/85 mt-1 leading-snug">
+                    {heroSubtitle}
+                  </p>
+                )}
+              </div>
+              <div
+                className="shrink-0 w-14 h-14 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center"
+                aria-hidden
+              >
+                <Package className="h-7 w-7 text-white" />
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       <div className="flex flex-1 min-h-0 max-w-[1600px] mx-auto w-full">
@@ -249,12 +295,12 @@ export function SellAccordionSection({
         type="button"
         onClick={onToggle}
         className={cn(
-          "w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors",
+          "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
           hasErrors
             ? "bg-red-50/80"
             : open
-              ? "bg-[hsl(152,40%,94%)]"
-              : "bg-white hover:bg-muted/30",
+              ? "bg-[hsl(152,65%,22%)] text-white"
+              : "bg-[hsl(152,40%,96%)] hover:bg-[hsl(152,40%,93%)]",
         )}
         aria-expanded={open}
       >
@@ -263,16 +309,23 @@ export function SellAccordionSection({
             "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
             hasErrors
               ? "bg-red-100 text-red-600"
-              : complete
-                ? "bg-emerald-100 text-emerald-700"
-                : open
-                  ? "bg-[hsl(152,65%,22%)] text-white"
+              : open
+                ? "bg-white/20 text-white"
+                : complete
+                  ? "bg-emerald-100 text-emerald-700"
                   : "bg-[hsl(152,40%,92%)] text-[hsl(152,65%,22%)]",
           )}
         >
           <Icon className="h-4 w-4" />
         </span>
-        <span className="flex-1 font-bold text-[14px] text-foreground min-w-0 truncate">{title}</span>
+        <span
+          className={cn(
+            "flex-1 font-bold text-[14px] min-w-0 truncate",
+            open && !hasErrors ? "text-white" : "text-foreground",
+          )}
+        >
+          {title}
+        </span>
         {hasErrors && (
           <span
             className="inline-flex items-center gap-1 text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full shrink-0"
@@ -291,13 +344,13 @@ export function SellAccordionSection({
             {completedLabel}
           </span>
         )}
-        <ChevronIcon open={open} />
+        <ChevronIcon open={open} light={open && !hasErrors} />
       </button>
       {open && (
         <div
           className={cn(
-            "px-4 pb-4 pt-1 space-y-4 border-t",
-            hasErrors ? "border-red-200/80 bg-red-50/40" : "border-border/50 bg-white",
+            "px-3.5 pb-3.5 pt-3 space-y-3.5 border-t",
+            hasErrors ? "border-red-200/80 bg-red-50/40" : "border-[hsl(152,40%,88%)] bg-white",
           )}
         >
           {children}
@@ -307,10 +360,14 @@ export function SellAccordionSection({
   );
 }
 
-function ChevronIcon({ open }: { open: boolean }) {
+function ChevronIcon({ open, light }: { open: boolean; light?: boolean }) {
   return (
     <svg
-      className={cn("h-5 w-5 text-muted-foreground transition-transform", open && "rotate-180")}
+      className={cn(
+        "h-5 w-5 transition-transform",
+        light ? "text-white/90" : "text-muted-foreground",
+        open && "rotate-180",
+      )}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -321,10 +378,16 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+/** Primary stepper steps shown in the Add New Product progress UI (4 steps). */
 export const SELL_STEPS = [
   { id: "info", labelKey: "sell.stepInfo", defaultLabel: "Product Info" },
   { id: "media", labelKey: "sell.stepMedia", defaultLabel: "Photos & Videos" },
   { id: "pricing", labelKey: "sell.stepPricing", defaultLabel: "Pricing & Inventory" },
   { id: "delivery", labelKey: "sell.stepDelivery", defaultLabel: "Delivery & Location" },
+] as const;
+
+/** Full accordion section ids including the optional review panel. */
+export const SELL_SECTIONS = [
+  ...SELL_STEPS,
   { id: "review", labelKey: "sell.stepReview", defaultLabel: "Review & Publish" },
 ] as const;

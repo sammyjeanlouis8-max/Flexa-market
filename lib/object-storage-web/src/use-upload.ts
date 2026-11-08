@@ -9,21 +9,31 @@ import type { UppyFile } from "@uppy/core";
  *
  * Falls back to the original file on any error so uploads are never blocked.
  */
+const MAX_IMAGE_EDGE_PX = 2048;
+
 async function convertImageToJpeg(file: File): Promise<File> {
-  // Videos, audio, and already-JPEG images skip conversion.
-  if (!file.type.startsWith("image/") || file.type === "image/jpeg") return file;
+  // Videos/audio skip. JPEG still gets optional downscale when oversized.
+  if (!file.type.startsWith("image/")) return file;
   return new Promise<File>((resolve) => {
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
       try {
+        const srcW = img.naturalWidth || 1;
+        const srcH = img.naturalHeight || 1;
+        const scale = Math.min(1, MAX_IMAGE_EDGE_PX / Math.max(srcW, srcH));
+        const alreadyJpeg = file.type === "image/jpeg";
+        if (alreadyJpeg && scale >= 1 && file.size <= 2.5 * 1024 * 1024) {
+          resolve(file);
+          return;
+        }
         const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
+        canvas.width = Math.max(1, Math.round(srcW * scale));
+        canvas.height = Math.max(1, Math.round(srcH * scale));
         const ctx = canvas.getContext("2d");
         if (!ctx) { resolve(file); return; }
-        ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(
           (blob) => {
             if (blob) {
@@ -34,7 +44,7 @@ async function convertImageToJpeg(file: File): Promise<File> {
             }
           },
           "image/jpeg",
-          0.92,
+          scale < 1 ? 0.82 : 0.88,
         );
       } catch {
         resolve(file);

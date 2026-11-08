@@ -23,11 +23,15 @@ export interface CreateBoostVideoUploadInput {
   totalChunks: number;
   totalBytes: number;
   expiresAt: Date;
+  purpose?: "boost" | "listing";
+  maxSeconds?: number;
 }
 
 export async function createBoostVideoUpload(input: CreateBoostVideoUploadInput): Promise<void> {
   await db.insert(boostVideoUploadsTable).values({
     ...input,
+    purpose: input.purpose ?? "listing",
+    maxSeconds: input.maxSeconds ?? 300,
     status: "uploading",
   });
 }

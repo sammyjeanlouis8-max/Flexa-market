@@ -47,11 +47,19 @@ describe("Sell publish validation contract", () => {
     expect(sell).toMatch(/formatSectionMissingLabel/);
   });
 
-  it("keeps sticky Save Draft + Publish Product actions", () => {
+  it("keeps a single sticky Save Draft + Publish Product action bar", () => {
     expect(sell).toMatch(/button-save-draft-mobile/);
     expect(sell).toMatch(/button-publish-mobile/);
     expect(sell).toMatch(/Publish Product/);
     expect(sell).toMatch(/Save Draft/);
+    // Header duplicate Save Draft control must stay removed.
+    expect(sell).not.toMatch(/data-testid="button-save-draft"/);
+  });
+
+  it("restores uploadedImages from local draft (not only legacy images key)", () => {
+    expect(sell).toMatch(/draft\.uploadedImages/);
+    expect(sell).toMatch(/persistDraftNow/);
+    expect(sell).toMatch(/seller-back-button|handleSilentBack/);
   });
 
   it("moves category into Product Information and highlights invalid fields", () => {

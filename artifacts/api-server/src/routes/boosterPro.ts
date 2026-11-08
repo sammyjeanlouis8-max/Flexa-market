@@ -204,7 +204,7 @@ router.get("/booster/campaigns", requireAuth, async (req, res): Promise<void> =>
   res.json({ campaigns });
 });
 
-/** Analytics aggregate + daily series */
+/** Analytics aggregate + real daily series (no fabricated charts). */
 router.get("/booster/analytics", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const boostId = req.query.boostId ? parseInt(String(req.query.boostId), 10) : null;
@@ -212,45 +212,63 @@ router.get("/booster/analytics", requireAuth, async (req, res): Promise<void> =>
   const conds = [eq(boostsTable.userId, userId), eq(boostsTable.paymentStatus, "paid")];
   if (boostId && Number.isFinite(boostId)) conds.push(eq(boostsTable.id, boostId));
 
-  const [totals] = await db
+  const boostRows = await db
     .select({
-      impressions: sql<number>`COALESCE(SUM(${boostsTable.impressions}), 0)`,
-      clicks: sql<number>`COALESCE(SUM(${boostsTable.clicks}), 0)`,
-      skips: sql<number>`COALESCE(SUM(${boostsTable.skips}), 0)`,
-      videoViews: sql<number>`COALESCE(SUM(${boostsTable.videoViews}), 0)`,
-      spend: sql<number>`COALESCE(SUM(${boostsTable.budget}), 0)`,
-      count: sql<number>`COUNT(*)::int`,
+      id: boostsTable.id,
+      impressions: boostsTable.impressions,
+      clicks: boostsTable.clicks,
+      skips: boostsTable.skips,
+      videoViews: boostsTable.videoViews,
+      budget: boostsTable.budget,
+      price: boostsTable.price,
     })
     .from(boostsTable)
     .where(and(...conds));
 
-  const impressions = Number(totals?.impressions ?? 0);
-  const reach = Math.round(impressions * 0.62);
+  const impressions = boostRows.reduce((s, r) => s + (r.impressions ?? 0), 0);
+  const clicks = boostRows.reduce((s, r) => s + (r.clicks ?? 0), 0);
+  const skips = boostRows.reduce((s, r) => s + (r.skips ?? 0), 0);
+  const videoViews = boostRows.reduce((s, r) => s + (r.videoViews ?? 0), 0);
+  const { estimatedSpendUsd } = await import("../lib/boostAnalytics");
+  const spend = Math.round(
+    boostRows.reduce((s, r) => s + estimatedSpendUsd(r.impressions ?? 0, Number(r.budget ?? r.price ?? 0)), 0) * 100,
+  ) / 100;
 
-  // Lightweight 7-day series derived from totals (stable UI until daily table is wired per-boost)
-  const series = Array.from({ length: 7 }, (_, i) => {
-    const day = new Date();
-    day.setDate(day.getDate() - (6 - i));
-    const factor = 0.08 + i * 0.12;
-    return {
-      date: day.toISOString().slice(0, 10),
-      impressions: Math.round(impressions * factor / 3),
-      clicks: Math.round(Number(totals?.clicks ?? 0) * factor / 3),
-      videoViews: Math.round(Number(totals?.videoViews ?? 0) * factor / 3),
-    };
-  });
+  const ids = boostRows.map((r) => r.id);
+  let series: Array<{ date: string; impressions: number; clicks: number; videoViews: number }> = [];
+  if (ids.length > 0) {
+    const { boostDailyImpressionsTable } = await import("@workspace/db");
+    const { inArray } = await import("drizzle-orm");
+    const daily = await db
+      .select({
+        date: boostDailyImpressionsTable.date,
+        impressions: sql<number>`COALESCE(SUM(${boostDailyImpressionsTable.impressionCount}), 0)::int`,
+      })
+      .from(boostDailyImpressionsTable)
+      .where(inArray(boostDailyImpressionsTable.boostId, ids))
+      .groupBy(boostDailyImpressionsTable.date)
+      .orderBy(boostDailyImpressionsTable.date);
+    series = daily.map((d) => ({
+      date: d.date,
+      impressions: Number(d.impressions),
+      clicks: 0,
+      videoViews: 0,
+    }));
+  }
 
   res.json({
     totals: {
       impressions,
-      reach,
-      videoViews: Number(totals?.videoViews ?? 0),
-      clicks: Number(totals?.clicks ?? 0),
-      skips: Number(totals?.skips ?? 0),
-      spend: Number(totals?.spend ?? 0),
-      campaigns: Number(totals?.count ?? 0),
+      reach: null,
+      reachAvailable: false,
+      videoViews,
+      clicks,
+      skips,
+      spend,
+      campaigns: boostRows.length,
     },
     series,
+    note: "Series uses recorded daily impressions only. Reach is not estimated.",
   });
 });
 

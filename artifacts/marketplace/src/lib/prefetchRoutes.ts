@@ -57,7 +57,8 @@ const ROUTE_IMPORTERS: Record<string, () => Promise<unknown>> = {
   "/my-boosts": () => import("@/pages/booster/BoosterMyBoosts"),
   "/booster": () => import("@/pages/booster/BoosterMyBoosts"),
   "/booster/create": () => import("@/pages/booster/BoosterCreate"),
-  "/booster/analytics": () => import("@/pages/booster/BoosterAnalytics"),
+  "/booster/analytics": () => import("@/pages/BoostAnalytics"),
+  "/boost-analytics": () => import("@/pages/BoostAnalytics"),
   "/booster/audiences": () => import("@/pages/booster/BoosterAudiences"),
 };
 

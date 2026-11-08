@@ -539,27 +539,41 @@ router.post("/videos/:id/impression", optionalAuth, async (req, res): Promise<vo
       ? req.query.country.trim()
       : "";
     const viewerScope = resolveViewerScope(req, requestedCountry);
-    // Validation and increment are one statement: the candidate boost is
-    // selected only when its joined listing still satisfies feed eligibility.
-    const updated = await db.execute(
-      sql`UPDATE boosts AS target
-          SET impressions = target.impressions + 1
-          WHERE target.id = (
-            SELECT candidate.id
-            FROM boosts AS candidate
-            JOIN listings AS listing ON listing.id = candidate.listing_id
-            WHERE candidate.listing_id = ${listingId}
-              AND ${buildActivePaidBoostEligibility("listing", "candidate", viewerScope)}
-            ORDER BY candidate.created_at DESC
-            LIMIT 1
-          )
-          RETURNING target.id`,
-    ) as unknown as { rowCount?: number; rows?: unknown[] };
-    const updatedCount = updated.rowCount ?? updated.rows?.length ?? 0;
-    if (updatedCount < 1) { res.status(404).json({ error: "Not found" }); return; }
+    // Select eligible boost without incrementing yet — recordBoostEvent bumps counters + daily ledger.
+    const selected = await db.execute(
+      sql`SELECT candidate.id AS id
+          FROM boosts AS candidate
+          JOIN listings AS listing ON listing.id = candidate.listing_id
+          WHERE candidate.listing_id = ${listingId}
+            AND ${buildActivePaidBoostEligibility("listing", "candidate", viewerScope)}
+          ORDER BY candidate.created_at DESC
+          LIMIT 1`,
+    ) as unknown as { rows?: Array<{ id: number }> };
+    const boostId = Number(selected.rows?.[0]?.id ?? 0);
+    if (!boostId) { res.status(404).json({ error: "Not found" }); return; }
 
-    req.log?.info?.({ listingId, viewerId: req.userId ?? null }, "video:impression");
-    res.json({ ok: true });
+    const { recordBoostEvent, normalizeTrafficSource } = await import("../lib/boostAnalytics");
+    const source = normalizeTrafficSource(req.body?.source ?? req.query.source ?? "promo_feed");
+    const viewerKey = typeof req.body?.viewerKey === "string" ? req.body.viewerKey : null;
+    const dedupeKey = viewerKey
+      ? `imp:${boostId}:${viewerKey}:${new Date().toISOString().slice(0, 13)}`
+      : null;
+
+    const { inserted } = await recordBoostEvent({
+      boostId,
+      listingId,
+      eventType: "impression",
+      source,
+      viewerKey,
+      viewerUserId: req.userId ?? null,
+      country: typeof req.body?.country === "string" ? req.body.country : null,
+      device: typeof req.body?.device === "string" ? req.body.device : null,
+      dedupeKey,
+      bumpCounters: true,
+    });
+
+    req.log?.info?.({ listingId, viewerId: req.userId ?? null, counted: inserted }, "video:impression");
+    res.json({ ok: true, counted: inserted });
   } catch (err) {
     req.log?.error?.({ err, listingId }, "Failed to record video impression");
     res.status(500).json({ error: "Failed to record video impression" });
@@ -581,25 +595,33 @@ router.post("/videos/:id/buy-click", optionalAuth, async (req, res): Promise<voi
       ? req.query.country.trim()
       : "";
     const viewerScope = resolveViewerScope(req, requestedCountry);
-    const updated = await db.execute(
-      sql`UPDATE boosts AS target
-          SET clicks = target.clicks + 1
-          WHERE target.id = (
-            SELECT candidate.id
-            FROM boosts AS candidate
-            JOIN listings AS listing ON listing.id = candidate.listing_id
-            WHERE candidate.listing_id = ${listingId}
-              AND ${buildActivePaidBoostEligibility("listing", "candidate", viewerScope)}
-            ORDER BY candidate.created_at DESC
-            LIMIT 1
-          )
-          RETURNING target.id`,
-    ) as unknown as { rowCount?: number; rows?: unknown[] };
-    const updatedCount = updated.rowCount ?? updated.rows?.length ?? 0;
-    if (updatedCount < 1) { res.status(404).json({ error: "Not found" }); return; }
+    const selected = await db.execute(
+      sql`SELECT candidate.id AS id
+          FROM boosts AS candidate
+          JOIN listings AS listing ON listing.id = candidate.listing_id
+          WHERE candidate.listing_id = ${listingId}
+            AND ${buildActivePaidBoostEligibility("listing", "candidate", viewerScope)}
+          ORDER BY candidate.created_at DESC
+          LIMIT 1`,
+    ) as unknown as { rows?: Array<{ id: number }> };
+    const boostId = Number(selected.rows?.[0]?.id ?? 0);
+    if (!boostId) { res.status(404).json({ error: "Not found" }); return; }
 
-    req.log?.info?.({ listingId, viewerId: req.userId ?? null }, "video:buy-click");
-    res.json({ ok: true });
+    const { recordBoostEvent, normalizeTrafficSource } = await import("../lib/boostAnalytics");
+    const { inserted } = await recordBoostEvent({
+      boostId,
+      listingId,
+      eventType: "product_click",
+      source: normalizeTrafficSource(req.body?.source ?? req.query.source ?? "promo_feed"),
+      viewerKey: typeof req.body?.viewerKey === "string" ? req.body.viewerKey : null,
+      viewerUserId: req.userId ?? null,
+      country: typeof req.body?.country === "string" ? req.body.country : null,
+      device: typeof req.body?.device === "string" ? req.body.device : null,
+      bumpCounters: true,
+    });
+
+    req.log?.info?.({ listingId, viewerId: req.userId ?? null, counted: inserted }, "video:buy-click");
+    res.json({ ok: true, counted: inserted });
   } catch (err) {
     req.log?.error?.({ err, listingId }, "Failed to record video buy click");
     res.status(500).json({ error: "Failed to record video buy click" });

@@ -194,7 +194,7 @@ export default function BoosterMyBoosts() {
                       </button>
                     )}
                     <Link
-                      href={`/booster/analytics?boostId=${c.boostId}`}
+                      href={`/boost-analytics/${c.boostId}`}
                       className="bp-btn bp-btn-ghost"
                       style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
                     >

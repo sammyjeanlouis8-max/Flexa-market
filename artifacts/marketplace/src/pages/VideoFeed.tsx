@@ -1100,10 +1100,38 @@ function VideoCard({
       overlayTimerRef.current = setTimeout(() => setShowWhatsAppBtn(true), 1500);
       fetch(`/api/videos/${video.id}/impression`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          source: "promo_feed",
+          device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
+        }),
       }).catch(() => {});
 
+      // Qualified video view after ~3s of active playback (deduped server-side hourly via viewer key when present)
+      const viewTimer = window.setTimeout(() => {
+        if (!isActiveRef.current) return;
+        fetch("/api/boost-analytics/events", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            listingId: video.id,
+            type: "video_view",
+            source: "promo_feed",
+            device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
+            watchMs: 3000,
+            progressMarker: 3,
+          }),
+        }).catch(() => {});
+      }, 3000);
+
       return () => {
+        window.clearTimeout(viewTimer);
         el.removeEventListener("canplay", tryPlay);
         el.removeEventListener("loadeddata", tryPlay);
         activationGenerationRef.current += 1;

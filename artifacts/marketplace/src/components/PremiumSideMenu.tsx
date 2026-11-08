@@ -5,7 +5,7 @@ import {
   Home, Search, Film, FileVideo, Tv, Music2, Zap, Gift, Coins, ShoppingBag, TrendingUp,
   Truck, ShieldCheck, User, Heart, Wallet, Crown, Settings, HelpCircle,
   Briefcase, Globe, LogOut, X, ChevronRight, Moon, Sun, Plus, Package,
-  Store, Bell, Lock, MapPinned, Sparkles, Landmark, Tag, Award, LayoutGrid,
+  Store, Bell, Lock, MapPinned, Sparkles, Landmark, Tag, Award, LayoutGrid, BarChart3,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
@@ -269,6 +269,8 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
         { icon: Package, label: t("accountCenter.myListings", { defaultValue: "My Products" }), href: `/profile/${user!.id}`, testId: "drawer-my-products" },
         { icon: Plus, label: t("settings.addProduct", { defaultValue: "Add a product" }), href: "/sell", testId: "drawer-add-product" },
         { icon: Film, label: t("accountCenter.myVideos", { defaultValue: "My Videos" }), href: "/settings/videos", testId: "drawer-my-videos" },
+        { icon: Zap, label: t("nav.myBoosts", { defaultValue: "My Boosts" }), href: "/booster", testId: "drawer-shop-my-boosts" },
+        { icon: BarChart3, label: t("boostAnalytics.title", { defaultValue: "Boost Analytics" }), href: "/boost-analytics", testId: "drawer-boost-analytics" },
         { icon: Settings, label: t("nav.shopSettings", { defaultValue: "Shop settings" }), href: "/settings", testId: "drawer-shop-settings" },
       ] as NavItem[],
     }] : []),

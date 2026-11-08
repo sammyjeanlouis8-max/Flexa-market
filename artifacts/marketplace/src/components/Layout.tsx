@@ -249,7 +249,7 @@ function HeaderSearch({ marketStyle = false }: { marketStyle?: boolean }) {
 }
 
 // ─── Back-button helpers ───────────────────────────────────────────────────────
-function getPageTitle(loc: string, t: (key: string) => string): string {
+function getPageTitle(loc: string, t: (key: string, options?: Record<string, unknown>) => string): string {
   if (loc.startsWith("/listings/")) return t("page.listingDetail");
   if (loc === "/profile/edit") return t("page.editProfile");
   if (loc.startsWith("/profile/")) return t("page.profile");
@@ -273,6 +273,10 @@ function getPageTitle(loc: string, t: (key: string) => string): string {
   if (loc.startsWith("/bouillon") || loc.startsWith("/brouillon")) return t("nav.bouillon", { defaultValue: "Bouillon" });
   if (loc.startsWith("/jobs")) return t("page.jobs");
   if (loc.startsWith("/support")) return t("page.support");
+  if (loc.startsWith("/boost-analytics") || loc.startsWith("/booster/analytics")) {
+    return t("boostAnalytics.title", { defaultValue: "Boost Analytics" });
+  }
+  if (loc.startsWith("/booster")) return t("nav.myBoosts", { defaultValue: "My Boosts" });
   if (loc.startsWith("/boost")) return t("page.boost");
   if (loc.startsWith("/checkout")) return t("page.checkout");
   if (loc.startsWith("/commission-promo")) return t("nav.commissionPromo");

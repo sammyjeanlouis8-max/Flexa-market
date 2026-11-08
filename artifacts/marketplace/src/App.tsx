@@ -91,7 +91,8 @@ const VideoDiscover      = lazy(() => import("@/pages/VideoDiscover"));
 const MyBoosts           = lazy(() => import("@/pages/MyBoosts"));
 const BoosterMyBoosts    = lazy(() => import("@/pages/booster/BoosterMyBoosts"));
 const BoosterCreate      = lazy(() => import("@/pages/booster/BoosterCreate"));
-const BoosterAnalytics   = lazy(() => import("@/pages/booster/BoosterAnalytics"));
+const BoostAnalytics     = lazy(() => import("@/pages/BoostAnalytics"));
+const BoostAnalyticsDetail = lazy(() => import("@/pages/BoostAnalyticsDetail"));
 const BoosterAudiences   = lazy(() => import("@/pages/booster/BoosterAudiences"));
 const BoosterHelp        = lazy(() => import("@/pages/booster/BoosterHelp"));
 const PrivacyPolicy      = lazy(() => import("@/pages/PrivacyPolicy"));
@@ -237,7 +238,11 @@ function LayoutRoutes() {
           <Route path="/videos/watch" component={VideoFeed} />
           <Route path="/videos" component={VideoDiscover} />
           <Route path="/booster/create" component={BoosterCreate} />
-          <Route path="/booster/analytics" component={BoosterAnalytics} />
+          <Route path="/booster/analytics">
+            {() => { setLocation("/boost-analytics"); return null; }}
+          </Route>
+          <Route path="/boost-analytics/:boostId" component={BoostAnalyticsDetail} />
+          <Route path="/boost-analytics" component={BoostAnalytics} />
           <Route path="/booster/audiences" component={BoosterAudiences} />
           <Route path="/booster/help" component={BoosterHelp} />
           <Route path="/booster" component={BoosterMyBoosts} />

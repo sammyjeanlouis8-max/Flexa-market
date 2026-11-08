@@ -3147,6 +3147,49 @@ export async function runStartupMigrations(): Promise<void> {
     sql: `UPDATE boosts SET campaign_status = 'active' WHERE payment_status = 'paid' AND (campaign_status IS NULL OR campaign_status = 'pending') AND expires_at > now()`,
   });
 
+  // ── Boost Analytics: granular events + daily impressions table ──
+  migrations.push({
+    name: "boost_daily_impressions.create",
+    sql: `
+      CREATE TABLE IF NOT EXISTS boost_daily_impressions (
+        id serial PRIMARY KEY,
+        boost_id integer NOT NULL REFERENCES boosts(id) ON DELETE CASCADE,
+        date text NOT NULL,
+        impression_count integer NOT NULL DEFAULT 0
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS bdi_boost_date_uniq ON boost_daily_impressions(boost_id, date);
+      CREATE INDEX IF NOT EXISTS bdi_boost_idx ON boost_daily_impressions(boost_id)
+    `,
+  });
+  migrations.push({
+    name: "boost_analytics_events.create",
+    sql: `
+      CREATE TABLE IF NOT EXISTS boost_analytics_events (
+        id serial PRIMARY KEY,
+        boost_id integer NOT NULL REFERENCES boosts(id) ON DELETE CASCADE,
+        listing_id integer NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+        event_type text NOT NULL,
+        source text NOT NULL DEFAULT 'other',
+        viewer_key text,
+        viewer_user_id integer REFERENCES users(id) ON DELETE SET NULL,
+        country text,
+        region text,
+        device text,
+        progress_marker integer,
+        watch_ms integer,
+        amount_usd real,
+        search_query text,
+        dedupe_key text,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS bae_boost_type_idx ON boost_analytics_events(boost_id, event_type);
+      CREATE INDEX IF NOT EXISTS bae_boost_time_idx ON boost_analytics_events(boost_id, created_at);
+      CREATE INDEX IF NOT EXISTS bae_listing_time_idx ON boost_analytics_events(listing_id, created_at);
+      CREATE INDEX IF NOT EXISTS bae_source_idx ON boost_analytics_events(source);
+      CREATE UNIQUE INDEX IF NOT EXISTS bae_dedupe_uniq ON boost_analytics_events(dedupe_key) WHERE dedupe_key IS NOT NULL
+    `,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

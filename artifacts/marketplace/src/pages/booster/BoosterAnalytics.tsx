@@ -8,8 +8,10 @@ export default function BoosterAnalytics() {
   const { t } = useTranslation();
   const { token } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [totals, setTotals] = useState({
-    impressions: 0, reach: 0, videoViews: 0, clicks: 0, skips: 0,
+  const [totals, setTotals] = useState<{
+    impressions: number; reach: number | null; videoViews: number; clicks: number; skips: number;
+  }>({
+    impressions: 0, reach: null, videoViews: 0, clicks: 0, skips: 0,
   });
   const [series, setSeries] = useState<Array<{ date: string; impressions: number }>>([]);
 
@@ -45,7 +47,7 @@ export default function BoosterAnalytics() {
             </div>
             <div className="bp-stat">
               <div className="k">{t("booster.analytics.reach")}</div>
-              <div className="v">{totals.reach.toLocaleString()}</div>
+              <div className="v">{totals.reach != null ? totals.reach.toLocaleString() : t("boostAnalytics.notAvailable")}</div>
             </div>
             <div className="bp-stat">
               <div className="k">{t("booster.analytics.videoViews")}</div>

@@ -1100,10 +1100,57 @@ function VideoCard({
       overlayTimerRef.current = setTimeout(() => setShowWhatsAppBtn(true), 1500);
       fetch(`/api/videos/${video.id}/impression`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          source: "promo_feed",
+          device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
+        }),
       }).catch(() => {});
 
+      // Qualified video view after ~3s of active playback + 5s retention marker
+      const postProgress = (marker: number, watchMs: number, type: string) => {
+        if (!isActiveRef.current) return;
+        fetch("/api/boost-analytics/events", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            listingId: video.id,
+            type,
+            source: "promo_feed",
+            device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
+            watchMs,
+            progressMarker: marker,
+            dedupeKey: `watch:${video.id}:${marker}:${new Date().toISOString().slice(0, 13)}`,
+          }),
+        }).catch(() => {});
+      };
+      const viewTimer = window.setTimeout(() => postProgress(3, 3000, "video_view"), 3000);
+      const retain5Timer = window.setTimeout(() => postProgress(5, 5000, "watch_progress"), 5000);
+
+      const onTimeUpdate = () => {
+        if (!isActiveRef.current || !el.duration || !Number.isFinite(el.duration)) return;
+        const pct = Math.floor((el.currentTime / el.duration) * 100);
+        for (const marker of [25, 50, 75, 100] as const) {
+          const seen = ((el as any).__baMarkers as Set<number> | undefined)
+            ?? ((el as any).__baMarkers = new Set<number>());
+          if (pct >= marker && !seen.has(marker)) {
+            seen.add(marker);
+            postProgress(marker, Math.round(el.currentTime * 1000), "watch_progress");
+          }
+        }
+      };
+      el.addEventListener("timeupdate", onTimeUpdate);
+
       return () => {
+        window.clearTimeout(viewTimer);
+        window.clearTimeout(retain5Timer);
+        el.removeEventListener("timeupdate", onTimeUpdate);
         el.removeEventListener("canplay", tryPlay);
         el.removeEventListener("loadeddata", tryPlay);
         activationGenerationRef.current += 1;
@@ -1154,6 +1201,14 @@ function VideoCard({
         markFavorited(video.id);
         setLikeCount(c => c + 1);
         fetch(`/api/favorites/${video.id}`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }).catch(() => {});
+        fetch("/api/boost-analytics/events", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ listingId: video.id, type: "save", source: "promo_feed" }),
+        }).catch(() => {});
       }
       setShowHeartFlash(true);
       setTimeout(() => setShowHeartFlash(false), 800);
@@ -1261,6 +1316,14 @@ function VideoCard({
         toast({ title: t("videoFeed.shareLinkCopied") });
       }
       fetch(`/api/listings/${video.id}/share`, { method: "POST" }).catch(() => {});
+      fetch("/api/boost-analytics/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ listingId: video.id, type: "share", source: "promo_feed" }),
+      }).catch(() => {});
       setShareCount(c => c + 1);
     } catch { /* user cancelled */ }
   };
@@ -1272,7 +1335,7 @@ function VideoCard({
   };
 
   const trackBuyClick = useCallback(() => {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
     const selectedCountry = typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("country")
@@ -1281,6 +1344,10 @@ function VideoCard({
     fetch(`/api/videos/${video.id}/buy-click${suffix}`, {
       method: "POST",
       headers,
+      body: JSON.stringify({
+        source: "promo_feed",
+        device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
+      }),
     }).catch(() => {});
   }, [token, video.id]);
 

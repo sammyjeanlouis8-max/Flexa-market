@@ -28,6 +28,7 @@ import {
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { probeVideoDuration } from "@/lib/probeVideoDuration";
+import { extractVideoPoster } from "@/lib/videoPoster";
 import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { BoostProductCard } from "@/components/boost/BoostProductCard";
 import { BoostAdPreview } from "@/components/boost/BoostAdPreview";
@@ -253,6 +254,8 @@ export default function BoostPage() {
   // pass to /boost/initiate. Validation happens client-side via a hidden
   // <video> element that decodes metadata to read .duration.
   const [videoUrl, setVideoUrl]         = useState<string | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [videoPosterUrl, setVideoPosterUrl] = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
   const [videoUploadPercent, setVideoUploadPercent] = useState(0);
   const videoFileInputRef               = useRef<HTMLInputElement | null>(null);
@@ -273,8 +276,16 @@ export default function BoostPage() {
       toast({ title: t("boost.videoTooBig"), variant: "destructive" });
       return;
     }
+    const localPreview = URL.createObjectURL(file);
+    const posterPromise = extractVideoPoster(file);
+    if (videoPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(videoPreviewUrl);
+    setVideoPreviewUrl(localPreview);
+    setVideoPosterUrl(null);
     setVideoUploading(true);
     setVideoUploadPercent(0);
+    void posterPromise.then((frame) => {
+      if (frame) setVideoPosterUrl(frame);
+    });
     try {
       if (!user) {
         toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
@@ -283,6 +294,9 @@ export default function BoostPage() {
       const seconds = await probeVideoDuration(file);
       if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
         toast({ title: t("boost.videoTooLong"), variant: "destructive" });
+        URL.revokeObjectURL(localPreview);
+        setVideoPreviewUrl(null);
+        setVideoPosterUrl(null);
         return;
       }
       setVideoUrl(await startVideoUpload(file, token, {
@@ -291,7 +305,10 @@ export default function BoostPage() {
         returnPath: typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined,
         onProgress: setVideoUploadPercent,
       }));
+      const frame = await posterPromise;
+      if (frame) setVideoPosterUrl(frame);
       setVideoUploadPercent(100);
+      toast({ title: t("boost.videoReadyPreview", { defaultValue: "Video ready for preview." }) });
     } catch (error) {
       const code = error instanceof BoostVideoUploadError ? error.code : "VIDEO_UPLOAD_FAILED";
       const descriptionKey = (() => {
@@ -310,6 +327,10 @@ export default function BoostPage() {
         description: t(descriptionKey),
         variant: "destructive",
       });
+      URL.revokeObjectURL(localPreview);
+      setVideoPreviewUrl(null);
+      setVideoPosterUrl(null);
+      setVideoUrl(null);
     } finally {
       setVideoUploading(false);
     }
@@ -1414,11 +1435,27 @@ export default function BoostPage() {
 
           <BoostPromoVideoPanel
             videoUrl={videoUrl}
+            previewUrl={videoPreviewUrl}
+            posterUrl={videoPosterUrl}
+            onPoster={setVideoPosterUrl}
             uploading={videoUploading}
             uploadPercent={videoUploadPercent}
             onPick={() => videoFileInputRef.current?.click()}
-            onRemove={() => setVideoUrl(null)}
-            onUseSaved={setVideoUrl}
+            onRemove={() => {
+              if (videoPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(videoPreviewUrl);
+              setVideoUrl(null);
+              setVideoPreviewUrl(null);
+              setVideoPosterUrl(null);
+            }}
+            onUseSaved={(url) => {
+              if (videoPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(videoPreviewUrl);
+              setVideoUrl(url);
+              setVideoPreviewUrl(url);
+              setVideoPosterUrl(null);
+              void extractVideoPoster(url).then((frame) => {
+                if (frame) setVideoPosterUrl(frame);
+              });
+            }}
             maxPreviewHeight={420}
           />
 

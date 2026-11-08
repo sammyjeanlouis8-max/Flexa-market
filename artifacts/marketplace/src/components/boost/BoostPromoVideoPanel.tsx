@@ -46,6 +46,11 @@ function formatRatioLabel(ratio: number): string {
 
 type Props = {
   videoUrl: string | null;
+  /** Local blob / crisp preview URL while the remote upload settles. */
+  previewUrl?: string | null;
+  /** Captured first-frame JPEG so the thumbnail is never a blank box. */
+  posterUrl?: string | null;
+  onPoster?: (dataUrl: string) => void;
   uploading: boolean;
   uploadPercent: number;
   onPick: () => void;
@@ -60,6 +65,9 @@ type Props = {
  */
 export function BoostPromoVideoPanel({
   videoUrl,
+  previewUrl = null,
+  posterUrl = null,
+  onPoster,
   uploading,
   uploadPercent,
   onPick,
@@ -70,6 +78,7 @@ export function BoostPromoVideoPanel({
 }: Props) {
   const { t } = useTranslation();
   const [meta, setMeta] = useState<AdaptiveVideoMeta | null>(null);
+  const playbackSrc = previewUrl || videoUrl;
 
   const durationLabel = useMemo(
     () => (meta ? formatDuration(meta.duration) : null),
@@ -108,16 +117,18 @@ export function BoostPromoVideoPanel({
         </div>
       </header>
 
-      {videoUrl ? (
+      {playbackSrc ? (
         <div className="bpv-body">
           <div className="bpv-player-col">
             <AdaptiveVideoPlayer
-              src={videoUrl}
+              src={playbackSrc}
+              poster={posterUrl}
               maxHeight={maxPreviewHeight}
               muted={false}
               controls
               autoPlay={false}
               onMeta={setMeta}
+              onPoster={onPoster}
               className="bpv-player"
             />
           </div>
@@ -213,21 +224,60 @@ export function BoostPromoVideoPanel({
           </div>
         </div>
       ) : uploading ? (
-        <div className="bpv-upload-progress" role="status" aria-live="polite" data-testid="boost-video-upload-progress">
-          <div className="flex items-center justify-center gap-2 text-sm font-semibold text-violet-700">
-            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-            <span>
-              {uploadPercent < 100
-                ? t("boost.videoUploadingPct", {
-                    percent: uploadPercent,
-                    defaultValue: "Uploading video: {{percent}}%",
-                  })
-                : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
-            </span>
-          </div>
-          <div className="bpv-progress">
-            <i style={{ width: `${Math.max(2, uploadPercent)}%` }} />
-          </div>
+        <div className="space-y-3" role="status" aria-live="polite" data-testid="boost-video-upload-progress">
+          {(posterUrl || previewUrl) ? (
+            <div className="relative overflow-hidden rounded-2xl bg-slate-900">
+              {posterUrl ? (
+                <img
+                  src={posterUrl}
+                  alt=""
+                  className="mx-auto w-full object-contain"
+                  style={{ maxHeight: maxPreviewHeight }}
+                  data-testid="boost-upload-poster"
+                />
+              ) : previewUrl ? (
+                <AdaptiveVideoPlayer
+                  src={previewUrl}
+                  poster={posterUrl}
+                  maxHeight={maxPreviewHeight}
+                  muted
+                  controls={false}
+                  onPoster={onPoster}
+                />
+              ) : null}
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-3 py-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  {uploadPercent < 100
+                    ? t("boost.videoUploadingPct", {
+                        percent: uploadPercent,
+                        defaultValue: "Uploading video: {{percent}}%",
+                      })
+                    : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
+                </div>
+                <div className="bpv-progress mt-2">
+                  <i style={{ width: `${Math.max(2, uploadPercent)}%` }} />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bpv-upload-progress">
+              <div className="flex items-center justify-center gap-2 text-sm font-semibold text-violet-700">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                <span>
+                  {uploadPercent < 100
+                    ? t("boost.videoUploadingPct", {
+                        percent: uploadPercent,
+                        defaultValue: "Uploading video: {{percent}}%",
+                      })
+                    : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
+                </span>
+              </div>
+              <div className="bpv-progress">
+                <i style={{ width: `${Math.max(2, uploadPercent)}%` }} />
+              </div>
+            </div>
+          )}
           <p className="text-[11px] text-slate-500 text-center">
             {uploadPercent < 100
               ? t("boost.videoUploadKeepOpen", {

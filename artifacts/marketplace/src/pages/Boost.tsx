@@ -288,6 +288,7 @@ export default function BoostPage() {
       setVideoUrl(await startVideoUpload(file, token, {
         ownerId: user.id,
         purpose: "boost",
+        returnPath: typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined,
         onProgress: setVideoUploadPercent,
       }));
       setVideoUploadPercent(100);
@@ -774,6 +775,7 @@ export default function BoostPage() {
         const uploadedUrl = await startVideoUpload(file, token, {
           ownerId: user.id,
           purpose: "boost",
+          returnPath: typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined,
           onProgress: setAbvUploadPercent,
         });
         const res = await fetch(`/api/boost/${activeBoostForListing.boostId}/video`, {

@@ -790,6 +790,7 @@ export default function Sell() {
       const uploadedUrl = await startVideoUpload(file, token, {
         ownerId: user.id,
         purpose: "listing",
+        returnPath: typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined,
       });
       setListingVideoUrl(uploadedUrl);
     } catch {

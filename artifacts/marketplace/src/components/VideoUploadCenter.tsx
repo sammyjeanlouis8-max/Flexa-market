@@ -11,8 +11,6 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
-import { useToast } from "@/hooks/use-toast";
-import { ToastAction } from "@/components/ui/toast";
 import {
   cancelVideoUpload,
   defaultReturnPathForPurpose,
@@ -251,7 +249,6 @@ export function VideoUploadJobRow({
  */
 export default function VideoUploadCenter() {
   const { t } = useTranslation();
-  const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { user, token } = useAuth();
   const jobs = useSyncExternalStore(
@@ -309,28 +306,14 @@ export default function VideoUploadCenter() {
     }
   }, [activeJobs.length, attentionJobs.length, ownJobs.map((j) => `${j.id}:${j.state}`).join("|")]);
 
-  // When everything settles, toast once and drop the floating bar.
-  // Completed leftovers live on the Bouillon menu page — not above the nav.
+  // When everything settles, drop the floating bar quietly.
+  // Completion is announced only via the in-app notification bell
+  // (POST /api/notifications/video-ready) — no top toast / push alert.
   useEffect(() => {
     if (!allSettled || completeCount === 0) return;
     const fingerprint = ownJobs.map((j) => `${j.id}:${j.state}`).join("|");
-    if (celebratedRef.current !== fingerprint) {
-      celebratedRef.current = fingerprint;
-      toast({
-        title: t("myDrafts.videoReadyTitle", { defaultValue: "Video Ready" }),
-        description: t("myDrafts.videoReadyMessage", {
-          defaultValue: "Your video has finished uploading and is ready to use.",
-        }),
-        action: (
-          <ToastAction
-            altText={t("myDrafts.viewDraft", { defaultValue: "View Draft" })}
-            onClick={() => setLocation("/my-drafts")}
-          >
-            {t("myDrafts.viewDraft", { defaultValue: "View Draft" })}
-          </ToastAction>
-        ),
-      });
-    }
+    if (celebratedRef.current === fingerprint) return;
+    celebratedRef.current = fingerprint;
     setExpanded(false);
     setHidden(true);
     try {
@@ -338,7 +321,7 @@ export default function VideoUploadCenter() {
     } catch {
       /* ignore */
     }
-  }, [allSettled, completeCount, ownJobs, t, toast, setLocation]);
+  }, [allSettled, completeCount, ownJobs]);
 
   const hideBar = () => {
     // Visibility only — never cancels uploads.

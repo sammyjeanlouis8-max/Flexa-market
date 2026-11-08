@@ -24,7 +24,12 @@ import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
 import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import BoostWizard from "@/components/BoostWizard";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+
+/** Covers iOS home-indicator AND Android WebViews that report safe-area-inset-bottom as 0. */
+const FEED_SAFE_BOTTOM =
+  "max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px))";
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -931,9 +936,10 @@ function VideoCard({
     setHasVisibleFrame(true);
     setVideoBuffering(false);
     setLoadFailed(false);
-    const shouldMute = !isAudioUnlocked();
+    const shouldMute = !(isAudioUnlocked() || isNativeMobileApp());
     el.muted = shouldMute;
     setMuted(shouldMute);
+    if (!shouldMute) setAudioUnlocked(true);
     return true;
   }, [cancelVisualReadinessChecks]);
 
@@ -1074,17 +1080,32 @@ function VideoCard({
 
       const tryPlay = () => {
         if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
-        // Every automatically activated card starts muted until its first visible
-        // frame. If the user had already unlocked audio, markVisibleFrame restores
-        // sound as soon as video and audio can begin together.
-        el.muted = true;
-        setMuted(true);
+        // Prefer unmuted autoplay (native apps + prior unlock). Browsers that
+        // block unmuted play fall back to muted without a tap-for-sound gate.
+        const wantSound = isAudioUnlocked() || isNativeMobileApp();
+        const playMutedFallback = () => {
+          el.muted = true;
+          setMuted(true);
+          void el.play().catch(() => {});
+        };
 
         // Safari/WebViews commonly reject play() transiently while a newly active
         // element is changing source or has not loaded data yet. Keep the card in
         // autoplay mode and retry from media-readiness events; only an actual media
         // error or the bounded visible-frame timeout should enter retry UI.
-        void el.play().catch(() => {});
+        if (wantSound) {
+          el.muted = false;
+          setMuted(false);
+          void el.play().then(() => {
+            if (!isActiveRef.current) return;
+            setAudioUnlocked(true);
+          }).catch(() => {
+            if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
+            playMutedFallback();
+          });
+          return;
+        }
+        playMutedFallback();
       };
       const activationGeneration = activationGenerationRef.current;
       el.addEventListener("canplay", tryPlay);
@@ -1396,7 +1417,7 @@ function VideoCard({
       <video
         ref={(el) => {
           (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
-          if (el) el.muted = !isAudioUnlocked();
+          if (el) el.muted = !(isAudioUnlocked() || isNativeMobileApp());
         }}
         src={video.videoUrl ?? undefined}
         playsInline
@@ -1504,21 +1525,6 @@ function VideoCard({
         {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
       </button>
 
-      {/* ── "Tap for sound" hint — only while muted & active, so users discover audio ── */}
-      {muted && isActive && !loadFailed && (
-        <button
-          className="absolute left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 bg-black/55 backdrop-blur-sm rounded-full pl-2.5 pr-3 py-1.5 text-white text-xs font-semibold shadow-lg animate-pulse"
-          style={{ top: "calc(env(safe-area-inset-top, 16px) + 64px)" }}
-          onClick={e => { e.stopPropagation(); handleMuteToggle(); }}
-          onTouchStart={e => e.stopPropagation()}
-          onTouchEnd={e => e.stopPropagation()}
-          aria-label="Unmute"
-        >
-          <VolumeX className="h-4 w-4" />
-          {t("videoFeed.tapForSound", { defaultValue: "Tape pou son" })}
-        </button>
-      )}
-
       {/* ── Bottom gradient ── */}
       <div
         className="absolute inset-x-0 bottom-0 pointer-events-none"
@@ -1547,7 +1553,7 @@ function VideoCard({
       {/* ── Right-side engagement column — pure TikTok style ── */}
       <div
         className="absolute right-2 z-10 flex flex-col items-center gap-3.5"
-        style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }}
+        style={{ bottom: `calc(88px + ${FEED_SAFE_BOTTOM})` }}
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
         onTouchEnd={e => e.stopPropagation()}
@@ -1643,8 +1649,8 @@ function VideoCard({
         className="absolute left-3 right-16 z-20"
         style={{
           bottom: showWhatsAppOverlay
-            ? "calc(104px + env(safe-area-inset-bottom, 0px))"
-            : "calc(80px + env(safe-area-inset-bottom, 0px))",
+            ? `calc(104px + ${FEED_SAFE_BOTTOM})`
+            : `calc(80px + ${FEED_SAFE_BOTTOM})`,
           opacity: showWhatsAppOverlay ? 1 : 0,
           transform: showWhatsAppOverlay ? "translateY(0px) scale(1)" : "translateY(14px) scale(0.97)",
           transition: "opacity 0.4s cubic-bezier(0.16,1,0.3,1), transform 0.4s cubic-bezier(0.16,1,0.3,1), bottom 0.4s cubic-bezier(0.16,1,0.3,1)",
@@ -1713,7 +1719,7 @@ function VideoCard({
       {/* ── Bottom info overlay — TikTok exact layout ── */}
       <div
         className="absolute bottom-0 left-0 right-14 px-4 z-10"
-        style={{ paddingBottom: "calc(76px + env(safe-area-inset-bottom, 0px))" }}
+        style={{ paddingBottom: `calc(76px + ${FEED_SAFE_BOTTOM})` }}
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
         onTouchEnd={e => e.stopPropagation()}
@@ -1846,6 +1852,13 @@ export default function VideoFeed() {
   }, [navigate]);
   const { token } = useAuth();
   const purchasesDisabled = isAndroidApp();
+
+  // Native WebViews allow unmuted autoplay — unlock immediately so cards
+  // never wait on a tap-for-sound permission gate.
+  useEffect(() => {
+    if (isNativeMobileApp()) setAudioUnlocked(true);
+  }, []);
+
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -2140,7 +2153,7 @@ export default function VideoFeed() {
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loadingInitial) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-black gap-4">
+      <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black gap-4">
         {/* Transparent header on loading too */}
         <div
           className="absolute inset-x-0 top-0 z-50 flex items-center px-4 gap-3"
@@ -2164,10 +2177,14 @@ export default function VideoFeed() {
 
   // ── Single return — empty + populated share one component tree so the
   //    BoostWizard is never re-mounted when videos.length changes.
+  //    fixed inset-0 paints edge-to-edge over the marketplace shell (TikTok-style),
+  //    so Android system-nav / safe-area gaps never show the light bg-background.
   return (
     <div
-      className={cn("relative h-full", videos.length === 0 ? "flex flex-col bg-black" : "flex")}
-      style={videos.length > 0 ? { background: "#0a0a0a" } : undefined}
+      className={cn(
+        "fixed inset-0 z-[60] bg-black",
+        videos.length === 0 ? "flex flex-col" : "flex",
+      )}
     >
 
       {/* ── Empty state ──────────────────────────────────────────────────── */}
@@ -2378,7 +2395,7 @@ export default function VideoFeed() {
           className="absolute z-50 flex items-center justify-center w-12 h-12 bg-primary rounded-full shadow-2xl active:scale-95 transition-transform"
           style={{
             right: "16px",
-            bottom: "calc(76px + env(safe-area-inset-bottom, 0px))",
+            bottom: `calc(76px + ${FEED_SAFE_BOTTOM})`,
             boxShadow: "0 0 24px rgba(249,115,22,0.5)",
           }}
           aria-label={t("videoFeed.addBoost", { defaultValue: "Ajoute yon videyo" })}
@@ -2389,10 +2406,10 @@ export default function VideoFeed() {
 
         {/* Mobile feed navigation — the global marketplace nav is intentionally hidden on /videos */}
         <nav
-          className="absolute inset-x-0 bottom-0 z-40 flex items-start justify-around border-t border-white/10 bg-black/80 px-2 pt-2 backdrop-blur-xl lg:hidden"
+          className="absolute inset-x-0 bottom-0 z-40 flex items-start justify-around border-t border-white/10 bg-black px-2 pt-2 lg:hidden"
           style={{
-            height: "calc(64px + env(safe-area-inset-bottom, 0px))",
-            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            height: `calc(64px + ${FEED_SAFE_BOTTOM})`,
+            paddingBottom: FEED_SAFE_BOTTOM,
           }}
           aria-label={t("nav.main", { defaultValue: "Navigasyon prensipal" })}
         >

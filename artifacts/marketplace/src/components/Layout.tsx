@@ -619,7 +619,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
   return (
     <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
-    <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col ${isMessages || isVideoFeed ? "h-dvh overflow-clip" : "min-h-dvh"} ${isCommissionPromoPage ? "bg-[#0B1B3A]" : "bg-background"}`}>
+    <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col ${isMessages || isVideoFeed ? "h-dvh overflow-clip" : "min-h-dvh"} ${isVideoFeed ? "bg-black" : isCommissionPromoPage ? "bg-[#0B1B3A]" : "bg-background"}`}>
 
       {/* ── Top header ── */}
       {/* Safe-area top inset is applied once via .mobile-app-header CSS

@@ -1012,10 +1012,10 @@ export default function Sell() {
         size="sm"
         variant="outline"
         onClick={handleSaveDraftClick}
-        className="flex-1 h-9 min-h-9 px-2.5 text-[13px] border-[hsl(152,65%,28%)] text-[hsl(152,65%,28%)] font-semibold rounded-full gap-1"
+        className="flex-1 h-8 min-h-8 max-h-8 px-2 text-[12px] leading-none border-[hsl(152,65%,28%)] text-[hsl(152,65%,28%)] font-semibold rounded-full gap-1"
         data-testid="button-save-draft-mobile"
       >
-        <FileText className="h-3.5 w-3.5 shrink-0" />
+        <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden />
         <span className="truncate">{t("sell.saveDraft", { defaultValue: "Save Draft" })}</span>
       </Button>
       <Button
@@ -1023,13 +1023,13 @@ export default function Sell() {
         size="sm"
         onClick={handlePublishClick}
         disabled={isPublishBusy}
-        className="flex-[1.15] h-9 min-h-9 px-2.5 text-[13px] bg-gradient-to-r from-[#F97316] to-[#FBBF24] hover:from-[#ea6a0c] hover:to-[#f59e0b] text-white font-semibold rounded-full gap-1 shadow-sm"
+        className="flex-[1.15] h-8 min-h-8 max-h-8 px-2 text-[12px] leading-none bg-gradient-to-r from-[#F97316] to-[#FBBF24] hover:from-[#ea6a0c] hover:to-[#f59e0b] text-white font-semibold rounded-full gap-1 shadow-sm"
         data-testid="button-publish-mobile"
       >
         {isPublishBusy ? (
-          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
         ) : (
-          <Send className="h-3.5 w-3.5 shrink-0" />
+          <Send className="h-3.5 w-3.5 shrink-0" aria-hidden />
         )}
         <span className="truncate">
           {isPublishBusy

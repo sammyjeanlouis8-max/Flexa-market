@@ -334,13 +334,13 @@
         function setSab(px) {
           root.style.setProperty('--sab', Math.max(0, Math.round(px)) + 'px');
         }
+        var isAppleMobile = !isAndroid && /iPhone|iPad|iPod/i.test(navigator.userAgent);
         if (typeof window.__flexaNativeSafeBottom === 'number' && window.__flexaNativeSafeBottom > 0) {
           setSab(window.__flexaNativeSafeBottom);
-        } else if (/FlexaMarket/i.test(navigator.userAgent) && !isAndroid) {
+        } else if (isAppleMobile) {
+          // Heuristic until env() / native inject is known. reconcileSab() clears
+          // this when env(safe-area-inset-bottom) is non-zero so we never double-pad.
           setSab(34);
-        } else if (!isAndroid && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-          // Safari/PWA: leave 0 and trust env(); reconcile clears if env works.
-          setSab(0);
         } else {
           setSab(0);
         }
@@ -353,7 +353,7 @@
             probeB.remove();
             if (envBottom > 0) {
               setSab(0);
-            } else if (/FlexaMarket/i.test(navigator.userAgent) && !isAndroid) {
+            } else if (isAppleMobile) {
               setSab(34);
             }
           } catch (e) { /* ignore */ }

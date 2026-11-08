@@ -255,6 +255,7 @@ export default function BoostPage() {
   // <video> element that decodes metadata to read .duration.
   const [videoUrl, setVideoUrl]         = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
+  const [videoUploadPercent, setVideoUploadPercent] = useState(0);
   const videoFileInputRef               = useRef<HTMLInputElement | null>(null);
 
   // Active-boost video-management state (used when an existing paid boost is detected)
@@ -274,6 +275,7 @@ export default function BoostPage() {
       return;
     }
     setVideoUploading(true);
+    setVideoUploadPercent(0);
     try {
       if (!user) {
         toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
@@ -287,7 +289,9 @@ export default function BoostPage() {
       setVideoUrl(await startVideoUpload(file, token, {
         ownerId: user.id,
         purpose: "boost",
+        onProgress: setVideoUploadPercent,
       }));
+      setVideoUploadPercent(100);
     } catch (error) {
       const code = error instanceof BoostVideoUploadError ? error.code : "VIDEO_UPLOAD_FAILED";
       const descriptionKey = (() => {
@@ -984,7 +988,7 @@ export default function BoostPage() {
                 disabled={abvUploading}
               >
                 {abvUploading ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boost.videoUploading", { defaultValue: "Uploading…" })}</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boost.videoUploadingPct", { percent: abvUploadPercent, defaultValue: "Uploading video: {{percent}}%" })}</>
                 ) : (
                   <><Upload className="h-4 w-4 mr-2" />{t("boost.replaceVideo", { defaultValue: "Replace Video" })}</>
                 )}
@@ -1024,11 +1028,28 @@ export default function BoostPage() {
                 disabled={abvUploading}
               >
                 {abvUploading ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boost.videoUploading", { defaultValue: "Uploading…" })}</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boost.videoUploadingPct", { percent: abvUploadPercent, defaultValue: "Uploading video: {{percent}}%" })}</>
                 ) : (
                   <><Upload className="h-4 w-4 mr-2" />{t("boost.videoPick", { defaultValue: "Choose video" })}</>
                 )}
               </Button>
+              {abvUploading && (
+                <div
+                  className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-3"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="mb-2 text-xs font-semibold text-primary">
+                    {t("boost.videoUploadingPct", { percent: abvUploadPercent, defaultValue: "Uploading video: {{percent}}%" })}
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-primary/15">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all duration-200 ease-out"
+                      style={{ width: `${Math.max(2, abvUploadPercent)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <VideoUploadChooser purpose="boost" onUse={handleAbvVideoUsed} />
@@ -1424,7 +1445,7 @@ export default function BoostPage() {
                 <AdaptiveVideoPlayer src={videoUrl} maxHeight={280} muted controls />
                 <div className="fb-video-progress"><i style={{ width: "100%" }} /></div>
                 <p className="text-xs font-semibold text-green-600">
-                  {t("boost.videoUploadComplete", { defaultValue: "Upload complete 100%" })}
+                  {t("boost.videoReadyPreview", { defaultValue: "Video ready for preview." })}
                 </p>
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading}>
@@ -1435,19 +1456,41 @@ export default function BoostPage() {
                   </Button>
                 </div>
               </div>
+            ) : videoUploading ? (
+              <div
+                className="bl-upload bl-upload-progress space-y-2 pointer-events-none"
+                role="status"
+                aria-live="polite"
+                data-testid="boost-video-upload-progress"
+              >
+                <div className="flex items-center justify-center gap-2 text-sm font-semibold text-violet-700">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  <span>
+                    {videoUploadPercent < 100
+                      ? t("boost.videoUploadingPct", { percent: videoUploadPercent, defaultValue: "Uploading video: {{percent}}%" })
+                      : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-violet-100">
+                  <div
+                    className="h-full rounded-full bg-violet-600 transition-all duration-200 ease-out"
+                    style={{ width: `${Math.max(2, videoUploadPercent)}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground text-center">
+                  {videoUploadPercent < 100
+                    ? t("boost.videoUploadKeepOpen", { defaultValue: "Keep this page open while the video uploads." })
+                    : t("boost.videoProcessing", { defaultValue: "Processing video…" })}
+                </p>
+              </div>
             ) : (
               <button
                 type="button"
                 className="bl-upload"
                 onClick={() => videoFileInputRef.current?.click()}
-                disabled={videoUploading}
                 data-testid="button-video-pick"
               >
-                {videoUploading ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> {t("boost.videoUploading", { defaultValue: "Uploading…" })}</>
-                ) : (
-                  <><Upload className="h-4 w-4" /> {t("boost.videoPick", { defaultValue: "Upload Media" })}</>
-                )}
+                <Upload className="h-4 w-4" /> {t("boost.videoPick", { defaultValue: "Upload Media" })}
               </button>
             )}
             <VideoUploadChooser purpose="boost" onUse={setVideoUrl} />
@@ -1937,7 +1980,7 @@ export default function BoostPage() {
                   disabled={loading || videoUploading}
                   data-testid="button-proceed-to-pay"
                 >
-                  {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploading", { defaultValue: "Uploading video…" }) : t("boost.publishAd", { amount: budget.toFixed(2) })}
+                  {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploadingPct", { percent: videoUploadPercent, defaultValue: "Uploading video: {{percent}}%" }) : t("boost.publishAd", { amount: budget.toFixed(2) })}
                 </button>
               )}
               <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
@@ -1969,7 +2012,7 @@ export default function BoostPage() {
                 disabled={loading || videoUploading}
                 data-testid="button-proceed-to-pay-mobile"
               >
-                {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploading", { defaultValue: "Uploading video…" }) : `${t("boost.continue")} — $${budget.toFixed(2)}`}
+                {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploadingPct", { percent: videoUploadPercent, defaultValue: "Uploading video: {{percent}}%" }) : `${t("boost.continue")} — $${budget.toFixed(2)}`}
               </button>
             )}
             <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-2">
@@ -2164,7 +2207,7 @@ export default function BoostPage() {
               onClick={handleInitiate}
               disabled={loading || videoUploading}
             >
-              {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploadingPct", { percent: abvUploadPercent || 0, defaultValue: "Uploading video: {{percent}}%" }) : t("boost.activateBoost", { amount: budget.toFixed(2), defaultValue: "Activate Boost — ${{amount}}" })}
+              {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploadingPct", { percent: videoUploadPercent, defaultValue: "Uploading video: {{percent}}%" }) : t("boost.activateBoost", { amount: budget.toFixed(2), defaultValue: "Activate Boost — ${{amount}}" })}
             </Button>
           ) : (
             <a

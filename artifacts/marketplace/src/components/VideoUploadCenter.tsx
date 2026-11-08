@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, FileVideo, Loader2, X } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import {
@@ -19,16 +20,6 @@ const ACTIVE_STATES = new Set<VideoUploadJob["state"]>([
   "processing",
   "paused",
 ]);
-
-const STATE_LABELS: Record<VideoUploadJob["state"], string> = {
-  preparing: "Preparing",
-  uploading: "Uploading",
-  processing: "Processing",
-  paused: "Paused",
-  complete: "Complete",
-  failed: "Failed",
-  cancelled: "Cancelled",
-};
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -54,9 +45,30 @@ function JobRow({
   job: VideoUploadJob;
   onActionError: (message: string) => void;
 }) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const progress = progressFor(job);
   const active = ACTIVE_STATES.has(job.state);
+  const stateLabel = (() => {
+    switch (job.state) {
+      case "preparing":
+        return t("boost.videoProcessing", { defaultValue: "Processing video…" });
+      case "uploading":
+        return t("boost.videoUploadingPct", { percent: progress, defaultValue: "Uploading video: {{percent}}%" });
+      case "processing":
+        return t("boost.videoProcessing", { defaultValue: "Processing video…" });
+      case "paused":
+        return t("boost.videoUploadPaused", { defaultValue: "Paused" });
+      case "complete":
+        return t("boost.videoReadyPreview", { defaultValue: "Video ready for preview." });
+      case "failed":
+        return t("boost.videoUploadFailed", { defaultValue: "Video upload failed. Please try again." });
+      case "cancelled":
+        return t("boost.videoUploadCancelled", { defaultValue: "Cancelled" });
+      default:
+        return job.state;
+    }
+  })();
 
   const runAction = async (action: () => void | Promise<void>, message: string) => {
     setBusy(true);
@@ -78,8 +90,8 @@ function JobRow({
             <p className="truncate text-sm font-medium text-foreground" title={job.fileName}>
               {job.fileName}
             </p>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {STATE_LABELS[job.state]}
+            <span className="shrink-0 text-xs text-muted-foreground max-w-[45%] text-right">
+              {stateLabel}
             </span>
           </div>
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
@@ -92,11 +104,16 @@ function JobRow({
                     ? "bg-green-500"
                     : "bg-primary",
               )}
-              style={{ width: `${progress}%` }}
+              style={{ width: `${Math.max(job.state === "uploading" || job.state === "processing" ? 2 : 0, progress)}%` }}
             />
           </div>
           <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            <span>{progress}%{job.totalBytes > 0 ? ` · ${formatBytes(job.totalBytes)}` : ""}</span>
+            <span>
+              {job.state === "uploading" || job.state === "processing" || job.state === "preparing"
+                ? t("boost.videoUploadingPct", { percent: progress, defaultValue: "Uploading video: {{percent}}%" })
+                : `${progress}%`}
+              {job.totalBytes > 0 ? ` · ${formatBytes(job.totalBytes)}` : ""}
+            </span>
             <span className="capitalize">{job.purpose}</span>
           </div>
           {job.error && (
@@ -168,6 +185,7 @@ function JobRow({
  * durable queue.
  */
 export default function VideoUploadCenter() {
+  const { t } = useTranslation();
   const { user, token } = useAuth();
   const jobs = useSyncExternalStore(
     subscribeVideoUploads,
@@ -188,13 +206,16 @@ export default function VideoUploadCenter() {
 
   if (ownJobs.length === 0) return null;
 
-  const activeCount = ownJobs.filter(job => ACTIVE_STATES.has(job.state)).length;
+  const activeJobs = ownJobs.filter(job => ACTIVE_STATES.has(job.state));
+  const activeCount = activeJobs.length;
   const completeCount = ownJobs.filter(job => job.state === "complete").length;
+  const leadActive = activeJobs.slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const leadPercent = leadActive ? progressFor(leadActive) : 0;
 
   return (
     <aside
       className="fixed bottom-4 right-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-border bg-card/95 p-2 shadow-lg backdrop-blur"
-      aria-label="Video uploads"
+      aria-label={t("boost.videoUploadsTitle", { defaultValue: "Video uploads" })}
       data-testid="video-upload-center"
     >
       <button
@@ -208,16 +229,21 @@ export default function VideoUploadCenter() {
       >
         <FileVideo className="h-4 w-4 shrink-0 text-primary" />
         <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
-          Video uploads
+          {t("boost.videoUploadsTitle", { defaultValue: "Video uploads" })}
         </span>
+        {activeCount > 0 && leadActive ? (
+          <span className="text-xs font-semibold text-primary tabular-nums">
+            {t("boost.videoUploadingPct", { percent: leadPercent, defaultValue: "Uploading video: {{percent}}%" })}
+          </span>
+        ) : null}
         {activeCount > 0 && (
           <span className="text-xs text-muted-foreground">
-            {activeCount} active
+            {t("boost.videoUploadsActive", { count: activeCount, defaultValue: "{{count}} active" })}
           </span>
         )}
         {completeCount > 0 && (
           <span className="text-xs text-green-600 dark:text-green-400">
-            {completeCount} ready
+            {t("boost.videoUploadsReady", { count: completeCount, defaultValue: "{{count}} ready" })}
           </span>
         )}
         {expanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronUp className="h-4 w-4 shrink-0" />}
@@ -251,6 +277,7 @@ export function VideoUploadChooser({
   onUse: (url: string) => void;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const jobs = useSyncExternalStore(
     subscribeVideoUploads,
@@ -268,8 +295,8 @@ export function VideoUploadChooser({
 
   return (
     <div className={cn("space-y-2 rounded-lg border border-border/70 bg-muted/30 p-3", className)} data-testid={`video-upload-chooser-${purpose}`}>
-      <p className="text-xs font-semibold text-foreground">Completed uploads</p>
-      <p className="text-xs text-muted-foreground">Use a completed video without publishing or purchasing anything.</p>
+      <p className="text-xs font-semibold text-foreground">{t("boost.completedUploads", { defaultValue: "Completed uploads" })}</p>
+      <p className="text-xs text-muted-foreground">{t("boost.completedUploadsHint", { defaultValue: "Use a completed video without publishing or purchasing anything." })}</p>
       <div className="space-y-1.5">
         {completed.map(job => (
           <div key={job.id} className="flex items-center gap-2">
@@ -283,7 +310,7 @@ export function VideoUploadChooser({
               onClick={() => job.url && onUse(job.url)}
               data-testid={`button-use-video-upload-${job.id}`}
             >
-              Use
+              {t("boost.useVideo", { defaultValue: "Use" })}
             </button>
           </div>
         ))}

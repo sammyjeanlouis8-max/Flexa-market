@@ -1855,8 +1855,37 @@ export default function VideoFeed() {
 
   // Native WebViews allow unmuted autoplay — unlock immediately so cards
   // never wait on a tap-for-sound permission gate.
+  // Also force html/body/#root black so any system-nav / safe-area bleed
+  // never flashes the marketplace white background under the feed.
   useEffect(() => {
     if (isNativeMobileApp()) setAudioUnlocked(true);
+
+    const html = document.documentElement;
+    const body = document.body;
+    const root = document.getElementById("root");
+    const prevHtmlBg = html.style.backgroundColor;
+    const prevBodyBg = body.style.backgroundColor;
+    const prevRootBg = root?.style.backgroundColor ?? "";
+    const prevAndroidBottom = html.style.getPropertyValue("--flexa-android-bottom");
+
+    html.classList.add("video-feed-immersive");
+    html.style.backgroundColor = "#000";
+    body.style.backgroundColor = "#000";
+    if (root) root.style.backgroundColor = "#000";
+    // Android WebViews often report safe-area-inset-bottom as 0 while drawing
+    // behind the system nav — ensure a real black fill under the feed nav.
+    if (isAndroidApp() || /Android/i.test(navigator.userAgent)) {
+      html.style.setProperty("--flexa-android-bottom", "48px");
+    }
+
+    return () => {
+      html.classList.remove("video-feed-immersive");
+      html.style.backgroundColor = prevHtmlBg;
+      body.style.backgroundColor = prevBodyBg;
+      if (root) root.style.backgroundColor = prevRootBg;
+      if (prevAndroidBottom) html.style.setProperty("--flexa-android-bottom", prevAndroidBottom);
+      else html.style.removeProperty("--flexa-android-bottom");
+    };
   }, []);
 
   const [videos, setVideos] = useState<VideoItem[]>([]);
@@ -2153,7 +2182,15 @@ export default function VideoFeed() {
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loadingInitial) {
     return (
-      <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black gap-4">
+      <div
+        className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black gap-4"
+        style={{
+          bottom: `calc(-1 * ${FEED_SAFE_BOTTOM})`,
+          minHeight: `calc(100dvh + ${FEED_SAFE_BOTTOM})`,
+          boxShadow: "0 64px 0 0 #000",
+        }}
+        data-testid="video-feed-loading"
+      >
         {/* Transparent header on loading too */}
         <div
           className="absolute inset-x-0 top-0 z-50 flex items-center px-4 gap-3"
@@ -2185,6 +2222,14 @@ export default function VideoFeed() {
         "fixed inset-0 z-[60] bg-black",
         videos.length === 0 ? "flex flex-col" : "flex",
       )}
+      style={{
+        // Extend past the layout bottom so Android system-nav / safe-area
+        // gaps stay black even when env(safe-area-inset-bottom) is 0.
+        bottom: `calc(-1 * ${FEED_SAFE_BOTTOM})`,
+        minHeight: `calc(100dvh + ${FEED_SAFE_BOTTOM})`,
+        boxShadow: "0 64px 0 0 #000",
+      }}
+      data-testid="video-feed-immersive"
     >
 
       {/* ── Empty state ──────────────────────────────────────────────────── */}

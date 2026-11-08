@@ -1,0 +1,145 @@
+/* Smart Video Upload Manager — sits above mobile bottom nav, never over it. */
+.vuc-shell,
+.vuc-restore {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: min(24rem, calc(100vw - 1.25rem));
+  /* Mobile nav row ≈ 56px + safe area; keep a 10px gap above it. */
+  bottom: calc(56px + max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px)) + 10px);
+  max-width: calc(100vw - 1.25rem);
+}
+
+@media (min-width: 768px) {
+  .vuc-shell,
+  .vuc-restore {
+    left: auto;
+    right: 1rem;
+    transform: none;
+    bottom: 1.25rem;
+  }
+}
+
+.vuc-shell {
+  border-radius: 16px;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(245, 243, 255, 0.88));
+  box-shadow:
+    0 16px 36px -22px rgba(91, 33, 182, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  padding: 0.35rem;
+  overflow: hidden;
+}
+
+.vuc-shell-expanded {
+  max-height: min(70vh, 28rem);
+  display: flex;
+  flex-direction: column;
+}
+
+.vuc-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.vuc-bar-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 12px;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+}
+
+.vuc-bar-main:hover {
+  background: rgba(237, 233, 254, 0.55);
+}
+
+.vuc-icon-btn {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #64748b;
+}
+
+.vuc-icon-btn:hover {
+  background: rgba(241, 245, 249, 0.95);
+  color: #0f172a;
+}
+
+.vuc-panel {
+  margin-top: 0.35rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow-y: auto;
+  max-height: min(58vh, 22rem);
+  -webkit-overflow-scrolling: touch;
+}
+
+.vuc-job {
+  border-radius: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: rgba(255, 255, 255, 0.78);
+  padding: 0.65rem 0.7rem;
+}
+
+.vuc-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(196, 181, 253, 0.7);
+  background: rgba(255, 255, 255, 0.9);
+  color: #6d28d9;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.28rem 0.55rem;
+}
+
+.vuc-chip-btn:hover {
+  background: #f5f3ff;
+}
+
+.vuc-chip-btn:disabled {
+  opacity: 0.5;
+}
+
+.vuc-chip-danger {
+  color: #dc2626;
+  border-color: rgba(252, 165, 165, 0.9);
+}
+
+.vuc-chip-danger:hover {
+  background: #fef2f2;
+}
+
+.vuc-restore-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 24px -16px rgba(91, 33, 182, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #5b21b6;
+  font-size: 0.75rem;
+  font-weight: 750;
+  padding: 0.55rem 0.9rem;
+}

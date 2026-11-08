@@ -3,6 +3,18 @@ import { hasNativeVideoUpload, nativeUploadRequest, stageNativeVideo } from "./n
 import { loadVideoFile, loadVideoJobs, removeVideoFile, removeVideoJob, saveNewVideoJob, saveVideoJob } from "./videoUploadStorage";
 
 export type VideoUploadPurpose = "boost" | "listing";
+export type VideoUploadState =
+  | "draft"
+  | "queued"
+  | "preparing"
+  | "uploading"
+  | "processing"
+  | "waiting_for_connection"
+  | "paused"
+  | "complete"
+  | "failed"
+  | "cancelled";
+
 export interface VideoUploadJob {
   id: string;
   ownerId: number;
@@ -10,11 +22,13 @@ export interface VideoUploadJob {
   fileName: string;
   totalBytes: number;
   progress: number;
-  state: "preparing" | "uploading" | "processing" | "paused" | "complete" | "failed" | "cancelled";
+  state: VideoUploadState;
   url?: string;
   error?: string;
   native: boolean;
   updatedAt: number;
+  /** App route to reopen when the user taps “Continue” in the upload manager. */
+  returnPath?: string;
 }
 interface StoredJob extends VideoUploadJob {
   contentType: string;
@@ -70,10 +84,26 @@ const delay = (ms: number, signal: AbortSignal) => new Promise<void>((resolve, r
   signal.addEventListener("abort", abort, { once: true });
 });
 
+function isOfflineError(error: unknown): boolean {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    error.name === "TypeError" ||
+    msg.includes("failed to fetch") ||
+    msg.includes("network") ||
+    msg.includes("offline") ||
+    msg.includes("connection")
+  );
+}
+
 async function request(path: string, init: RequestInit, signal: AbortSignal): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 4; attempt++) {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      throw new BoostVideoUploadError("UPLOAD_NETWORK_ERROR", "Waiting for connection.", undefined, true);
+    }
     const controller = new AbortController();
     const abort = () => controller.abort();
     signal.addEventListener("abort", abort, { once: true });
@@ -92,6 +122,9 @@ async function request(path: string, init: RequestInit, signal: AbortSignal): Pr
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       if (error instanceof BoostVideoUploadError && (!error.retryable || attempt === 3)) throw error;
       lastError = error;
+      if (isOfflineError(error)) {
+        throw new BoostVideoUploadError("UPLOAD_NETWORK_ERROR", "Waiting for connection.", undefined, true);
+      }
     } finally {
       clearTimeout(timeout);
       signal.removeEventListener("abort", abort);
@@ -240,8 +273,25 @@ function run(job: StoredJob) {
     } catch (error) {
       if (job.state !== "cancelled") {
         const message = error instanceof Error ? error.message : "Upload interrupted. Try again.";
-        const state = error instanceof BoostVideoUploadError && !error.retryable && error.status !== 401 ? "failed" : "paused";
-        await update(job, { state, error: controller.signal.aborted ? "Upload paused. Sign in to resume." : message }).catch(() => {});
+        const offline =
+          (error instanceof BoostVideoUploadError && error.code === "UPLOAD_NETWORK_ERROR") ||
+          isOfflineError(error) ||
+          (typeof navigator !== "undefined" && navigator.onLine === false);
+        const hardFail =
+          error instanceof BoostVideoUploadError && !error.retryable && error.status !== 401 && !offline;
+        const state: VideoUploadState = hardFail
+          ? "failed"
+          : offline
+            ? "waiting_for_connection"
+            : "paused";
+        await update(job, {
+          state,
+          error: controller.signal.aborted
+            ? "Upload paused. Sign in to resume."
+            : offline
+              ? "Waiting for connection."
+              : message,
+        }).catch(() => {});
       }
       waiters.get(job.id)?.reject(error);
       waiters.delete(job.id);
@@ -250,7 +300,10 @@ function run(job: StoredJob) {
       active.delete(job.id);
       emit();
       for (const pending of jobs.values()) {
-        if (pending.ownerId === identity?.ownerId && ["preparing", "uploading", "processing"].includes(pending.state)) {
+        if (
+          pending.ownerId === identity?.ownerId &&
+          ["draft", "queued", "preparing", "uploading", "processing"].includes(pending.state)
+        ) {
           run(pending);
           break;
         }
@@ -285,8 +338,13 @@ export function setVideoUploadIdentity(ownerId: number | null, token: string | n
     booting = false;
     emit();
     for (const job of jobs.values()) {
-      if (job.ownerId === identity?.ownerId && ["preparing", "uploading", "processing", "paused"].includes(job.state)) {
-        if (job.state === "paused") job.state = "preparing";
+      if (
+        job.ownerId === identity?.ownerId &&
+        ["draft", "queued", "preparing", "uploading", "processing", "paused", "waiting_for_connection"].includes(job.state)
+      ) {
+        if (job.state === "paused" || job.state === "waiting_for_connection" || job.state === "draft" || job.state === "queued") {
+          job.state = "preparing";
+        }
         run(job);
       } else if (job.ownerId === identity?.ownerId && job.state === "complete" && job.uploadId) {
         // Refresh the owner-bound attachment proof without uploading bytes again.
@@ -306,6 +364,8 @@ export async function startVideoUpload(file: File, token: string | null | undefi
   ownerId: number;
   purpose: VideoUploadPurpose;
   onProgress?: (percent: number) => void;
+  /** Route to restore when the user continues from the upload manager. */
+  returnPath?: string;
 }): Promise<string> {
   if (!token || !Number.isSafeInteger(options.ownerId) || options.ownerId < 1) throw new BoostVideoUploadError("UPLOAD_AUTH_REQUIRED", "Sign in before uploading a video.");
   if (file.size < 1 || file.size > MAX_BOOST_VIDEO_BYTES) throw new BoostVideoUploadError("UPLOAD_SIZE_INVALID", "Video must be between 1 byte and 300 MB.");
@@ -315,9 +375,12 @@ export async function startVideoUpload(file: File, token: string | null | undefi
   if (pending.length >= 3) throw new Error("Finish or remove an existing upload before adding another video.");
   const declared = file.type.split(";")[0].toLowerCase();
   const contentType = declared.startsWith("video/") ? declared : /\.mov$/i.test(file.name) ? "video/quicktime" : "video/mp4";
+  const returnPath =
+    options.returnPath ||
+    (typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined);
   const job: StoredJob = { id: crypto.randomUUID(), ownerId: options.ownerId, purpose: options.purpose,
-    fileName: file.name, totalBytes: file.size, progress: 0, state: "preparing",
-    native: hasNativeVideoUpload(), contentType, updatedAt: Date.now() };
+    fileName: file.name, totalBytes: file.size, progress: 0, state: "queued",
+    native: hasNativeVideoUpload(), contentType, updatedAt: Date.now(), returnPath };
   const startGeneration = generation;
   try {
     await saveNewVideoJob(job, file);
@@ -347,6 +410,24 @@ export function retryVideoUpload(id: string): void {
   if (job.state === "complete" || job.state === "cancelled") return;
   void update(job, { state: "preparing", error: undefined }).then(() => run(job)).catch(() => {});
 }
+
+/** Resume every recoverable job for the signed-in owner (online / foreground). */
+export function resumeWaitingVideoUploads(): void {
+  if (!identity) return;
+  for (const job of jobs.values()) {
+    if (
+      job.ownerId === identity.ownerId &&
+      ["paused", "waiting_for_connection", "queued", "draft"].includes(job.state)
+    ) {
+      retryVideoUpload(job.id);
+    }
+  }
+}
+
+export function defaultReturnPathForPurpose(purpose: VideoUploadPurpose): string {
+  if (purpose === "listing") return "/sell";
+  return "/booster/create";
+}
 export async function cancelVideoUpload(id: string): Promise<void> {
   const job = jobs.get(id);
   if (!job || job.ownerId !== identity?.ownerId) return;
@@ -366,10 +447,24 @@ export async function dismissVideoUpload(id: string): Promise<void> {
   emit();
 }
 window.addEventListener("online", () => {
-  for (const job of jobs.values()) if (job.ownerId === identity?.ownerId && job.state === "paused") retryVideoUpload(job.id);
+  resumeWaitingVideoUploads();
+});
+window.addEventListener("offline", () => {
+  for (const job of jobs.values()) {
+    if (
+      job.ownerId === identity?.ownerId &&
+      ["preparing", "uploading", "processing", "queued"].includes(job.state) &&
+      !active.has(job.id)
+    ) {
+      void update(job, {
+        state: "waiting_for_connection",
+        error: "Waiting for connection.",
+      }).catch(() => {});
+    }
+  }
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    for (const job of jobs.values()) if (job.ownerId === identity?.ownerId && job.state === "paused") retryVideoUpload(job.id);
+    resumeWaitingVideoUploads();
   }
 });

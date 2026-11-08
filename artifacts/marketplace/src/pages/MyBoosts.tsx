@@ -125,6 +125,7 @@ export default function MyBoosts() {
       const videoUrl = await startVideoUpload(file, token, {
         ownerId: user.id,
         purpose: "boost",
+        returnPath: typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined,
       });
       const res = await fetch(`/api/boost/${boost.boostId}/video`, {
         method: "PATCH",

@@ -1,9 +1,20 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronUp, FileVideo, Loader2, X } from "lucide-react";
+import { useLocation } from "wouter";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  FileVideo,
+  Loader2,
+  Minimize2,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/contexts/auth";
+import { useToast } from "@/hooks/use-toast";
 import {
   cancelVideoUpload,
+  defaultReturnPathForPurpose,
   dismissVideoUpload,
   getVideoUploads,
   retryVideoUpload,
@@ -13,11 +24,24 @@ import {
   type VideoUploadPurpose,
 } from "@/lib/videoUploadQueue";
 import { cn } from "@/lib/utils";
+import "@/components/video-upload-center.css";
+
+const HIDE_KEY = "flexa_video_upload_bar_hidden";
+const AUTO_HIDE_MS = 3000;
 
 const ACTIVE_STATES = new Set<VideoUploadJob["state"]>([
+  "draft",
+  "queued",
   "preparing",
   "uploading",
   "processing",
+  "waiting_for_connection",
+  "paused",
+]);
+
+const NEEDS_ATTENTION = new Set<VideoUploadJob["state"]>([
+  "failed",
+  "waiting_for_connection",
   "paused",
 ]);
 
@@ -38,37 +62,50 @@ function progressFor(job: VideoUploadJob): number {
   return Math.max(0, Math.min(100, Math.round(job.progress || 0)));
 }
 
+function stateLabel(job: VideoUploadJob, translate: (key: string, opts?: object) => string): string {
+  const progress = progressFor(job);
+  switch (job.state) {
+    case "draft":
+      return translate("videoUploads.stateDraft", { defaultValue: "Draft" });
+    case "queued":
+      return translate("videoUploads.stateQueued", { defaultValue: "Queued" });
+    case "preparing":
+      return translate("videoUploads.statePreparing", { defaultValue: "Preparing" });
+    case "uploading":
+      return translate("boost.videoUploadingPct", {
+        percent: progress,
+        defaultValue: "Uploading video: {{percent}}%",
+      });
+    case "processing":
+      return translate("boost.videoProcessing", { defaultValue: "Processing video…" });
+    case "waiting_for_connection":
+      return translate("videoUploads.stateWaitingConnection", { defaultValue: "Waiting for connection" });
+    case "paused":
+      return translate("boost.videoUploadPaused", { defaultValue: "Paused" });
+    case "complete":
+      return translate("videoUploads.stateCompleted", { defaultValue: "Completed" });
+    case "failed":
+      return translate("videoUploads.stateFailed", { defaultValue: "Failed" });
+    case "cancelled":
+      return translate("boost.videoUploadCancelled", { defaultValue: "Cancelled" });
+    default:
+      return job.state;
+  }
+}
+
 function JobRow({
   job,
   onActionError,
+  onContinue,
 }: {
   job: VideoUploadJob;
   onActionError: (message: string) => void;
+  onContinue: (job: VideoUploadJob) => void;
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const progress = progressFor(job);
   const active = ACTIVE_STATES.has(job.state);
-  const stateLabel = (() => {
-    switch (job.state) {
-      case "preparing":
-        return t("boost.videoProcessing", { defaultValue: "Processing video…" });
-      case "uploading":
-        return t("boost.videoUploadingPct", { percent: progress, defaultValue: "Uploading video: {{percent}}%" });
-      case "processing":
-        return t("boost.videoProcessing", { defaultValue: "Processing video…" });
-      case "paused":
-        return t("boost.videoUploadPaused", { defaultValue: "Paused" });
-      case "complete":
-        return t("boost.videoReadyPreview", { defaultValue: "Video ready for preview." });
-      case "failed":
-        return t("boost.videoUploadFailed", { defaultValue: "Video upload failed. Please try again." });
-      case "cancelled":
-        return t("boost.videoUploadCancelled", { defaultValue: "Cancelled" });
-      default:
-        return job.state;
-    }
-  })();
 
   const runAction = async (action: () => void | Promise<void>, message: string) => {
     setBusy(true);
@@ -82,97 +119,124 @@ function JobRow({
   };
 
   return (
-    <div className="rounded-lg border border-border/70 bg-background/80 px-3 py-2.5">
+    <div className="vuc-job">
       <div className="flex items-start gap-2">
-        <FileVideo className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <FileVideo className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-sm font-medium text-foreground" title={job.fileName}>
+            <p className="truncate text-sm font-medium text-slate-900" title={job.fileName}>
               {job.fileName}
             </p>
-            <span className="shrink-0 text-xs text-muted-foreground max-w-[45%] text-right">
-              {stateLabel}
+            <span className="shrink-0 text-[11px] font-semibold text-slate-500 max-w-[48%] text-right">
+              {stateLabel(job, t as (key: string, opts?: object) => string)}
             </span>
           </div>
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-violet-100" aria-hidden="true">
             <div
               className={cn(
                 "h-full rounded-full transition-[width] duration-200",
                 job.state === "failed"
-                  ? "bg-destructive"
+                  ? "bg-red-500"
                   : job.state === "complete"
-                    ? "bg-green-500"
-                    : "bg-primary",
+                    ? "bg-emerald-500"
+                    : job.state === "waiting_for_connection"
+                      ? "bg-amber-400"
+                      : "bg-violet-600",
               )}
-              style={{ width: `${Math.max(job.state === "uploading" || job.state === "processing" ? 2 : 0, progress)}%` }}
+              style={{
+                width: `${Math.max(
+                  active && job.state !== "waiting_for_connection" ? 2 : 0,
+                  progress,
+                )}%`,
+              }}
             />
           </div>
-          <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
             <span>
-              {job.state === "uploading" || job.state === "processing" || job.state === "preparing"
-                ? t("boost.videoUploadingPct", { percent: progress, defaultValue: "Uploading video: {{percent}}%" })
-                : `${progress}%`}
-              {job.totalBytes > 0 ? ` · ${formatBytes(job.totalBytes)}` : ""}
+              {progress}%{job.totalBytes > 0 ? ` · ${formatBytes(job.totalBytes)}` : ""}
             </span>
             <span className="capitalize">{job.purpose}</span>
           </div>
           {job.error && (
-            <p className="mt-1 text-xs text-destructive" role="alert">
+            <p className="mt-1 text-xs text-red-600" role="alert">
               {job.error}
             </p>
           )}
-          {job.state === "failed" && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Try again to resume this upload. Your saved upload can recover when the app is reopened.
+          {job.state === "waiting_for_connection" && (
+            <p className="mt-1 text-xs text-amber-700">
+              {t("videoUploads.waitingHint", {
+                defaultValue: "Upload paused safely. It will resume when you are back online.",
+              })}
             </p>
           )}
-          {job.state === "paused" && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              This upload is paused and will resume when the app is reopened.
-            </p>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
           {(job.state === "failed" || job.state === "paused") && (
-            <button
-              type="button"
-              className="rounded px-1.5 py-1 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
-              onClick={() => retryVideoUpload(job.id)}
-              disabled={busy}
-            >
-              Try again
-            </button>
+            <p className="mt-1 text-xs text-slate-500">
+              {t("videoUploads.retryHint", {
+                defaultValue: "Try again to resume. Your saved upload can recover when the app is reopened.",
+              })}
+            </p>
           )}
-          {(active || job.state === "failed") && (
-            <button
-              type="button"
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-50"
-              onClick={() => void runAction(
-                () => cancelVideoUpload(job.id),
-                "We could not cancel this upload. Try again.",
-              )}
-              disabled={busy}
-              aria-label={`Cancel ${job.fileName}`}
-              title="Cancel upload"
-            >
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-            </button>
-          )}
-          {(job.state === "complete" || job.state === "cancelled") && (
-            <button
-              type="button"
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-50"
-              onClick={() => void runAction(
-                () => dismissVideoUpload(job.id),
-                "We could not remove this upload. Try again.",
-              )}
-              disabled={busy}
-              aria-label={`Remove ${job.fileName}`}
-              title="Remove upload"
-            >
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-            </button>
-          )}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {(job.state === "failed" ||
+              job.state === "paused" ||
+              job.state === "waiting_for_connection") && (
+              <button
+                type="button"
+                className="vuc-chip-btn"
+                onClick={() => retryVideoUpload(job.id)}
+                disabled={busy}
+              >
+                {t("videoUploads.retry", { defaultValue: "Retry upload" })}
+              </button>
+            )}
+            {(job.state === "complete" || active || job.state === "failed") && (
+              <button
+                type="button"
+                className="vuc-chip-btn"
+                onClick={() => onContinue(job)}
+              >
+                {t("videoUploads.continueWorkflow", { defaultValue: "Continue" })}
+              </button>
+            )}
+            {active && (
+              <button
+                type="button"
+                className="vuc-chip-btn vuc-chip-danger"
+                onClick={() =>
+                  void runAction(
+                    () => cancelVideoUpload(job.id),
+                    t("videoUploads.cancelFailed", {
+                      defaultValue: "We could not cancel this upload. Try again.",
+                    }),
+                  )
+                }
+                disabled={busy}
+              >
+                {busy ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  t("videoUploads.cancelUpload", { defaultValue: "Cancel upload" })
+                )}
+              </button>
+            )}
+            {(job.state === "complete" || job.state === "cancelled" || job.state === "failed") && (
+              <button
+                type="button"
+                className="vuc-chip-btn"
+                onClick={() =>
+                  void runAction(
+                    () => dismissVideoUpload(job.id),
+                    t("videoUploads.dismissFailed", {
+                      defaultValue: "We could not remove this upload. Try again.",
+                    }),
+                  )
+                }
+                disabled={busy}
+              >
+                {t("videoUploads.dismiss", { defaultValue: "Dismiss" })}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -180,12 +244,15 @@ function JobRow({
 }
 
 /**
- * Persistent, account-scoped upload controls. This component intentionally
- * lives above the router in App so changing pages does not interrupt the
- * durable queue.
+ * Persistent, account-scoped upload controls. Lives above the router in App so
+ * navigation does not interrupt the durable IndexedDB queue.
+ *
+ * Closing / minimizing the bar NEVER cancels uploads — only Cancel upload does.
  */
 export default function VideoUploadCenter() {
   const { t } = useTranslation();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const { user, token } = useAuth();
   const jobs = useSyncExternalStore(
     subscribeVideoUploads,
@@ -193,74 +260,230 @@ export default function VideoUploadCenter() {
     getVideoUploads,
   );
   const [expanded, setExpanded] = useState(false);
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return sessionStorage.getItem(HIDE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [actionError, setActionError] = useState<string | null>(null);
+  const autoHideTimer = useRef<number | null>(null);
+  const celebratedRef = useRef<string>("");
 
   useEffect(() => {
     setVideoUploadIdentity(user?.id ?? null, token ?? null);
   }, [user?.id, token]);
 
   const ownJobs = useMemo(
-    () => user ? jobs.filter(job => job.ownerId === user.id) : [],
+    () => (user ? jobs.filter((job) => job.ownerId === user.id) : []),
     [jobs, user?.id],
   );
 
-  if (ownJobs.length === 0) return null;
-
-  const activeJobs = ownJobs.filter(job => ACTIVE_STATES.has(job.state));
-  const activeCount = activeJobs.length;
-  const completeCount = ownJobs.filter(job => job.state === "complete").length;
+  const activeJobs = ownJobs.filter((job) => ACTIVE_STATES.has(job.state));
+  const attentionJobs = ownJobs.filter((job) => NEEDS_ATTENTION.has(job.state));
+  const completeCount = ownJobs.filter((job) => job.state === "complete").length;
+  const allSettled =
+    ownJobs.length > 0 &&
+    ownJobs.every((job) => job.state === "complete" || job.state === "cancelled");
   const leadActive = activeJobs.slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
   const leadPercent = leadActive ? progressFor(leadActive) : 0;
 
+  // Re-show the bar when something needs attention or a new active upload starts.
+  useEffect(() => {
+    if (activeJobs.length > 0 || attentionJobs.length > 0) {
+      setHidden(false);
+      try {
+        sessionStorage.removeItem(HIDE_KEY);
+      } catch {
+        /* ignore */
+      }
+      if (autoHideTimer.current) {
+        window.clearTimeout(autoHideTimer.current);
+        autoHideTimer.current = null;
+      }
+    }
+  }, [activeJobs.length, attentionJobs.length, ownJobs.map((j) => `${j.id}:${j.state}`).join("|")]);
+
+  // Auto-hide 3s after everything is complete/cancelled (keep jobs accessible).
+  useEffect(() => {
+    if (!allSettled || completeCount === 0) return;
+    const fingerprint = ownJobs.map((j) => `${j.id}:${j.state}`).join("|");
+    if (celebratedRef.current !== fingerprint) {
+      celebratedRef.current = fingerprint;
+      toast({
+        title: t("videoUploads.allCompleteTitle", { defaultValue: "Videos ready" }),
+        description: t("videoUploads.allCompleteDesc", {
+          defaultValue: "All uploads finished. You can keep using them from Saved Videos.",
+        }),
+      });
+    }
+    if (autoHideTimer.current) window.clearTimeout(autoHideTimer.current);
+    autoHideTimer.current = window.setTimeout(() => {
+      setExpanded(false);
+      setHidden(true);
+      try {
+        sessionStorage.setItem(HIDE_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+    }, AUTO_HIDE_MS);
+    return () => {
+      if (autoHideTimer.current) window.clearTimeout(autoHideTimer.current);
+    };
+  }, [allSettled, completeCount, ownJobs, t, toast]);
+
+  const hideBar = () => {
+    // Visibility only — never cancels uploads.
+    setExpanded(false);
+    setHidden(true);
+    try {
+      sessionStorage.setItem(HIDE_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const openManager = () => {
+    setHidden(false);
+    setExpanded(true);
+    setActionError(null);
+    try {
+      sessionStorage.removeItem(HIDE_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const continueJob = (job: VideoUploadJob) => {
+    const path =
+      job.returnPath ||
+      defaultReturnPathForPurpose(job.purpose) ||
+      (job.purpose === "listing" ? "/sell" : "/booster/create");
+    setExpanded(false);
+    setLocation(path);
+  };
+
+  if (!user || ownJobs.length === 0) return null;
+  if (hidden && activeJobs.length === 0 && attentionJobs.length === 0) return null;
+
+  // If hidden but still active, show a tiny restore chip above the nav.
+  if (hidden) {
+    return (
+      <aside
+        className="vuc-restore"
+        data-testid="video-upload-center-restore"
+      >
+        <button type="button" className="vuc-restore-btn" onClick={openManager}>
+          <FileVideo className="h-3.5 w-3.5" />
+          <span>
+            {activeJobs.length > 0
+              ? t("boost.videoUploadingPct", {
+                  percent: leadPercent,
+                  defaultValue: "Uploading video: {{percent}}%",
+                })
+              : t("boost.videoUploadsTitle", { defaultValue: "Video uploads" })}
+          </span>
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside
-      className="fixed bottom-4 right-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-border bg-card/95 p-2 shadow-lg backdrop-blur"
+      className={cn("vuc-shell", expanded && "vuc-shell-expanded")}
       aria-label={t("boost.videoUploadsTitle", { defaultValue: "Video uploads" })}
       data-testid="video-upload-center"
     >
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-muted/60"
-        onClick={() => {
-          setActionError(null);
-          setExpanded(value => !value);
-        }}
-        aria-expanded={expanded}
-      >
-        <FileVideo className="h-4 w-4 shrink-0 text-primary" />
-        <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
-          {t("boost.videoUploadsTitle", { defaultValue: "Video uploads" })}
-        </span>
-        {activeCount > 0 && leadActive ? (
-          <span className="text-xs font-semibold text-primary tabular-nums">
-            {t("boost.videoUploadingPct", { percent: leadPercent, defaultValue: "Uploading video: {{percent}}%" })}
+      <div className="vuc-bar">
+        <button
+          type="button"
+          className="vuc-bar-main"
+          onClick={() => {
+            setActionError(null);
+            setExpanded((value) => !value);
+          }}
+          aria-expanded={expanded}
+        >
+          <FileVideo className="h-4 w-4 shrink-0 text-violet-600" />
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
+            {t("boost.videoUploadsTitle", { defaultValue: "Video uploads" })}
           </span>
-        ) : null}
-        {activeCount > 0 && (
-          <span className="text-xs text-muted-foreground">
-            {t("boost.videoUploadsActive", { count: activeCount, defaultValue: "{{count}} active" })}
-          </span>
-        )}
-        {completeCount > 0 && (
-          <span className="text-xs text-green-600 dark:text-green-400">
-            {t("boost.videoUploadsReady", { count: completeCount, defaultValue: "{{count}} ready" })}
-          </span>
-        )}
-        {expanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronUp className="h-4 w-4 shrink-0" />}
-      </button>
+          {activeJobs.length > 0 && leadActive ? (
+            <span className="text-xs font-semibold text-violet-700 tabular-nums shrink-0">
+              {t("boost.videoUploadingPct", {
+                percent: leadPercent,
+                defaultValue: "Uploading video: {{percent}}%",
+              })}
+            </span>
+          ) : null}
+          {activeJobs.length > 0 && (
+            <span className="text-[11px] text-slate-500 shrink-0">
+              {t("boost.videoUploadsActive", {
+                count: activeJobs.length,
+                defaultValue: "{{count}} active",
+              })}
+            </span>
+          )}
+          {completeCount > 0 && (
+            <span className="text-[11px] text-emerald-600 shrink-0">
+              {t("boost.videoUploadsReady", {
+                count: completeCount,
+                defaultValue: "{{count}} ready",
+              })}
+            </span>
+          )}
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+          ) : (
+            <ChevronUp className="h-4 w-4 shrink-0 text-slate-500" />
+          )}
+        </button>
+        <button
+          type="button"
+          className="vuc-icon-btn"
+          onClick={() => setExpanded(false)}
+          aria-label={t("videoUploads.minimize", { defaultValue: "Minimize" })}
+          title={t("videoUploads.minimize", { defaultValue: "Minimize" })}
+        >
+          <Minimize2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className="vuc-icon-btn"
+          onClick={hideBar}
+          aria-label={t("videoUploads.closeBar", { defaultValue: "Close upload bar" })}
+          title={t("videoUploads.closeBarHint", {
+            defaultValue: "Hide the bar. Uploads keep running in the background.",
+          })}
+          data-testid="video-upload-center-close"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
 
       {expanded && (
-        <div className="mt-2 space-y-2 border-t border-border/70 pt-2">
-          <p className="px-1 text-[11px] leading-relaxed text-muted-foreground">
-            Native-supported transfers continue after preparation. On the web, uploads resume when you reopen the app, but recovery is not guaranteed in every browser.
+        <div className="vuc-panel">
+          <p className="px-1 text-[11px] leading-relaxed text-slate-500">
+            {t("videoUploads.managerHint", {
+              defaultValue:
+                "Closing this bar does not cancel uploads. Use Cancel upload only when you want to stop a transfer.",
+            })}
           </p>
           {actionError && (
-            <p className="px-1 text-xs text-destructive" role="alert">{actionError}</p>
+            <p className="px-1 text-xs text-red-600" role="alert">
+              {actionError}
+            </p>
           )}
           {[...ownJobs]
             .sort((a, b) => b.updatedAt - a.updatedAt)
-            .map(job => (
-              <JobRow key={job.id} job={job} onActionError={setActionError} />
+            .map((job) => (
+              <JobRow
+                key={job.id}
+                job={job}
+                onActionError={setActionError}
+                onContinue={continueJob}
+              />
             ))}
         </div>
       )}
@@ -272,49 +495,118 @@ export function VideoUploadChooser({
   purpose,
   onUse,
   className,
+  compact = false,
 }: {
   purpose: VideoUploadPurpose;
   onUse: (url: string) => void;
   className?: string;
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [open, setOpen] = useState(false);
   const jobs = useSyncExternalStore(
     subscribeVideoUploads,
     getVideoUploads,
     getVideoUploads,
   );
-  const completed = useMemo(
-    () => user
-      ? jobs.filter(job => job.ownerId === user.id && job.purpose === purpose && job.state === "complete" && !!job.url)
-      : [],
-    [jobs, purpose, user?.id],
-  );
+  const completed = useMemo(() => {
+    if (!user) return [];
+    const list = jobs
+      .filter(
+        (job) =>
+          job.ownerId === user.id &&
+          job.purpose === purpose &&
+          job.state === "complete" &&
+          !!job.url,
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    const seen = new Set<string>();
+    const unique: typeof list = [];
+    for (const job of list) {
+      const key = String(job.url);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(job);
+    }
+    return unique;
+  }, [jobs, purpose, user?.id]);
 
   if (completed.length === 0) return null;
 
-  return (
-    <div className={cn("space-y-2 rounded-lg border border-border/70 bg-muted/30 p-3", className)} data-testid={`video-upload-chooser-${purpose}`}>
-      <p className="text-xs font-semibold text-foreground">{t("boost.completedUploads", { defaultValue: "Completed uploads" })}</p>
-      <p className="text-xs text-muted-foreground">{t("boost.completedUploadsHint", { defaultValue: "Use a completed video without publishing or purchasing anything." })}</p>
-      <div className="space-y-1.5">
-        {completed.map(job => (
-          <div key={job.id} className="flex items-center gap-2">
-            <FileVideo className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate text-xs text-foreground" title={job.fileName}>
-              {job.fileName}
-            </span>
-            <button
-              type="button"
-              className="shrink-0 rounded-md border border-border bg-background px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
-              onClick={() => job.url && onUse(job.url)}
-              data-testid={`button-use-video-upload-${job.id}`}
-            >
-              {t("boost.useVideo", { defaultValue: "Use" })}
-            </button>
+  const list = (
+    <div className="space-y-1.5">
+      {completed.map((job) => (
+        <div key={job.id} className="flex items-center gap-2">
+          <FileVideo className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-xs text-foreground" title={job.fileName}>
+            {job.fileName}
+          </span>
+          <button
+            type="button"
+            className="shrink-0 rounded-md border border-border bg-background px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
+            onClick={() => {
+              if (job.url) onUse(job.url);
+              setOpen(false);
+            }}
+            data-testid={`button-use-video-upload-${job.id}`}
+          >
+            {t("boost.useVideo", { defaultValue: "Use" })}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div className={cn("bpv-saved-wrap", className)} data-testid={`video-upload-chooser-${purpose}`}>
+        <button
+          type="button"
+          className="bpv-btn bpv-btn-saved"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          data-testid="boost-saved-videos-toggle"
+        >
+          <FileVideo className="h-3.5 w-3.5" />
+          {t("boost.savedVideosCount", {
+            count: completed.length,
+            defaultValue: "Saved Videos ({{count}})",
+          })}
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5 ml-auto opacity-90" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 ml-auto opacity-90" />
+          )}
+        </button>
+        {open ? (
+          <div className="bpv-saved-panel mt-2 space-y-2">
+            <p className="text-[11px] text-slate-500">
+              {t("boost.completedUploadsHint", {
+                defaultValue: "Use a completed video without publishing or purchasing anything.",
+              })}
+            </p>
+            {list}
           </div>
-        ))}
+        ) : null}
       </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn("space-y-2 rounded-lg border border-border/70 bg-muted/30 p-3", className)}
+      data-testid={`video-upload-chooser-${purpose}`}
+    >
+      <p className="text-xs font-semibold text-foreground">
+        {t("boost.completedUploads", { defaultValue: "Completed uploads" })}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {t("boost.completedUploadsHint", {
+          defaultValue: "Use a completed video without publishing or purchasing anything.",
+        })}
+      </p>
+      {list}
     </div>
   );
 }

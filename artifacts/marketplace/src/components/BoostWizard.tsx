@@ -245,6 +245,7 @@ export default function BoostWizard({ open, onClose }: Props) {
     return startVideoUpload(file, token, {
       ownerId: user.id,
       purpose: "boost",
+      returnPath: typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined,
       onProgress: setUploadPercent,
     });
   }, [token, user]);

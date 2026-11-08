@@ -303,6 +303,7 @@ export default function BoosterCreate() {
       const url = await startVideoUpload(file, token, {
         ownerId: user.id,
         purpose: "boost",
+        returnPath: typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined,
         onProgress: setUploadPercent,
       });
       if (!url) throw new Error("no url");

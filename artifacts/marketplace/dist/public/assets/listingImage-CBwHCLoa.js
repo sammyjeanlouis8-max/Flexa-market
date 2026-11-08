@@ -1,0 +1,1 @@
+const r={card:"(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 240px",mosaic:"(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 200px",detail:"(max-width: 768px) 100vw, min(640px, 50vw)"};function x(i={}){const t=i.variant??"card",a=!!i.priority;return{loading:a?"eager":"lazy",decoding:"async",fetchPriority:a?"high":"auto",sizes:r[t]}}export{x as l};

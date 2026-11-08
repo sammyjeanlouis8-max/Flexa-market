@@ -146,6 +146,13 @@ body {
   max-width: 100%;
 }
 
+/* Promo video watch feed — keep every shell surface black edge-to-edge */
+html.video-feed-immersive,
+html.video-feed-immersive body,
+html.video-feed-immersive #root {
+  background-color: #000 !important;
+}
+
 main {
   flex: 1;
   width: 100%;

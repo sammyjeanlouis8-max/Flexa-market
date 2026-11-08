@@ -68,6 +68,14 @@ const REQUIRED_BOOST_VIDEO_MIGRATIONS: Array<{ name: string; sql: string }> = [
     name: "boost_video_upload_chunks.upload_idx",
     sql: "CREATE INDEX IF NOT EXISTS boost_video_upload_chunks_upload_idx ON boost_video_upload_chunks(upload_id)",
   },
+  {
+    name: "boost_video_uploads.purpose",
+    sql: "ALTER TABLE boost_video_uploads ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'listing'",
+  },
+  {
+    name: "boost_video_uploads.max_seconds",
+    sql: "ALTER TABLE boost_video_uploads ADD COLUMN IF NOT EXISTS max_seconds INTEGER NOT NULL DEFAULT 300",
+  },
 ];
 
 export async function ensureBoostVideoUploadSchema(): Promise<void> {
@@ -2723,6 +2731,16 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({
     name: "listings.eligibility_class_idx",
     sql: "CREATE INDEX IF NOT EXISTS listings_eligibility_class_idx ON listings(eligibility_class)",
+  });
+  migrations.push({
+    name: "listings.publish_idempotency_key",
+    sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS publish_idempotency_key TEXT",
+  });
+  migrations.push({
+    name: "listings.seller_publish_idempotency_uidx",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS listings_seller_publish_idempotency_uidx
+      ON listings(seller_id, publish_idempotency_key)
+      WHERE publish_idempotency_key IS NOT NULL`,
   });
 
   // ── Seed extra Haitian test users with phone numbers ────────────────────────

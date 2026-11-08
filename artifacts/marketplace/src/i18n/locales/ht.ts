@@ -775,6 +775,7 @@ export default {
       deliveryRequired: "Tanpri chwazi yon opsyon livrezon.",
       networkError: "Nou pa ka pibliye pwodwi ou. Verifye koneksyon ou epi eseye ankò.",
       serverError: "Yon erè rive. Tanpri eseye ankò.",
+      authError: "Sesyon ou ekspire. Konekte ankò, epi eseye pibliye. Brouillon ou an sove.",
       fieldsMissing: "{{count}} chan ki manke",
       fieldMissingOne: "1 chan ki manke",
       completed: "Konplete",

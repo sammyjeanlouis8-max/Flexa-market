@@ -61,6 +61,17 @@ function base64(blob: Blob): Promise<string> {
   });
 }
 
+/** Yield to the browser so base64 staging cannot freeze the UI for multi-minute videos. */
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => setTimeout(resolve, 0));
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 export async function stageNativeVideo(
   file: Blob,
   metadata: Record<string, unknown>,
@@ -68,11 +79,13 @@ export async function stageNativeVideo(
   onProgress: (percent: number) => void,
 ): Promise<void> {
   const initialized = await nativeUploadRequest<{ bytesStaged?: number }>("begin", metadata, signal);
-  const step = 1024 * 1024;
+  // 512 KiB slices keep peak base64 strings smaller on constrained mobile WebViews.
+  const step = 512 * 1024;
   let offset = initialized.bytesStaged ?? 0;
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > file.size) {
     throw new Error("Invalid native upload progress. Try again.");
   }
+  let slicesSinceYield = 0;
   while (offset < file.size) {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
     const end = Math.min(offset + step, file.size);
@@ -83,6 +96,11 @@ export async function stageNativeVideo(
     if (saved.bytesStaged !== end) throw new Error("Could not safely prepare the video. Try again.");
     offset = end;
     onProgress(Math.round(offset / file.size * 100));
+    slicesSinceYield += 1;
+    if (slicesSinceYield >= 2) {
+      slicesSinceYield = 0;
+      await yieldToMain();
+    }
   }
   await nativeUploadRequest("start", { jobId: metadata.jobId }, signal);
 }

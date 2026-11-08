@@ -41,8 +41,8 @@ import {
 } from "@/lib/sellValidation";
 
 const MAX_IMAGES = 5;
-/** Existing business rule: new listings require at least 2 photos (1 when editing). */
-const MIN_IMAGES = 2;
+/** Align with OpenAPI CreateListingBody (minItems: 1) and product UX. */
+const MIN_IMAGES = 1;
 const OTHER_CITY = "__other__";
 const DRAFT_KEY = "flexa_sell_draft_v2";
 const LOCAL_DELIVERY_COUNTRIES = new Set(["Haiti"]);
@@ -183,9 +183,10 @@ export default function Sell() {
   const createListing = useCreateListing();
   const updateListing = useUpdateListing();
   const [adminUpdatePending, setAdminUpdatePending] = useState(false);
+  const [createPublishPending, setCreatePublishPending] = useState(false);
   const isPending = isEditMode
     ? (isAdmin ? adminUpdatePending : updateListing.isPending)
-    : createListing.isPending;
+    : createPublishPending || createListing.isPending;
 
   // Fetch existing listing when editing
   // editId ?? 0: when null, id=0 → enabled:!!0=false → query skipped automatically
@@ -396,20 +397,45 @@ export default function Sell() {
     weightLbs, pkgLength, pkgWidth, pkgHeight,
   });
 
-  const saveDraft = useCallback(() => {
+  const draftUiRef = useRef({
+    openSection: "info" as SellSectionId,
+    sellerStep: 0,
+    mediaTab: "photos" as "photos" | "videos",
+  });
+
+  const persistDraftNow = useCallback(() => {
+    if (isEditMode || !draftRestoreAttemptedRef.current) return false;
+    try {
+      const images = draftDataRef.current.uploadedImages;
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        form: form.getValues(),
+        ...draftDataRef.current,
+        // Dual-write: older restores looked for `images` while saves wrote `uploadedImages`.
+        images,
+        uploadedImages: images,
+        openSection: draftUiRef.current.openSection,
+        sellerStep: draftUiRef.current.sellerStep,
+        mediaTab: draftUiRef.current.mediaTab,
+        savedAt: new Date().toISOString(),
+      }));
+      setDraftSavedAt(new Date());
+      return true;
+    } catch {
+      return false;
+    }
+  }, [form, isEditMode]);
+
+  const saveDraft = useCallback((immediate = false) => {
     if (isEditMode || !draftRestoreAttemptedRef.current) return;
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    if (immediate) {
+      persistDraftNow();
+      return;
+    }
     draftTimerRef.current = setTimeout(() => {
-      try {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({
-          form: form.getValues(),
-          ...draftDataRef.current,
-          savedAt: new Date().toISOString(),
-        }));
-        setDraftSavedAt(new Date());
-      } catch { /* storage quota */ }
+      persistDraftNow();
     }, 1200);
-  }, [form, isEditMode]);
+  }, [isEditMode, persistDraftNow]);
 
   const clearDraft = useCallback(() => {
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
@@ -470,6 +496,21 @@ export default function Sell() {
     setUploadedImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  const moveImage = (index: number, direction: -1 | 1) => {
+    setUploadedImages((prev) => {
+      const next = [...prev];
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return prev;
+      const tmp = next[index];
+      next[index] = next[target];
+      next[target] = tmp;
+      return next;
+    });
+  };
+
+  const publishInFlightRef = useRef(false);
+  const publishIdempotencyKeyRef = useRef<string | null>(null);
+
   const onSubmit = (values: SellFormValues) => {
     // Kat FM eligibility grants a publication-only exception, not an account unlock.
     if (isRestricted && (isEditMode || isStripeOnlySeller)) {
@@ -478,6 +519,7 @@ export default function Sell() {
       showRestrictionToast();
       return;
     }
+    if (publishInFlightRef.current || isPending) return;
     setSubmitRestricted(false);
     setSubmitError(null);
     if (uploadingSlot !== null || videoUploading || savingPayoutMethod) {
@@ -517,6 +559,8 @@ export default function Sell() {
     const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery ? Number(intlShippingCost || 0) : null, shippingCarriers: !isLocalDelivery && !isDominicanSelfDelivery ? shippingCarriers : [], deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : isDominicanSelfDelivery ? "self_delivery" : null, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
 
     const handleSuccess = (_listing: any) => {
+      publishInFlightRef.current = false;
+      publishIdempotencyKeyRef.current = null;
       const l = _listing as any;
       if (isEditMode && editId) {
         // Edit mode: invalidate ALL home-page feed caches so price/currency
@@ -532,7 +576,7 @@ export default function Sell() {
         setLocation(`/listings/${editId}`);
         return;
       }
-      // Create mode
+      // Create mode — only leave the page after confirmed persistence.
       clearDraft();
       queryClient.invalidateQueries({ queryKey: ["/api/stats/home"] });
       if (l.moderationStatus === "rejected") {
@@ -550,8 +594,12 @@ export default function Sell() {
     };
 
     const handleError = (e: any) => {
-      const raw: unknown = e?.data?.error;
-      if (e?.data?.code === "USER_RESTRICTED" || raw === "USER_RESTRICTED") {
+      publishInFlightRef.current = false;
+      // Keep the same idempotency key so a retry cannot create a duplicate.
+      const raw: unknown = e?.data?.error ?? e?.message;
+      const status: number = e?.status ?? e?.data?.status ?? 0;
+      const code: unknown = e?.data?.code ?? e?.code;
+      if (code === "USER_RESTRICTED" || raw === "USER_RESTRICTED") {
         setSubmitRestricted(true);
         setSubmitError(t("sell.accountRestricted"));
         showRestrictionToast();
@@ -563,14 +611,23 @@ export default function Sell() {
       const isNetwork =
         e?.message === "Failed to fetch" ||
         e?.name === "TypeError" ||
-        e?.status === 0 ||
+        status === 0 ||
         typeof navigator !== "undefined" && !navigator.onLine;
+      const isAuth =
+        status === 401 ||
+        status === 403 ||
+        raw === "Unauthorized" ||
+        (typeof raw === "string" && /auth|sign.?in|token/i.test(raw));
+      // Never bounce sellers to "/" on publish failure — stay on /sell with data intact.
       const description = isNetwork
         ? validationMessages.networkError
-        : !raw || isRawJson
-          ? validationMessages.serverError
-          : String(raw);
+        : isAuth
+          ? validationMessages.authError
+          : !raw || isRawJson
+            ? validationMessages.serverError
+            : String(raw);
       setSubmitError(description);
+      persistDraftNow();
       toast({
         title: t("errors.submitFailed", { defaultValue: "Submission failed" }),
         description,
@@ -578,6 +635,7 @@ export default function Sell() {
       });
     };
 
+    publishInFlightRef.current = true;
     if (isEditMode && editId && isAdmin) {
       setAdminUpdatePending(true);
       apiFetch<any>(`/api/admin/listings/${editId}`, {
@@ -593,10 +651,22 @@ export default function Sell() {
         { onSuccess: handleSuccess, onError: handleError },
       );
     } else {
-      createListing.mutate(
-        { data: payload as any },
-        { onSuccess: handleSuccess, onError: handleError },
-      );
+      if (!publishIdempotencyKeyRef.current) {
+        publishIdempotencyKeyRef.current =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID().replace(/-/g, "")
+            : `pub_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      }
+      const idempotencyKey = publishIdempotencyKeyRef.current;
+      setCreatePublishPending(true);
+      apiFetch<any>("/api/listings", {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ ...payload, idempotencyKey }),
+      })
+        .then(handleSuccess)
+        .catch(handleError)
+        .finally(() => setCreatePublishPending(false));
     }
   };
 
@@ -711,6 +781,9 @@ export default function Sell() {
   const [videoUploading, setVideoUploading] = useState(false);
   const [openSection, setOpenSection] = useState<"info" | "media" | "pricing" | "delivery" | "review">("info");
   const [sellerStep, setSellerStep] = useState(0);
+  const [mediaTab, setMediaTab] = useState<"photos" | "videos">("photos");
+
+  draftUiRef.current = { openSection, sellerStep, mediaTab };
 
   const goSection = (id: typeof openSection, step: number) => {
     setOpenSection(id);
@@ -787,6 +860,7 @@ export default function Sell() {
         toast({ title: validationMessages.videoTooLong, variant: "destructive" });
         return;
       }
+      // Queue runs in VideoUploadCenter; do not block the Sell form on ffmpeg.
       const uploadedUrl = await startVideoUpload(file, token, {
         ownerId: user.id,
         purpose: "listing",
@@ -837,8 +911,20 @@ export default function Sell() {
       if (canRestoreDraftLocation && f.location) form.setValue("location", f.location);
       if (f.stockQuantity != null) form.setValue("stockQuantity", f.stockQuantity);
       if (draft.currency)    setCurrency(draft.currency);
-      if (Array.isArray(draft.images) && draft.images.length > 0) setUploadedImages(draft.images);
+      const restoredImages = Array.isArray(draft.uploadedImages) && draft.uploadedImages.length > 0
+        ? draft.uploadedImages
+        : Array.isArray(draft.images) && draft.images.length > 0
+          ? draft.images
+          : null;
+      if (restoredImages) setUploadedImages(restoredImages);
       if (draft.listingVideoUrl) setListingVideoUrl(draft.listingVideoUrl);
+      if (draft.openSection === "info" || draft.openSection === "media" || draft.openSection === "pricing" || draft.openSection === "delivery" || draft.openSection === "review") {
+        setOpenSection(draft.openSection);
+      }
+      if (typeof draft.sellerStep === "number" && draft.sellerStep >= 0 && draft.sellerStep <= 4) {
+        setSellerStep(draft.sellerStep);
+      }
+      if (draft.mediaTab === "photos" || draft.mediaTab === "videos") setMediaTab(draft.mediaTab);
       if (draft.dominicanDeliveryChoice === "self_delivery" || draft.dominicanDeliveryChoice === "carrier") setDominicanDeliveryChoice(draft.dominicanDeliveryChoice);
       if (["motorcycle", "car", "bus", "self_delivery"].includes(draft.sellerDeliveryMethod)) setSellerDeliveryMethod(draft.sellerDeliveryMethod);
       if (typeof draft.intlShippingCost === "string") setIntlShippingCost(draft.intlShippingCost);
@@ -859,6 +945,22 @@ export default function Sell() {
 
   // ── Auto-save on non-form state changes ──────────────────────────────────
   useEffect(() => { saveDraft(); }, [currency, uploadedImages, listingVideoUrl, saveDraft]);
+  useEffect(() => { saveDraft(); }, [openSection, sellerStep, mediaTab, saveDraft]);
+
+  // Flush draft when the tab backgrounds / unloads so Back and OS navigation never drop work.
+  useEffect(() => {
+    const flush = () => { persistDraftNow(); };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+      flush();
+    };
+  }, [persistDraftNow]);
 
   const canAddMore = uploadedImages.length < MAX_IMAGES;
   const requiredPhotoCount = isEditMode ? 1 : MIN_IMAGES;
@@ -888,36 +990,36 @@ export default function Sell() {
       toast({ title: t("sell.draftEditSkip", { defaultValue: "Drafts are for new listings only" }) });
       return;
     }
-    saveDraft();
+    saveDraft(true);
     toast({ title: t("sell.draftSaved", { defaultValue: "Draft saved" }) });
   };
 
+  const handleSilentBack = () => {
+    if (!isEditMode) {
+      persistDraftNow();
+    }
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      setLocation("/sales");
+    }
+  };
+
   return (
-    <SellerCenterShell>
-      <div className="px-3 md:px-6 py-4 md:py-6 pb-28 md:pb-8">
-        {/* Page header + actions */}
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
-          <div className="min-w-0">
-            <h1 className="text-[22px] md:text-[26px] font-extrabold text-slate-900 tracking-tight">
-              {isEditMode ? t("sell.editTitle") : t("sell.addNewProduct", { defaultValue: "Add New Product" })}
-            </h1>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
-              {t("sell.addNewProductDesc", { defaultValue: "Create a new product listing for your store." })}
-            </p>
-            {isEditMode && !editPrefilled && (
-              <p className="text-sm text-muted-foreground mt-1">{t("sell.loadingEdit")}</p>
-            )}
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleSaveDraftClick}
-            className="h-10 px-4 border-slate-300 text-slate-800 font-semibold rounded-full shrink-0 self-start bg-white hover:bg-slate-50 gap-1.5"
-            data-testid="button-save-draft"
-          >
-            <FileText className="h-4 w-4" />
-            {t("sell.saveAsDraft", { defaultValue: "Save as Draft" })}
-          </Button>
+    <SellerCenterShell
+      onBack={handleSilentBack}
+      heroTitle={isEditMode ? t("sell.editTitle") : t("sell.addNewProduct", { defaultValue: "Add New Product" })}
+      heroSubtitle={t("sell.addNewProductDesc", { defaultValue: "Create a new product listing for your store." })}
+    >
+      <div className="px-3 md:px-6 py-3 md:py-5 pb-28">
+        {/* Compact page title for desktop / screen readers — mobile hero lives in the shell */}
+        <div className="mb-3 md:mb-4">
+          <h1 className="sr-only md:not-sr-only text-[22px] md:text-[26px] font-extrabold text-slate-900 tracking-tight">
+            {isEditMode ? t("sell.editTitle") : t("sell.addNewProduct", { defaultValue: "Add New Product" })}
+          </h1>
+          {isEditMode && !editPrefilled && (
+            <p className="text-sm text-muted-foreground mt-1">{t("sell.loadingEdit")}</p>
+          )}
         </div>
 
         {/* Progress stepper — green = complete, red = errors, grey = pending */}
@@ -1380,7 +1482,40 @@ export default function Sell() {
             missingLabel={formatSectionMissingLabel(sectionErrorCounts.media, validationMessages)}
             completedLabel={validationMessages.completed}
           >
-          {/* Image upload section */}
+          <div className="flex gap-2 mb-3" role="tablist" aria-label={t("sell.photosVideos", { defaultValue: "Photos & Videos" })}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mediaTab === "photos"}
+              onClick={() => setMediaTab("photos")}
+              className={cn(
+                "flex-1 h-9 rounded-full text-[12px] font-bold transition-colors",
+                mediaTab === "photos"
+                  ? "bg-[hsl(152,45%,90%)] text-[hsl(152,65%,22%)]"
+                  : "bg-slate-100 text-slate-500",
+              )}
+              data-testid="sell-media-tab-photos"
+            >
+              {t("sell.photos")} ({uploadedImages.length}/{MAX_IMAGES})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mediaTab === "videos"}
+              onClick={() => setMediaTab("videos")}
+              className={cn(
+                "flex-1 h-9 rounded-full text-[12px] font-bold transition-colors",
+                mediaTab === "videos"
+                  ? "bg-[hsl(152,45%,90%)] text-[hsl(152,65%,22%)]"
+                  : "bg-slate-100 text-slate-500",
+              )}
+              data-testid="sell-media-tab-videos"
+            >
+              {t("sell.videos", { defaultValue: "Videos" })} ({listingVideoUrl ? 1 : 0}/1)
+            </button>
+          </div>
+
+          {mediaTab === "photos" && (
           <div
             ref={photoSectionRef}
             role="group"
@@ -1389,77 +1524,110 @@ export default function Sell() {
             aria-invalid={uploadedImages.length < requiredPhotoCount}
             aria-busy={uploadingSlot !== null}
           >
-            <div id="sell-photos-label" className="text-sm font-medium text-foreground flex items-center mb-2">
-              {t("sell.photos")}
-              <ReqDot filled={uploadedImages.length >= requiredPhotoCount} />
-              <span className="text-muted-foreground font-normal ml-1.5">({uploadedImages.length}/{MAX_IMAGES})</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {uploadedImages.map((img, i) => (
-                <div
-                  key={img.objectPath}
-                  className="relative aspect-square rounded-lg border border-border overflow-hidden bg-muted group"
-                >
-                  <img
-                    src={img.previewUrl}
-                    alt={img.fileName}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f3f4f6'/%3E%3C/svg%3E";
-                    }}
-                  />
-                  {i === 0 && (
-                    <span className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-2 py-0.5 rounded font-medium">{t("sell.coverPhoto")}</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => removeImage(i)}
-                    aria-label={`Retire foto ${i + 1}`}
-                    className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                    data-testid={`button-remove-image-${i}`}
+            <div id="sell-photos-label" className="sr-only">{t("sell.photos")}</div>
+            {uploadedImages.length === 0 ? (
+              <label
+                className={cn(
+                  "relative flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[hsl(152,40%,70%)] bg-[hsl(152,40%,97%)] px-4 py-8 text-center overflow-hidden",
+                  uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
+                )}
+                data-testid="button-add-image"
+              >
+                {uploadingSource === "gallery" ? (
+                  <Loader2 className="h-8 w-8 text-[hsl(152,65%,28%)] animate-spin pointer-events-none" />
+                ) : (
+                  <ImagePlus className="h-8 w-8 text-[hsl(152,65%,28%)] pointer-events-none" />
+                )}
+                <p className="text-[14px] font-bold text-slate-800 pointer-events-none">{t("sell.uploadPhotos", { defaultValue: "Upload Photos" })}</p>
+                <p className="text-[12px] text-muted-foreground pointer-events-none">{t("sell.tapToChooseImages", { defaultValue: "Tap to choose images from your device." })}</p>
+                <span className="mt-1 inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-[hsl(152,65%,22%)] text-white text-[13px] font-bold pointer-events-none">
+                  <Images className="h-4 w-4" />
+                  {t("sell.selectPhotos", { defaultValue: "Select Photos" })}
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
+                  data-testid={`input-image-${uploadedImages.length}`}
+                  onChange={e => {
+                    if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                  disabled={uploadingSlot !== null}
+                />
+              </label>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {uploadedImages.map((img, i) => (
+                  <div
+                    key={img.objectPath}
+                    className="relative aspect-square rounded-lg border border-border overflow-hidden bg-muted group"
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-              {canAddMore && (
-                <label
-                  className={cn(
-                    "relative aspect-square rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-muted/30 flex flex-col items-center justify-center gap-1 overflow-hidden",
-                    uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
-                  )}
-                  data-testid="button-add-image"
-                  aria-label={uploadingSource === "gallery" ? t("sell.photosUploading") : t("sell.chooseCameraOrGallery")}
-                >
-                  {uploadingSource === "gallery" ? (
-                    <span role="status" aria-live="polite" className="flex flex-col items-center gap-1">
-                      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin pointer-events-none" />
-                      <span className="text-xs text-muted-foreground pointer-events-none">{t("sell.photosUploading")}</span>
-                    </span>
-                  ) : (
-                    <>
-                      <ImagePlus className="h-6 w-6 text-muted-foreground pointer-events-none" />
-                      <span className="text-xs text-muted-foreground pointer-events-none">{t("sell.gallery")}</span>
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
-                    data-testid={`input-image-${uploadedImages.length}`}
-                    onChange={e => {
-                      if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files);
-                      e.target.value = "";
-                    }}
-                    disabled={uploadingSlot !== null}
-                  />
-                </label>
-              )}
-            </div>
-            {uploadedImages.length === 0 && (
-              <p className="text-xs text-muted-foreground mt-1">{t("sell.addPhotosHint")}</p>
+                    <img
+                      src={img.previewUrl}
+                      alt={img.fileName}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f3f4f6'/%3E%3C/svg%3E";
+                      }}
+                    />
+                    {i === 0 && (
+                      <span className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-2 py-0.5 rounded font-medium">{t("sell.coverPhoto")}</span>
+                    )}
+                    <div className="absolute top-1 left-1 flex gap-0.5">
+                      {i > 0 && (
+                        <button type="button" onClick={() => moveImage(i, -1)} className="bg-black/60 text-white rounded-full p-0.5" aria-label="Move left" data-testid={`button-move-image-left-${i}`}>
+                          <ArrowLeft className="h-3 w-3" />
+                        </button>
+                      )}
+                      {i < uploadedImages.length - 1 && (
+                        <button type="button" onClick={() => moveImage(i, 1)} className="bg-black/60 text-white rounded-full p-0.5 rotate-180" aria-label="Move right" data-testid={`button-move-image-right-${i}`}>
+                          <ArrowLeft className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeImage(i)}
+                      aria-label={`Retire foto ${i + 1}`}
+                      className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5"
+                      data-testid={`button-remove-image-${i}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {canAddMore && (
+                  <label
+                    className={cn(
+                      "relative aspect-square rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-muted/30 flex flex-col items-center justify-center gap-1 overflow-hidden",
+                      uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
+                    )}
+                    data-testid="button-add-image"
+                  >
+                    {uploadingSource === "gallery" ? (
+                      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+                    ) : (
+                      <ImagePlus className="h-6 w-6 text-muted-foreground" />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
+                      data-testid={`input-image-${uploadedImages.length}`}
+                      onChange={e => {
+                        if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files);
+                        e.target.value = "";
+                      }}
+                      disabled={uploadingSlot !== null}
+                    />
+                  </label>
+                )}
+              </div>
             )}
+            <p className="text-xs text-muted-foreground mt-2">{t("sell.addPhotosHint")}</p>
             <p
               id="sell-photo-requirement"
               className={cn(
@@ -1482,9 +1650,9 @@ export default function Sell() {
               </div>
             )}
 
-            {/* ── Professional photo tips card ── */}
-            <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
-              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
+                <span aria-hidden>📷</span>
                 {t("sell.photoTipsTitle")}
               </p>
               <ul className="space-y-1">
@@ -1494,14 +1662,88 @@ export default function Sell() {
                   t("sell.photoTip3"),
                   t("sell.photoTip4"),
                 ] as string[]).map((tip, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
-                    <span className="mt-0.5 shrink-0 text-amber-500">✓</span>
+                  <li key={i} className="flex items-start gap-1.5 text-xs text-amber-700">
+                    <span className="mt-0.5 shrink-0 text-emerald-600">✓</span>
                     {tip}
                   </li>
                 ))}
               </ul>
             </div>
           </div>
+          )}
+
+          {mediaTab === "videos" && (
+            <div className="space-y-3" data-testid="sell-video-panel">
+              {hasVideoPlan ? (
+                <>
+                  <p className="text-xs text-muted-foreground">{t("sell.videoHint")}</p>
+                  <input
+                    ref={videoFileInputRef}
+                    type="file"
+                    accept="video/mp4,video/webm,video/quicktime"
+                    className="hidden"
+                    data-testid="input-video-file"
+                    onChange={handleVideoSelected}
+                  />
+                  {listingVideoUrl ? (
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-green-500/40 bg-green-50">
+                      <Video className="h-4 w-4 text-green-600 flex-shrink-0" />
+                      <span className="text-sm font-medium text-green-800 truncate" data-testid="text-video-attached">
+                        {t("sell.videoAttached")}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setListingVideoUrl(null)}
+                        className="ml-auto text-muted-foreground hover:text-destructive p-0.5 rounded"
+                        data-testid="button-video-remove"
+                        aria-label={t("sell.videoRemove")}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full h-11 rounded-full gap-2 border-[hsl(152,65%,28%)] text-[hsl(152,65%,28%)]"
+                      onClick={() => videoFileInputRef.current?.click()}
+                      disabled={videoUploading}
+                      data-testid="button-video-pick"
+                    >
+                      {videoUploading ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" />{t("sell.videoUploading")}</>
+                      ) : (
+                        <><Video className="h-4 w-4" />{t("sell.videoPick")}</>
+                      )}
+                    </Button>
+                  )}
+                  <VideoUploadChooser purpose="listing" onUse={setListingVideoUrl} />
+                </>
+              ) : (
+                <div className="flex items-start gap-3 px-3 py-3 rounded-xl border border-amber-300/60 bg-amber-50">
+                  <Video className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    {!purchasesDisabled && <p className="text-sm font-semibold text-amber-800">{t("sell.videoUpgradeTitle")}</p>}
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      {purchasesDisabled ? t("androidPurchasePolicy.unavailable") : t("sell.videoUpgradeMsg")}
+                    </p>
+                  </div>
+                  {!purchasesDisabled && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="flex-shrink-0 border-amber-400 text-amber-800"
+                      onClick={() => setLocation("/subscription")}
+                      data-testid="button-video-upgrade"
+                    >
+                      {t("sell.videoUpgradeBtn")}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           </SellAccordionSection>
 
@@ -1609,80 +1851,6 @@ export default function Sell() {
               <FormMessage />
             </FormItem>
           )} />
-
-          {/* ── Video upload section ─────────────────────────────────────────── */}
-          <div className="space-y-2">
-            <p className="text-sm font-medium flex items-center gap-1.5">
-              <Video className="h-4 w-4 text-muted-foreground" />
-              {t("sell.videoLabel")}
-            </p>
-            {hasVideoPlan ? (
-              <>
-                <p className="text-xs text-muted-foreground">{t("sell.videoHint")}</p>
-                <input
-                  ref={videoFileInputRef}
-                  type="file"
-                  accept="video/mp4,video/webm,video/quicktime"
-                  className="hidden"
-                  data-testid="input-video-file"
-                  onChange={handleVideoSelected}
-                />
-                {listingVideoUrl ? (
-                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-green-500/40 bg-green-50 dark:bg-green-950/20">
-                    <Video className="h-4 w-4 text-green-600 flex-shrink-0" />
-                    <span className="text-sm font-medium text-green-800 dark:text-green-300 truncate" data-testid="text-video-attached">
-                      {t("sell.videoAttached")}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setListingVideoUrl(null)}
-                      className="ml-auto text-muted-foreground hover:text-destructive p-0.5 rounded"
-                      data-testid="button-video-remove"
-                      aria-label={t("sell.videoRemove")}
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => videoFileInputRef.current?.click()}
-                    disabled={videoUploading}
-                    data-testid="button-video-pick"
-                  >
-                    {videoUploading ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("sell.videoUploading")}</>
-                    ) : (
-                      <><Video className="h-4 w-4 mr-2" />{t("sell.videoPick")}</>
-                    )}
-                  </Button>
-                )}
-                <VideoUploadChooser purpose="listing" onUse={setListingVideoUrl} />
-              </>
-            ) : (
-              <div className="flex items-start gap-3 px-3 py-3 rounded-xl border border-amber-300/60 bg-amber-50 dark:bg-amber-950/20">
-                <Video className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  {!purchasesDisabled && <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{t("sell.videoUpgradeTitle")}</p>}
-                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                    {purchasesDisabled ? t("androidPurchasePolicy.unavailable") : t("sell.videoUpgradeMsg")}
-                  </p>
-                </div>
-                {!purchasesDisabled && <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="flex-shrink-0 border-amber-400 text-amber-800 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-600 dark:hover:bg-amber-900/30"
-                  onClick={() => setLocation("/subscription")}
-                  data-testid="button-video-upgrade"
-                >
-                  {t("sell.videoUpgradeBtn")}
-                </Button>}
-              </div>
-            )}
-          </div>
 
           <FormField control={form.control} name="condition" render={({ field }) => (
             <FormItem>
@@ -2146,8 +2314,8 @@ export default function Sell() {
             title={t("sell.reviewPublish", { defaultValue: "Review & Publish" })}
             icon={Eye}
             open={openSection === "review"}
-            onToggle={() => goSection("review", 4)}
-            complete={false}
+            onToggle={() => goSection("review", 3)}
+            complete={checklist.title && checklist.photos && checklist.price && checklist.delivery && sectionErrorCounts.review === 0}
             errorCount={sectionErrorCounts.review}
             missingLabel={formatSectionMissingLabel(sectionErrorCounts.review, validationMessages)}
             completedLabel={validationMessages.completed}
@@ -2356,19 +2524,7 @@ export default function Sell() {
             </div>
           )}
 
-          <Button
-            type="submit"
-            className="w-full h-12 font-bold rounded-full bg-[#F97316] hover:bg-[#ea6a0c] text-white"
-            disabled={isPublishBusy}
-            aria-busy={isPublishBusy}
-            data-testid="button-submit-listing"
-          >
-            {publishBusyLabel
-              ? publishBusyLabel
-              : isPending
-                ? (isEditMode ? t("sell.savingChanges") : t("sell.publishing"))
-                : (isEditMode ? t("sell.saveChanges") : t("sell.publishProduct", { defaultValue: "Publish Product" }))}
-          </Button>
+          {/* Publish CTA lives only in the sticky bottom action bar to avoid duplicates. */}
           </SellAccordionSection>
         </form>
       </Form>
@@ -2445,8 +2601,8 @@ export default function Sell() {
       </aside>
       </div>
 
-      {/* Mobile sticky actions */}
-      <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-border px-3 py-2.5 pb-[calc(0.6rem+env(safe-area-inset-bottom))] flex gap-2">
+      {/* Single Save Draft + Publish action bar (mobile + desktop) */}
+      <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-border px-3 py-2.5 pb-[calc(0.6rem+env(safe-area-inset-bottom))] flex gap-2 md:max-w-[1600px] md:mx-auto md:left-0 md:right-0 lg:pl-56 xl:pl-60">
         <Button
           type="button"
           variant="outline"
@@ -2461,7 +2617,7 @@ export default function Sell() {
           type="button"
           onClick={handlePublishClick}
           disabled={isPublishBusy}
-          className="flex-1 h-11 bg-[#F6A07A] hover:bg-[#ef8f64] text-white font-bold rounded-full gap-1.5 shadow-sm"
+          className="flex-[1.35] h-11 bg-gradient-to-r from-[#F97316] to-[#FBBF24] hover:from-[#ea6a0c] hover:to-[#f59e0b] text-white font-bold rounded-full gap-1.5 shadow-sm"
           data-testid="button-publish-mobile"
         >
           {isPublishBusy ? (

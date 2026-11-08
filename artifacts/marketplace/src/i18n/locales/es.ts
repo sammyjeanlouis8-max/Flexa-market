@@ -574,6 +574,7 @@ export default {
       deliveryRequired: "Selecciona una opción de entrega.",
       networkError: "No se pudo publicar tu producto. Revisa tu conexión e inténtalo de nuevo.",
       serverError: "Algo salió mal. Inténtalo de nuevo.",
+      authError: "Tu sesión expiró. Inicia sesión de nuevo y vuelve a publicar. Tu borrador está guardado.",
       fieldsMissing: "{{count}} campos faltantes",
       fieldMissingOne: "1 campo faltante",
       completed: "Completado",

@@ -446,7 +446,7 @@ export default function BoosterCreate() {
 
   const submit = async (mode: "draft" | "launch") => {
     if (!token) {
-      navigate("/auth/login");
+      navigate(`/auth/login?next=${encodeURIComponent("/booster/create")}`);
       return;
     }
     if (purchasesDisabled) return;

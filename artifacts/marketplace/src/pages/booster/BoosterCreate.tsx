@@ -311,7 +311,7 @@ export default function BoosterCreate() {
       setUploadPercent(100);
       toast({ title: t("boost.videoReadyPreview", { defaultValue: "Video ready for preview." }) });
     } catch {
-      toast({ title: t("booster.create.uploadFailed"), variant: "destructive" });
+      // Background queue keeps the transfer; no dynamic error toast on this page.
       setVideoUrl(null);
     } finally {
       setUploading(false);

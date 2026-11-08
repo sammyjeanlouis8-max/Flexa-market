@@ -277,29 +277,13 @@ export default function BoostWizard({ open, onClose }: Props) {
       setVideoUrl(objectPathResult);
     } catch (err: any) {
       if (err?.message !== "abort") {
-        // Map specific error codes to actionable messages (same approach as Boost.tsx)
-        const code = err instanceof BoostVideoUploadError ? err.code : "VIDEO_UPLOAD_FAILED";
-        const msg = (() => {
-          if (["UPLOAD_AUTH_REQUIRED", "UPLOAD_OWNER_MISMATCH"].includes(code))
-            return t("boost.videoUploadAuth", { defaultValue: "Authentification requise. Reconnectez-vous et réessayez." });
-          if (["UPLOAD_SESSION_EXPIRED", "UPLOAD_SESSION_NOT_FOUND"].includes(code))
-            return t("boost.videoUploadExpired", { defaultValue: "Session expirée. Reselectionnez la vidéo." });
-          if (["UPLOAD_NETWORK_ERROR", "UPLOAD_STATUS_UNAVAILABLE"].includes(code))
-            return t("boost.videoUploadNetwork", { defaultValue: "Erreur réseau. Vérifiez votre connexion et réessayez." });
-          if (["VIDEO_TYPE_UNSUPPORTED", "VIDEO_CONVERSION_FAILED"].includes(code))
-            return t("boost.videoConversionFailed", { defaultValue: "Format vidéo non supporté. Utilisez MP4 ou MOV." });
-          if (code === "VIDEO_DURATION_EXCEEDED")
-            return t("boost.videoTooLong", { defaultValue: "Video cannot exceed 2 minutes." });
-          if (["UPLOAD_SERVICE_STARTING", "VIDEO_STORAGE_UNAVAILABLE", "VIDEO_STORAGE_FAILED", "CHUNK_STORAGE_FAILED"].includes(code))
-            return t("boost.videoStorageFailed", { defaultValue: "Stockage vidéo indisponible. Réessayez dans quelques secondes." });
-          if (code === "UPLOAD_INCOMPLETE" || code === "CHUNK_SIZE_INVALID")
-            return t("boost.videoUploadIncomplete", { defaultValue: "Téléchargement incomplet. Réessayez." });
-          if (code === "VIDEO_PROCESSING_TIMEOUT")
-            return t("boost.videoProcessingTimeout", { defaultValue: "Traitement vidéo trop long. Réessayez." });
-          return t("boostWizard.errorGeneric");
-        })();
-        setVideoUploadError(msg);
-        toast({ title: t("boost.videoUploadFailed", { defaultValue: "Échec du téléchargement vidéo" }), description: msg, variant: "destructive" });
+        // Soft/network failures stay in the background queue (Bouillon).
+        // Do not raise a dynamic toast title+description overlay here.
+        setVideoUploadError(
+          t("boost.videoUploadBackground", {
+            defaultValue: "Upload continues in the background. Open Bouillon in the menu to check status.",
+          }),
+        );
       }
       setVideoObjectUrl(null);
       URL.revokeObjectURL(localUrl);

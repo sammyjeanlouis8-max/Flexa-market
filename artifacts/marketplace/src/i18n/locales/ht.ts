@@ -1545,6 +1545,7 @@ export default {
     videoUploadAuth: "Konekte ankò anvan ou telechaje videyo sa a.",
     videoUploadExpired: "Sesyon telechajman sa a ekspire. Chwazi videyo a ankò pou rekòmanse san danje.",
     videoUploadNetwork: "Koneksyon an te koupe. Verifye entènèt ou epi eseye ankò.",
+    videoUploadBackground: "Telechajman an kontinye an bak. Louvri Bouillon nan meni an pou wè estati a.",
     videoConversionFailed: "Nou pa t kapab konvèti videyo sa a. Ekspòte li kòm MP4 oswa MOV epi eseye ankò.",
     videoStorageFailed: "Nou pa ka anrejistre videyo a kounye a. Nou pa retire lajan sou kont ou; eseye ankò.",
     videoUploadIncomplete: "Yon pati videyo a pa t rive kòrèkteman. Chwazi li ankò.",

@@ -1548,6 +1548,7 @@ export default {
     videoUploadAuth: "Reconnectez-vous avant de téléverser cette vidéo.",
     videoUploadExpired: "Ce téléversement a expiré. Sélectionnez de nouveau la vidéo pour recommencer en toute sécurité.",
     videoUploadNetwork: "La connexion a été interrompue. Vérifiez votre connexion Internet et réessayez.",
+    videoUploadBackground: "Le téléversement continue en arrière-plan. Ouvrez Bouillon dans le menu pour voir le statut.",
     videoConversionFailed: "Cette vidéo n’a pas pu être convertie. Exportez-la au format MP4 ou MOV, puis réessayez.",
     videoStorageFailed: "La vidéo ne peut pas être enregistrée pour le moment. Votre compte n’a pas été débité ; réessayez.",
     videoUploadIncomplete: "Une partie de la vidéo n’est pas arrivée correctement. Sélectionnez-la de nouveau.",

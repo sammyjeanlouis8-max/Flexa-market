@@ -46,6 +46,7 @@ describe("premium side menu redesign", () => {
       '"/orders"',
       '"/sales"',
       '"/wallet"',
+      '"/bouillon"',
       '"/subscription"',
       '"/settings/security"',
       '"/settings/notifications"',
@@ -61,6 +62,11 @@ describe("premium side menu redesign", () => {
     ]) {
       expect(menu).toContain(href);
     }
+  });
+
+  it("exposes Bouillon in the account section of the side menu", () => {
+    expect(menu).toMatch(/drawer-bouillon/);
+    expect(menu).toMatch(/nav\.bouillon/);
   });
 
   it("does not modify Home page or Wallet page in this redesign", () => {

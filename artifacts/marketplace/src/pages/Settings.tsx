@@ -17,6 +17,7 @@ import {
   Tag,
   BarChart3,
   Film,
+  FileVideo,
   Lock,
   Pencil,
   Info,
@@ -109,6 +110,16 @@ export default function Settings() {
       sub: t("accountCenter.myVideosSub"),
       to: "/settings/videos",
       testid: "row-my-videos",
+      tone: "violet",
+    },
+    {
+      icon: FileVideo,
+      label: t("nav.bouillon", { defaultValue: "Bouillon" }),
+      sub: t("bouillon.subtitle", {
+        defaultValue: "Drafts and finished video uploads ready to use in Boost or Sell.",
+      }),
+      to: "/bouillon",
+      testid: "row-bouillon",
       tone: "violet",
     },
     {

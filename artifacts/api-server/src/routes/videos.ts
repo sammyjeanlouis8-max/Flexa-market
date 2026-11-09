@@ -41,11 +41,13 @@ function canonicalCountries(countries: string[]): string[] {
 /**
  * Resolve the same role and geographic scope for feed and analytics.
  *
- * - Super Admin → every country (optional single-country filter).
- * - Global-country Admin (assigned all countries) → same video visibility as
- *   Super Admin geographically, without Super Admin privileges.
- * - Scoped Admin → only assigned countries (1…N).
- * - Regular user → profile / detected country.
+ * - Super Admin + All Countries (no ?country= / forceAllCountries) → worldwide.
+ * - Super Admin + specific ?country= → that country only (does NOT change
+ *   the admin's registered account country).
+ * - Global-country Admin → same geographic rules as Super Admin.
+ * - Multi/scoped Admin → assigned countries only (1…N); specific country
+ *   must be authorized or visibility is denied.
+ * - Regular user → profile / detected country (requestedCountry ignored).
  */
 export function resolveViewerScope(
   req: Parameters<typeof optionalAuth>[0],
@@ -70,25 +72,39 @@ export function resolveViewerScope(
   const assignedCountries = isAdmin && !isGlobalCountryAdmin
     ? canonicalCountries(getAdminScopeCountries(user!))
     : [];
-  const selectedCountry = requestedCountry
+  const selectedAssignedCountry = requestedCountry
     ? assignedCountries.find(country => country.toLowerCase() === requestedCountry.toLowerCase()) ?? null
     : null;
 
-  // Super Admin / All Videos: marketplace ?country= must NEVER restrict the
-  // promo feed. forceAllCountries (All Videos) also unlocks global-country admins.
+  // Explicit All Countries override for SA / global-country admins only.
+  // When set, ignore a stale ?country= so Discover "All" never shrinks.
   const forceAllCountries = !!options.forceAllCountries
     && (isSuperAdmin || isGlobalCountryAdmin);
-  const ignoreMarketplaceCountry = isSuperAdmin || forceAllCountries;
 
-  const visibleCountries = ignoreMarketplaceCountry
-    ? []
-    : isGlobalCountryAdmin
-      ? (requestedCountry ? [requestedCountry] : [])
-      : isAdmin
-        ? (requestedCountry
-          ? (selectedCountry ? [selectedCountry] : ["__denied__"])
-          : (assignedCountries.length > 0 ? assignedCountries : ["__denied__"]))
-        : canonicalCountries([user?.country ?? fallbackCountry]);
+  let visibleCountries: string[];
+  let globalCountryAccess: boolean;
+
+  if (isSuperAdmin || isGlobalCountryAdmin) {
+    if (forceAllCountries || !requestedCountry) {
+      // All Countries — every supported marketplace country.
+      visibleCountries = [];
+      globalCountryAccess = true;
+    } else {
+      // Specific country preview — filter feed to that country only.
+      visibleCountries = [requestedCountry];
+      globalCountryAccess = false;
+    }
+  } else if (isAdmin) {
+    if (requestedCountry) {
+      visibleCountries = selectedAssignedCountry ? [selectedAssignedCountry] : ["__denied__"];
+    } else {
+      visibleCountries = assignedCountries.length > 0 ? assignedCountries : ["__denied__"];
+    }
+    globalCountryAccess = false;
+  } else {
+    visibleCountries = canonicalCountries([user?.country ?? fallbackCountry]);
+    globalCountryAccess = false;
+  }
 
   let scopeCities: string[] = [];
   const hasCityScope = isAdmin && !isGlobalCountryAdmin && !!(user?.adminScopeCity || user?.adminScopeDepartment);
@@ -115,11 +131,7 @@ export function resolveViewerScope(
     isAdmin,
     isGlobalCountryAdmin,
     visibleCountries,
-    // Super Admin always has geographic video access to every country.
-    // Global-country admins get the same when All Videos forces it; otherwise
-    // they may still preview a single marketplace country via ?country=.
-    globalCountryAccess: ignoreMarketplaceCountry
-      || ((isGlobalCountryAdmin) && !requestedCountry),
+    globalCountryAccess,
     scopeCities: canonicalCountries(scopeCities),
     hasCityScope,
     state: user?.state ?? null,
@@ -382,8 +394,8 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     const requestedCountry = typeof req.query.country === "string"
       ? req.query.country.trim()
       : "";
-    // allCountries=1 → All Videos / SA global promo view. Marketplace country
-    // selection stays intact for product feeds; it must not gate this path.
+    // allCountries=1 → SA / global-country admin "All Countries" (overrides a
+    // stale ?country=). Specific ?country= alone filters to that country.
     const forceAllCountries = ["1", "true", "yes"].includes(
       String(req.query.allCountries ?? "").trim().toLowerCase(),
     );

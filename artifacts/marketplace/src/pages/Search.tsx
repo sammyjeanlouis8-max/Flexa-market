@@ -21,8 +21,9 @@ import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "@/lib/api";
 
-import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES } from "@/lib/countries";
-import { isGlobalCountryAdmin, parseAdminScopeCountriesList } from "@/lib/adminCountryAccess";
+import { COUNTRY_FLAGS } from "@/lib/countries";
+import { parseAdminScopeCountriesList } from "@/lib/adminCountryAccess";
+import { useAdminCountry } from "@/contexts/admin-country";
 
 // ── Debounce hook — delays updating the value until the user stops typing ─────
 function useDebounce<T>(value: T, delayMs: number): T {
@@ -60,6 +61,8 @@ interface FilterPanelProps {
   isMultiCountryAdmin: boolean;
   isGlobalAdmin: boolean;
   adminScopeCountriesList: string[];
+  pickerCountries: string[];
+  canSelectAll: boolean;
 }
 
 function FilterPanel({
@@ -71,24 +74,27 @@ function FilterPanel({
   isAdmin, isSuperAdmin, scopeLock, userCountry,
   selectedParent, categories, setPage,
   isMultiCountryAdmin, isGlobalAdmin, adminScopeCountriesList,
+  pickerCountries, canSelectAll,
 }: FilterPanelProps) {
   const { t } = useTranslation();
 
   return (
     <div className="space-y-5">
-      {isAdmin && (isSuperAdmin || isGlobalAdmin) ? (
+      {isAdmin && canSelectAll ? (
         <div>
-          <Label className="text-sm font-semibold mb-2 block">{t("search.countryAdmin")}</Label>
+          <Label className="text-sm font-semibold mb-2 block">
+            {isSuperAdmin || isGlobalAdmin ? t("search.countryAdmin") : t("search.country")}
+          </Label>
           <MobileSelect
             value={adminCountry ?? "all"}
             onValueChange={v => { setAdminCountry(v === "all" ? null : v); setPage(1); }}
             placeholder={`🌍 ${t("search.allCountries")}`}
             options={[
               { value: "all", label: `🌍 ${t("search.allCountries")}` },
-              ...SUPPORTED_COUNTRIES.map(c => ({ value: c, label: `${COUNTRY_FLAGS[c]} ${c}` })),
+              ...pickerCountries.map(c => ({ value: c, label: `${COUNTRY_FLAGS[c] ?? ""} ${c}` })),
             ]}
             className="text-sm"
-            data-testid="select-admin-country-search"
+            data-testid={isMultiCountryAdmin ? "select-search-country-scoped" : "select-admin-country-search"}
           />
           <p className="text-xs text-muted-foreground mt-1">
             {adminCountry
@@ -96,22 +102,7 @@ function FilterPanel({
               : t("search.showingAll")}
           </p>
         </div>
-      ) : isAdmin && !isSuperAdmin && !isGlobalAdmin && isMultiCountryAdmin ? (
-        <div>
-          <Label className="text-sm font-semibold mb-2 block">{t("search.country")}</Label>
-          <MobileSelect
-            value={adminCountry ?? "all"}
-            onValueChange={v => { setAdminCountry(v === "all" ? null : v); setPage(1); }}
-            placeholder={`🌍 ${t("home.allCountriesDesc", "All Countries")}`}
-            options={[
-              { value: "all", label: `🌍 ${t("home.allCountriesDesc", "All Countries")}` },
-              ...adminScopeCountriesList.map(c => ({ value: c, label: `${COUNTRY_FLAGS[c] ?? ""} ${c}` })),
-            ]}
-            className="h-9 w-full text-sm"
-            data-testid="select-search-country-scoped"
-          />
-        </div>
-      ) : isAdmin && !isSuperAdmin && !isGlobalAdmin ? (
+      ) : isAdmin && !canSelectAll ? (
         <div>
           <Label className="text-sm font-semibold mb-2 block">{t("search.country")}</Label>
           <div className="flex items-center gap-2 p-2 bg-violet-50 dark:bg-violet-950/30 rounded-lg border border-violet-200 dark:border-violet-800">
@@ -259,7 +250,17 @@ export default function SearchPage() {
   ]);
   const [page, setPage] = useState(initialUrl.page);
   const [boostedOnly, setBoostedOnly] = useState(initialUrl.boosted);
-  const [adminCountry, setAdminCountry] = useState<string | null>(null);
+  const {
+    selectedCountry: adminCountry,
+    setSelectedCountry: setAdminCountry,
+    effectiveCountry: effectiveAdminCountry,
+    pickerCountries,
+    canSelectAll: canAdminSelectAllCountriesFromCtx,
+    isAdminViewer: isAdminFromCtx,
+    isSuperAdmin: isSuperAdminFromCtx,
+    isGlobalAdmin: isGlobalAdminSearch,
+    isMultiCountryAdmin: isMultiCountryAdminSearch,
+  } = useAdminCountry();
 
   useSearchUrlSync(
     {
@@ -370,17 +371,12 @@ export default function SearchPage() {
 
   const { country: shoppingCountry } = useShoppingLocation();
   const userCountry = user?.country ?? shoppingCountry;
-  const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin);
-  const isSuperAdmin = !!(user?.isSuperAdmin);
+  const isAdmin = isAdminFromCtx;
+  const isSuperAdmin = isSuperAdminFromCtx;
   const adminScopeCountriesListSearch = parseAdminScopeCountriesList(user);
-  const isGlobalAdminSearch = isGlobalCountryAdmin(user);
-  const isMultiCountryAdminSearch = isAdmin && !isSuperAdmin && !isGlobalAdminSearch && adminScopeCountriesListSearch.length > 1;
   const scopeLock: string | null = (isSuperAdmin || isGlobalAdminSearch || isMultiCountryAdminSearch)
     ? null
     : (adminScopeCountriesListSearch[0] ?? (user as any)?.adminScopeCountry ?? user?.country ?? null);
-  const effectiveAdminCountry: string | null = (isSuperAdmin || isGlobalAdminSearch || isMultiCountryAdminSearch)
-    ? adminCountry
-    : scopeLock;
   const summaryCountry: string | null | undefined = isAdmin ? effectiveAdminCountry : userCountry;
 
   const selectedParent = useMemo(
@@ -437,6 +433,8 @@ export default function SearchPage() {
     isMultiCountryAdmin: isMultiCountryAdminSearch,
     isGlobalAdmin: isGlobalAdminSearch,
     adminScopeCountriesList: adminScopeCountriesListSearch,
+    pickerCountries,
+    canSelectAll: canAdminSelectAllCountriesFromCtx,
   };
 
   const activeFiltersCount =

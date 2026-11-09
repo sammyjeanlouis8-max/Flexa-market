@@ -11,6 +11,7 @@ import { FavoritesProvider } from "@/contexts/favorites";
 import { VideoSavesProvider } from "@/contexts/videoSaves";
 import { CartProvider } from "@/contexts/cart";
 import { ShoppingLocationProvider } from "@/contexts/shopping-location";
+import { AdminCountryProvider } from "@/contexts/admin-country";
 import { BroadcastProvider } from "@/contexts/broadcast";
 import { MusicUploadProvider } from "@/contexts/MusicUpload";
 import { AuthRequiredProvider } from "@/components/auth/AuthRequiredModal";
@@ -551,6 +552,7 @@ function App() {
         <ThemeProvider storageKey="flexamarket_theme" defaultTheme="light">
           <AuthProvider>
             <ShoppingLocationProvider>
+            <AdminCountryProvider>
             <AuthRequiredProvider>
             <VideoUploadCenter />
             <CartProvider>
@@ -571,6 +573,7 @@ function App() {
             </FavoritesProvider>
             </CartProvider>
             </AuthRequiredProvider>
+            </AdminCountryProvider>
             </ShoppingLocationProvider>
           </AuthProvider>
         </ThemeProvider>

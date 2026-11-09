@@ -173,14 +173,22 @@ describe("promo video analytics", () => {
     expect(superAdmin.isSuperAdmin).toBe(true);
     expect(superAdmin.globalCountryAccess).toBe(true);
 
-    // Marketplace country must NOT restrict Super Admin promo visibility
-    // (All Videos / Discover), even when ?country=Haiti is present.
-    const superAdminWithMarketplaceCountry = resolveViewerScope({
+    // Super Admin + specific country → filter promo feed to that country only.
+    // Does not change the admin's registered account country.
+    const superAdminDominicanRepublic = resolveViewerScope({
       user: { role: "superadmin", isAdmin: true, isSuperAdmin: true, country: "Haiti" },
       headers: {},
-    } as Request, "Haiti");
-    expect(superAdminWithMarketplaceCountry.globalCountryAccess).toBe(true);
-    expect(superAdminWithMarketplaceCountry.visibleCountries).toEqual([]);
+    } as Request, "Dominican Republic");
+    expect(superAdminDominicanRepublic.globalCountryAccess).toBe(false);
+    expect(superAdminDominicanRepublic.visibleCountries).toEqual(["Dominican Republic"]);
+
+    // Explicit All Countries unlock wins over a stale ?country= param.
+    const superAdminAllVideos = resolveViewerScope({
+      user: { role: "superadmin", isAdmin: true, isSuperAdmin: true, country: "Haiti" },
+      headers: {},
+    } as Request, "Haiti", { forceAllCountries: true });
+    expect(superAdminAllVideos.globalCountryAccess).toBe(true);
+    expect(superAdminAllVideos.visibleCountries).toEqual([]);
 
     const globalAdminAllVideos = resolveViewerScope({
       user: { role: "admin", isAdmin: true, isSuperAdmin: false, country: "USA" },
@@ -189,6 +197,19 @@ describe("promo video analytics", () => {
     expect(globalAdminAllVideos.isSuperAdmin).toBe(false);
     expect(globalAdminAllVideos.globalCountryAccess).toBe(true);
     expect(globalAdminAllVideos.visibleCountries).toEqual([]);
+
+    // Multi-country admin selecting one authorized country.
+    const multiFiltered = resolveViewerScope({
+      user: {
+        role: "admin",
+        isAdmin: true,
+        isSuperAdmin: false,
+        adminScopeCountries: JSON.stringify(["Haiti", "Dominican Republic"]),
+      },
+      headers: {},
+    } as Request, "Dominican Republic");
+    expect(multiFiltered.visibleCountries).toEqual(["Dominican Republic"]);
+    expect(multiFiltered.globalCountryAccess).toBe(false);
   });
 
   it("scopes promo video visibility by listing country and audience ALL / multi-target", () => {

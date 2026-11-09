@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth";
+import { useAdminCountry } from "@/contexts/admin-country";
 import { useFavorites } from "@/contexts/favorites";
 import { useVideoSaves } from "@/contexts/videoSaves";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +32,7 @@ import PromoVideosBottomNav, {
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+import { COUNTRY_FLAGS } from "@/lib/countries";
 
 /** Covers iOS home-indicator AND Android WebViews that report safe-area-inset-bottom as 0. */
 const FEED_SAFE_BOTTOM = PROMO_NAV_SAFE_BOTTOM;
@@ -441,6 +443,7 @@ interface VideoItem {
   description: string;
   price: number;
   currency: string;
+  country?: string | null;
   originalPrice?: number | null;
   discountPct?: number | null;
   sellerId: number;
@@ -841,12 +844,14 @@ function VideoCard({
   isNext,
   onCommentOpen,
   onNext,
+  showCountryFlag = false,
 }: {
   video: VideoItem;
   isActive: boolean;
   isNext: boolean;
   onCommentOpen: (id: number) => void;
   onNext: () => void;
+  showCountryFlag?: boolean;
 }) {
   const { user, token, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -1656,6 +1661,12 @@ function VideoCard({
         style={{ height: "120px", background: "linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 100%)" }}
       />
 
+      {showCountryFlag && video.country && (
+        <span className="absolute left-3 top-3 z-20 inline-flex items-center rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-bold text-white backdrop-blur-sm">
+          {COUNTRY_FLAGS[video.country] ?? "🌍"} {video.country}
+        </span>
+      )}
+
       {/* ── Mute / unmute toggle (top-right) ── */}
       {/* onClick fires once on both desktop (click) and mobile (tap-end), so we      */}
       {/* stop touch propagation without calling the handler — avoiding a double-toggle */}
@@ -2052,6 +2063,7 @@ export default function VideoFeed() {
     navigate(qs ? `/videos?${qs}` : "/videos");
   }, [navigate]);
   const { token } = useAuth();
+  const { videoFeedParams, showCountryFlags, isAdminViewer } = useAdminCountry();
 
   // Native WebViews allow unmuted autoplay — unlock immediately so cards
   // never wait on a tap-for-sound permission gate.
@@ -2124,15 +2136,42 @@ export default function VideoFeed() {
   const selectedCountryRef = useRef<string | null>(
     typeof window === "undefined"
       ? null
-      : (new URLSearchParams(window.location.search).get("country")?.trim() || null),
+      : (new URLSearchParams(window.location.search).get("country")?.trim()
+        || videoFeedParams.country
+        || null),
   );
   const allCountriesRef = useRef<boolean>(
     typeof window === "undefined"
       ? false
       : ["1", "true", "yes"].includes(
           (new URLSearchParams(window.location.search).get("allCountries") ?? "").trim().toLowerCase(),
-        ),
+        ) || videoFeedParams.allCountries === "1",
   );
+
+  // Keep feed scope synced with centralized admin country selection.
+  const adminScopeKey = `${videoFeedParams.country ?? ""}|${videoFeedParams.allCountries ?? ""}`;
+  const prevAdminScopeKeyRef = useRef(adminScopeKey);
+  useEffect(() => {
+    const url = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const urlCountry = url?.get("country")?.trim() || null;
+    const urlAll = ["1", "true", "yes"].includes(
+      (url?.get("allCountries") ?? "").trim().toLowerCase(),
+    );
+    // Prefer explicit admin context (source of truth). URL deep-links fill gaps.
+    if (videoFeedParams.country) {
+      selectedCountryRef.current = videoFeedParams.country;
+      allCountriesRef.current = false;
+    } else if (videoFeedParams.allCountries === "1") {
+      selectedCountryRef.current = null;
+      allCountriesRef.current = true;
+    } else if (urlCountry || urlAll) {
+      selectedCountryRef.current = urlCountry;
+      allCountriesRef.current = urlAll && !urlCountry;
+    } else {
+      selectedCountryRef.current = null;
+      allCountriesRef.current = false;
+    }
+  }, [videoFeedParams.country, videoFeedParams.allCountries]);
   const feedSortRef = useRef<string>(
     typeof window === "undefined"
       ? "all"
@@ -2233,6 +2272,13 @@ export default function VideoFeed() {
 
   useEffect(() => { fetchPage(1, true); }, [fetchPage]);
 
+  // Refetch when admin switches All ↔ specific country (skip identical first mount).
+  useEffect(() => {
+    if (prevAdminScopeKeyRef.current === adminScopeKey) return;
+    prevAdminScopeKeyRef.current = adminScopeKey;
+    void fetchPage(1, true);
+  }, [adminScopeKey, fetchPage]);
+
   // Fetch sidebar listings for desktop view
   useEffect(() => {
     const headers: Record<string, string> = {};
@@ -2285,9 +2331,10 @@ export default function VideoFeed() {
         const countrySuffix = selectedCountryRef.current
           ? `&country=${encodeURIComponent(selectedCountryRef.current)}`
           : "";
+        const allCountriesSuffix = allCountriesRef.current ? `&allCountries=1` : "";
         const sortSuffix = `&sort=${encodeURIComponent(feedSortRef.current || "all")}`;
         const qSuffix = feedSearchRef.current ? `&q=${encodeURIComponent(feedSearchRef.current)}` : "";
-        const res = await fetch(`/api/videos/feed?page=1&limit=10&seed=0${sortSuffix}${qSuffix}${countrySuffix}`, { headers });
+        const res = await fetch(`/api/videos/feed?page=1&limit=10&seed=0${sortSuffix}${qSuffix}${countrySuffix}${allCountriesSuffix}`, { headers });
         if (!res.ok) return;
         const data = await res.json();
         if (requestGeneration !== feedGenerationRef.current) return;
@@ -2610,6 +2657,7 @@ export default function VideoFeed() {
                 isNext={activeIdx + 1 === idx}
                 onCommentOpen={() => {}}
                 onNext={() => scrollTo(idx + 1)}
+                showCountryFlag={showCountryFlags || isAdminViewer}
               />
             </div>
           ))}

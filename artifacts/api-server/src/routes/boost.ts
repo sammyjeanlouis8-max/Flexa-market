@@ -2,7 +2,8 @@ import { Router } from "express";
 import { db, listingsTable, boostsTable, transactionsTable, notificationsTable, usersTable, platformSettingsTable, promoWalletTable, walletTransactionsTable } from "@workspace/db";
 import { eq, and, desc, sql, isNotNull, isNull, ne, gt, lte, or } from "drizzle-orm";
 import { deductWalletHybrid } from "./wallet";
-import { requireAuth, optionalAuth, requireNotRestricted, requireCardNotBlocked } from "../middlewares/auth";
+import { requireAuth, optionalAuth, requireNotRestricted, requireCardNotBlocked, getRole, hasRole } from "../middlewares/auth";
+import { getAdminScopeCountries, hasGlobalCountryAdminScope } from "../lib/adminScope";
 import {
   VALID_PLANS, VALID_PAY_METHODS, PLAN_META, HAITI_DEPARTMENTS, VALID_RADIUS_KM,
   getAllowedMethods, validateAudience, validateBudget, estimateReach,
@@ -442,17 +443,42 @@ router.post("/listings/:id/boost/confirm", requireAuth, async (req, res): Promis
  * Picks one row at random with `ORDER BY random() LIMIT 1`.
  */
 router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> => {
-  const isSuperAdmin = !!req.user?.isSuperAdmin;
-  // All admins see the full boost-video inventory; marketplace users stay scoped
-  // to the boost's audience country, state, and city.
-  const skipCountryFilter = isSuperAdmin;
-  const adminScopeCountry = (req.user as any)?.adminScopeCountry as string | null | undefined;
-  const viewerCountry = isSuperAdmin
-    ? (adminScopeCountry ?? req.user?.country ?? null)
-    : (req.user?.country ?? null);
+  // Align with promo feed scope: SA/global All Countries → worldwide;
+  // specific ?country= → that country; multi-country admin → assigned union.
+  const role = getRole(req.user);
+  const isSuperAdmin = role === "superadmin";
+  const isAdmin = hasRole(req.user, "admin") && !isSuperAdmin;
+  const isGlobalCountryAdmin = isAdmin && !!req.user && hasGlobalCountryAdminScope(req.user);
+  const requestedCountry = typeof req.query.country === "string" ? req.query.country.trim() : "";
+  const forceAllCountries = ["1", "true", "yes"].includes(
+    String(req.query.allCountries ?? "").trim().toLowerCase(),
+  ) && (isSuperAdmin || isGlobalCountryAdmin);
+
+  let skipCountryFilter = false;
+  let allowedCountries: string[] = [];
+  if (isSuperAdmin || isGlobalCountryAdmin) {
+    if (forceAllCountries || !requestedCountry) {
+      skipCountryFilter = true;
+    } else {
+      allowedCountries = [requestedCountry];
+    }
+  } else if (isAdmin && req.user) {
+    const assigned = getAdminScopeCountries(req.user);
+    if (requestedCountry) {
+      const match = assigned.find(c => c.toLowerCase() === requestedCountry.toLowerCase());
+      allowedCountries = match ? [match] : [];
+    } else {
+      allowedCountries = assigned;
+    }
+  } else {
+    const viewerCountry = req.user?.country ?? null;
+    allowedCountries = viewerCountry ? [viewerCountry] : [];
+  }
+
   const viewerState   = req.user?.state    ?? null;
   const viewerCity    = req.user?.location ?? null;
   const viewerId = req.userId ?? -1;
+  const adminBypassGeo = skipCountryFilter;
 
   const now = new Date();
   const conds = [
@@ -476,23 +502,28 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       SELECT 1 FROM user_blocks ub
       WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId}
     )`] : []),
-    // Admins and super-admins bypass the country filter for full-market visibility.
-    // Regular users must match their country; unauthenticated → sql`false` (no match).
-    ...(skipCountryFilter ? [] : [
-      viewerCountry
+    // Country gate — SA/global All Countries skip; otherwise listing.country ∈ allowed.
+    ...(adminBypassGeo ? [] : [
+      allowedCountries.length > 0
         ? sql`(
-            lower(${listingsTable.country}) = ${viewerCountry.toLowerCase()}
+            lower(${listingsTable.country}) in (${sql.join(
+              allowedCountries.map(c => sql`${c.toLowerCase()}`),
+              sql`, `,
+            )})
             AND (
               ${listingsTable.boostAudienceCountry} IS NULL
               OR ${listingsTable.boostAudienceCountry} = 'ALL'
-              OR lower(COALESCE(NULLIF(${listingsTable.boostAudienceCountry}, ''), ${listingsTable.country})) = ${viewerCountry.toLowerCase()}
+              OR lower(COALESCE(NULLIF(${listingsTable.boostAudienceCountry}, ''), ${listingsTable.country})) in (${sql.join(
+                allowedCountries.map(c => sql`${c.toLowerCase()}`),
+                sql`, `,
+              )})
             )
           )`
         : sql`false`,
     ]),
     // State isolation: support single department OR comma-separated multi-select.
     // If viewer has no state, we cannot confirm mismatch → show all.
-    ...(!skipCountryFilter && viewerState
+    ...(!adminBypassGeo && !isAdmin && viewerState
       ? [or(
           isNull(listingsTable.boostAudienceState),
           sql`lower(${listingsTable.boostAudienceState}) = ${viewerState.toLowerCase()}`,
@@ -504,7 +535,7 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
         )]
       : []),
     // City isolation: same inclusive logic.
-    ...(!skipCountryFilter && viewerCity
+    ...(!adminBypassGeo && !isAdmin && viewerCity
       ? [or(
           isNull(listingsTable.boostAudienceCity),
           sql`lower(${listingsTable.boostAudienceCity}) = ${viewerCity.toLowerCase()}`,

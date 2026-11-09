@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft, BadgeCheck, Eye, Film, Loader2, Play, Plus, Search, ShoppingCart, Zap,
-  Users, TrendingUp, BarChart3,
+  Users, TrendingUp, BarChart3, ShieldCheck,
 } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { useAuth } from "@/contexts/auth";
@@ -15,8 +15,9 @@ import PromoVideosBottomNav, {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
-import { isGlobalCountryAdmin } from "@/lib/adminCountryAccess";
 import { COUNTRY_FLAGS } from "@/lib/countries";
+import { useAdminCountry } from "@/contexts/admin-country";
+import { MobileSelect } from "@/components/ui/mobile-select";
 
 export type DiscoverSort = "all" | "trending" | "new" | "mine";
 
@@ -73,10 +74,22 @@ export default function VideoDiscover() {
   useSEO({ title: t("videoFeed.title"), description: t("tr.videoFeedSeoDesc"), path: "/videos" });
   const [, navigate] = useLocation();
   const { token, user } = useAuth();
-  const isSuperAdmin = !!user?.isSuperAdmin || user?.role === "superadmin";
-  const canViewAllCountries = isSuperAdmin || isGlobalCountryAdmin(user);
+  const {
+    selectedCountry: adminCountry,
+    setSelectedCountry: setAdminCountry,
+    effectiveCountry,
+    videoFeedParams,
+    showCountryFlags,
+    canSelectAll,
+    pickerCountries,
+    isAdminViewer,
+    isSuperAdmin,
+    isMultiCountryAdmin,
+  } = useAdminCountry();
   const [allVideosMode, setAllVideosMode] = useState(false);
   const [scopeBannerDismissed, setScopeBannerDismissed] = useState(false);
+  // Viewing worldwide / multi-country union → show flags on each card.
+  const canViewAllCountries = showCountryFlags || (isAdminViewer && !effectiveCountry);
 
   useEffect(() => {
     if (isAndroidApp() || /Android/i.test(navigator.userAgent)) {
@@ -193,8 +206,16 @@ export default function VideoDiscover() {
         sort,
       });
       if (debouncedQ) params.set("q", debouncedQ);
-      // Super Admin / All Videos: never inherit marketplace country onto this feed.
-      if (canViewAllCountries || allVideosMode) params.set("allCountries", "1");
+      // Centralized admin country context drives the feed scope.
+      // Specific country → ?country=X. All Countries (SA/global) → allCountries=1.
+      // Multi-country All → omit both (server returns assigned union).
+      if (videoFeedParams.country) params.set("country", videoFeedParams.country);
+      if (videoFeedParams.allCountries) params.set("allCountries", videoFeedParams.allCountries);
+      // "All Videos" chip for non-admin users opens watch; for admins already scoped
+      // by videoFeedParams — do not force worldwide over a specific country pick.
+      if (allVideosMode && !videoFeedParams.country && (isSuperAdmin || canSelectAll)) {
+        params.set("allCountries", "1");
+      }
       const res = await fetch(`/api/videos/feed?${params}`, { headers });
       if (!res.ok) return;
       const data = await res.json();
@@ -214,7 +235,7 @@ export default function VideoDiscover() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [token, sort, debouncedQ, canViewAllCountries, allVideosMode]);
+  }, [token, sort, debouncedQ, videoFeedParams, allVideosMode, isSuperAdmin, canSelectAll]);
 
   useEffect(() => {
     setVideos([]);
@@ -289,7 +310,8 @@ export default function VideoDiscover() {
     });
     if (videoId) params.set("video", String(videoId));
     if (debouncedQ) params.set("q", debouncedQ);
-    if (canViewAllCountries || allVideosMode) params.set("allCountries", "1");
+    if (videoFeedParams.country) params.set("country", videoFeedParams.country);
+    if (videoFeedParams.allCountries) params.set("allCountries", videoFeedParams.allCountries);
     navigate(`/videos/watch?${params}`);
   };
 
@@ -297,9 +319,9 @@ export default function VideoDiscover() {
     setAllVideosMode(true);
     setScopeBannerDismissed(false);
     setSort("all");
-    // Super Admin / global admin: stay on the grid with every country.
+    // Admins who can view multiple countries stay on the grid.
     // Everyone else: open the fullscreen feed (existing All Videos behavior).
-    if (!canViewAllCountries) {
+    if (!(isAdminViewer && canSelectAll)) {
       openWatch();
     }
   };
@@ -416,7 +438,36 @@ export default function VideoDiscover() {
         className="mx-auto max-w-5xl px-3 pt-3"
         style={{ paddingBottom: `calc(${PROMO_NAV_HEIGHT_CSS} + 24px)` }}
       >
-        {canViewAllCountries && allVideosMode && !scopeBannerDismissed && (
+        {isAdminViewer && canSelectAll && (
+          <div
+            className="mb-4 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-violet-950 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-100"
+            data-testid="promo-admin-country-picker"
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-violet-500" />
+              <span className="text-sm font-black">
+                {t("home.adminView", "Admin View")}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-xs text-violet-800/90 dark:text-violet-200/90">
+                — {effectiveCountry
+                  ? `${COUNTRY_FLAGS[effectiveCountry] ?? ""} ${effectiveCountry}`
+                  : t("home.allCountriesDesc", "All Countries")}
+              </span>
+            </div>
+            <MobileSelect
+              value={adminCountry ?? "all"}
+              onValueChange={v => setAdminCountry(v === "all" ? null : v)}
+              placeholder={`🌍 ${t("home.allCountriesDesc", "All Countries")}`}
+              options={[
+                { value: "all", label: `🌍 ${t("home.allCountriesDesc", "All Countries")}` },
+                ...pickerCountries.map(c => ({ value: c, label: `${COUNTRY_FLAGS[c] ?? ""} ${c}` })),
+              ]}
+              className="h-9 w-full text-sm"
+              data-testid="select-promo-admin-country"
+            />
+          </div>
+        )}
+        {isAdminViewer && !effectiveCountry && !scopeBannerDismissed && (allVideosMode || canSelectAll) && (
           <div
             className="mb-4 flex items-start gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-violet-950 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-100"
             data-testid="all-videos-sa-banner"
@@ -426,12 +477,16 @@ export default function VideoDiscover() {
                 {t("videoFeed.allVideosAdminTitle", {
                   defaultValue: isSuperAdmin
                     ? "👑 All Videos — All Countries (Super Admin)"
-                    : "👑 All Videos — All Countries",
+                    : isMultiCountryAdmin
+                      ? "👑 All Videos — Authorized Countries"
+                      : "👑 All Videos — All Countries",
                 })}
               </div>
               <p className="mt-0.5 text-[12px] text-violet-800/90 dark:text-violet-200/90">
                 {t("videoFeed.allVideosAdminDesc", {
-                  defaultValue: "You are viewing promotional videos from all countries. Marketplace country selection is unchanged.",
+                  defaultValue: isMultiCountryAdmin
+                    ? "You are viewing promotional videos from your authorized countries only."
+                    : "You are viewing promotional videos from all countries. Your registered account country is unchanged.",
                 })}
               </p>
             </div>
@@ -551,7 +606,7 @@ export default function VideoDiscover() {
                     <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-violet-700 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">
                       {t("boostAd.sponsored", { defaultValue: t("videoFeed.promoBadge") })}
                     </span>
-                    {canViewAllCountries && v.country && (
+                    {(isAdminViewer || showCountryFlags || canViewAllCountries) && v.country && (
                       <span className="absolute top-2 right-2 inline-flex items-center rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
                         {COUNTRY_FLAGS[v.country] ?? "🌍"} {v.country}
                       </span>

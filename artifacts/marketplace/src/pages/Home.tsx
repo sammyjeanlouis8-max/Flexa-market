@@ -41,7 +41,8 @@ import {
 type Scope = "nearby" | "city" | "country";
 
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor } from "@/lib/countries";
-import { isGlobalCountryAdmin, parseAdminScopeCountriesList } from "@/lib/adminCountryAccess";
+import { parseAdminScopeCountriesList } from "@/lib/adminCountryAccess";
+import { useAdminCountry } from "@/contexts/admin-country";
 import { formatPrice } from "@/lib/currency";
 
 function formatPriceHome(listing: { price: number; country?: string | null; currency?: string | null }) {
@@ -202,7 +203,6 @@ export default function Home() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   // Guests without GPS use country-wide discovery; logged-in shoppers keep city-first.
   const [scope, setScope] = useState<Scope>(() => (typeof window !== "undefined" && !localStorage.getItem("flexamarket_token") ? "country" : "city"));
-  const [adminCountry, setAdminCountry] = useState<string | null>(null);
   const { user, refreshUser } = useAuth();
   const {
     country: shoppingCountry,
@@ -213,10 +213,17 @@ export default function Home() {
   } = useShoppingLocation();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-
-
-  const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin);
-  const isSuperAdmin = !!(user?.isSuperAdmin);
+  const {
+    selectedCountry: adminCountry,
+    setSelectedCountry: setAdminCountry,
+    effectiveCountry: effectiveAdminCountry,
+    pickerCountries,
+    canSelectAll,
+    isAdminViewer: isAdmin,
+    isSuperAdmin,
+    isGlobalAdmin,
+    isMultiCountryAdmin,
+  } = useAdminCountry();
 
   // Flexa Fanmi is exclusive to users with an active paid subscription
   const hasActiveSubscription = !!(
@@ -227,17 +234,10 @@ export default function Home() {
   );
   // Parse multi-country scope list from JWT / user profile
   const adminScopeCountriesList = parseAdminScopeCountriesList(user);
-  const isGlobalAdmin = isGlobalCountryAdmin(user);
-  const isMultiCountryAdmin = isAdmin && !isSuperAdmin && !isGlobalAdmin && adminScopeCountriesList.length > 1;
   // scopeLock: only for single-country admin; multi/global/super use a picker
   const scopeLock: string | null = (isSuperAdmin || isGlobalAdmin || isMultiCountryAdmin)
     ? null
     : (adminScopeCountriesList[0] ?? (user as any)?.adminScopeCountry ?? user?.country ?? null);
-  // The country actually used in all queries. Global-country admin sees all
-  // countries like Super Admin geographically, without Super Admin privileges.
-  const effectiveAdminCountry: string | null = (isSuperAdmin || isGlobalAdmin || isMultiCountryAdmin)
-    ? adminCountry
-    : scopeLock;
   const setDeliveryMenuCountry = useContext(DeliveryMenuCountryContext);
   useEffect(() => {
     setDeliveryMenuCountry(isAdmin ? effectiveAdminCountry : undefined);
@@ -673,36 +673,8 @@ export default function Home() {
 
       <div className="px-3 py-2 space-y-4 md:px-4 md:py-4 md:space-y-6">
 
-        {/* === ADMIN VIEW BANNER + COUNTRY PICKER === */}
-        {/* Super admin + global-country admin: full dropdown with "All Countries" */}
-        {isAdmin && (isSuperAdmin || isGlobalAdmin) && (
-          <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl px-4 py-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-violet-500 shrink-0" />
-              <span className="text-sm font-semibold text-foreground">
-                {t("home.adminView", "Admin View")}
-              </span>
-              <span className="text-xs text-muted-foreground flex-1 truncate">
-                — {adminCountry
-                  ? t("home.filteringByCountry", { country: adminCountry, defaultValue: adminCountry })
-                  : t("home.allCountriesDesc", "All Countries")}
-              </span>
-            </div>
-            <MobileSelect
-              value={adminCountry ?? "all"}
-              onValueChange={v => setAdminCountry(v === "all" ? null : v)}
-              placeholder={`🌍 ${t("home.allCountriesDesc", "All Countries")}`}
-              options={[
-                { value: "all", label: `🌍 ${t("home.allCountriesDesc", "All Countries")}` },
-                ...SUPPORTED_COUNTRIES.map(c => ({ value: c, label: `${COUNTRY_FLAGS[c]} ${c}` })),
-              ]}
-              className="h-9 w-full text-sm"
-              data-testid="select-admin-country"
-            />
-          </div>
-        )}
-        {/* Multi-country scoped admin: dropdown limited to their assigned countries */}
-        {isAdmin && !isSuperAdmin && !isGlobalAdmin && isMultiCountryAdmin && (
+        {/* === ADMIN VIEW BANNER + COUNTRY PICKER (centralized AdminCountryContext) === */}
+        {isAdmin && canSelectAll && (
           <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl px-4 py-3 space-y-2">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-violet-500 shrink-0" />
@@ -714,9 +686,11 @@ export default function Home() {
                   ? `${COUNTRY_FLAGS[adminCountry] ?? ""} ${adminCountry}`
                   : t("home.allCountriesDesc", "All Countries")}
               </span>
-              <span className="text-xs bg-violet-200 dark:bg-violet-800 text-violet-700 dark:text-violet-300 px-2 py-0.5 rounded-full font-medium">
-                {adminScopeCountriesList.length} {t("home.countries", "pays")}
-              </span>
+              {isMultiCountryAdmin && (
+                <span className="text-xs bg-violet-200 dark:bg-violet-800 text-violet-700 dark:text-violet-300 px-2 py-0.5 rounded-full font-medium">
+                  {adminScopeCountriesList.length} {t("home.countries", "pays")}
+                </span>
+              )}
             </div>
             <MobileSelect
               value={adminCountry ?? "all"}
@@ -724,15 +698,15 @@ export default function Home() {
               placeholder={`🌍 ${t("home.allCountriesDesc", "All Countries")}`}
               options={[
                 { value: "all", label: `🌍 ${t("home.allCountriesDesc", "All Countries")}` },
-                ...adminScopeCountriesList.map(c => ({ value: c, label: `${COUNTRY_FLAGS[c] ?? ""} ${c}` })),
+                ...pickerCountries.map(c => ({ value: c, label: `${COUNTRY_FLAGS[c] ?? ""} ${c}` })),
               ]}
               className="h-9 w-full text-sm"
-              data-testid="select-admin-country-scoped"
+              data-testid={isMultiCountryAdmin ? "select-admin-country-scoped" : "select-admin-country"}
             />
           </div>
         )}
         {/* Single-country scoped admin: locked banner — no dropdown */}
-        {isAdmin && !isSuperAdmin && !isGlobalAdmin && !isMultiCountryAdmin && (
+        {isAdmin && !canSelectAll && (
           <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl px-4 py-3">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-violet-500 shrink-0" />

@@ -7,8 +7,7 @@ import { cn } from "@/lib/utils";
 /**
  * Single bottom inset for the promo nav.
  * Prefer CSS env(); fall back to --sab (iOS WebView heuristic from index.html)
- * and --flexa-android-bottom (Android system nav). Use max() — never sum —
- * so insets do not stack into an oversized black band.
+ * and --flexa-android-bottom (Android system nav). Use max() — never sum.
  */
 export const PROMO_NAV_SAFE_BOTTOM =
   "max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px))";
@@ -35,9 +34,8 @@ function resolveActive(pathname: string): ActiveTab {
  * TikTok-inspired fixed bottom navigation for Promotional Videos.
  * Center (+) opens the existing Booster create flow — never a duplicate uploader.
  *
- * Must NOT be nested inside an overflow:hidden / transformed ancestor that can
- * clip position:fixed descendants (WebKit). Parents should leave this as a
- * viewport-fixed sibling of the scroll surface.
+ * On the fullscreen watch feed the nav is transparent (no solid black slab under
+ * the buttons — video stays edge-to-edge). Discover / Favorites keep a solid bar.
  */
 export default function PromoVideosBottomNav({
   active,
@@ -52,6 +50,8 @@ export default function PromoVideosBottomNav({
   const [location, navigate] = useLocation();
   const { user } = useAuth();
   const current = active ?? resolveActive(location);
+  // Fullscreen player: kill the opaque black bar so video fills the home-indicator zone.
+  const isWatchFeed = location.startsWith("/videos/watch");
 
   const goLogin = (next: string) => {
     navigate(`/auth/login?next=${encodeURIComponent(next)}`);
@@ -88,26 +88,29 @@ export default function PromoVideosBottomNav({
   const itemClass = (isActive: boolean) =>
     cn(
       "flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 transition-colors",
-      isActive ? "text-white" : "text-white/55",
+      isWatchFeed && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]",
+      isActive ? "text-white" : isWatchFeed ? "text-white/80" : "text-white/55",
     );
 
   return (
     <nav
       className={cn(
-        // z-[70] sits above the immersive feed shell (z-60) and video overlays
-        "pointer-events-auto fixed inset-x-0 bottom-0 z-[70] border-t border-white/10 bg-black lg:hidden",
+        "pointer-events-auto fixed inset-x-0 bottom-0 z-[70] lg:hidden",
+        isWatchFeed
+          ? "border-t-0 bg-transparent"
+          : "border-t border-white/10 bg-black",
         className,
       )}
       style={{
-        // Content-box height for the icon row only; paddingBottom paints the
-        // home-indicator band with the same black background so video cannot
-        // peek under the buttons. box-shadow seals any remaining sub-pixel gap.
         boxSizing: "content-box",
         height: `${PROMO_NAV_CONTENT_PX}px`,
         paddingBottom: PROMO_NAV_SAFE_BOTTOM,
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
-        boxShadow: "0 48px 0 0 #000",
+        // Soft fade only on watch — never a solid black rectangle under the icons.
+        background: isWatchFeed
+          ? "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.2) 55%, transparent 100%)"
+          : undefined,
         overflow: "visible",
       }}
       aria-label={t("nav.main", { defaultValue: "Main navigation" })}
@@ -142,7 +145,6 @@ export default function PromoVideosBottomNav({
           </span>
         </button>
 
-        {/* Center Add (+) — compact TikTok-inspired control, vertically centered */}
         <div className="relative flex h-full items-center justify-center">
           <button
             type="button"

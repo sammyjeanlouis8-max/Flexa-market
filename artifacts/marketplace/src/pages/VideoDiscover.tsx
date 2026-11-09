@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { COUNTRY_FLAGS } from "@/lib/countries";
 import { useAdminCountry } from "@/contexts/admin-country";
+import { useShoppingLocation } from "@/contexts/shopping-location";
 import { MobileSelect } from "@/components/ui/mobile-select";
 
 export type DiscoverSort = "all" | "trending" | "new" | "mine";
@@ -74,6 +75,8 @@ export default function VideoDiscover() {
   useSEO({ title: t("videoFeed.title"), description: t("tr.videoFeedSeoDesc"), path: "/videos" });
   const [, navigate] = useLocation();
   const { token, user } = useAuth();
+  const { country: shoppingCountry } = useShoppingLocation();
+  const browsingCountry = user?.country ?? shoppingCountry ?? null;
   const {
     selectedCountry: adminCountry,
     setSelectedCountry: setAdminCountry,
@@ -211,6 +214,11 @@ export default function VideoDiscover() {
       // Multi-country All → omit both (server returns assigned union).
       if (videoFeedParams.country) params.set("country", videoFeedParams.country);
       if (videoFeedParams.allCountries) params.set("allCountries", videoFeedParams.allCountries);
+      // Guests: pass browsing/shopping country so the feed matches their selection.
+      // Authenticated non-admins are scoped server-side to account country (param ignored).
+      if (!user && !isAdminViewer && browsingCountry && !videoFeedParams.country) {
+        params.set("country", browsingCountry);
+      }
       // "All Videos" chip for non-admin users opens watch; for admins already scoped
       // by videoFeedParams — do not force worldwide over a specific country pick.
       if (allVideosMode && !videoFeedParams.country && (isSuperAdmin || canSelectAll)) {
@@ -235,7 +243,7 @@ export default function VideoDiscover() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [token, sort, debouncedQ, videoFeedParams, allVideosMode, isSuperAdmin, canSelectAll]);
+  }, [token, user, browsingCountry, isAdminViewer, sort, debouncedQ, videoFeedParams, allVideosMode, isSuperAdmin, canSelectAll]);
 
   useEffect(() => {
     setVideos([]);
@@ -243,14 +251,13 @@ export default function VideoDiscover() {
     void fetchPage(1, true);
   }, [fetchPage]);
 
-  // Restore grid scroll after returning from watch
+  // Restore grid scroll after returning from watch (inner scroller — not window)
   useEffect(() => {
     if (loading) return;
     try {
       const y = parseInt(sessionStorage.getItem(SCROLL_KEY) ?? "", 10);
       if (Number.isFinite(y) && y > 0) {
         requestAnimationFrame(() => {
-          window.scrollTo(0, y);
           scrollRootRef.current?.scrollTo?.(0, y);
         });
       }
@@ -258,24 +265,27 @@ export default function VideoDiscover() {
   }, [loading, videos.length]);
 
   useEffect(() => {
+    const el = scrollRootRef.current;
+    if (!el) return;
     const onScroll = () => {
       try {
-        sessionStorage.setItem(SCROLL_KEY, String(window.scrollY || document.documentElement.scrollTop || 0));
+        sessionStorage.setItem(SCROLL_KEY, String(el.scrollTop || 0));
       } catch { /* ok */ }
     };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Infinite scroll
+  // Infinite scroll against the Discover scroller (not the clipped window)
   useEffect(() => {
     const el = sentinelRef.current;
+    const root = scrollRootRef.current;
     if (!el || !hasMore) return;
     const obs = new IntersectionObserver((entries) => {
       if (entries.some(e => e.isIntersecting) && !loading && !loadingMore && hasMore) {
         void fetchPage(page + 1, false);
       }
-    }, { rootMargin: "400px" });
+    }, { root: root ?? null, rootMargin: "400px" });
     obs.observe(el);
     return () => obs.disconnect();
   }, [fetchPage, hasMore, loading, loadingMore, page]);
@@ -301,7 +311,7 @@ export default function VideoDiscover() {
 
   const openWatch = (videoId?: number) => {
     try {
-      sessionStorage.setItem(SCROLL_KEY, String(window.scrollY || 0));
+      sessionStorage.setItem(SCROLL_KEY, String(scrollRootRef.current?.scrollTop || 0));
       sessionStorage.setItem(SEED_KEY, String(seedRef.current));
     } catch { /* ok */ }
     const params = new URLSearchParams({
@@ -312,6 +322,9 @@ export default function VideoDiscover() {
     if (debouncedQ) params.set("q", debouncedQ);
     if (videoFeedParams.country) params.set("country", videoFeedParams.country);
     if (videoFeedParams.allCountries) params.set("allCountries", videoFeedParams.allCountries);
+    if (!user && !isAdminViewer && browsingCountry && !videoFeedParams.country) {
+      params.set("country", browsingCountry);
+    }
     navigate(`/videos/watch?${params}`);
   };
 
@@ -346,10 +359,13 @@ export default function VideoDiscover() {
     : t("videoFeed.emptyDesc");
 
   return (
-    <div ref={scrollRootRef} className="min-h-dvh bg-white dark:bg-background" data-testid="video-discover-page">
+    <div
+      className="fixed inset-0 z-[60] flex flex-col bg-white dark:bg-background text-foreground"
+      data-testid="video-discover-page"
+    >
       {/* Own header — marketplace Layout chrome is hidden on /videos* */}
       <div
-        className="sticky top-0 z-30 border-b border-border/70 bg-white/95 dark:bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
+        className="shrink-0 z-30 border-b border-border/70 bg-white/95 dark:bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
         <div className="mx-auto flex max-w-5xl items-center gap-2 px-3 py-2.5">
@@ -435,9 +451,27 @@ export default function VideoDiscover() {
       </div>
 
       <div
+        ref={scrollRootRef}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y"
+        data-testid="video-discover-scroll"
+      >
+      <div
         className="mx-auto max-w-5xl px-3 pt-3"
         style={{ paddingBottom: `calc(${PROMO_NAV_HEIGHT_CSS} + 24px)` }}
       >
+        {!isAdminViewer && browsingCountry && (
+          <div
+            className="mb-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-950 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-100"
+            data-testid="promo-user-country-banner"
+          >
+            <span className="text-sm font-black">
+              {t("videoFeed.yourCountry", { defaultValue: "Your Country" })}:
+            </span>
+            <span className="text-sm font-semibold">
+              {COUNTRY_FLAGS[browsingCountry] ?? ""} {browsingCountry}
+            </span>
+          </div>
+        )}
         {isAdminViewer && canSelectAll && (
           <div
             className="mb-4 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-violet-950 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-100"
@@ -684,6 +718,7 @@ export default function VideoDiscover() {
             </button>
           </div>
         )}
+      </div>
       </div>
 
       <PromoVideosBottomNav

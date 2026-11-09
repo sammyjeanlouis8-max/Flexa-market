@@ -12,6 +12,7 @@ import {
 
 import { useAuth } from "@/contexts/auth";
 import { useAdminCountry } from "@/contexts/admin-country";
+import { useShoppingLocation } from "@/contexts/shopping-location";
 import { useFavorites } from "@/contexts/favorites";
 import { useVideoSaves } from "@/contexts/videoSaves";
 import { useToast } from "@/hooks/use-toast";
@@ -2155,8 +2156,9 @@ export default function VideoFeed() {
     const qs = discover.toString();
     navigate(qs ? `/videos?${qs}` : "/videos");
   }, [navigate]);
-  const { token } = useAuth();
+  const { user, token } = useAuth();
   const { videoFeedParams, showCountryFlags, isAdminViewer } = useAdminCountry();
+  const { country: shoppingCountry } = useShoppingLocation();
 
   // Native WebViews allow unmuted autoplay — unlock immediately so cards
   // never wait on a tap-for-sound permission gate.
@@ -2260,11 +2262,15 @@ export default function VideoFeed() {
     } else if (urlCountry || urlAll) {
       selectedCountryRef.current = urlCountry;
       allCountriesRef.current = urlAll && !urlCountry;
+    } else if (!user && !isAdminViewer && shoppingCountry) {
+      // Guest browsing country for feed eligibility (server enforces).
+      selectedCountryRef.current = shoppingCountry;
+      allCountriesRef.current = false;
     } else {
       selectedCountryRef.current = null;
       allCountriesRef.current = false;
     }
-  }, [videoFeedParams.country, videoFeedParams.allCountries]);
+  }, [videoFeedParams.country, videoFeedParams.allCountries, user, isAdminViewer, shoppingCountry]);
   const feedSortRef = useRef<string>(
     typeof window === "undefined"
       ? "all"
@@ -2475,7 +2481,7 @@ export default function VideoFeed() {
           }
         }
       },
-      { threshold: 0.55 },
+      { root: containerRef.current, threshold: [0.55, 0.75] },
     );
 
     cardRefs.current.forEach(el => { if (el) observerRef.current!.observe(el); });
@@ -2483,8 +2489,10 @@ export default function VideoFeed() {
   }, [videos.length, hasMore, loadingMore, page, fetchPage]);
 
   const scrollTo = (idx: number) => {
+    const container = containerRef.current;
     const el = cardRefs.current[idx];
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!container || !el) return;
+    container.scrollTo({ top: el.offsetTop, behavior: "auto" });
   };
 
   useEffect(() => {
@@ -2731,18 +2739,29 @@ export default function VideoFeed() {
           </button>
         </div>
 
-        {/* Scroll container */}
+        {/* Scroll container — absolute so each card can use 100% of the viewport column.
+            No CSS scroll-behavior:smooth (feels sticky on iOS). Snap = TikTok swipe. */}
         <div
           ref={containerRef}
-          className="h-full overflow-y-scroll scrollbar-none"
-          style={{ scrollSnapType: "y mandatory", scrollBehavior: "smooth" }}
+          className="absolute inset-0 overflow-y-auto overscroll-y-contain touch-pan-y scrollbar-none"
+          style={{
+            scrollSnapType: "y mandatory",
+            WebkitOverflowScrolling: "touch",
+          }}
+          data-testid="video-feed-scroller"
         >
           {videos.map((video, idx) => (
             <div
               key={video.id}
               ref={el => { cardRefs.current[idx] = el; }}
-              className="w-full"
-              style={{ height: "100%", scrollSnapAlign: "start", scrollSnapStop: "always" }}
+              className="relative w-full shrink-0"
+              style={{
+                height: "100%",
+                minHeight: "100%",
+                scrollSnapAlign: "start",
+                scrollSnapStop: "always",
+              }}
+              data-testid={`video-feed-card-${video.id}`}
             >
               <VideoCard
                 video={video}

@@ -38,6 +38,20 @@ function canonicalCountries(countries: string[]): string[] {
   }, []);
 }
 
+/** Marketplace countries guests may browse for promo video eligibility. */
+const GUEST_BROWSABLE_COUNTRIES = [
+  "Haiti", "Dominican Republic", "USA", "Canada", "France",
+  "United Kingdom", "Mexico", "Brazil", "Chile", "Germany",
+  "Spain", "Italy", "Jamaica", "Puerto Rico", "Cuba",
+  "Martinique", "Guadeloupe", "French Guiana", "Trinidad and Tobago",
+];
+
+function matchGuestBrowsableCountry(requested: string): string | null {
+  const q = requested.trim().toLowerCase();
+  if (!q) return null;
+  return GUEST_BROWSABLE_COUNTRIES.find(c => c.toLowerCase() === q) ?? null;
+}
+
 /**
  * Resolve the same role and geographic scope for feed and analytics.
  *
@@ -47,7 +61,8 @@ function canonicalCountries(countries: string[]): string[] {
  * - Global-country Admin → same geographic rules as Super Admin.
  * - Multi/scoped Admin → assigned countries only (1…N); specific country
  *   must be authorized or visibility is denied.
- * - Regular user → profile / detected country (requestedCountry ignored).
+ * - Regular authenticated user → profile country (requestedCountry ignored).
+ * - Guest → selected browsing country when known, else CF / Haiti.
  */
 export function resolveViewerScope(
   req: Parameters<typeof optionalAuth>[0],
@@ -101,8 +116,16 @@ export function resolveViewerScope(
       visibleCountries = assignedCountries.length > 0 ? assignedCountries : ["__denied__"];
     }
     globalCountryAccess = false;
+  } else if (user) {
+    // Authenticated regular users: always registered account country.
+    // Ignore ?country= to prevent spoofing other markets.
+    visibleCountries = canonicalCountries([user.country ?? fallbackCountry]);
+    globalCountryAccess = false;
   } else {
-    visibleCountries = canonicalCountries([user?.country ?? fallbackCountry]);
+    // Guests: honor selected browsing country when known; else CF / Haiti.
+    // Never grants Super Admin / All Countries access.
+    const matched = matchGuestBrowsableCountry(requestedCountry) ?? fallbackCountry;
+    visibleCountries = canonicalCountries([matched]);
     globalCountryAccess = false;
   }
 

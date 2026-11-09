@@ -393,9 +393,14 @@ router.post("/subscription/checkout", requireAuth, async (req: any, res: any) =>
       source: "stripe",
     }).returning();
 
+    const { modernCheckoutSessionExtras } = await import("../lib/stripePaymentCapabilities");
+    const modern = modernCheckoutSessionExtras({
+      customerId,
+      allowSaveCard: true,
+    });
+
     const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      payment_method_types: ["card"],
+      ...modern,
       mode: "subscription",
       line_items: [{
         quantity: 1,

@@ -439,11 +439,25 @@ router.post("/music/artist/subscribe", requireAuth, async (req: any, res) => {
     }
 
     const { getStripeClient } = await import("../lib/stripeClient");
+    const { getOrCreateStripeCustomer } = await import("../lib/stripeCustomer");
+    const { modernCheckoutSessionExtras } = await import("../lib/stripePaymentCapabilities");
     const stripe = await getStripeClient();
     const baseUrl = checkoutFrontendBase();
+    const [artistUser] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id));
+    const customerId = artistUser
+      ? await getOrCreateStripeCustomer(stripe, {
+        id: artistUser.id,
+        email: artistUser.email,
+        name: artistUser.name,
+        stripeCustomerId: artistUser.stripeCustomerId,
+      })
+      : undefined;
+    const modern = customerId
+      ? modernCheckoutSessionExtras({ customerId, allowSaveCard: true })
+      : { payment_method_types: ["card", "link"] as ("card" | "link")[] };
     const session = await stripe.checkout.sessions.create({
+      ...modern,
       mode: "payment",
-      payment_method_types: ["card"],
       client_reference_id: String(req.user.id),
       line_items: [{
         quantity: 1,
@@ -622,6 +636,8 @@ router.post("/music/:id/buy", requireAuth, async (req: any, res) => {
     if (existing) return res.json({ alreadyPurchased: true });
 
     const { getStripeClient } = await import("../lib/stripeClient");
+    const { getOrCreateStripeCustomer } = await import("../lib/stripeCustomer");
+    const { modernCheckoutSessionExtras } = await import("../lib/stripePaymentCapabilities");
     const stripe = await getStripeClient();
 
     const BASE_URL = (() => {
@@ -630,9 +646,22 @@ router.post("/music/:id/buy", requireAuth, async (req: any, res) => {
       return domain ? `https://${domain}` : "https://flexamarket.com";
     })();
 
+    const [musicBuyer] = await db.select().from(usersTable).where(eq(usersTable.id, req.user.id));
+    const customerId = musicBuyer
+      ? await getOrCreateStripeCustomer(stripe, {
+        id: musicBuyer.id,
+        email: musicBuyer.email,
+        name: musicBuyer.name,
+        stripeCustomerId: musicBuyer.stripeCustomerId,
+      })
+      : undefined;
+    const modern = customerId
+      ? modernCheckoutSessionExtras({ customerId, allowSaveCard: true })
+      : { payment_method_types: ["card", "link"] as ("card" | "link")[] };
+
     const session = await stripe.checkout.sessions.create({
+      ...modern,
       mode: "payment",
-      payment_method_types: ["card"],
       line_items: [{
         price_data: {
           currency: "usd",

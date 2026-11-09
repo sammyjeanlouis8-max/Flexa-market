@@ -12,6 +12,7 @@ import {
   CardPayoutMethodPanel,
   PaymentStatusBanner,
 } from "@/components/payments/SellerPayoutPanels";
+import { SavedCardsManager } from "@/components/checkout/SavedCardsManager";
 
 export default function SettingsPayments() {
   const { user } = useAuth();
@@ -57,6 +58,10 @@ export default function SettingsPayments() {
           )}
         </div>
       )}
+
+      <Card className="p-4">
+        <SavedCardsManager />
+      </Card>
 
       <div className="space-y-1">
         <h2 className="text-sm font-bold text-foreground">{t("accountCenter.payoutMethodsTitle")}</h2>

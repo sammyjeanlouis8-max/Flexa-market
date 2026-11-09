@@ -11,6 +11,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { MobileSelect } from "@/components/ui/mobile-select";
 import { ChevronLeft, KeyRound, Mail, Trash2, AlertTriangle, Phone, ShieldQuestion, ChevronRight } from "lucide-react";
+import { SavedCardsManager } from "@/components/checkout/SavedCardsManager";
 import {
   Dialog,
   DialogContent,
@@ -69,6 +70,10 @@ export default function SettingsSecurity() {
 
       <h1 className="text-2xl font-bold">{t("settings.security")}</h1>
       <p className="text-sm text-muted-foreground">{t("settings.securityIntro")}</p>
+
+      <Card className="p-4">
+        <SavedCardsManager />
+      </Card>
 
       <Card className="overflow-hidden divide-y divide-border">
         <SecurityRow

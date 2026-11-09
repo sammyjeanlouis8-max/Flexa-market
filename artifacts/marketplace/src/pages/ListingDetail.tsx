@@ -53,6 +53,8 @@ import {
   RadioDot,
 } from "@/components/checkout/CheckoutPrimitives";
 import { CheckoutProductBackdrop } from "@/components/checkout/CheckoutProductBackdrop";
+import { StripeEmbeddedCheckout } from "@/components/checkout/StripeEmbeddedCheckout";
+import { fetchStripeConfig, type StripeCapabilities } from "@/lib/stripeBrowser";
 
 function isLocalDeliveryCountry(country: string | null | undefined) {
   return country === "Haiti" || country === "Dominican Republic";
@@ -132,8 +134,14 @@ export default function ListingDetail() {
   // Offer price override — set when arriving from Offers page with an accepted offer
   const [offerPriceOverride, setOfferPriceOverride] = useState<number | null>(null);
   const [offerIdForPurchase, setOfferIdForPurchase] = useState<number | null>(null);
-  const [payStep, setPayStep] = useState<"promo" | "address" | "delivery" | "select" | "review" | "processing" | "usdt" | "moncash" | "natcash" | "wallet" | "friend">("promo");
+  const [payStep, setPayStep] = useState<"promo" | "address" | "delivery" | "select" | "review" | "processing" | "stripe_embed" | "usdt" | "moncash" | "natcash" | "wallet" | "friend">("promo");
   const [selectedPayMethod, setSelectedPayMethod] = useState<"stripe" | "wallet" | "klarna" | "afterpay_clearpay" | "affirm" | "usdt" | "friend" | null>(null);
+  const [stripeEmbed, setStripeEmbed] = useState<{
+    clientSecret: string;
+    publishableKey: string;
+    capabilities?: StripeCapabilities | null;
+  } | null>(null);
+  const [stripeCaps, setStripeCaps] = useState<StripeCapabilities | null>(null);
   const [addressEditMode, setAddressEditMode] = useState(false);
   const [lastPaidMethod, setLastPaidMethod] = useState<string>("Stripe");
   const [lastTransactionId, setLastTransactionId] = useState<string>("");
@@ -328,6 +336,22 @@ export default function ListingDetail() {
   const { data: listing, isLoading } = useGetListing(id, {
     query: { enabled: !!id, queryKey: getGetListingQueryKey(id) },
   });
+
+  useEffect(() => {
+    if (!buyNowOpen) return;
+    let cancelled = false;
+    void fetchStripeConfig({
+      country: (listing as any)?.country ?? user?.country ?? null,
+      token,
+    })
+      .then((cfg) => {
+        if (!cancelled) setStripeCaps(cfg.capabilities);
+      })
+      .catch(() => {
+        if (!cancelled) setStripeCaps(null);
+      });
+    return () => { cancelled = true; };
+  }, [buyNowOpen, listing, token, user?.country]);
 
   const relatedCategory = listing?.categorySlug || listing?.category;
   const relatedCountry = user?.country ?? shoppingCountry;
@@ -1258,30 +1282,35 @@ export default function ListingDetail() {
     setStripeLoading(true);
     setPayStep("processing");
     setLastPaidMethod("Stripe");
+    setStripeEmbed(null);
     try {
+      // Prefer embedded Checkout (Apple Pay / Google Pay / card + optional save).
+      // Native WebViews may fall back to hosted Checkout URL.
+      const preferEmbedded = !(window as any).ReactNativeWebView;
+      const checkoutBody = {
+        listingId: id,
+        uiMode: preferEmbedded ? "embedded" : "hosted",
+        // Offer price override — server validates ownership and uses agreed price
+        ...(offerIdForPurchase !== null ? { offerId: offerIdForPurchase } : {}),
+        shippingName: shipName.trim(),
+        shippingPhone: shipPhone.trim(),
+        shippingEmail: shipEmail.trim() || undefined,
+        shippingStreet: shipStreet.trim(),
+        shippingCity: shipCity.trim(),
+        shippingRegion: shipRegion.trim(),
+        shippingZip: shipZip.trim() || undefined,
+        deliveryType: deliverySpeedTier === "pickup" ? "pickup" : "delivery",
+        buyerProposedDeliveryFee: deliverySpeedTier === "custom" && deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined,
+        deliveryFeeUsd: deliverySpeedTier === "pickup" ? undefined : (deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined),
+        deliveryMethod: isDominicanDelivery ? selectedCarrier ?? undefined : deliverySpeedTier !== "pickup" && deliveryFeeUsd > 0 ? (isLocalDelivery ? deliveryMethod : (selectedCarrier ?? undefined)) : undefined,
+        deliveryPickupCity: deliverySpeedTier !== "pickup" && deliveryFeeUsd > 0 && isLocalDelivery ? listingCity : undefined,
+        deliveryTipUsd: isLocalDelivery && deliverySpeedTier !== "pickup" && tipUsd > 0 ? tipUsd : undefined,
+      };
+
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          listingId: id,
-          // Offer price override — server validates ownership and uses agreed price
-          ...(offerIdForPurchase !== null ? { offerId: offerIdForPurchase } : {}),
-          shippingName: shipName.trim(),
-          shippingPhone: shipPhone.trim(),
-          shippingEmail: shipEmail.trim() || undefined,
-          shippingStreet: shipStreet.trim(),
-          shippingCity: shipCity.trim(),
-          shippingRegion: shipRegion.trim(),
-          shippingZip: shipZip.trim() || undefined,
-          // Delivery type + fee
-          deliveryType: deliverySpeedTier === "pickup" ? "pickup" : "delivery",
-          buyerProposedDeliveryFee: deliverySpeedTier === "custom" && deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined,
-          deliveryFeeUsd: deliverySpeedTier === "pickup" ? undefined : (deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined),
-          deliveryMethod: isDominicanDelivery ? selectedCarrier ?? undefined : deliverySpeedTier !== "pickup" && deliveryFeeUsd > 0 ? (isLocalDelivery ? deliveryMethod : (selectedCarrier ?? undefined)) : undefined,
-          deliveryPickupCity: deliverySpeedTier !== "pickup" && deliveryFeeUsd > 0 && isLocalDelivery ? listingCity : undefined,
-          // Driver tip
-          deliveryTipUsd: isLocalDelivery && deliverySpeedTier !== "pickup" && tipUsd > 0 ? tipUsd : undefined,
-        }),
+        body: JSON.stringify(checkoutBody),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -1289,8 +1318,25 @@ export default function ListingDetail() {
         setPayStep("review");
         return;
       }
+      rememberCheckoutAddress();
+      if (data.clientSecret) {
+        let publishableKey = data.publishableKey as string | undefined;
+        let capabilities = data.capabilities ?? null;
+        if (!publishableKey) {
+          const cfg = await fetch("/api/stripe/config").then((r) => r.json()).catch(() => ({}));
+          publishableKey = cfg.publishableKey;
+          capabilities = capabilities ?? cfg.capabilities ?? null;
+        }
+        if (!publishableKey) {
+          toast({ title: "Payment error", description: "Stripe publishable key unavailable", variant: "destructive" });
+          setPayStep("review");
+          return;
+        }
+        setStripeEmbed({ clientSecret: data.clientSecret, publishableKey, capabilities });
+        setPayStep("stripe_embed");
+        return;
+      }
       if (data.url) {
-        rememberCheckoutAddress();
         window.location.href = data.url;
       } else {
         toast({ title: "Payment error", description: "No checkout URL received", variant: "destructive" });
@@ -3154,7 +3200,7 @@ export default function ListingDetail() {
       )}
 
       {/* Buy Now Dialog — dark glass checkout redesign */}
-      <Dialog open={buyNowOpen} onOpenChange={v => { setBuyNowOpen(v); if (!v) { setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); setTipUsd(0); setDeliverySpeedTier("rapid"); setSelectedPayMethod(null); setAddressEditMode(false); } }}>
+      <Dialog open={buyNowOpen} onOpenChange={v => { setBuyNowOpen(v); if (!v) { setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); setTipUsd(0); setDeliverySpeedTier("rapid"); setSelectedPayMethod(null); setAddressEditMode(false); setStripeEmbed(null); setStripeCaps(null); } }}>
         <DialogContent
           overlayClassName="bg-black/35 overflow-hidden"
           overlayContent={<CheckoutProductBackdrop items={checkoutBackdropItems} />}
@@ -3173,6 +3219,18 @@ export default function ListingDetail() {
               onViewOrder={() => { setBuyNowOpen(false); setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); setLocation(purchaseResult?.transactionId ? `/orders/${purchaseResult.transactionId}` : "/orders"); }}
               onContinue={() => { setBuyNowOpen(false); setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); }}
             />
+          ) : payStep === "stripe_embed" && stripeEmbed ? (
+            <div className="space-y-3">
+              <StripeEmbeddedCheckout
+                clientSecret={stripeEmbed.clientSecret}
+                publishableKey={stripeEmbed.publishableKey}
+                capabilities={stripeEmbed.capabilities}
+                onClose={() => {
+                  setStripeEmbed(null);
+                  setPayStep("review");
+                }}
+              />
+            </div>
           ) : payStep === "processing" || walletPayLoading || stripeLoading || payLoading ? (
             <ProcessingPaymentPanel verifyingDone={payLoading || walletPayLoading || stripeLoading} confirmingActive={payLoading || walletPayLoading} />
           ) : (
@@ -3567,6 +3625,7 @@ export default function ListingDetail() {
                   <p className="text-sm text-[#8B9BB8]">{listing.title}</p>
 
                   <div className="space-y-2.5">
+                    {(stripeCaps?.card !== false) && (
                     <GlassCard selected={selectedPayMethod === "stripe"} onClick={() => setSelectedPayMethod("stripe")} className="p-4" testId="button-pay-card">
                       <div className="flex items-center gap-3">
                         <RadioDot selected={selectedPayMethod === "stripe"} />
@@ -3575,10 +3634,15 @@ export default function ListingDetail() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-white">{t("payment.cardPayment")}</p>
-                          <p className="text-xs text-[#8B9BB8]">{t("payment.cardSubtitle")}</p>
+                          <p className="text-xs text-[#8B9BB8]">
+                            {t("payment.cardSubtitleWithWallets", {
+                              defaultValue: "Apple Pay, Google Pay, Link, or card — only methods available on your device are shown",
+                            })}
+                          </p>
                         </div>
                       </div>
                     </GlassCard>
+                    )}
 
                     {user && (
                       <GlassCard

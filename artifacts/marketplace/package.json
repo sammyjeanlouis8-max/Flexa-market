@@ -77,6 +77,8 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@stripe/react-stripe-js": "^7.0.1",
+    "@stripe/stripe-js": "^10.2.1",
     "@uppy/aws-s3": "^5.1.0",
     "@uppy/core": "^5.2.0",
     "@uppy/dashboard": "^5.1.1",

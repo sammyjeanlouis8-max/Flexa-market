@@ -172,6 +172,23 @@ describe("promo video analytics", () => {
     } as Request);
     expect(superAdmin.isSuperAdmin).toBe(true);
     expect(superAdmin.globalCountryAccess).toBe(true);
+
+    // Marketplace country must NOT restrict Super Admin promo visibility
+    // (All Videos / Discover), even when ?country=Haiti is present.
+    const superAdminWithMarketplaceCountry = resolveViewerScope({
+      user: { role: "superadmin", isAdmin: true, isSuperAdmin: true, country: "Haiti" },
+      headers: {},
+    } as Request, "Haiti");
+    expect(superAdminWithMarketplaceCountry.globalCountryAccess).toBe(true);
+    expect(superAdminWithMarketplaceCountry.visibleCountries).toEqual([]);
+
+    const globalAdminAllVideos = resolveViewerScope({
+      user: { role: "admin", isAdmin: true, isSuperAdmin: false, country: "USA" },
+      headers: {},
+    } as Request, "Canada", { forceAllCountries: true });
+    expect(globalAdminAllVideos.isSuperAdmin).toBe(false);
+    expect(globalAdminAllVideos.globalCountryAccess).toBe(true);
+    expect(globalAdminAllVideos.visibleCountries).toEqual([]);
   });
 
   it("scopes promo video visibility by listing country and audience ALL / multi-target", () => {

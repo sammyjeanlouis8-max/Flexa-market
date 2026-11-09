@@ -102,12 +102,12 @@ export default function PromoVideosBottomNav({
         className,
       )}
       style={{
-        boxSizing: "content-box",
-        height: `${PROMO_NAV_CONTENT_PX}px`,
+        // Do NOT set height on the nav — only pad the safe-area. Setting both
+        // height + paddingBottom under border-box clipped the icon row (black
+        // bar covering the lower half of Home/Discover/+ buttons).
         paddingBottom: PROMO_NAV_SAFE_BOTTOM,
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
-        // Soft fade only on watch — never a solid black rectangle under the icons.
         background: isWatchFeed
           ? "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.2) 55%, transparent 100%)"
           : undefined,

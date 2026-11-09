@@ -2121,6 +2121,13 @@ export default function VideoFeed() {
       ? null
       : (new URLSearchParams(window.location.search).get("country")?.trim() || null),
   );
+  const allCountriesRef = useRef<boolean>(
+    typeof window === "undefined"
+      ? false
+      : ["1", "true", "yes"].includes(
+          (new URLSearchParams(window.location.search).get("allCountries") ?? "").trim().toLowerCase(),
+        ),
+  );
   const feedSortRef = useRef<string>(
     typeof window === "undefined"
       ? "all"
@@ -2166,6 +2173,10 @@ export default function VideoFeed() {
     }
     if (selectedCountryRef.current) {
       url += `&country=${encodeURIComponent(selectedCountryRef.current)}`;
+    }
+    // All Videos / Super Admin global promo view — ignore marketplace country gate.
+    if (allCountriesRef.current) {
+      url += `&allCountries=1`;
     }
     if (excludeList) url += `&exclude=${encodeURIComponent(excludeList)}`;
     if (replaceAll && selectedVideoIdRef.current) {

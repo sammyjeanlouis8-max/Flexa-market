@@ -47,7 +47,11 @@ function canonicalCountries(countries: string[]): string[] {
  * - Scoped Admin → only assigned countries (1…N).
  * - Regular user → profile / detected country.
  */
-export function resolveViewerScope(req: Parameters<typeof optionalAuth>[0], requestedCountry = ""): VideoViewerScope {
+export function resolveViewerScope(
+  req: Parameters<typeof optionalAuth>[0],
+  requestedCountry = "",
+  options: { forceAllCountries?: boolean } = {},
+): VideoViewerScope {
   const user = req.user;
   const role = getRole(user);
   const isSuperAdmin = role === "superadmin";
@@ -69,13 +73,22 @@ export function resolveViewerScope(req: Parameters<typeof optionalAuth>[0], requ
   const selectedCountry = requestedCountry
     ? assignedCountries.find(country => country.toLowerCase() === requestedCountry.toLowerCase()) ?? null
     : null;
-  const visibleCountries = (isSuperAdmin || isGlobalCountryAdmin)
-    ? (requestedCountry ? [requestedCountry] : [])
-    : isAdmin
-      ? (requestedCountry
-        ? (selectedCountry ? [selectedCountry] : ["__denied__"])
-        : (assignedCountries.length > 0 ? assignedCountries : ["__denied__"]))
-      : canonicalCountries([user?.country ?? fallbackCountry]);
+
+  // Super Admin / All Videos: marketplace ?country= must NEVER restrict the
+  // promo feed. forceAllCountries (All Videos) also unlocks global-country admins.
+  const forceAllCountries = !!options.forceAllCountries
+    && (isSuperAdmin || isGlobalCountryAdmin);
+  const ignoreMarketplaceCountry = isSuperAdmin || forceAllCountries;
+
+  const visibleCountries = ignoreMarketplaceCountry
+    ? []
+    : isGlobalCountryAdmin
+      ? (requestedCountry ? [requestedCountry] : [])
+      : isAdmin
+        ? (requestedCountry
+          ? (selectedCountry ? [selectedCountry] : ["__denied__"])
+          : (assignedCountries.length > 0 ? assignedCountries : ["__denied__"]))
+        : canonicalCountries([user?.country ?? fallbackCountry]);
 
   let scopeCities: string[] = [];
   const hasCityScope = isAdmin && !isGlobalCountryAdmin && !!(user?.adminScopeCity || user?.adminScopeDepartment);
@@ -102,8 +115,11 @@ export function resolveViewerScope(req: Parameters<typeof optionalAuth>[0], requ
     isAdmin,
     isGlobalCountryAdmin,
     visibleCountries,
-    // Geographic only — never conflate with Super Admin privileges.
-    globalCountryAccess: (isSuperAdmin || isGlobalCountryAdmin) && !requestedCountry,
+    // Super Admin always has geographic video access to every country.
+    // Global-country admins get the same when All Videos forces it; otherwise
+    // they may still preview a single marketplace country via ?country=.
+    globalCountryAccess: ignoreMarketplaceCountry
+      || ((isGlobalCountryAdmin) && !requestedCountry),
     scopeCities: canonicalCountries(scopeCities),
     hasCityScope,
     state: user?.state ?? null,
@@ -366,7 +382,12 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     const requestedCountry = typeof req.query.country === "string"
       ? req.query.country.trim()
       : "";
-    const viewerScope = resolveViewerScope(req, requestedCountry);
+    // allCountries=1 → All Videos / SA global promo view. Marketplace country
+    // selection stays intact for product feeds; it must not gate this path.
+    const forceAllCountries = ["1", "true", "yes"].includes(
+      String(req.query.allCountries ?? "").trim().toLowerCase(),
+    );
+    const viewerScope = resolveViewerScope(req, requestedCountry, { forceAllCountries });
     const { isSuperAdmin, isAdmin, visibleCountries } = viewerScope;
 
     // ── Pagination ──────────────────────────────────────────────────────────

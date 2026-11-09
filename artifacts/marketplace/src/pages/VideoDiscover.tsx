@@ -15,6 +15,8 @@ import PromoVideosBottomNav, {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { isGlobalCountryAdmin } from "@/lib/adminCountryAccess";
+import { COUNTRY_FLAGS } from "@/lib/countries";
 
 export type DiscoverSort = "all" | "trending" | "new" | "mine";
 
@@ -26,6 +28,7 @@ type DiscoverVideo = {
   description: string;
   price: number;
   currency: string | null;
+  country?: string | null;
   sellerId: number | null;
   sellerName: string;
   sellerAvatar: string | null;
@@ -70,6 +73,10 @@ export default function VideoDiscover() {
   useSEO({ title: t("videoFeed.title"), description: t("tr.videoFeedSeoDesc"), path: "/videos" });
   const [, navigate] = useLocation();
   const { token, user } = useAuth();
+  const isSuperAdmin = !!user?.isSuperAdmin || user?.role === "superadmin";
+  const canViewAllCountries = isSuperAdmin || isGlobalCountryAdmin(user);
+  const [allVideosMode, setAllVideosMode] = useState(false);
+  const [scopeBannerDismissed, setScopeBannerDismissed] = useState(false);
 
   useEffect(() => {
     if (isAndroidApp() || /Android/i.test(navigator.userAgent)) {
@@ -186,6 +193,8 @@ export default function VideoDiscover() {
         sort,
       });
       if (debouncedQ) params.set("q", debouncedQ);
+      // Super Admin / All Videos: never inherit marketplace country onto this feed.
+      if (canViewAllCountries || allVideosMode) params.set("allCountries", "1");
       const res = await fetch(`/api/videos/feed?${params}`, { headers });
       if (!res.ok) return;
       const data = await res.json();
@@ -205,7 +214,7 @@ export default function VideoDiscover() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [token, sort, debouncedQ]);
+  }, [token, sort, debouncedQ, canViewAllCountries, allVideosMode]);
 
   useEffect(() => {
     setVideos([]);
@@ -280,20 +289,32 @@ export default function VideoDiscover() {
     });
     if (videoId) params.set("video", String(videoId));
     if (debouncedQ) params.set("q", debouncedQ);
+    if (canViewAllCountries || allVideosMode) params.set("allCountries", "1");
     navigate(`/videos/watch?${params}`);
   };
 
+  const activateAllVideos = () => {
+    setAllVideosMode(true);
+    setScopeBannerDismissed(false);
+    setSort("all");
+    // Super Admin / global admin: stay on the grid with every country.
+    // Everyone else: open the fullscreen feed (existing All Videos behavior).
+    if (!canViewAllCountries) {
+      openWatch();
+    }
+  };
+
   const filters = useMemo(() => ([
-    { id: "all" as const, label: t("videoFeed.filterAll", { defaultValue: "All" }), count: sort === "all" ? Math.max(totalHint, videos.length) : undefined },
+    { id: "all" as const, label: t("videoFeed.filterAll", { defaultValue: "All" }), count: sort === "all" && !allVideosMode ? Math.max(totalHint, videos.length) : undefined },
     { id: "trending" as const, label: t("videoFeed.filterTrending", { defaultValue: "🔥 Trending" }) },
     { id: "new" as const, label: t("videoFeed.filterNew", { defaultValue: "✨ New" }) },
     { id: "mine" as const, label: t("videoFeed.filterMine", { defaultValue: "📹 My Videos" }) },
     {
       id: "all-videos" as const,
       label: t("videoFeed.filterAllVideos", { defaultValue: "All Videos" }),
-      opensFeed: true as const,
+      allVideos: true as const,
     },
-  ]), [t, sort, totalHint, videos.length]);
+  ]), [t, sort, totalHint, videos.length, allVideosMode]);
 
   const emptyTitle = sort === "mine"
     ? t("videoFeed.emptyMineTitle", { defaultValue: "You have no active promotional videos" })
@@ -348,24 +369,29 @@ export default function VideoDiscover() {
 
         <div className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-3 pb-3 scrollbar-none">
           {filters.map(f => {
-            const opensFeed = "opensFeed" in f && f.opensFeed;
-            const active = !opensFeed && sort === f.id;
+            const isAllVideos = "allVideos" in f && f.allVideos;
+            const active = isAllVideos
+              ? allVideosMode
+              : (!allVideosMode && sort === f.id);
             const label = f.id === "all" && typeof f.count === "number"
               ? `${t("videoFeed.filterAll", { defaultValue: "All" })} (${Math.max(f.count, videos.length)})`
-              : f.label;
+              : isAllVideos && allVideosMode && canViewAllCountries
+                ? `${t("videoFeed.filterAllVideos", { defaultValue: "All Videos" })} (${Math.max(totalHint, videos.length)})`
+                : f.label;
             return (
               <button
                 key={f.id}
                 type="button"
                 onClick={() => {
-                  if (opensFeed) {
-                    openWatch();
+                  if (isAllVideos) {
+                    activateAllVideos();
                     return;
                   }
                   if (f.id === "mine" && !user) {
                     navigate("/auth/login");
                     return;
                   }
+                  setAllVideosMode(false);
                   setSort(f.id as DiscoverSort);
                 }}
                 className={cn(
@@ -375,7 +401,7 @@ export default function VideoDiscover() {
                     : "border-border bg-white text-foreground hover:bg-muted/60 dark:bg-card",
                 )}
                 data-testid={`video-filter-${f.id}`}
-                aria-label={opensFeed
+                aria-label={isAllVideos
                   ? t("videoFeed.filterAllVideos", { defaultValue: "All Videos" })
                   : undefined}
               >
@@ -390,6 +416,35 @@ export default function VideoDiscover() {
         className="mx-auto max-w-5xl px-3 pt-3"
         style={{ paddingBottom: `calc(${PROMO_NAV_HEIGHT_CSS} + 24px)` }}
       >
+        {canViewAllCountries && allVideosMode && !scopeBannerDismissed && (
+          <div
+            className="mb-4 flex items-start gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-violet-950 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-100"
+            data-testid="all-videos-sa-banner"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-black">
+                {t("videoFeed.allVideosAdminTitle", {
+                  defaultValue: isSuperAdmin
+                    ? "👑 All Videos — All Countries (Super Admin)"
+                    : "👑 All Videos — All Countries",
+                })}
+              </div>
+              <p className="mt-0.5 text-[12px] text-violet-800/90 dark:text-violet-200/90">
+                {t("videoFeed.allVideosAdminDesc", {
+                  defaultValue: "You are viewing promotional videos from all countries. Marketplace country selection is unchanged.",
+                })}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setScopeBannerDismissed(true)}
+              className="shrink-0 rounded-full px-2 py-1 text-sm font-bold text-violet-700 hover:bg-violet-100 dark:text-violet-200 dark:hover:bg-violet-900/40"
+              aria-label={t("common.close", { defaultValue: "Close" })}
+            >
+              ×
+            </button>
+          </div>
+        )}
         <div className="mb-4 space-y-3">
             <div className="grid grid-cols-3 gap-2">
               {[
@@ -496,6 +551,11 @@ export default function VideoDiscover() {
                     <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-violet-700 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">
                       {t("boostAd.sponsored", { defaultValue: t("videoFeed.promoBadge") })}
                     </span>
+                    {canViewAllCountries && v.country && (
+                      <span className="absolute top-2 right-2 inline-flex items-center rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
+                        {COUNTRY_FLAGS[v.country] ?? "🌍"} {v.country}
+                      </span>
+                    )}
                   </button>
 
                   <div className="flex flex-1 flex-col gap-1.5 p-2.5">

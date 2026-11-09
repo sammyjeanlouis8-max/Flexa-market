@@ -101,6 +101,8 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
         title: listingsTable.title,
         images: listingsTable.images,
         price: listingsTable.price,
+        status: listingsTable.status,
+        boostImageUrl: listingsTable.boostImageUrl,
       },
       buyer: {
         id: buyerUser.id,
@@ -141,8 +143,9 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
         : isSystemNotifications
           ? "Message System"
           : (r.listing?.title ?? "Deleted listing"),
-      listingImage: r.listing?.images?.[0] ?? null,
+      listingImage: r.listing?.images?.[0] ?? r.listing?.boostImageUrl ?? null,
       listingPrice: r.listing?.price ?? 0,
+      listingIsVideoOnly: r.listing?.status === "hidden",
       otherUserId,
       otherUserName: isSystemNotifications
         ? "Message System"
@@ -197,12 +200,25 @@ router.post("/conversations", requireAuth, requireNotRestricted, async (req, res
   const [existing] = await db.select().from(conversationsTable)
     .where(sql`${conversationsTable.listingId} = ${listingId} AND ${conversationsTable.buyerId} = ${Number(req.userId)} AND ${conversationsTable.sellerId} = ${sellerId}`);
 
+  const listingPreview = (listing: typeof listingsTable.$inferSelect | undefined) => {
+    const isVideoOnly = listing?.status === "hidden";
+    const listingImage = listing?.images?.[0]
+      ?? listing?.boostImageUrl
+      ?? null;
+    return {
+      listingTitle: listing?.title ?? "",
+      listingImage,
+      listingPrice: listing?.price ?? 0,
+      listingIsVideoOnly: isVideoOnly,
+    };
+  };
+
   if (existing) {
     const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, existing.listingId!));
     const [otherUser] = await db.select().from(usersTable).where(eq(usersTable.id, sellerId));
     res.json({
-      id: existing.id, listingId: existing.listingId, listingTitle: listing?.title ?? "", listingImage: listing?.images?.[0] ?? null,
-      listingPrice: listing?.price ?? 0, otherUserId: sellerId, otherUserName: publicDisplayName(otherUser?.name, ""), otherUserAvatar: otherUser?.avatar ?? null,
+      id: existing.id, listingId: existing.listingId, ...listingPreview(listing),
+      otherUserId: sellerId, otherUserName: publicDisplayName(otherUser?.name, ""), otherUserAvatar: otherUser?.avatar ?? null,
       lastMessage: existing.lastMessage ?? null, lastMessageAt: existing.lastMessageAt?.toISOString() ?? null, unreadCount: 0,
     });
     return;
@@ -212,8 +228,8 @@ router.post("/conversations", requireAuth, requireNotRestricted, async (req, res
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, listingId));
   const [otherUser] = await db.select().from(usersTable).where(eq(usersTable.id, sellerId));
   res.json({
-    id: conv.id, listingId: conv.listingId, listingTitle: listing?.title ?? "", listingImage: listing?.images?.[0] ?? null,
-    listingPrice: listing?.price ?? 0, otherUserId: sellerId, otherUserName: publicDisplayName(otherUser?.name, ""), otherUserAvatar: otherUser?.avatar ?? null,
+    id: conv.id, listingId: conv.listingId, ...listingPreview(listing),
+    otherUserId: sellerId, otherUserName: publicDisplayName(otherUser?.name, ""), otherUserAvatar: otherUser?.avatar ?? null,
     lastMessage: null, lastMessageAt: null, unreadCount: 0,
   });
 });

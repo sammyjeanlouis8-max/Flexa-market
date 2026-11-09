@@ -42,6 +42,11 @@ import {
 import { compressChatImage } from "@/lib/compressChatImage";
 import { publicDisplayName } from "@/lib/publicDisplayName";
 import { type ChatTheme, type ChatMessage, type Conversation, type MsgType, T, FLEXA } from "./chatTheme";
+import {
+  clearPromoChatDraft,
+  readPromoChatDraft,
+  type PromoChatDraftPayload,
+} from "@/lib/promoVideoContact";
 
 let _animInjected = false;
 function injectChatAnimations() {
@@ -998,8 +1003,17 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   }, [convId, onBack]);
 
   const [text, setText] = useState("");
+  const [promoDraft, setPromoDraft] = useState<PromoChatDraftPayload | null>(null);
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+
+  // Prefill composer from promotional-video contact (user reviews before send).
+  useEffect(() => {
+    const draft = readPromoChatDraft(convId);
+    if (!draft) return;
+    setPromoDraft(draft);
+    setText((prev) => (prev.trim() ? prev : draft.text));
+  }, [convId]);
   const [blockingUser, setBlockingUser] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [typingOther, setTypingOther] = useState(false);
@@ -1379,6 +1393,10 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     const clientMessageId = newClientMessageId();
     setText("");
     setShowEmojiPanel(false);
+    if (promoDraft) {
+      clearPromoChatDraft(convId);
+      setPromoDraft(null);
+    }
 
     // Persist first so refresh / offline never loses the draft send
     try {
@@ -2096,7 +2114,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         </div>
       </div>
 
-      {/* Compact product context — real listing data only */}
+      {/* Compact product / promo-video context */}
       {conv?.listingId && (
         <div style={{
           flexShrink: 0,
@@ -2119,12 +2137,14 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   flexShrink: 0, background: c.isDark ? "#334155" : "#f1f3ed",
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
-                  {conv.listingImage ? (
+                  {(promoDraft?.thumbnailUrl || conv.listingImage) ? (
                     <img
-                      src={conv.listingImage}
+                      src={promoDraft?.thumbnailUrl || conv.listingImage || ""}
                       alt={conv.listingTitle}
                       style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                     />
+                  ) : conv.listingIsVideoOnly || promoDraft ? (
+                    <Play style={{ width: 18, height: 18, color: c.listSub }} />
                   ) : (
                     <ShoppingBag style={{ width: 18, height: 18, color: c.listSub }} />
                   )}
@@ -2134,7 +2154,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                     margin: 0, fontSize: 14, fontWeight: 700,
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   }}>
-                    {conv.listingTitle}
+                    {promoDraft?.videoTitle || conv.listingTitle}
                   </p>
                   {Number(conv.listingPrice) > 0 && (
                     <p style={{ margin: "2px 0 0", fontSize: 14, fontWeight: 800, color: FLEXA.orange }}>
@@ -2145,7 +2165,11 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               </div>
             </div>
             <Link
-              href={`/listings/${conv.listingId}`}
+              href={
+                conv.listingIsVideoOnly || promoDraft
+                  ? `/videos/watch?video=${promoDraft?.videoId ?? conv.listingId}`
+                  : `/listings/${conv.listingId}`
+              }
               style={{ textDecoration: "none", flexShrink: 0 }}
             >
               <span style={{
@@ -2156,7 +2180,9 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 color: FLEXA.orange, fontSize: 12, fontWeight: 700,
                 whiteSpace: "nowrap",
               }}>
-                {t("messages.viewProduct", { defaultValue: "View product" })}
+                {conv.listingIsVideoOnly || promoDraft
+                  ? t("messages.viewVideo", { defaultValue: "View video" })
+                  : t("messages.viewProduct", { defaultValue: "View product" })}
                 <ChevronRight style={{ width: 14, height: 14 }} />
               </span>
             </Link>
@@ -2350,6 +2376,54 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} />
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
         <input ref={audioCaptureInputRef} type="file" accept="audio/*" capture className="hidden" onChange={handleAudioCapture} />
+
+        {promoDraft && !isSystemNotifications && (
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              marginBottom: 8, padding: "8px 10px",
+              borderRadius: 12,
+              background: c.isDark ? "rgba(249,115,22,0.12)" : "rgba(249,115,22,0.08)",
+              border: `1px solid ${c.isDark ? "rgba(249,115,22,0.35)" : "rgba(249,115,22,0.25)"}`,
+            }}
+            data-testid="promo-video-compose-draft"
+          >
+            <div style={{
+              width: 40, height: 40, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+              background: c.isDark ? "#334155" : "#f1f3ed",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {promoDraft.thumbnailUrl ? (
+                <img src={promoDraft.thumbnailUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <Play style={{ width: 16, height: 16, color: FLEXA.orange }} />
+              )}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: c.contextText }}>
+                {promoDraft.videoTitle || t("messages.promoVideo", { defaultValue: "Promotional video" })}
+              </div>
+              <div style={{ fontSize: 11, color: c.listSub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {promoDraft.videoUrl}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                clearPromoChatDraft(convId);
+                setPromoDraft(null);
+                setText("");
+              }}
+              aria-label={t("common.close", { defaultValue: "Close" })}
+              style={{
+                border: "none", background: "transparent", cursor: "pointer",
+                color: c.listSub, padding: 4,
+              }}
+            >
+              <X style={{ width: 16, height: 16 }} />
+            </button>
+          </div>
+        )}
 
             {isSystemNotifications ? (
           <div style={{

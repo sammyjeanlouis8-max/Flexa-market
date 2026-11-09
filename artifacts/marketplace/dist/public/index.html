@@ -326,6 +326,47 @@
         // Android WebView/standalone shells can draw behind the system
         // navigation bar while still reporting safe-area-inset-bottom as 0.
         root.style.setProperty('--flexa-android-bottom', isAndroid ? '32px' : '0px');
+
+        // --sab (safe-area-bottom) mirrors --sat for the home indicator.
+        // FlexaMarket / RN WebViews often report env(safe-area-inset-bottom)=0
+        // while still drawing under the iOS home indicator — that clips Sell
+        // action buttons in half. Heuristic only when env() is unavailable.
+        function setSab(px) {
+          // Cap at 48px — home indicator ~34, Android gesture/nav ≤48.
+          // Mixing --sat (59 Dynamic Island) into --sab previously created a
+          // tall black band that covered Promotional Videos tab buttons.
+          root.style.setProperty('--sab', Math.max(0, Math.min(48, Math.round(px))) + 'px');
+        }
+        var isAppleMobile = !isAndroid && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (typeof window.__flexaNativeSafeBottom === 'number' && window.__flexaNativeSafeBottom > 0) {
+          setSab(window.__flexaNativeSafeBottom);
+        } else if (isAppleMobile) {
+          // Heuristic until env() / native inject is known. reconcileSab() clears
+          // this when env(safe-area-inset-bottom) is non-zero so we never double-pad.
+          setSab(34);
+        } else {
+          setSab(0);
+        }
+        function reconcileSab() {
+          try {
+            var probeB = document.createElement('div');
+            probeB.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px);';
+            document.documentElement.appendChild(probeB);
+            var envBottom = parseFloat(getComputedStyle(probeB).paddingBottom) || 0;
+            probeB.remove();
+            if (envBottom > 0) {
+              setSab(0);
+            } else if (isAppleMobile) {
+              setSab(34);
+            }
+          } catch (e) { /* ignore */ }
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', reconcileSab, { once: true });
+        } else {
+          reconcileSab();
+        }
+        window.addEventListener('resize', reconcileSab, { passive: true });
       })();
     </script>
     <!-- Keep fixed mobile controls inside Safari's visual viewport. Safari can
@@ -372,11 +413,11 @@
         }
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-B-NatyHH.js"></script>
+    <script type="module" crossorigin src="/assets/index-IUFppCGl.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-react-D8rembIz.js">
-    <link rel="modulepreload" crossorigin href="/assets/vendor-DZm7svmF.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-B03L3Ioj.js">
     <link rel="stylesheet" crossorigin href="/assets/vendor-BGxBWBoV.css">
-    <link rel="stylesheet" crossorigin href="/assets/index-BPHKrdJM.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-DE107vF7.css">
   </head>
   <body>
     <!-- Skip navigation for accessibility / SEO -->

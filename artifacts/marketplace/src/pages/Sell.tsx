@@ -28,6 +28,7 @@ import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import sellPreviewCar from "@/assets/sell-preview-car.webp";
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
+import { createUserAddress, fetchUserAddresses, updateUserAddress } from "@/lib/userAddressesApi";
 import SellerCenterShell, { SellAccordionSection, SELL_STEPS } from "@/components/seller/SellerCenterShell";
 import {
   SELL_VALIDATION_EN,
@@ -581,10 +582,40 @@ export default function Sell() {
     const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
     const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery ? Number(intlShippingCost || 0) : null, shippingCarriers: !isLocalDelivery && !isDominicanSelfDelivery ? shippingCarriers : [], deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : isDominicanSelfDelivery ? "self_delivery" : null, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
 
+    const persistSellerShipFrom = () => {
+      const tk = localStorage.getItem("flexamarket_token") ?? "";
+      const phoneDigits = String(user?.phone || "").replace(/\D/g, "");
+      if (!tk || !user?.name || phoneDigits.length < 6) return;
+      const street = String(values.location || "").trim();
+      const city = String(values.city || "").trim();
+      const region = String(values.state || city || "").trim();
+      const country = String(values.country || user.country || "").trim();
+      if (street.length < 3 || city.length < 2 || !country) return;
+      const payload = {
+        kind: "ship_from" as const,
+        label: "Warehouse",
+        fullName: user.name,
+        phone: String(user.phone),
+        street,
+        city,
+        region,
+        country,
+        isDefault: true,
+      };
+      void fetchUserAddresses(tk, "ship_from")
+        .then(({ defaultAddress }) => {
+          if (defaultAddress) return updateUserAddress(tk, defaultAddress.id, payload);
+          return createUserAddress(tk, payload);
+        })
+        .catch(() => null);
+    };
+
     const handleSuccess = (_listing: any) => {
       publishInFlightRef.current = false;
       publishIdempotencyKeyRef.current = null;
       const l = _listing as any;
+      // Persist seller shipping origin separately from buyer delivery addresses.
+      persistSellerShipFrom();
       if (isEditMode && editId) {
         // Edit mode: invalidate ALL home-page feed caches so price/currency
         // changes appear immediately in the VIP section, boosted feed, and

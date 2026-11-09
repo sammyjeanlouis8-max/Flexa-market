@@ -76,7 +76,7 @@ function CheckoutModal({
   selectedItems: CartItem[];
   total: number;
   deliveryFees: GroupDeliveryFee[];
-  user: { id?: number; name?: string; phone?: string | null; location?: string | null } | null;
+  user: { id?: number; name?: string; phone?: string | null; location?: string | null; country?: string | null } | null;
   token: string | null;
   onSuccess: (orders: CheckoutOrder[], deliveryTotal: number) => void;
   onClose: () => void;
@@ -88,19 +88,55 @@ function CheckoutModal({
   const [city, setCity] = useState(savedAddress.city ?? user?.location ?? "");
   const [street, setStreet] = useState(savedAddress.street ?? "");
   const [region, setRegion] = useState(savedAddress.region ?? "");
+  const [apartment, setApartment] = useState("");
+  const [country, setCountry] = useState((user as any)?.country ?? "");
+  const [savedAddressId, setSavedAddressId] = useState<number | null>(null);
+  const [addressHydrated, setAddressHydrated] = useState(false);
   useEffect(() => {
     if (!token) return;
     void fetchUserAddresses(token, "delivery")
       .then(({ defaultAddress }) => {
-        if (!defaultAddress) return;
-        setName((v) => v || defaultAddress.fullName);
-        setPhone((v) => v || defaultAddress.phone);
-        setCity((v) => v || defaultAddress.city);
-        setStreet((v) => v || defaultAddress.street);
-        setRegion((v) => v || defaultAddress.region);
+        if (!defaultAddress) {
+          setAddressHydrated(true);
+          return;
+        }
+        setSavedAddressId(defaultAddress.id);
+        setName(defaultAddress.fullName);
+        setPhone(defaultAddress.phone);
+        setCity(defaultAddress.city);
+        setStreet(defaultAddress.street);
+        setRegion(defaultAddress.region);
+        setApartment(defaultAddress.apartment || "");
+        setCountry(defaultAddress.country);
+        setAddressHydrated(true);
       })
-      .catch(() => {});
+      .catch(() => setAddressHydrated(true));
   }, [token]);
+
+  /** Save valid address on blur / continue even if cart checkout is abandoned later. */
+  const saveCartAddressNow = useCallback(() => {
+    if (!token) return;
+    if (!name.trim() || !phone.trim() || !street.trim() || !city.trim() || !region.trim() || !country.trim()) return;
+    saveCheckoutAddress(user?.id, {
+      name: name.trim(),
+      phone: phone.trim(),
+      street: street.trim(),
+      city: city.trim(),
+      region: region.trim(),
+    });
+    void persistCheckoutAddress(token, user?.id, {
+      name: name.trim(),
+      phone: phone.trim(),
+      street: street.trim(),
+      apartment: apartment.trim() || undefined,
+      city: city.trim(),
+      region: region.trim(),
+      country: country.trim(),
+    }, { existingId: savedAddressId }).then((addr) => {
+      if (addr?.id) setSavedAddressId(addr.id);
+    });
+  }, [token, user?.id, name, phone, street, apartment, city, region, country, savedAddressId]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [requiresItemCheckout, setRequiresItemCheckout] = useState(false);
@@ -114,13 +150,14 @@ function CheckoutModal({
 
   const handleConfirm = async () => {
     if (submitLock.current || loading) return;
-    if (!name.trim() || !phone.trim() || !city.trim()) {
+    if (!name.trim() || !phone.trim() || !city.trim() || !street.trim() || !region.trim()) {
       setError(t("cart.requiredFields")); return;
     }
     submitLock.current = true;
     setLoading(true);
     setError("");
     try {
+      saveCartAddressNow();
       const res = await fetch("/api/cart/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -131,6 +168,7 @@ function CheckoutModal({
           shippingStreet: street.trim() || null,
           shippingCity: city.trim(),
           shippingRegion: region.trim() || null,
+          shippingCountry: country.trim() || user?.country || null,
           paymentMethod: "wallet",
           deliveryMethod: "motorcycle",
         }),
@@ -140,21 +178,6 @@ function CheckoutModal({
         if (data.code === "DOMINICAN_ITEM_CHECKOUT_REQUIRED") setRequiresItemCheckout(true);
         setError(data.error ?? t("common.tryAgain")); return;
       }
-      saveCheckoutAddress(user?.id, {
-        name: name.trim(),
-        phone: phone.trim(),
-        street: street.trim(),
-        city: city.trim(),
-        region: region.trim(),
-      });
-      void persistCheckoutAddress(token, user?.id, {
-        name: name.trim(),
-        phone: phone.trim(),
-        street: street.trim(),
-        city: city.trim(),
-        region: region.trim() || "N/A",
-        country: user?.country || "Haiti",
-      });
       onSuccess(data.orders ?? [], data.deliveryTotal ?? 0);
     } catch {
       setError(t("cart.networkError"));
@@ -220,24 +243,33 @@ function CheckoutModal({
             })}
           </div>
 
-          {/* Shipping form */}
+          {/* Shipping form — hydrated from server default; saves on blur even if checkout abandoned */}
           <div className="space-y-2.5">
             <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide">{t("cart.deliveryAddress")}</p>
+            {addressHydrated && savedAddressId && (
+              <p className="text-[11px] text-emerald-700 bg-emerald-50 rounded-lg px-2.5 py-1.5" data-testid="cart-saved-address-hint">
+                {t("cart.usingSavedAddress", { defaultValue: "Using your saved default delivery address. Edit below if needed." })}
+              </p>
+            )}
             {[
               { key: "fullName", label: t("cart.fullName"), value: name, set: setName, icon: <User className="h-4 w-4" />, required: true, autoComplete: "name" },
               { key: "phone", label: t("cart.phone"), value: phone, set: setPhone, icon: <Phone className="h-4 w-4" />, required: true, autoComplete: "tel" },
+              { key: "street", label: t("cart.street", { defaultValue: "Street address" }), value: street, set: setStreet, icon: <MapPin className="h-4 w-4" />, required: true, autoComplete: "street-address" },
+              { key: "apartment", label: t("checkout.apartment", { defaultValue: "Apartment / Building (optional)" }), value: apartment, set: setApartment, icon: <MapPin className="h-4 w-4" />, required: false, autoComplete: "address-line2" },
               { key: "city", label: t("cart.city"), value: city, set: setCity, icon: <MapPin className="h-4 w-4" />, required: true, autoComplete: "address-level2" },
-              { key: "street", label: t("cart.streetOptional"), value: street, set: setStreet, icon: <MapPin className="h-4 w-4" />, required: false, autoComplete: "street-address" },
-              { key: "region", label: t("cart.regionOptional"), value: region, set: setRegion, icon: <MapPin className="h-4 w-4" />, required: false, autoComplete: "address-level1" },
+              { key: "region", label: t("cart.region", { defaultValue: "State / Department" }), value: region, set: setRegion, icon: <MapPin className="h-4 w-4" />, required: true, autoComplete: "address-level1" },
+              { key: "country", label: t("auth.country", { defaultValue: "Country" }), value: country, set: setCountry, icon: <MapPin className="h-4 w-4" />, required: true, autoComplete: "country-name" },
             ].map(f => (
               <div key={f.key} className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl" style={{ border: `1.5px solid ${f.required && !f.value.trim() && error ? "#fca5a5" : border}`, background: "#f8fafc" }}>
                 <span className="text-gray-400">{f.icon}</span>
                 <input
                   value={f.value}
                   onChange={e => f.set(e.target.value)}
+                  onBlur={saveCartAddressNow}
                   placeholder={f.label}
                   autoComplete={f.autoComplete}
                   className="flex-1 bg-transparent text-sm outline-none text-gray-900 placeholder-gray-400"
+                  data-testid={`cart-input-${f.key}`}
                 />
               </div>
             ))}

@@ -3,13 +3,18 @@ import { Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
+  BarChart3,
   Bell,
   ChevronLeft,
+  CreditCard,
+  Grid2X2,
   Home,
   LayoutDashboard,
   LogOut,
   Moon,
+  Package,
   Sun,
+  Users,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useTheme } from "@/components/theme-provider";
@@ -167,10 +172,10 @@ function AdminTopBar() {
         />
         <div className="min-w-0 flex-1 px-1 text-center sm:text-left">
           <p className="truncate text-sm font-bold tracking-tight text-white">
-            {t("adminControl.shellBrand")}
+            {t("adminControl.shellBrand", { defaultValue: "Flexa Control" })}
           </p>
           <p className="truncate text-[11px] text-white/70">
-            {displayName} · {roleLabel}
+            {t("adminControl.commandCenter", { defaultValue: "Command Center" })} · {roleLabel}
           </p>
         </div>
         <Button
@@ -276,11 +281,96 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       </Sidebar>
       <SidebarInset className="min-w-0 bg-muted/30">
         <AdminTopBar />
-        <div className={cn("flex-1 min-w-0 overflow-x-hidden")}>
+        <div className={cn("flex-1 min-w-0 overflow-x-hidden pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] lg:pb-0")}>
           {children}
         </div>
+        <AdminMobileBottomNav />
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+function AdminMobileBottomNav() {
+  const { t } = useTranslation();
+  const [location] = useLocation();
+  const search = useSearch();
+  const path = (location || "/").split("?")[0];
+
+  const items = [
+    {
+      id: "dashboard",
+      href: "/admin",
+      label: t("adminNav.dashboard", { defaultValue: "Dashboard" }),
+      icon: LayoutDashboard,
+      active: path === "/admin" && !search.includes("tab="),
+    },
+    {
+      id: "orders",
+      href: "/admin?tab=orders",
+      label: t("adminNav.orders", { defaultValue: "Orders" }),
+      icon: Package,
+      active: search.includes("tab=orders") || path.includes("/admin/orders"),
+    },
+    {
+      id: "payments",
+      href: "/admin/stripe-transactions",
+      label: t("adminNav.payments", { defaultValue: "Payments" }),
+      icon: CreditCard,
+      active: path.includes("stripe") || path.includes("transactions") || search.includes("tab=payments"),
+    },
+    {
+      id: "users",
+      href: "/admin/users",
+      label: t("adminNav.users", { defaultValue: "Users" }),
+      icon: Users,
+      active: path === "/admin/users" || path.startsWith("/admin/users/"),
+    },
+    {
+      id: "analytics",
+      href: "/admin?tab=views",
+      label: t("adminNav.analytics", { defaultValue: "Analytics" }),
+      icon: BarChart3,
+      active: search.includes("tab=views") || search.includes("tab=revenue"),
+    },
+    {
+      id: "more",
+      href: "/admin/operations",
+      label: t("adminNav.more", { defaultValue: "More" }),
+      icon: Grid2X2,
+      active: path === "/admin/operations" || path === "/admin/team",
+    },
+  ] as const;
+
+  return (
+    <nav
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/90 lg:hidden"
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      data-testid="admin-mobile-bottom-nav"
+      aria-label="Admin primary"
+    >
+      <div className="mx-auto flex h-[3.75rem] max-w-lg items-stretch justify-between px-1">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.id}
+              href={item.href}
+              className={cn(
+                "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-semibold transition-colors",
+                item.active
+                  ? "text-[hsl(152,65%,22%)]"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              data-testid={`admin-bottom-nav-${item.id}`}
+              aria-current={item.active ? "page" : undefined}
+            >
+              <Icon className={cn("h-[20px] w-[20px]", item.active && "stroke-[2.4]")} />
+              <span className="truncate">{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
 

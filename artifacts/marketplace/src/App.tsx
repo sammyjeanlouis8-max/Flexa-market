@@ -25,7 +25,7 @@ import VideoUploadCenter from "@/components/VideoUploadCenter";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { prefetchCriticalRoutes } from "@/lib/prefetchRoutes";
 import { PageSkeleton } from "@/components/PageSkeleton";
-import { trackSiteVisit } from "@/lib/siteVisit";
+import { trackSiteVisit, trackPageView } from "@/lib/siteVisit";
 import {
   recordMarketplaceLocation,
   takeBackNavigation,
@@ -217,10 +217,13 @@ function RedirectHome() {
 
 // ── Routed layout (authenticated + public pages) ───────────────────────────────
 function LayoutRoutes() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   useEffect(() => {
     trackSiteVisit();
   }, []);
+  useEffect(() => {
+    trackPageView(location);
+  }, [location]);
   useEffect(() => {
     prefetchCriticalRoutes();
   }, []);

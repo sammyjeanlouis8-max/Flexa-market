@@ -936,10 +936,12 @@ function VideoCard({
     setHasVisibleFrame(true);
     setVideoBuffering(false);
     setLoadFailed(false);
-    const shouldMute = !(isAudioUnlocked() || isNativeMobileApp());
-    el.muted = shouldMute;
-    setMuted(shouldMute);
-    if (!shouldMute) setAudioUnlocked(true);
+    // Preserve an already-unmuted stream. Re-forcing mute here would undo a
+    // successful unmuted autoplay before session unlock is written.
+    const wantSound = !el.muted || isAudioUnlocked() || isNativeMobileApp();
+    el.muted = !wantSound;
+    setMuted(!wantSound);
+    if (wantSound) setAudioUnlocked(true);
     return true;
   }, [cancelVisualReadinessChecks]);
 
@@ -1080,9 +1082,10 @@ function VideoCard({
 
       const tryPlay = () => {
         if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
-        // Prefer unmuted autoplay (native apps + prior unlock). Browsers that
-        // block unmuted play fall back to muted without a tap-for-sound gate.
-        const wantSound = isAudioUnlocked() || isNativeMobileApp();
+        // Prefer unmuted autoplay wherever the platform permits it (native
+        // WebViews, prior unlock, and browsers that allow sound). Rejected
+        // unmuted play falls back to muted; a later gesture unlocks sound and
+        // stays unlocked across video switches.
         const playMutedFallback = () => {
           el.muted = true;
           setMuted(true);
@@ -1093,19 +1096,23 @@ function VideoCard({
         // element is changing source or has not loaded data yet. Keep the card in
         // autoplay mode and retry from media-readiness events; only an actual media
         // error or the bounded visible-frame timeout should enter retry UI.
-        if (wantSound) {
-          el.muted = false;
-          setMuted(false);
-          void el.play().then(() => {
-            if (!isActiveRef.current) return;
-            setAudioUnlocked(true);
-          }).catch(() => {
-            if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
-            playMutedFallback();
-          });
-          return;
-        }
-        playMutedFallback();
+        el.muted = false;
+        setMuted(false);
+        void el.play().then(() => {
+          if (!isActiveRef.current) return;
+          setAudioUnlocked(true);
+        }).catch(() => {
+          if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
+          // If sound was already unlocked this session, keep trying unmuted so
+          // switching videos does not drop audio after a transient rejection.
+          if (isAudioUnlocked() || isNativeMobileApp()) {
+            el.muted = false;
+            setMuted(false);
+            void el.play().catch(playMutedFallback);
+            return;
+          }
+          playMutedFallback();
+        });
       };
       const activationGeneration = activationGenerationRef.current;
       el.addEventListener("canplay", tryPlay);
@@ -1417,10 +1424,12 @@ function VideoCard({
       <video
         ref={(el) => {
           (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
-          if (el) el.muted = !(isAudioUnlocked() || isNativeMobileApp());
+          // Prefer unmuted; tryPlay() falls back to muted if the browser blocks it.
+          if (el) el.muted = muted;
         }}
         src={video.videoUrl ?? undefined}
         playsInline
+        muted={muted}
         preload={isActive ? "auto" : isNext ? "metadata" : "none"}
         poster={video.thumbnailUrl ?? generatedThumbnail ?? undefined}
         className={`absolute inset-0 w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}

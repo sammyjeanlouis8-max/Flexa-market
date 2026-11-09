@@ -348,6 +348,7 @@ export default function App() {
           thirdPartyCookiesEnabled
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
+          allowsBackgroundMediaPlayback
           allowsFullscreenVideo
           setSupportMultipleWindows={false}
           applicationNameForUserAgent={

@@ -54,14 +54,27 @@ export function parseAdminCountries(admin: AdminUser): string[] {
   }
 }
 
+/**
+ * Regular admin assigned "Global / all countries" in the Admin Team UI.
+ * Stored as null country/department/city scope fields. This is NOT Super Admin —
+ * it only widens geographic visibility for marketplace content the admin can
+ * already manage under the admin role.
+ */
+export function hasGlobalCountryAdminScope(admin: AdminUser): boolean {
+  if (admin.isSuperAdmin) return false;
+  if (admin.adminScopeCountry) return false;
+  if (admin.adminScopeCity || admin.adminScopeDepartment) return false;
+  return parseAdminCountries(admin).length === 0;
+}
+
 /** Country assignments, including the legacy single-country field. */
 export function getAdminScopeCountries(admin: AdminUser): string[] {
   const parsedCountries = parseAdminCountries(admin);
   if (parsedCountries.length > 0) return parsedCountries;
   if (admin.adminScopeCountry) return [admin.adminScopeCountry];
-  // Legacy admins without explicit scope remain limited to their profile
-  // country; absence of scope metadata must not silently grant global access.
-  return admin.country ? [admin.country] : [];
+  // Global (all-country) admins intentionally have empty scope fields.
+  // Do not invent a profile-country restriction here.
+  return [];
 }
 
 /**
@@ -84,7 +97,7 @@ export function listingInAdminScope(
   admin: AdminUser,
   target: { country?: string | null; city?: string | null; location?: string | null },
 ): boolean {
-  if (admin.isSuperAdmin) return true;
+  if (admin.isSuperAdmin || hasGlobalCountryAdminScope(admin)) return true;
 
   const countries = getAdminScopeCountries(admin);
   if (countries.length === 0 || !target.country || !countries.includes(target.country)) return false;
@@ -103,7 +116,7 @@ export function listingInAdminScope(
 }
 
 export function userInAdminScope(admin: AdminUser, target: AdminUser): boolean {
-  if (admin.isSuperAdmin) return true;
+  if (admin.isSuperAdmin || hasGlobalCountryAdminScope(admin)) return true;
 
   const countries = getAdminScopeCountries(admin);
 

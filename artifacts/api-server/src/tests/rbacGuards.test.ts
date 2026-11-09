@@ -5,7 +5,11 @@ import {
   hasRole,
   isAdminAccessSuspended,
 } from "../middlewares/auth";
-import { listingInAdminScope, userInAdminScope } from "../lib/adminScope";
+import {
+  hasGlobalCountryAdminScope,
+  listingInAdminScope,
+  userInAdminScope,
+} from "../lib/adminScope";
 
 const baseUser = {
   id: 1,
@@ -118,16 +122,37 @@ describe("listing geographic scope", () => {
     expect(listingInAdminScope(superAdmin, { country: "USA", city: "Chicago, IL" })).toBe(true);
   });
 
-  it("fails closed when an admin has no assigned or profile country", () => {
-    const unscoped = {
+  it("treats an admin with no geographic assignment as all-country scope without Super Admin", () => {
+    const globalAdmin = {
       ...baseUser,
       role: "admin",
+      isAdmin: true,
+      isSuperAdmin: false,
       country: null,
       adminScopeCountry: null,
       adminScopeCountries: null,
+      adminScopeDepartment: null,
+      adminScopeCity: null,
     };
 
-    expect(userInAdminScope(unscoped, { ...baseUser, country: "Haiti" })).toBe(false);
-    expect(listingInAdminScope(unscoped, { country: "Haiti", city: "Delmas" })).toBe(false);
+    expect(hasGlobalCountryAdminScope(globalAdmin)).toBe(true);
+    expect(globalAdmin.isSuperAdmin).toBe(false);
+    expect(userInAdminScope(globalAdmin, { ...baseUser, country: "Haiti" })).toBe(true);
+    expect(listingInAdminScope(globalAdmin, { country: "USA", city: "Miami, FL" })).toBe(true);
+  });
+
+  it("keeps single-country admins inside their assignment", () => {
+    const countryAdmin = {
+      ...baseUser,
+      role: "admin",
+      isAdmin: true,
+      isSuperAdmin: false,
+      adminScopeCountry: "Haiti",
+      adminScopeCountries: null,
+    };
+
+    expect(hasGlobalCountryAdminScope(countryAdmin)).toBe(false);
+    expect(listingInAdminScope(countryAdmin, { country: "Haiti", city: "Delmas" })).toBe(true);
+    expect(listingInAdminScope(countryAdmin, { country: "USA", city: "Miami, FL" })).toBe(false);
   });
 });

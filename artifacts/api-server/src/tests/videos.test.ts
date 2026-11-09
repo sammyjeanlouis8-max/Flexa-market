@@ -92,7 +92,7 @@ describe("promo video analytics", () => {
     expect(dbMocks.select).not.toHaveBeenCalled();
   });
 
-  it("uses canonical roles and keeps legacy admins on profile-country scope", () => {
+  it("uses canonical roles and scopes promo videos by admin country assignment", () => {
     const roleAdmin = resolveViewerScope({
       user: {
         role: "admin",
@@ -105,17 +105,52 @@ describe("promo video analytics", () => {
       headers: {},
     } as Request);
     expect(roleAdmin.isAdmin).toBe(true);
+    expect(roleAdmin.isGlobalCountryAdmin).toBe(false);
     expect(roleAdmin.visibleCountries).toEqual(["Haiti"]);
     expect(roleAdmin.scopeCities).toContain("Port-au-Prince");
     expect(roleAdmin.hasCityScope).toBe(true);
 
-    const legacyAdmin = resolveViewerScope({
+    const multiCountryAdmin = resolveViewerScope({
+      user: {
+        role: "admin",
+        isAdmin: true,
+        isSuperAdmin: false,
+        country: "Haiti",
+        adminScopeCountries: JSON.stringify(["Haiti", "USA", "Canada"]),
+      },
+      headers: {},
+    } as Request);
+    expect(multiCountryAdmin.visibleCountries).toEqual(["Haiti", "USA", "Canada"]);
+    expect(multiCountryAdmin.globalCountryAccess).toBe(false);
+    expect(multiCountryAdmin.isGlobalCountryAdmin).toBe(false);
+
+    const globalCountryAdmin = resolveViewerScope({
       user: { role: "admin", isAdmin: true, isSuperAdmin: false, country: "USA" },
       headers: {},
     } as Request);
-    expect(legacyAdmin.visibleCountries).toEqual(["USA"]);
-    expect(legacyAdmin.globalCountryAccess).toBe(false);
-    expect(legacyAdmin.hasCityScope).toBe(false);
+    expect(globalCountryAdmin.isSuperAdmin).toBe(false);
+    expect(globalCountryAdmin.isGlobalCountryAdmin).toBe(true);
+    expect(globalCountryAdmin.globalCountryAccess).toBe(true);
+    expect(globalCountryAdmin.visibleCountries).toEqual([]);
+
+    const globalFiltered = resolveViewerScope({
+      user: { role: "admin", isAdmin: true, isSuperAdmin: false, country: "USA" },
+      headers: {},
+    } as Request, "Canada");
+    expect(globalFiltered.isSuperAdmin).toBe(false);
+    expect(globalFiltered.globalCountryAccess).toBe(false);
+    expect(globalFiltered.visibleCountries).toEqual(["Canada"]);
+
+    const deniedCountry = resolveViewerScope({
+      user: {
+        role: "admin",
+        isAdmin: true,
+        isSuperAdmin: false,
+        adminScopeCountry: "Haiti",
+      },
+      headers: {},
+    } as Request, "USA");
+    expect(deniedCountry.visibleCountries).toEqual(["__denied__"]);
 
     const canonicalLegacyUser = resolveViewerScope({
       user: { role: "user", isAdmin: true, isSuperAdmin: false, country: "Haiti" },
@@ -123,6 +158,5 @@ describe("promo video analytics", () => {
     } as Request);
     expect(canonicalLegacyUser.isSuperAdmin).toBe(false);
     expect(canonicalLegacyUser.isAdmin).toBe(true);
-    expect(canonicalLegacyUser.globalCountryAccess).toBe(false);
   });
 });

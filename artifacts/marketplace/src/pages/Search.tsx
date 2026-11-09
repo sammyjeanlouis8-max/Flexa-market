@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { apiFetch } from "@/lib/api";
 
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES } from "@/lib/countries";
+import { isGlobalCountryAdmin, parseAdminScopeCountriesList } from "@/lib/adminCountryAccess";
 
 // ── Debounce hook — delays updating the value until the user stops typing ─────
 function useDebounce<T>(value: T, delayMs: number): T {
@@ -57,6 +58,7 @@ interface FilterPanelProps {
   categories: any[] | undefined;
   setPage: (p: number) => void;
   isMultiCountryAdmin: boolean;
+  isGlobalAdmin: boolean;
   adminScopeCountriesList: string[];
 }
 
@@ -68,13 +70,13 @@ function FilterPanel({
   onClear,
   isAdmin, isSuperAdmin, scopeLock, userCountry,
   selectedParent, categories, setPage,
-  isMultiCountryAdmin, adminScopeCountriesList,
+  isMultiCountryAdmin, isGlobalAdmin, adminScopeCountriesList,
 }: FilterPanelProps) {
   const { t } = useTranslation();
 
   return (
     <div className="space-y-5">
-      {isAdmin && isSuperAdmin ? (
+      {isAdmin && (isSuperAdmin || isGlobalAdmin) ? (
         <div>
           <Label className="text-sm font-semibold mb-2 block">{t("search.countryAdmin")}</Label>
           <MobileSelect
@@ -94,7 +96,7 @@ function FilterPanel({
               : t("search.showingAll")}
           </p>
         </div>
-      ) : isAdmin && !isSuperAdmin && isMultiCountryAdmin ? (
+      ) : isAdmin && !isSuperAdmin && !isGlobalAdmin && isMultiCountryAdmin ? (
         <div>
           <Label className="text-sm font-semibold mb-2 block">{t("search.country")}</Label>
           <MobileSelect
@@ -109,7 +111,7 @@ function FilterPanel({
             data-testid="select-search-country-scoped"
           />
         </div>
-      ) : isAdmin && !isSuperAdmin ? (
+      ) : isAdmin && !isSuperAdmin && !isGlobalAdmin ? (
         <div>
           <Label className="text-sm font-semibold mb-2 block">{t("search.country")}</Label>
           <div className="flex items-center gap-2 p-2 bg-violet-50 dark:bg-violet-950/30 rounded-lg border border-violet-200 dark:border-violet-800">
@@ -370,18 +372,15 @@ export default function SearchPage() {
   const userCountry = user?.country ?? shoppingCountry;
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin);
   const isSuperAdmin = !!(user?.isSuperAdmin);
-  const adminScopeCountriesListSearch: string[] = (() => {
-    if (!isAdmin || isSuperAdmin) return [];
-    const raw = (user as any)?.adminScopeCountries;
-    if (raw) { try { const p = JSON.parse(raw) as string[]; if (p.length > 0) return p; } catch { /* ignore */ } }
-    const single = (user as any)?.adminScopeCountry;
-    return single ? [single] : [];
-  })();
-  const isMultiCountryAdminSearch = isAdmin && !isSuperAdmin && adminScopeCountriesListSearch.length > 1;
-  const scopeLock: string | null = (isSuperAdmin || isMultiCountryAdminSearch)
+  const adminScopeCountriesListSearch = parseAdminScopeCountriesList(user);
+  const isGlobalAdminSearch = isGlobalCountryAdmin(user);
+  const isMultiCountryAdminSearch = isAdmin && !isSuperAdmin && !isGlobalAdminSearch && adminScopeCountriesListSearch.length > 1;
+  const scopeLock: string | null = (isSuperAdmin || isGlobalAdminSearch || isMultiCountryAdminSearch)
     ? null
     : (adminScopeCountriesListSearch[0] ?? (user as any)?.adminScopeCountry ?? user?.country ?? null);
-  const effectiveAdminCountry: string | null = isSuperAdmin ? adminCountry : (isMultiCountryAdminSearch ? adminCountry : scopeLock);
+  const effectiveAdminCountry: string | null = (isSuperAdmin || isGlobalAdminSearch || isMultiCountryAdminSearch)
+    ? adminCountry
+    : scopeLock;
   const summaryCountry: string | null | undefined = isAdmin ? effectiveAdminCountry : userCountry;
 
   const selectedParent = useMemo(
@@ -423,8 +422,8 @@ export default function SearchPage() {
     setQ(""); setCategory(""); setSubcategory(""); setCondition("");
     setCity(""); setPriceRange([0, SEARCH_DEFAULT_MAX_PRICE]); setPage(1);
     setBoostedOnly(false);
-    if (isSuperAdmin) setAdminCountry(null);
-  }, [isSuperAdmin]);
+    if (isSuperAdmin || isGlobalAdminSearch) setAdminCountry(null);
+  }, [isSuperAdmin, isGlobalAdminSearch]);
 
   const filterPanelProps: FilterPanelProps = {
     city, setCity, category, setCategory,
@@ -436,6 +435,7 @@ export default function SearchPage() {
     selectedParent, categories,
     setPage,
     isMultiCountryAdmin: isMultiCountryAdminSearch,
+    isGlobalAdmin: isGlobalAdminSearch,
     adminScopeCountriesList: adminScopeCountriesListSearch,
   };
 

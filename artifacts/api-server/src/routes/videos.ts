@@ -3,13 +3,20 @@ import { db, listingsTable, usersTable, commentsTable, followsTable } from "@wor
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { getRole, hasRole, optionalAuth } from "../middlewares/auth";
 import { extractWasabiKey } from "../lib/s3";
-import { getAdminScopeCities, getAdminScopeCountries, SCOPE_OPTIONS } from "../lib/adminScope";
+import {
+  getAdminScopeCities,
+  getAdminScopeCountries,
+  hasGlobalCountryAdminScope,
+  SCOPE_OPTIONS,
+} from "../lib/adminScope";
 
 const router = Router();
 
 type VideoViewerScope = {
   isSuperAdmin: boolean;
   isAdmin: boolean;
+  /** Regular admin with all-country assignment — not Super Admin. */
+  isGlobalCountryAdmin: boolean;
   visibleCountries: string[];
   globalCountryAccess: boolean;
   scopeCities: string[];
@@ -32,15 +39,20 @@ function canonicalCountries(countries: string[]): string[] {
 }
 
 /**
- * Resolve the same role and geographic scope for feed and analytics. In
- * particular, a legacy admin without explicit assignments is limited to the
- * profile country; it is never treated as global.
+ * Resolve the same role and geographic scope for feed and analytics.
+ *
+ * - Super Admin → every country (optional single-country filter).
+ * - Global-country Admin (assigned all countries) → same video visibility as
+ *   Super Admin geographically, without Super Admin privileges.
+ * - Scoped Admin → only assigned countries (1…N).
+ * - Regular user → profile / detected country.
  */
 export function resolveViewerScope(req: Parameters<typeof optionalAuth>[0], requestedCountry = ""): VideoViewerScope {
   const user = req.user;
   const role = getRole(user);
   const isSuperAdmin = role === "superadmin";
   const isAdmin = hasRole(user, "admin") && !isSuperAdmin;
+  const isGlobalCountryAdmin = isAdmin && !!user && hasGlobalCountryAdminScope(user);
   const cfCountry: Record<string, string> = {
     HT: "Haiti", DO: "Dominican Republic", US: "USA", FR: "France", CA: "Canada",
     MX: "Mexico", BR: "Brazil", CL: "Chile", GB: "United Kingdom", DE: "Germany",
@@ -51,16 +63,13 @@ export function resolveViewerScope(req: Parameters<typeof optionalAuth>[0], requ
   // CF-IPCountry is a last-resort fallback ONLY when the viewer has no selected
   // marketplace country. It must never override users.country.
   const fallbackCountry = cfCountry[String(req.headers["cf-ipcountry"] ?? "").trim().toUpperCase()] ?? "Haiti";
-  const assignedCountries = isAdmin
-    ? canonicalCountries([
-        ...getAdminScopeCountries(user!),
-        ...(!getAdminScopeCountries(user!).length && user?.country ? [user.country] : []),
-      ])
+  const assignedCountries = isAdmin && !isGlobalCountryAdmin
+    ? canonicalCountries(getAdminScopeCountries(user!))
     : [];
   const selectedCountry = requestedCountry
     ? assignedCountries.find(country => country.toLowerCase() === requestedCountry.toLowerCase()) ?? null
     : null;
-  const visibleCountries = isSuperAdmin
+  const visibleCountries = (isSuperAdmin || isGlobalCountryAdmin)
     ? (requestedCountry ? [requestedCountry] : [])
     : isAdmin
       ? (requestedCountry
@@ -69,13 +78,13 @@ export function resolveViewerScope(req: Parameters<typeof optionalAuth>[0], requ
       : canonicalCountries([user?.country ?? fallbackCountry]);
 
   let scopeCities: string[] = [];
-  const hasCityScope = isAdmin && !!(user?.adminScopeCity || user?.adminScopeDepartment);
-  if (isAdmin && user) {
+  const hasCityScope = isAdmin && !isGlobalCountryAdmin && !!(user?.adminScopeCity || user?.adminScopeDepartment);
+  if (isAdmin && !isGlobalCountryAdmin && user) {
     if (user.adminScopeCity) {
       scopeCities = [user.adminScopeCity];
     } else if (user.adminScopeDepartment) {
       // getAdminScopeCities remains the source of truth for explicit scope
-      // assignments; SCOPE_OPTIONS supplies the profile-country legacy case.
+      // assignments; SCOPE_OPTIONS supplies the assigned-country case.
       scopeCities = getAdminScopeCities(user);
       if (scopeCities.length === 0) {
         scopeCities = assignedCountries.flatMap(country => {
@@ -91,8 +100,10 @@ export function resolveViewerScope(req: Parameters<typeof optionalAuth>[0], requ
   return {
     isSuperAdmin,
     isAdmin,
+    isGlobalCountryAdmin,
     visibleCountries,
-    globalCountryAccess: isSuperAdmin && !requestedCountry,
+    // Geographic only — never conflate with Super Admin privileges.
+    globalCountryAccess: (isSuperAdmin || isGlobalCountryAdmin) && !requestedCountry,
     scopeCities: canonicalCountries(scopeCities),
     hasCityScope,
     state: user?.state ?? null,
@@ -265,7 +276,9 @@ function toStreamingVideoUrl(url: string): string {
  *
  * Country scoping (always enforced, req #5):
  *   • super_admin → sees every active boosted video regardless of country
- *   • admin / user → sees only videos where listing.country = user.country
+ *   • global-country admin → same geographic visibility, without superadmin powers
+ *   • scoped admin → videos in assigned countries only
+ *   • regular user → profile / detected country
  *   • no country set (or unauthenticated) → { noCountry: true }
  *
  * Sorting:

@@ -1,9 +1,9 @@
 # Remaining Compliance Risks & Technical Blockers
 
-**Updated:** 2026-11-09 11:05 (America/New_York)  
+**Updated:** 2026-11-09 12:30 (America/New_York)  
 **Submission stance:** **NO-GO** for Google Play until items below are cleared or explicitly accepted.
 
-Related: `ANDROID_SUSPENSION_AND_CORRECTIVE_ACTIONS.md`, `ANDROID_PHASE2_MILESTONE2.md`
+Related: `ANDROID_SUSPENSION_AND_CORRECTIVE_ACTIONS.md`, `ANDROID_PHASE2_MILESTONE5.md`
 
 ---
 
@@ -11,7 +11,7 @@ Related: `ANDROID_SUSPENSION_AND_CORRECTIVE_ACTIONS.md`, `ANDROID_PHASE2_MILESTO
 
 | Risk | Severity | Mitigation path |
 |---|---|---|
-| Incomplete native feature parity (Sell, Chat, Orders, Boosts, etc.) | **High** | Continue Phase 2 waves; do not submit with thin marketplace |
+| Incomplete native feature parity (remaining account/wallet/boosts UX) | **Medium** | M2–M5 core commerce + chat/push landed; continue only with approval |
 | Reviewer may still find residual WebView if reintroduced | **High** | Keep `LegacyWebViewShell` / `SafeWebView` out of routed entry paths |
 | New package alone does not equal approval | **High** | Documented; Console must show genuine native remediation |
 | Digital goods without Play Billing | **Medium** | Keep `androidDigitalPurchaseGuard`; block native initiation UX |
@@ -24,11 +24,11 @@ Related: `ANDROID_SUSPENSION_AND_CORRECTIVE_ACTIONS.md`, `ANDROID_PHASE2_MILESTO
 
 | Blocker | Severity | Notes |
 |---|---|---|
-| Firebase / FCM for `com.flexamarket.app` | **High** | Prior `google-services.json` bound to `com.flexa.market`; removed from `app.json` until new file provided |
-| Emulator / device proof not run | **High** | Cold-start native Home must be demonstrated before submit |
-| Push notification re-wire | **Medium** | Depends on new Firebase Android app |
+| Firebase / FCM for `com.flexamarket.app` | **High** | Console registration + matching `google-services.json` still required; see `google-services.README.md` |
+| Emulator / device proof not run | **High** | Cold-start native Home + push cold/warm must be demonstrated before submit |
+| Push notification device delivery | **High** | Client lifecycle coded; physical FCM blocked until Firebase JSON cutover |
 | Release signing / EAS credentials for new package | **Medium** | Configure only when Sammy authorizes a build |
-| Feature API coverage gaps in mobile UI | **High** | Placeholders are intentional; backend already exists |
+| Remaining placeholder screens (wallet, settings shell, etc.) | **Medium** | Core chat/notifications native; placeholders intentional for later milestones |
 | Merge to main / production deploy | **Gate** | Forbidden without explicit approval |
 | Release AAB / Play upload | **Gate** | Forbidden without explicit approval |
 

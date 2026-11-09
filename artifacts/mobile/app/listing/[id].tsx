@@ -214,72 +214,111 @@ export default function ListingScreen() {
               {error ? <Text style={styles.inlineError}>{error}</Text> : null}
 
               {!listing.isOwner ? (
-                <View style={styles.actions}>
+                <View style={styles.actionsCol}>
+                  <View style={styles.actions}>
+                    <Pressable
+                      style={styles.secondaryBtn}
+                      onPress={() => {
+                        const price = typeof listing.price === "number"
+                          ? listing.price
+                          : parseFloat(String(listing.price ?? "0"));
+                        const result = addItem({
+                          listingId: listing.id,
+                          title: listing.title || "Listing",
+                          price: Number.isFinite(price) ? price : 0,
+                          currency: listing.currency || "USD",
+                          image: listing.images?.[0] || null,
+                          country: listing.country || null,
+                          sellerId: listing.sellerId || 0,
+                          stockQuantity: listing.stockQuantity,
+                        });
+                        if (!result.ok) {
+                          Alert.alert("Cart", result.error || "Could not add item.");
+                          return;
+                        }
+                        Alert.alert(
+                          "Cart",
+                          result.alreadyInCart ? "Already in cart." : "Added to cart.",
+                          [
+                            { text: "Keep browsing", style: "cancel" },
+                            { text: "View cart", onPress: () => router.push("/cart") },
+                          ],
+                        );
+                      }}
+                    >
+                      <Text style={styles.secondaryBtnText}>
+                        {isInCart(listing.id) ? "In cart" : "Add to cart"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.primaryBtn}
+                      onPress={() => {
+                        if (!token) {
+                          router.push("/auth/login");
+                          return;
+                        }
+                        if (user?.id && listing.sellerId === user.id) {
+                          Alert.alert("Purchase", "You cannot buy your own listing.");
+                          return;
+                        }
+                        const price = typeof listing.price === "number"
+                          ? listing.price
+                          : parseFloat(String(listing.price ?? "0"));
+                        addItem({
+                          listingId: listing.id,
+                          title: listing.title || "Listing",
+                          price: Number.isFinite(price) ? price : 0,
+                          currency: listing.currency || "USD",
+                          image: listing.images?.[0] || null,
+                          country: listing.country || null,
+                          sellerId: listing.sellerId || 0,
+                          stockQuantity: listing.stockQuantity,
+                        });
+                        router.push({
+                          pathname: "/checkout",
+                          params: { mode: "single", listingId: String(listing.id) },
+                        });
+                      }}
+                    >
+                      <Text style={styles.primaryBtnText}>Buy now</Text>
+                    </Pressable>
+                  </View>
                   <Pressable
-                    style={styles.secondaryBtn}
-                    onPress={() => {
-                      const price = typeof listing.price === "number"
-                        ? listing.price
-                        : parseFloat(String(listing.price ?? "0"));
-                      const result = addItem({
-                        listingId: listing.id,
-                        title: listing.title || "Listing",
-                        price: Number.isFinite(price) ? price : 0,
-                        currency: listing.currency || "USD",
-                        image: listing.images?.[0] || null,
-                        country: listing.country || null,
-                        sellerId: listing.sellerId || 0,
-                        stockQuantity: listing.stockQuantity,
-                      });
-                      if (!result.ok) {
-                        Alert.alert("Cart", result.error || "Could not add item.");
-                        return;
-                      }
-                      Alert.alert(
-                        "Cart",
-                        result.alreadyInCart ? "Already in cart." : "Added to cart.",
-                        [
-                          { text: "Keep browsing", style: "cancel" },
-                          { text: "View cart", onPress: () => router.push("/cart") },
-                        ],
-                      );
-                    }}
-                  >
-                    <Text style={styles.secondaryBtnText}>
-                      {isInCart(listing.id) ? "In cart" : "Add to cart"}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.primaryBtn}
-                    onPress={() => {
+                    style={styles.messageBtn}
+                    onPress={async () => {
                       if (!token) {
                         router.push("/auth/login");
                         return;
                       }
-                      if (user?.id && listing.sellerId === user.id) {
-                        Alert.alert("Purchase", "You cannot buy your own listing.");
+                      if (!listing.sellerId) {
+                        Alert.alert("Chat", "Seller unavailable.");
                         return;
                       }
-                      const price = typeof listing.price === "number"
-                        ? listing.price
-                        : parseFloat(String(listing.price ?? "0"));
-                      addItem({
-                        listingId: listing.id,
-                        title: listing.title || "Listing",
-                        price: Number.isFinite(price) ? price : 0,
-                        currency: listing.currency || "USD",
-                        image: listing.images?.[0] || null,
-                        country: listing.country || null,
-                        sellerId: listing.sellerId || 0,
-                        stockQuantity: listing.stockQuantity,
-                      });
-                      router.push({
-                        pathname: "/checkout",
-                        params: { mode: "single", listingId: String(listing.id) },
-                      });
+                      if (user?.id && listing.sellerId === user.id) {
+                        Alert.alert("Chat", "You cannot message yourself.");
+                        return;
+                      }
+                      try {
+                        const res = await apiFetch("/conversations", {
+                          method: "POST",
+                          token,
+                          body: JSON.stringify({
+                            listingId: listing.id,
+                            sellerId: listing.sellerId,
+                          }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                          Alert.alert("Chat", data.error || `Could not start chat (${res.status})`);
+                          return;
+                        }
+                        if (data.id) router.push(`/chat/${data.id}`);
+                      } catch {
+                        Alert.alert("Chat", "Could not start conversation.");
+                      }
                     }}
                   >
-                    <Text style={styles.primaryBtnText}>Buy now</Text>
+                    <Text style={styles.messageBtnText}>Message seller</Text>
                   </Pressable>
                 </View>
               ) : null}
@@ -339,7 +378,8 @@ const styles = StyleSheet.create({
   section: { marginTop: 18, fontSize: 15, fontWeight: "700", color: "#F8FAFC" },
   body: { color: "#CBD5E1", fontSize: 14, lineHeight: 22 },
   inlineError: { color: "#FCA5A5", marginTop: 10 },
-  actions: { flexDirection: "row", gap: 10, marginTop: 16 },
+  actionsCol: { marginTop: 16, gap: 10 },
+  actions: { flexDirection: "row", gap: 10 },
   primaryBtn: {
     flex: 1,
     backgroundColor: "#F97316",
@@ -357,5 +397,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryBtnText: { color: "#F8FAFC", fontWeight: "600" },
+  messageBtn: {
+    borderWidth: 1,
+    borderColor: "#F97316",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  messageBtnText: { color: "#F97316", fontWeight: "700" },
   note: { marginTop: 24, color: "#64748B", fontSize: 12, lineHeight: 18 },
 });

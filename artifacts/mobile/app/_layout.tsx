@@ -1,8 +1,9 @@
 /**
  * Root layout — native Expo Router shell (Phase 2).
- * Auth + marketplace + cart. No WebView at the root.
+ * Auth + marketplace + cart + push bootstrap. No WebView at the root.
  */
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PushBootstrap } from "@/components/PushBootstrap";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { LanguageProvider } from "@/context/LanguageContext";
@@ -29,6 +30,7 @@ export default function RootLayout() {
             <AuthProvider>
               <MarketplaceProvider>
                 <CartProvider>
+                  <PushBootstrap />
                   <StatusBar barStyle="light-content" backgroundColor="#0B1220" />
                   <Stack
                     screenOptions={{
@@ -50,6 +52,12 @@ export default function RootLayout() {
                     <Stack.Screen name="orders" />
                     <Stack.Screen name="orders/[id]" />
                     <Stack.Screen name="delivery-tracking" />
+                    <Stack.Screen name="chat/[id]" />
+                    <Stack.Screen name="notifications" />
+                    <Stack.Screen name="communications" />
+                    <Stack.Screen name="support/index" />
+                    <Stack.Screen name="support/[id]" />
+                    <Stack.Screen name="chatbot" />
                     <Stack.Screen name="country-picker" options={{ presentation: "modal" }} />
                     <Stack.Screen name="language-picker" options={{ presentation: "modal" }} />
                     <Stack.Screen name="+not-found" />

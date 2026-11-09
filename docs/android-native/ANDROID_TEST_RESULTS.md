@@ -1,6 +1,6 @@
 # ANDROID_TEST_RESULTS.md
 
-**Phase:** Phase 2 Milestone 4 (+ prior)  
+**Phase:** Phase 2 Milestone 5 (+ prior)  
 **Rule:** Do not claim tests passed unless executed.
 
 ---
@@ -9,6 +9,11 @@
 
 | ID | Activity | Environment | Result |
 |---|---|---|---|
+| M5-TSC | `npm run typecheck` in `@workspace/mobile` | Cloud agent | **PASS** |
+| M5-UNIT | notificationRouting + pushToken + firebaseAndroidConfig + prior suites | Cloud agent | **PASS** (28/28) |
+| M5-API | Live auth gates: conversations, messages, notifications, support, push token, prefs, chatbot → 401; chatbot/status 200 | `flexamarket.com` | **PASS** |
+| M5-FCM-DEVICE | Physical/emulator FCM token + cold/warm delivery | — | **NOT RUN** (needs Firebase JSON for `com.flexamarket.app`) |
+| M5-CHAT-E2E | Authenticated send message / create ticket | — | **NOT RUN** (no test credentials) |
 | M4-TSC | `npm run typecheck` in `@workspace/mobile` | Cloud agent | **PASS** |
 | M4-UNIT | `checkoutMath` + prior unit suites | Cloud agent | **PASS** (14/14) |
 | M4-POLICY | `nativePolicy.test.js` | Cloud agent | **PASS** |
@@ -35,7 +40,8 @@
 
 ## 2. CURRENT POSITION
 
-Milestone 2 unit + API smoke: **EXECUTED**.  
+Milestone 5 unit + API smoke + typecheck: **EXECUTED**.  
+FCM device delivery / authenticated chat E2E: **NOT RUN**.  
 Device / emulator UI verification: **NOT RUN**.  
 Audit verification: **VERIFIED COMPLETE**.
 

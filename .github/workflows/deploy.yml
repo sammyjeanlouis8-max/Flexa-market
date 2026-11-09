@@ -199,3 +199,5 @@ jobs:
 # Owner requested fe deploy: clean auth flag globe 12s no pin/rings (#157) (2026-11-09).
 
 # Owner requested fe deploy: multi-country admin promo + marketplace scope (#158) (2026-11-09).
+
+# Owner requested fe deploy retry: multi-country admin + promo scope (#158) (2026-11-09).

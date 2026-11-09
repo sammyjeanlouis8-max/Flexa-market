@@ -28,6 +28,7 @@ export default function CheckoutSuccessScreen() {
   const deliveryTotal = Number(deliveryRaw || 0) || 0;
   const productTotal = orders.reduce((s, o) => s + Number(o.amount || 0), 0);
   const grandTotal = Math.round((productTotal + deliveryTotal) * 100) / 100;
+  const firstOrderId = orders[0]?.txId;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
@@ -53,7 +54,11 @@ export default function CheckoutSuccessScreen() {
 
         <View style={styles.list}>
           {orders.map((o) => (
-            <View key={o.txId} style={styles.row}>
+            <Pressable
+              key={o.txId}
+              style={styles.row}
+              onPress={() => router.push(`/orders/${o.txId}`)}
+            >
               <View style={styles.pkg}>
                 <Feather name="package" size={18} color="#F97316" />
               </View>
@@ -69,7 +74,7 @@ export default function CheckoutSuccessScreen() {
                 </Text>
               </View>
               <Text style={styles.paid}>Paid</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
 
@@ -93,21 +98,27 @@ export default function CheckoutSuccessScreen() {
         <View style={styles.actions}>
           <Pressable
             style={styles.primaryBtn}
-            onPress={() => router.replace("/orders")}
+            onPress={() =>
+              router.replace(
+                firstOrderId ? `/orders/${firstOrderId}` : "/orders",
+              )
+            }
           >
-            <Text style={styles.primaryBtnText}>View orders</Text>
+            <Text style={styles.primaryBtnText}>
+              {firstOrderId ? "View order details" : "View orders"}
+            </Text>
           </Pressable>
           <Pressable
             style={styles.secondaryBtn}
-            onPress={() => router.replace("/")}
+            onPress={() => router.replace("/orders")}
           >
-            <Text style={styles.secondaryBtnText}>Continue shopping</Text>
+            <Text style={styles.secondaryBtnText}>All orders</Text>
           </Pressable>
           <Pressable
             style={styles.linkBtn}
-            onPress={() => router.push("/delivery-tracking")}
+            onPress={() => router.replace("/")}
           >
-            <Text style={styles.linkBtnText}>Delivery tracking</Text>
+            <Text style={styles.linkBtnText}>Continue shopping</Text>
           </Pressable>
         </View>
       </ScrollView>

@@ -7,6 +7,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { PushBootstrap } from "@/components/PushBootstrap";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { MarketplaceProvider } from "@/context/MarketplaceContext";
@@ -24,6 +25,7 @@ export default function RootLayout() {
         <AuthProvider>
           <MarketplaceProvider>
             <CartProvider>
+              <PushBootstrap />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="auth/login" />

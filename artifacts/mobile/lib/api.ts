@@ -20,6 +20,7 @@ export type Listing = {
   country?: string | null;
   category?: string | null;
   condition?: string | null;
+  status?: string | null;
   isBoosted?: boolean;
   favoriteCount?: number;
   viewCount?: number;

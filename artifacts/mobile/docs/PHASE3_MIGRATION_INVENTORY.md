@@ -28,11 +28,11 @@
 
 | Status | Count |
 |---|---|
-| FULLY_NATIVE | 9 |
-| PARTIALLY_NATIVE | 5 |
-| PLACEHOLDER | 26 |
-| MISSING | 35 |
-| BLOCKED | 5 |
+| FULLY_NATIVE | 14 |
+| PARTIALLY_NATIVE | 6 |
+| PLACEHOLDER | 22 |
+| MISSING | 34 |
+| BLOCKED | 4 |
 | **Total features audited** | **80** |
 
 > Counts classify **product features**, not only Expo route files. Expo also has 23 placeholder *route files*; some map 1:1 to PLACEHOLDER features above.
@@ -82,3 +82,9 @@ See `recommendedPhase3Order` in the JSON:
 - Native routes: `artifacts/mobile/app/**`
 - API modules: `artifacts/api-server/src/routes/**`
 - Roles: `artifacts/api-server/src/middlewares/auth.ts`, `users.role`
+
+
+## Phase 3A complete
+
+Native **Orders**, **Order Details** (buyer PIN + carrier tracking), **Favorites**, and **Notifications** center.
+Firebase: `google-services.json` present for `com.flexa.market` / project `flexa-market-8873a`; Expo push token registration prepared. Push delivery not claimed.

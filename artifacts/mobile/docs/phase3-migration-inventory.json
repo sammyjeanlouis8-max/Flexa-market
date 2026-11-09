@@ -88,11 +88,11 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 9,
-    "PARTIALLY_NATIVE": 5,
-    "PLACEHOLDER": 26,
-    "MISSING": 35,
-    "BLOCKED": 5
+    "FULLY_NATIVE": 14,
+    "PARTIALLY_NATIVE": 6,
+    "PLACEHOLDER": 22,
+    "MISSING": 34,
+    "BLOCKED": 4
   },
   "features": [
     {
@@ -283,11 +283,9 @@
       "nativeRoute": "/checkout-success",
       "role": "buyer",
       "apis": [],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "orders deep link target still placeholder"
-      ],
-      "work": "Unblocks when Orders is native"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Links to native order details"
     },
     {
       "id": "stripe-single-item",
@@ -316,11 +314,9 @@
       "apis": [
         "/api/favorites"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "list/add/remove UI"
-      ],
-      "work": "High priority Phase 3"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3A complete"
     },
     {
       "id": "orders",
@@ -332,11 +328,9 @@
       "apis": [
         "/api/orders/purchases"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "order list UI"
-      ],
-      "work": "Highest priority Phase 3 (post-checkout)"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3A complete"
     },
     {
       "id": "order-detail",
@@ -350,11 +344,11 @@
         "/api/orders/:id/ship",
         "/api/orders/:id/return"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "detail, ship, confirm, return actions"
+        "seller ship/label actions deferred to 3D"
       ],
-      "work": "Pair with Orders"
+      "work": "Phase 3A buyer detail + PIN + tracking"
     },
     {
       "id": "delivery-tracking",
@@ -400,11 +394,11 @@
         "/api/delivery/:id/tip",
         "/api/delivery/:id/rate-driver"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "confirm + tip + rate driver"
+        "Tip/rating modals"
       ],
-      "work": "Embed in Order Detail"
+      "work": "Confirm delivery on order detail"
     },
     {
       "id": "addresses",
@@ -599,11 +593,11 @@
       "apis": [
         "/api/notifications"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "list + mark read"
+        "Foreground FCM delivery verification on device"
       ],
-      "work": "Phase 3; FCM later"
+      "work": "In-app center complete; push prep only"
     },
     {
       "id": "push-fcm",
@@ -615,12 +609,12 @@
       "apis": [
         "/api/push/expo-token"
       ],
-      "status": "BLOCKED",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "google-services.json",
-        "Firebase config"
+        "Device FCM end-to-end verification",
+        "Do not claim push delivery"
       ],
-      "work": "Deferred per project instructions"
+      "work": "Expo token registration wired; google-services present for com.flexa.market"
     },
     {
       "id": "kyc",
@@ -1502,5 +1496,21 @@
     "Do not merge PR #172 automatically",
     "Do not configure Firebase / google-services.json yet",
     "Do not build APK yet"
-  ]
+  ],
+  "phase3a": {
+    "completedAt": "2026-11-09T22:40:00Z",
+    "screens": [
+      "orders",
+      "orders/[id]",
+      "favorites",
+      "notifications"
+    ],
+    "firebase": {
+      "googleServicesPresent": true,
+      "projectId": "flexa-market-8873a",
+      "androidPackage": "com.flexa.market",
+      "pushDeliveryClaimed": false,
+      "notes": "Push token registration prepared via expo-notifications + POST /api/push/expo-token. No simulated notifications."
+    }
+  }
 }

@@ -61,7 +61,10 @@ test("Phase 1–2 core features remain FULLY_NATIVE in inventory", () => {
   ]) {
     assert.equal(byId[id].status, "FULLY_NATIVE", id);
   }
-  assert.equal(byId.orders.status, "PLACEHOLDER");
+  assert.equal(byId.orders.status, "FULLY_NATIVE");
+  assert.equal(byId["order-detail"].status, "FULLY_NATIVE");
+  assert.equal(byId.favorites.status, "FULLY_NATIVE");
+  assert.equal(byId.notifications.status, "FULLY_NATIVE");
   assert.equal(byId.inbox.status, "PLACEHOLDER");
   assert.equal(byId.sell.status, "PLACEHOLDER");
   assert.equal(byId["wallet-topup"].status, "BLOCKED");

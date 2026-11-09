@@ -17,6 +17,11 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { fetchListing, type Listing } from "@/lib/api";
 import { isDominicanListingCountry } from "@/lib/checkoutApi";
+import {
+  addFavorite,
+  isFavorite,
+  removeFavorite,
+} from "@/lib/favoritesApi";
 
 const WIDTH = Dimensions.get("window").width;
 
@@ -31,6 +36,8 @@ export default function ListingDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [imageIndex, setImageIndex] = useState(0);
   const [addedFlash, setAddedFlash] = useState(false);
+  const [favorited, setFavorited] = useState(false);
+  const [favBusy, setFavBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +48,12 @@ export default function ListingDetailScreen() {
       try {
         const data = await fetchListing(id, { token });
         if (!cancelled) setListing(data);
+        if (!cancelled && token) {
+          const liked = await isFavorite(Number(id), { token });
+          if (!cancelled) setFavorited(liked);
+        } else if (!cancelled) {
+          setFavorited(false);
+        }
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Could not load listing");
@@ -67,6 +80,32 @@ export default function ListingDetailScreen() {
   const isOwnListing =
     !!user?.id && !!listing?.sellerId && user.id === listing.sellerId;
   const dominican = isDominicanListingCountry(listing?.country);
+
+  const onToggleFavorite = async () => {
+    if (!listingId) return;
+    if (!token) {
+      router.push("/auth/login");
+      return;
+    }
+    if (favBusy) return;
+    setFavBusy(true);
+    try {
+      if (favorited) {
+        await removeFavorite(listingId, { token });
+        setFavorited(false);
+      } else {
+        await addFavorite(listingId, { token });
+        setFavorited(true);
+      }
+    } catch (e) {
+      Alert.alert(
+        "Favorites",
+        e instanceof Error ? e.message : "Could not update favorites",
+      );
+    } finally {
+      setFavBusy(false);
+    }
+  };
 
   const onAddToCart = () => {
     if (!listing || !listingId) return;
@@ -115,7 +154,17 @@ export default function ListingDetailScreen() {
         <Text style={styles.topTitle} numberOfLines={1}>
           Listing
         </Text>
-        <View style={styles.iconBtn} />
+        <Pressable
+          style={styles.iconBtn}
+          onPress={onToggleFavorite}
+          accessibilityLabel={favorited ? "Remove favorite" : "Add favorite"}
+        >
+          <Feather
+            name="heart"
+            size={20}
+            color={favorited ? "#EF4444" : "#0F172A"}
+          />
+        </Pressable>
       </View>
 
       {loading ? (

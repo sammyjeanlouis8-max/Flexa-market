@@ -85,7 +85,7 @@ export default function AuthShell({
               </p>
             </div>
             <div className="auth-globe-wrap relative shrink-0 self-center">
-              <AuthGlobe className="h-[7.25rem] w-[7.25rem] sm:h-36 sm:w-36 lg:h-48 lg:w-48 xl:h-56 xl:w-56" />
+              <AuthGlobe className="h-[8rem] w-[8rem] sm:h-40 sm:w-40 lg:h-52 lg:w-52 xl:h-60 xl:w-60" />
             </div>
           </div>
         </aside>

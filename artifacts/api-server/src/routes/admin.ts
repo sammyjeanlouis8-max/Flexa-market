@@ -4,6 +4,7 @@ import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTabl
 import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte, like, isNotNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole, getOnlineUserCount } from "../middlewares/auth";
+import { countActiveSessions, getVisitorBreakdown } from "./analytics";
 import { hashPassword } from "../lib/auth";
 import { logAdminAction } from "../lib/auditLogger";
 import { sendEmailBatch, sendEmail } from "../lib/email";
@@ -316,12 +317,18 @@ function utcMonthPrefix(monthsAgo: number): string {
 }
 
 /**
- * GET /admin/analytics/traffic?days=30
- * Unique site visitors from site_daily_visits. Never fabricates traffic beyond empty days in range.
+ * GET /admin/analytics/traffic?days=30|period=today|7d|30d|year
+ * Unique site visitors + sessions/pageviews/guest-registered/country/device breakdown.
+ * Page refresh does not mint a new unique visitor (deduped per visitorKey + UTC day).
  */
 router.get("/admin/analytics/traffic", requireAdmin, async (req, res): Promise<void> => {
+  const period = String(req.query.period ?? "").trim().toLowerCase();
   const daysRaw = parseInt(String(req.query.days ?? "30"), 10);
-  const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 7), 90) : 30;
+  let days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 366) : 30;
+  if (period === "today" || period === "1d") days = 1;
+  else if (period === "7d" || period === "7") days = 7;
+  else if (period === "30d" || period === "30") days = 30;
+  else if (period === "year" || period === "365d") days = 365;
 
   const today = utcDateOffset(0);
   const yesterday = utcDateOffset(-1);
@@ -341,6 +348,8 @@ router.get("/admin/analytics/traffic", requireAdmin, async (req, res): Promise<v
       [visitsLastMonth],
       [visitsAllTime],
       seriesRows,
+      activeSessions,
+      breakdown,
     ] = await Promise.all([
       db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
         .from(siteDailyVisitsTable).where(eq(siteDailyVisitsTable.date, today)),
@@ -363,18 +372,31 @@ router.get("/admin/analytics/traffic", requireAdmin, async (req, res): Promise<v
       db.select({
         date: siteDailyVisitsTable.date,
         visits: siteDailyVisitsTable.visitCount,
+        sessions: siteDailyVisitsTable.sessionCount,
+        pageViews: siteDailyVisitsTable.pageViewCount,
       })
         .from(siteDailyVisitsTable)
         .where(and(gte(siteDailyVisitsTable.date, rangeStart), lte(siteDailyVisitsTable.date, today)))
         .orderBy(siteDailyVisitsTable.date),
+      countActiveSessions(),
+      getVisitorBreakdown(rangeStart, today),
     ]);
 
-    const byDate = new Map(seriesRows.map((r) => [r.date, Number(r.visits ?? 0)]));
-    const series: { date: string; visits: number }[] = [];
+    const byDate = new Map(seriesRows.map((r) => [r.date, r]));
+    const series: { date: string; visits: number; sessions: number; pageViews: number }[] = [];
     for (let i = days - 1; i >= 0; i--) {
       const date = utcDateOffset(-i);
-      series.push({ date, visits: byDate.get(date) ?? 0 });
+      const row = byDate.get(date);
+      series.push({
+        date,
+        visits: Number(row?.visits ?? 0),
+        sessions: Number(row?.sessions ?? 0),
+        pageViews: Number(row?.pageViews ?? 0),
+      });
     }
+
+    const rangeUnique = series.reduce((a, r) => a + r.visits, 0);
+    const rangeSessions = series.reduce((a, r) => a + r.sessions, 0);
 
     res.json({
       summary: {
@@ -386,10 +408,21 @@ router.get("/admin/analytics/traffic", requireAdmin, async (req, res): Promise<v
         visitsLastMonth: Number(visitsLastMonth?.total ?? 0),
         visitsAllTime: Number(visitsAllTime?.total ?? 0),
         onlineUsers: getOnlineUserCount(),
+        activeSessions,
+        activeNow: Math.max(activeSessions, getOnlineUserCount()),
+        rangeUniqueVisitors: rangeUnique,
+        rangeSessions,
+        rangePageViews: breakdown.pageViews,
+        rangeProductViews: breakdown.productViews,
+        guestVisitors: breakdown.guests,
+        registeredVisitors: breakdown.registered,
       },
       series,
-      range: { days, start: rangeStart, end: today },
-      note: "Unique visitors per UTC day. Country/device/source dimensions are not collected yet.",
+      countries: breakdown.countries,
+      devices: breakdown.devices,
+      sources: breakdown.sources,
+      range: { days, start: rangeStart, end: today, period: period || `${days}d` },
+      note: "Unique visitors are deduped per opaque visitorKey + UTC day. Page refreshes and SPA navigations create page views / session heartbeats, not new unique visitors. Guests and registered users are both counted.",
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? "Failed to load traffic analytics" });

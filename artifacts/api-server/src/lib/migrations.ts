@@ -3260,6 +3260,73 @@ export async function runStartupMigrations(): Promise<void> {
     sql: "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS shipping_country text",
   });
 
+  // ── Privacy-conscious visitor sessions + page views (Control Center) ──
+  migrations.push({
+    name: "site_sessions.create",
+    sql: `CREATE TABLE IF NOT EXISTS site_sessions (
+      session_id TEXT PRIMARY KEY,
+      visitor_key TEXT NOT NULL,
+      user_id INTEGER,
+      is_registered BOOLEAN NOT NULL DEFAULT FALSE,
+      country TEXT,
+      device TEXT,
+      traffic_source TEXT,
+      landing_path TEXT,
+      page_views INTEGER NOT NULL DEFAULT 1,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      date TEXT NOT NULL
+    )`,
+  });
+  migrations.push({
+    name: "site_sessions.visitor_date_idx",
+    sql: `CREATE INDEX IF NOT EXISTS site_sessions_visitor_date_idx ON site_sessions(visitor_key, date)`,
+  });
+  migrations.push({
+    name: "site_sessions.last_seen_idx",
+    sql: `CREATE INDEX IF NOT EXISTS site_sessions_last_seen_idx ON site_sessions(last_seen_at)`,
+  });
+  migrations.push({
+    name: "site_sessions.date_idx",
+    sql: `CREATE INDEX IF NOT EXISTS site_sessions_date_idx ON site_sessions(date)`,
+  });
+  migrations.push({
+    name: "site_page_views.create",
+    sql: `CREATE TABLE IF NOT EXISTS site_page_views (
+      id BIGSERIAL PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      visitor_key TEXT NOT NULL,
+      path TEXT NOT NULL,
+      is_product BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      date TEXT NOT NULL
+    )`,
+  });
+  migrations.push({
+    name: "site_page_views.date_idx",
+    sql: `CREATE INDEX IF NOT EXISTS site_page_views_date_idx ON site_page_views(date)`,
+  });
+  migrations.push({
+    name: "site_page_views.session_idx",
+    sql: `CREATE INDEX IF NOT EXISTS site_page_views_session_idx ON site_page_views(session_id)`,
+  });
+  migrations.push({
+    name: "site_visit_dedupe.meta_cols",
+    sql: `ALTER TABLE site_visit_dedupe
+      ADD COLUMN IF NOT EXISTS country TEXT,
+      ADD COLUMN IF NOT EXISTS device TEXT,
+      ADD COLUMN IF NOT EXISTS is_registered BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS traffic_source TEXT`,
+  });
+  migrations.push({
+    name: "site_daily_visits.extra_counters",
+    sql: `ALTER TABLE site_daily_visits
+      ADD COLUMN IF NOT EXISTS session_count INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS page_view_count INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS guest_visitors INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS registered_visitors INTEGER NOT NULL DEFAULT 0`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

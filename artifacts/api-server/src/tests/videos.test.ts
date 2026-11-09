@@ -15,6 +15,11 @@ vi.mock("@workspace/db", async (importOriginal) => {
   };
 });
 
+vi.mock("../lib/boostAnalytics", () => ({
+  recordBoostEvent: vi.fn(async () => ({ inserted: true })),
+  normalizeTrafficSource: vi.fn(() => "other"),
+}));
+
 import videosRouter, { isVideoVisibleForCountries, resolveViewerScope } from "../routes/videos";
 
 describe("promo video analytics", () => {
@@ -59,7 +64,7 @@ describe("promo video analytics", () => {
     const response = await fetch(`${baseUrl}/api/videos/7/buy-click`, { method: "POST" });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true });
+    await expect(response.json()).resolves.toEqual({ ok: true, counted: true });
     expect(dbMocks.execute).toHaveBeenCalledOnce();
     expect(dbMocks.select).not.toHaveBeenCalled();
   });
@@ -165,6 +170,22 @@ describe("promo video analytics", () => {
     } as Request, "USA");
     expect(regularUser.visibleCountries).toEqual(["Haiti"]);
     expect(regularUser.globalCountryAccess).toBe(false);
+
+    // Guest browsing USA must not receive Haiti-only CF fallback when country is set.
+    const guestUsa = resolveViewerScope({
+      user: undefined,
+      headers: { "cf-ipcountry": "HT" },
+    } as Request, "USA");
+    expect(guestUsa.visibleCountries).toEqual(["USA"]);
+    expect(guestUsa.globalCountryAccess).toBe(false);
+
+    // Guest cannot force All Countries via empty scope tricks.
+    const guestAllDenied = resolveViewerScope({
+      user: undefined,
+      headers: {},
+    } as Request, "", { forceAllCountries: true });
+    expect(guestAllDenied.globalCountryAccess).toBe(false);
+    expect(guestAllDenied.isSuperAdmin).toBe(false);
 
     const superAdmin = resolveViewerScope({
       user: { role: "superadmin", isAdmin: true, isSuperAdmin: true, country: "Haiti" },

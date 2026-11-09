@@ -332,7 +332,10 @@
         // while still drawing under the iOS home indicator — that clips Sell
         // action buttons in half. Heuristic only when env() is unavailable.
         function setSab(px) {
-          root.style.setProperty('--sab', Math.max(0, Math.round(px)) + 'px');
+          // Cap at 48px — home indicator ~34, Android gesture/nav ≤48.
+          // Mixing --sat (59 Dynamic Island) into --sab previously created a
+          // tall black band that covered Promotional Videos tab buttons.
+          root.style.setProperty('--sab', Math.max(0, Math.min(48, Math.round(px))) + 'px');
         }
         var isAppleMobile = !isAndroid && /iPhone|iPad|iPod/i.test(navigator.userAgent);
         if (typeof window.__flexaNativeSafeBottom === 'number' && window.__flexaNativeSafeBottom > 0) {

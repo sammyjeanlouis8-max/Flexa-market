@@ -153,6 +153,26 @@ html.video-feed-immersive #root {
   background-color: #000 !important;
 }
 
+/*
+ * Promotional Videos bottom nav (iPhone WebView).
+ * Icon row and safe-area spacer are siblings — never one padded box — so the
+ * home-indicator band cannot paint over / clip the five tab buttons.
+ */
+.promo-videos-bottom-nav {
+  box-sizing: border-box;
+  background-color: #000 !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  /* Stay above feed chrome; never get trapped under a black shell overlay */
+  z-index: 70;
+}
+.promo-videos-bottom-nav > [aria-hidden="true"] {
+  /* Safe spacer only — cap runaway --sab heuristics from native inject */
+  max-height: 48px;
+  flex-shrink: 0;
+  background-color: #000 !important;
+}
+
 main {
   flex: 1;
   width: 100%;

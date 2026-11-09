@@ -7,6 +7,7 @@ export const BOOST_IMPRESSIONS_PER_USD = 200;
 
 export type PromaxViewer = {
   country?: string | null;
+  state?: string | null;
   location?: string | null;
   gender?: string | null;
   dateOfBirth?: Date | string | null;
@@ -15,6 +16,7 @@ export type PromaxViewer = {
 export type PromaxBoostAudience = {
   listingCountry?: string | null;
   audienceCountry?: string | null;
+  audienceState?: string | null;
   audienceCity?: string | null;
   audienceCities?: string[] | null;
   audienceGender?: string | null;
@@ -47,6 +49,12 @@ export function matchesPromaxAudience(
   }
   if (viewer.country && !isBoostAudienceCountryCompatible(boost.audienceCountry, viewer.country)) {
     return false;
+  }
+
+  const viewerState = (viewer.state ?? "").toLowerCase().trim();
+  if (viewerState && boost.audienceState) {
+    const states = boost.audienceState.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    if (states.length > 0 && !states.includes(viewerState)) return false;
   }
 
   const location = (viewer.location ?? "").toLowerCase();

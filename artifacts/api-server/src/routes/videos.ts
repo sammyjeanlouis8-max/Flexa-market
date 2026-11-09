@@ -249,8 +249,17 @@ function buildVideoListingEligibility(alias: string, scope: VideoViewerScope): R
         )`
       : sql`false`
     : sql`true`;
+  // Multi-department: boost_audience_state may be comma-separated ("Ouest,Nord").
   const regularStateCondition = !scope.isAdmin && !scope.isSuperAdmin && scope.state
-    ? sql`(${l("boost_audience_state")} IS NULL OR lower(${l("boost_audience_state")}) = ${scope.state.toLowerCase()})`
+    ? sql`(
+        ${l("boost_audience_state")} IS NULL
+        OR lower(btrim(${l("boost_audience_state")})) = ${scope.state.toLowerCase()}
+        OR EXISTS (
+          SELECT 1
+          FROM unnest(string_to_array(${l("boost_audience_state")}, ',')) AS s(val)
+          WHERE lower(btrim(s.val)) = ${scope.state.toLowerCase()}
+        )
+      )`
     : sql`true`;
   const regularCityCondition = !scope.isAdmin && !scope.isSuperAdmin && scope.city
     ? sql`(

@@ -213,6 +213,7 @@ export default function BoostPage() {
 
   const [audStates, setAudStates]               = useState<string[]>([]);
   const [audCities, setAudCities]               = useState<string[]>([]);
+  const [audPlaces, setAudPlaces]               = useState<import("@/lib/geoPlaces").GeoPlace[]>([]);
   const [audCityInput, setAudCityInput]         = useState<string>("");
   const [audNeighborhood, setAudNeighborhood]   = useState<string>("");
   const [audRadiusKm, setAudRadiusKm]           = useState<number | null>(10);
@@ -478,6 +479,7 @@ export default function BoostPage() {
     city: ((adminCity && adminCity !== "__all__") ? adminCity : audCities[0]) ?? null,
     neighborhood: audNeighborhood.trim() || null,
     radiusKm: audRadiusKm,
+    places: audPlaces.length > 0 ? audPlaces : null,
     audienceType,
     audienceName: audienceName.trim() || null,
     ageMin,
@@ -485,7 +487,7 @@ export default function BoostPage() {
     gender,
     objective,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [effectiveAudienceCountry, user?.country, adminCity, audStates, audCities, audNeighborhood, audRadiusKm, audienceType, audienceName, ageMin, ageMax, gender, objective]);
+  }), [effectiveAudienceCountry, user?.country, adminCity, audStates, audCities, audPlaces, audNeighborhood, audRadiusKm, audienceType, audienceName, ageMin, ageMax, gender, objective]);
 
   useEffect(() => {
     if (step !== "budget") return;
@@ -550,7 +552,13 @@ export default function BoostPage() {
       return;
     }
     // Department only required for custom audience in Haiti — inline, scroll to map
-    if (effectiveAudienceCountry === "Haiti" && audienceType === "custom" && audStates.length === 0) {
+    if (
+      effectiveAudienceCountry === "Haiti"
+      && audienceType === "custom"
+      && audStates.length === 0
+      && audCities.length === 0
+      && audPlaces.length === 0
+    ) {
       const msg = t("boost.geoSelectAreaError", {
         defaultValue: "Please select at least one geographic area to continue.",
       });
@@ -569,7 +577,13 @@ export default function BoostPage() {
       toast({ title: t("boost.videoStillUploading", { defaultValue: "Your video is still uploading. Wait until it finishes before continuing." }), variant: "destructive" });
       return;
     }
-    if (effectiveAudienceCountry === "Haiti" && audienceType === "custom" && audStates.length === 0) {
+    if (
+      effectiveAudienceCountry === "Haiti"
+      && audienceType === "custom"
+      && audStates.length === 0
+      && audCities.length === 0
+      && audPlaces.length === 0
+    ) {
       const msg = t("boost.geoSelectAreaError", {
         defaultValue: "Please select at least one geographic area to continue.",
       });
@@ -1468,6 +1482,8 @@ export default function BoostPage() {
             setAudStates={setAudStates}
             audCities={audCities}
             setAudCities={setAudCities}
+            audPlaces={audPlaces}
+            setAudPlaces={setAudPlaces}
             audRadiusKm={audRadiusKm ?? 10}
             setAudRadiusKm={(v) => setAudRadiusKm(v)}
             ageMin={ageMin}
@@ -1479,7 +1495,7 @@ export default function BoostPage() {
             geoError={geoError}
             onGeoErrorClear={() => setGeoError(null)}
             estimatedLabel={undefined}
-            estimatedSize={plan === "7day" || audStates.length >= 3 || audCities.length >= 3 ? "large" : audienceType === "advantage_plus" ? "medium" : "small"}
+            estimatedSize={plan === "7day" || audStates.length >= 3 || audCities.length >= 3 || audPlaces.length >= 3 ? "large" : audienceType === "advantage_plus" ? "medium" : "small"}
           />
 
           {listing && (

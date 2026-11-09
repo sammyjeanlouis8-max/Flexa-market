@@ -1668,10 +1668,14 @@ function VideoCard({
         {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
       </button>
 
-      {/* ── Bottom gradient ── */}
+      {/* ── Bottom gradient (light only — a heavy slab here looked like the
+          iOS WebView "ba nwa" under the promo tab buttons) ── */}
       <div
         className="absolute inset-x-0 bottom-0 pointer-events-none"
-        style={{ height: "260px", background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)" }}
+        style={{
+          height: "140px",
+          background: "linear-gradient(to top, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.12) 45%, transparent 100%)",
+        }}
       />
 
       {/* ── Pause overlay ── */}
@@ -2724,7 +2728,7 @@ export default function VideoFeed() {
 
       {/* Viewport-fixed sibling of the overflow:hidden video column — never nested
           inside it, or WebKit clips the bar and produces the intermittent black overlay. */}
-      <PromoVideosBottomNav active="discover" onAdd={openWizard} />
+      <PromoVideosBottomNav active="discover" onAdd={openWizard} immersive />
 
       <BoostWizard open={wizardOpen} onClose={() => { closeWizard(); fetchPage(1, true); }} />
     </div>

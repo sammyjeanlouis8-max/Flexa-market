@@ -272,9 +272,13 @@ function normalizeCountryName(country: string | null | undefined): string {
   const c = (country || "").trim();
   if (!c) return "";
   if (/ha[iï]ti/i.test(c)) return "Haiti";
-  if (/united states|usa/i.test(c)) return "USA";
+  if (/united states|^usa$|u\.s\.a/i.test(c)) return "USA";
   if (/dominican/i.test(c)) return "Dominican Republic";
   return c;
+}
+
+function countriesEquivalent(a: string, b: string): boolean {
+  return fold(normalizeCountryName(a)) === fold(normalizeCountryName(b));
 }
 
 async function photonSearch(opts: GeoSearchOptions): Promise<GeoPlace[]> {
@@ -308,7 +312,7 @@ async function photonSearch(opts: GeoSearchOptions): Promise<GeoPlace[]> {
     const props = f.properties ?? {};
     const country = normalizeCountryName(String(props.country || ""));
     const code = String(props.countrycode || "").toUpperCase();
-    if (wantCountry && country && fold(country) !== fold(wantCountry) && !(wantCode && code === wantCode)) {
+    if (wantCountry && country && !countriesEquivalent(country, wantCountry) && !(wantCode && code === wantCode)) {
       continue;
     }
     if (wantCode && code && code !== wantCode && !wantCountry) continue;

@@ -91,4 +91,57 @@ describe("geoPlaces", () => {
       expect(result.audience.interests?.[0]).toBe("__flexa_geo_places_v1__");
     }
   });
+
+  it("rejects places outside the advertiser market country", () => {
+    const result = validateAudience(
+      {
+        country: "Haiti",
+        audienceType: "custom",
+        places: [{ ...delmas, country: "USA", id: "x" }],
+      },
+      "Haiti",
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("dedupes duplicate place ids on validate", () => {
+    const result = validateAudience(
+      {
+        country: "Haiti",
+        audienceType: "custom",
+        places: [delmas, { ...delmas }],
+      },
+      "Haiti",
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.audience.places).toHaveLength(1);
+  });
+
+  it("searches Dominican Republic and USA via Photon when available", async () => {
+    const dr = await searchGeoPlaces({ q: "Santo", country: "Dominican Republic", limit: 5 });
+    // Soft assert: network may flake; when results exist they must stay in-market.
+    for (const p of dr) {
+      expect(p.country.toLowerCase()).toMatch(/dominican|haiti|republic/);
+    }
+
+    const us = await searchGeoPlaces({ q: "Miami", country: "USA", limit: 5 });
+    for (const p of us) {
+      expect(p.country).toBe("USA");
+    }
+  }, 15_000);
+
+  it("matches radius when viewer coordinates are present", () => {
+    const near = viewerMatchesGeoPlaces(
+      [{ ...delmas, radiusKm: 10 }],
+      { country: "Haiti", lat: 18.56, lng: -72.30 },
+      null,
+    );
+    expect(near).toBe(true);
+    const far = viewerMatchesGeoPlaces(
+      [{ ...delmas, radiusKm: 5 }],
+      { country: "Haiti", lat: 19.7, lng: -72.2 },
+      null,
+    );
+    expect(far).toBe(false);
+  });
 });

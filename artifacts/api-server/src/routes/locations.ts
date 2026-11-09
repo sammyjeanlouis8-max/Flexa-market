@@ -1,15 +1,26 @@
 import { Router, type IRouter } from "express";
+import rateLimit from "express-rate-limit";
 import { searchGeoPlaces } from "../lib/geoPlaces";
 import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
+/** Stricter cap for upstream Photon / local search — no paid API keys involved. */
+const locationSearchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many location searches. Please wait a moment." },
+});
+
 /**
  * GET /api/locations/autocomplete?q=&country=&limit=&lang=
  * Worldwide geographic autocomplete for Booster audience targeting.
  * Restricted to authenticated advertisers; results filtered to account country when provided.
+ * No third-party API keys are required or exposed (Photon + Haiti local index).
  */
-router.get("/locations/autocomplete", requireAuth, async (req, res): Promise<void> => {
+router.get("/locations/autocomplete", requireAuth, locationSearchLimiter, async (req, res): Promise<void> => {
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   if (q.length < 1) {
     res.json({ results: [] });

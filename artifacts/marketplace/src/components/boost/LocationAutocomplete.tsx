@@ -97,27 +97,45 @@ export function LocationAutocomplete({
   return (
     <div ref={wrapRef} className={cn("space-y-2", className)} data-testid="boost-location-autocomplete">
       {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1.5" data-testid="boost-selected-locations">
-          {selected.map((p) => (
-            <span
-              key={p.id}
-              className="fb-tag inline-flex items-center gap-1 max-w-full"
-              title={p.displayName}
-            >
-              <MapPin className="h-3 w-3 shrink-0 opacity-70" />
-              <span className="truncate">{p.displayName || p.name}</span>
-              <button
-                type="button"
-                aria-label={t("boost.removeLocation", {
-                  defaultValue: "Remove {{name}}",
-                  name: p.name,
-                })}
-                onClick={() => removePlace(p.id)}
-              >
-                <X className="h-3 w-3" />
-              </button>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-slate-500">
+              {t("boost.selectedLocations", {
+                defaultValue: "Selected ({{count}})",
+                count: selected.length,
+              })}
             </span>
-          ))}
+            <button
+              type="button"
+              className="fb-util-btn"
+              onClick={() => onChange([])}
+              data-testid="boost-clear-locations"
+            >
+              {t("boost.clearAll", { defaultValue: "Clear All" })}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5" data-testid="boost-selected-locations">
+            {selected.map((p) => (
+              <span
+                key={p.id}
+                className="fb-tag inline-flex items-center gap-1 max-w-full"
+                title={p.displayName}
+              >
+                <MapPin className="h-3 w-3 shrink-0 opacity-70" />
+                <span className="truncate">{p.displayName || p.name}</span>
+                <button
+                  type="button"
+                  aria-label={t("boost.removeLocation", {
+                    defaultValue: "Remove {{name}}",
+                    name: p.name,
+                  })}
+                  onClick={() => removePlace(p.id)}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 

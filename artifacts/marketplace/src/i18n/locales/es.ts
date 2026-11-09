@@ -3433,6 +3433,7 @@ export default {
   videoFeed: {
     title: "Videos promocionales",
     filterAll: "Todos",
+    filterAllVideos: "Todos los videos",
     filterTrending: "🔥 Tendencias",
     filterNew: "✨ Nuevos",
     filterMine: "📹 Mis videos",

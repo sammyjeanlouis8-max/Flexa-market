@@ -269,16 +269,16 @@ export default function VideoDiscover() {
     });
   }, [videos, durations]);
 
-  const openWatch = (videoId: number) => {
+  const openWatch = (videoId?: number) => {
     try {
       sessionStorage.setItem(SCROLL_KEY, String(window.scrollY || 0));
       sessionStorage.setItem(SEED_KEY, String(seedRef.current));
     } catch { /* ok */ }
     const params = new URLSearchParams({
-      video: String(videoId),
-      sort,
+      sort: videoId ? sort : "all",
       seed: String(seedRef.current),
     });
+    if (videoId) params.set("video", String(videoId));
     if (debouncedQ) params.set("q", debouncedQ);
     navigate(`/videos/watch?${params}`);
   };
@@ -288,6 +288,11 @@ export default function VideoDiscover() {
     { id: "trending" as const, label: t("videoFeed.filterTrending", { defaultValue: "🔥 Trending" }) },
     { id: "new" as const, label: t("videoFeed.filterNew", { defaultValue: "✨ New" }) },
     { id: "mine" as const, label: t("videoFeed.filterMine", { defaultValue: "📹 My Videos" }) },
+    {
+      id: "all-videos" as const,
+      label: t("videoFeed.filterAllVideos", { defaultValue: "All Videos" }),
+      opensFeed: true as const,
+    },
   ]), [t, sort, totalHint, videos.length]);
 
   const emptyTitle = sort === "mine"
@@ -343,7 +348,8 @@ export default function VideoDiscover() {
 
         <div className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-3 pb-3 scrollbar-none">
           {filters.map(f => {
-            const active = sort === f.id;
+            const opensFeed = "opensFeed" in f && f.opensFeed;
+            const active = !opensFeed && sort === f.id;
             const label = f.id === "all" && typeof f.count === "number"
               ? `${t("videoFeed.filterAll", { defaultValue: "All" })} (${Math.max(f.count, videos.length)})`
               : f.label;
@@ -352,11 +358,15 @@ export default function VideoDiscover() {
                 key={f.id}
                 type="button"
                 onClick={() => {
+                  if (opensFeed) {
+                    openWatch();
+                    return;
+                  }
                   if (f.id === "mine" && !user) {
                     navigate("/auth/login");
                     return;
                   }
-                  setSort(f.id);
+                  setSort(f.id as DiscoverSort);
                 }}
                 className={cn(
                   "shrink-0 rounded-full border px-3.5 py-1.5 text-[12px] font-bold transition-colors",
@@ -365,6 +375,9 @@ export default function VideoDiscover() {
                     : "border-border bg-white text-foreground hover:bg-muted/60 dark:bg-card",
                 )}
                 data-testid={`video-filter-${f.id}`}
+                aria-label={opensFeed
+                  ? t("videoFeed.filterAllVideos", { defaultValue: "All Videos" })
+                  : undefined}
               >
                 {label}
               </button>

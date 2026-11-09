@@ -111,16 +111,82 @@ export function resolveViewerScope(req: Parameters<typeof optionalAuth>[0], requ
   };
 }
 
+/**
+ * Pure country gate for promo videos (mirrors SQL in buildVideoListingEligibility).
+ * - Super / global-country admin → all countries.
+ * - Scoped admin / regular user → listing.country must be in visibleCountries.
+ * - Audience `ALL` / null means unrestricted cities within that listing country.
+ * - Comma/pipe-separated audience lists match when any entry is visible.
+ */
+export function isVideoVisibleForCountries(
+  listingCountry: string | null | undefined,
+  boostAudienceCountry: string | null | undefined,
+  visibleCountries: string[],
+  globalCountryAccess: boolean,
+): boolean {
+  if (globalCountryAccess) return true;
+  if (visibleCountries.length === 0 || visibleCountries.includes("__denied__")) return false;
+  const allowed = new Set(visibleCountries.map(c => c.trim().toLowerCase()).filter(Boolean));
+  const audienceRaw = (boostAudienceCountry ?? "").trim();
+  const audience = audienceRaw.toLowerCase();
+  const audienceParts = audienceRaw
+    ? audienceRaw.split(/[,|]/).map(p => p.trim().toLowerCase()).filter(Boolean)
+    : [];
+  const listing = (listingCountry ?? "").trim().toLowerCase();
+  // Prefer listing.country; fall back to a concrete audience country when listing
+  // country was never persisted (legacy video-only boost rows).
+  const effectiveListing = listing
+    || (audience && audience !== "all" && audienceParts.length === 1 ? audienceParts[0] : "");
+  if (!effectiveListing || !allowed.has(effectiveListing)) return false;
+  if (!audienceRaw || audience === "all") return true;
+  if (allowed.has(audience)) return true;
+  return audienceParts.some(part => part === "all" || allowed.has(part));
+}
+
 function buildVideoListingEligibility(alias: string, scope: VideoViewerScope): ReturnType<typeof sql> {
   const l = (column: string) => sql.raw(`${alias}.${column}`);
+  // Listing marketplace country is the primary gate. Audience ALL / multi-target
+  // lists only refine within eligible listing countries — never cross-border.
   const countryCondition = scope.globalCountryAccess
     ? sql`true`
     : scope.visibleCountries.length === 0 || scope.visibleCountries.includes("__denied__")
       ? sql`false`
-      : sql`lower(coalesce(${l("boost_audience_country")}, ${l("country")}, '')) in (${sql.join(
-          scope.visibleCountries.map(country => sql`${country.toLowerCase()}`),
-          sql`,`,
-        )})`;
+      : sql`(
+          lower(coalesce(
+            nullif(btrim(${l("country")}), ''),
+            CASE
+              WHEN ${l("boost_audience_country")} IS NULL
+                OR btrim(${l("boost_audience_country")}) = ''
+                OR upper(btrim(${l("boost_audience_country")})) = 'ALL'
+                OR position(',' in ${l("boost_audience_country")}) > 0
+                OR position('|' in ${l("boost_audience_country")}) > 0
+              THEN NULL
+              ELSE btrim(${l("boost_audience_country")})
+            END,
+            ''
+          )) in (${sql.join(
+            scope.visibleCountries.map(country => sql`${country.toLowerCase()}`),
+            sql`,`,
+          )})
+          AND (
+            ${l("boost_audience_country")} IS NULL
+            OR btrim(${l("boost_audience_country")}) = ''
+            OR upper(btrim(${l("boost_audience_country")})) = 'ALL'
+            OR lower(btrim(${l("boost_audience_country")})) in (${sql.join(
+              scope.visibleCountries.map(country => sql`${country.toLowerCase()}`),
+              sql`,`,
+            )})
+            OR EXISTS (
+              SELECT 1
+              FROM unnest(regexp_split_to_array(${l("boost_audience_country")}, '[,|]')) AS audience_part
+              WHERE lower(btrim(audience_part)) = 'all'
+                 OR lower(btrim(audience_part)) in (${sql.join(
+                   scope.visibleCountries.map(country => sql`${country.toLowerCase()}`),
+                   sql`,`,
+                 )})
+            )
+          )
+        )`;
   const adminCityCondition = scope.isAdmin && !scope.isSuperAdmin && scope.hasCityScope
     ? scope.scopeCities.length > 0
       ? sql`(

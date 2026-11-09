@@ -184,6 +184,7 @@ export default {
   videoFeed: {
     title: "Promotional Videos",
     filterAll: "All",
+    filterAllVideos: "All Videos",
     filterTrending: "🔥 Trending",
     filterNew: "✨ New",
     filterMine: "📹 My Videos",

@@ -2559,6 +2559,7 @@ export default {
 },
   videoFeed: {
     title: "Solicitações pendentes — Ação necessária",
+    filterAllVideos: "Todos os vídeos",
     loading: "Carregando…",
     emptyTitle: "Seu carrinho está vazio!",
     emptyDesc: "Impulsione um anúncio para aparecer no feed de vídeo",

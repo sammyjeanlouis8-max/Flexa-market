@@ -144,6 +144,7 @@ export default {
   videoFeed: {
     title: "Videyo Pwomosyon",
     filterAll: "Tout",
+    filterAllVideos: "Tout Videyo yo",
     filterTrending: "🔥 Tandans",
     filterNew: "✨ Nouvo",
     filterMine: "📹 Videyo mwen",

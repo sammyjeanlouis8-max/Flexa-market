@@ -15,7 +15,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
   };
 });
 
-import videosRouter, { resolveViewerScope } from "../routes/videos";
+import videosRouter, { isVideoVisibleForCountries, resolveViewerScope } from "../routes/videos";
 
 describe("promo video analytics", () => {
   let server: Server;
@@ -158,5 +158,32 @@ describe("promo video analytics", () => {
     } as Request);
     expect(canonicalLegacyUser.isSuperAdmin).toBe(false);
     expect(canonicalLegacyUser.isAdmin).toBe(true);
+
+    const regularUser = resolveViewerScope({
+      user: { role: "user", isAdmin: false, isSuperAdmin: false, country: "Haiti" },
+      headers: {},
+    } as Request, "USA");
+    expect(regularUser.visibleCountries).toEqual(["Haiti"]);
+    expect(regularUser.globalCountryAccess).toBe(false);
+
+    const superAdmin = resolveViewerScope({
+      user: { role: "superadmin", isAdmin: true, isSuperAdmin: true, country: "Haiti" },
+      headers: {},
+    } as Request);
+    expect(superAdmin.isSuperAdmin).toBe(true);
+    expect(superAdmin.globalCountryAccess).toBe(true);
+  });
+
+  it("scopes promo video visibility by listing country and audience ALL / multi-target", () => {
+    expect(isVideoVisibleForCountries("Haiti", "ALL", ["Haiti"], false)).toBe(true);
+    expect(isVideoVisibleForCountries("USA", "ALL", ["Haiti"], false)).toBe(false);
+    expect(isVideoVisibleForCountries("Haiti", "Haiti", ["Haiti"], false)).toBe(true);
+    expect(isVideoVisibleForCountries("Haiti", "USA", ["Haiti"], false)).toBe(false);
+    expect(isVideoVisibleForCountries("Dominican Republic", "Haiti,Dominican Republic", ["Haiti", "Dominican Republic"], false)).toBe(true);
+    expect(isVideoVisibleForCountries("USA", "Haiti|USA", ["Haiti"], false)).toBe(false);
+    expect(isVideoVisibleForCountries("Canada", null, [], true)).toBe(true);
+    expect(isVideoVisibleForCountries("Haiti", "ALL", ["__denied__"], false)).toBe(false);
+    expect(isVideoVisibleForCountries(null, "Haiti", ["Haiti"], false)).toBe(true);
+    expect(isVideoVisibleForCountries(null, "ALL", ["Haiti"], false)).toBe(false);
   });
 });

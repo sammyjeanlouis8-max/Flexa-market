@@ -322,7 +322,8 @@
   text-transform: uppercase;
 }
 .bp-badge.active { background: #dcfce7; color: #166534; }
-.bp-badge.completed { background: #e2e8f0; color: #475569; }
+.bp-badge.completed,
+.bp-badge.expired { background: #fee2e2; color: #b91c1c; }
 .bp-badge.draft { background: #fef3c7; color: #92400e; }
 
 .bp-upload {

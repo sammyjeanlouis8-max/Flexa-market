@@ -107,6 +107,8 @@ export function shouldShowAdminCountryFlags(
   return parseAdminScopeCountriesList(user).length > 1;
 }
 
+export type AdminVideoFeedParams = { country?: string; allCountries?: "1" };
+
 /**
  * Query params for /api/videos/feed under the admin country context.
  * Regular users omit these — the server uses profile / geo.
@@ -114,7 +116,7 @@ export function shouldShowAdminCountryFlags(
 export function buildAdminVideoFeedParams(
   user: ScopeUser,
   effectiveCountry: string | null,
-): { country?: string; allCountries?: "1" } {
+): AdminVideoFeedParams {
   if (!isAdminUser(user)) return {};
   if (effectiveCountry) return { country: effectiveCountry };
   // All Countries — SA / global-country admin need the explicit unlock so a
@@ -124,4 +126,9 @@ export function buildAdminVideoFeedParams(
     return { allCountries: "1" };
   }
   return {};
+}
+
+/** Stable key for React deps / cache busting when admin country scope changes. */
+export function adminVideoFeedParamsKey(params: AdminVideoFeedParams): string {
+  return `${params.country ?? ""}|${params.allCountries ?? ""}`;
 }

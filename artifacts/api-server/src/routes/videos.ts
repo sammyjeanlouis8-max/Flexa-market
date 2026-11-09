@@ -296,6 +296,13 @@ function buildVideoListingEligibility(alias: string, scope: VideoViewerScope): R
       )`
     : sql`true`;
 
+  // Hidden "ghost" promo listings come from two creators:
+  //   1. Legacy /boost/video-only → description = 'Video promotion boost'
+  //   2. Booster Pro /booster/campaigns → description = ad title/body
+  // Require price=0 + promo video (already gated below) so we never leak
+  // unrelated hidden inventory. Do NOT require the legacy description string
+  // or Booster Pro campaigns stay Active in /booster/campaigns but All (0)
+  // in Discover.
   return sql`(
     ${l("moderation_status")} = 'approved'
     AND (
@@ -306,7 +313,6 @@ function buildVideoListingEligibility(alias: string, scope: VideoViewerScope): R
       OR (
         ${l("status")} = 'hidden'
         AND ${l("price")} = 0
-        AND ${l("description")} = 'Video promotion boost'
       )
     )
     AND ${l("is_boosted")} = true
@@ -318,6 +324,36 @@ function buildVideoListingEligibility(alias: string, scope: VideoViewerScope): R
     AND ${regularStateCondition}
     AND ${regularCityCondition}
   )`;
+}
+
+/**
+ * Pure listing-shape gate mirroring buildVideoListingEligibility (sans geo).
+ * Used by unit tests so Booster Pro ghost ads cannot regress to All (0).
+ */
+export function isEligiblePromoVideoListing(listing: {
+  moderationStatus?: string | null;
+  status?: string | null;
+  stockQuantity?: number | null;
+  price?: number | null;
+  isBoosted?: boolean | null;
+  boostVideoUrl?: string | null;
+  boostExpiresAt?: Date | string | null;
+  boostStartAt?: Date | string | null;
+}, now = new Date()): boolean {
+  if ((listing.moderationStatus ?? "") !== "approved") return false;
+  if (!listing.isBoosted) return false;
+  if (!listing.boostVideoUrl) return false;
+  const expiresAt = listing.boostExpiresAt ? new Date(listing.boostExpiresAt) : null;
+  if (!expiresAt || !(expiresAt.getTime() > now.getTime())) return false;
+  const startAt = listing.boostStartAt ? new Date(listing.boostStartAt) : null;
+  if (startAt && startAt.getTime() > now.getTime()) return false;
+  if (listing.status === "available") {
+    return listing.stockQuantity == null || listing.stockQuantity > 0;
+  }
+  if (listing.status === "hidden") {
+    return Number(listing.price ?? 0) === 0;
+  }
+  return false;
 }
 
 function buildActivePaidBoostEligibility(
@@ -457,21 +493,14 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     const searchQ = String(req.query.q ?? "").trim().slice(0, 80);
 
     // ── Mandatory boost conditions (cannot be bypassed) ─────────────────────
-    // Requirement §2: isBoosted, within [boostStartAt, boostExpiresAt], video present.
-    // Requirement §6: Boost status is irrelevant to boost audience; non-boosted
-    //                 videos MUST NOT appear.
-    const conditions: Parameters<typeof and>[0][] = [
-      // The complete paid/approved/visibility/audience contract is shared by
-      // the feed and the atomic analytics updates below.
-      buildVideoListingEligibility("listings", viewerScope) as ReturnType<typeof eq>,
-      sql`EXISTS (
-        SELECT 1
-        FROM boosts active_boost
-        WHERE ${buildActivePaidBoostEligibility("listings", "active_boost", viewerScope)}
-      )` as ReturnType<typeof eq>,
-    ];
+    // Public Discover (all/trending/new): active paid boost only — expired
+    // campaigns stop automatic promotional playback.
+    // My Videos (sort=mine): owner's promo library including expired so they
+    // can preview and re-boost the same video without re-uploading. Super Admin
+    // uses the same library rules for their own uploads; country scope still
+    // applies when an admin country filter is selected.
+    const conditions: Parameters<typeof and>[0][] = [];
 
-    // My Videos — authenticated owner's active promotional boosts only
     if (sort === "mine") {
       if (!req.userId) {
         res.json({
@@ -484,7 +513,42 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
         });
         return;
       }
-      conditions.push(eq(listingsTable.sellerId, req.userId) as ReturnType<typeof eq>);
+      const l = (column: string) => sql.raw(`listings.${column}`);
+      const countryCondition = viewerScope.globalCountryAccess
+        ? sql`true`
+        : viewerScope.visibleCountries.length === 0 || viewerScope.visibleCountries.includes("__denied__")
+          ? sql`false`
+          : sql`lower(coalesce(nullif(btrim(${l("country")}), ''), '')) in (${sql.join(
+              viewerScope.visibleCountries.map(country => sql`${country.toLowerCase()}`),
+              sql`,`,
+            )})`;
+      conditions.push(
+        eq(listingsTable.sellerId, req.userId) as ReturnType<typeof eq>,
+        sql`${listingsTable.moderationStatus} = 'approved'` as ReturnType<typeof eq>,
+        sql`${listingsTable.boostVideoUrl} IS NOT NULL` as ReturnType<typeof eq>,
+        sql`(
+          (
+            ${listingsTable.status} = 'available'
+            AND (${listingsTable.stockQuantity} IS NULL OR ${listingsTable.stockQuantity} > 0)
+          )
+          OR (
+            ${listingsTable.status} = 'hidden'
+            AND ${listingsTable.price} = 0
+          )
+        )` as ReturnType<typeof eq>,
+        countryCondition as ReturnType<typeof eq>,
+      );
+    } else {
+      // Requirement §2: isBoosted, within [boostStartAt, boostExpiresAt], video present.
+      // Requirement §6: non-boosted videos MUST NOT appear in public promo playback.
+      conditions.push(
+        buildVideoListingEligibility("listings", viewerScope) as ReturnType<typeof eq>,
+        sql`EXISTS (
+          SELECT 1
+          FROM boosts active_boost
+          WHERE ${buildActivePaidBoostEligibility("listings", "active_boost", viewerScope)}
+        )` as ReturnType<typeof eq>,
+      );
     }
 
     if (searchQ) {

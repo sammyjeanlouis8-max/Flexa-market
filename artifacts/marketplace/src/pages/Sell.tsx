@@ -260,6 +260,29 @@ export default function Sell() {
     if (!authLoading && !user) setLocation("/auth/login");
   }, [user, authLoading]);
 
+  // Suggest seller shipping origin from saved ship_from address (never buyer delivery addresses).
+  useEffect(() => {
+    const tk = localStorage.getItem("flexamarket_token") ?? "";
+    if (!tk || editId) return;
+    fetch("/api/me/addresses?kind=ship_from", { headers: { Authorization: `Bearer ${tk}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const origin = d?.defaultAddress || d?.addresses?.[0];
+        if (!origin) return;
+        if (origin.city && !form.getValues("city")) {
+          form.setValue("city", origin.city);
+          setCityDisplayValue(origin.city);
+        }
+        if (origin.region && !form.getValues("state")) form.setValue("state", origin.region);
+        if ((origin.street || origin.city) && !form.getValues("location")) {
+          form.setValue("location", origin.street || origin.city);
+        }
+        // Never overwrite registered account country from browsing/shipping origin.
+      })
+      .catch(() => null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId]);
+
   useEffect(() => {
     const tk = localStorage.getItem("flexamarket_token") ?? "";
     if (!tk) return;

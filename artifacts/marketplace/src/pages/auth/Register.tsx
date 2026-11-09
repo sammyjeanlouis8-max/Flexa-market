@@ -325,6 +325,35 @@ export default function Register() {
 
             <FormField
               control={form.control}
+              name="location"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t("auth.city", { defaultValue: "City" })}
+                    <span className="ml-1 text-xs font-normal text-[var(--auth-muted)]">
+                      {t("auth.optional", "(Optional)")}
+                    </span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder={t("auth.cityPlaceholder", { defaultValue: "e.g. Port-au-Prince" })}
+                      data-testid="input-register-city"
+                      autoComplete="address-level2"
+                    />
+                  </FormControl>
+                  <p className="text-xs text-[var(--auth-muted)]">
+                    {t("auth.cityRegisterHint", {
+                      defaultValue: "Street address is only needed when you place your first order.",
+                    })}
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="phoneNumber"
               render={({ field }) => (
                 <FormItem>

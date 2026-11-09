@@ -3227,6 +3227,39 @@ export async function runStartupMigrations(): Promise<void> {
     `,
   });
 
+  // Saved delivery / ship-from addresses (server-backed; order shipping_* stay snapshots)
+  migrations.push({
+    name: "user_addresses.create",
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_addresses (
+        id serial PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        kind text NOT NULL DEFAULT 'delivery',
+        label text NOT NULL DEFAULT 'Home',
+        full_name text NOT NULL,
+        phone text NOT NULL,
+        email text,
+        street text NOT NULL,
+        apartment text,
+        city text NOT NULL,
+        region text NOT NULL,
+        postal_code text,
+        country text NOT NULL,
+        is_default boolean NOT NULL DEFAULT false,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS user_addresses_user_id_idx ON user_addresses(user_id);
+      CREATE INDEX IF NOT EXISTS user_addresses_user_kind_idx ON user_addresses(user_id, kind);
+      CREATE UNIQUE INDEX IF NOT EXISTS user_addresses_default_uniq
+        ON user_addresses(user_id, kind) WHERE is_default = true
+    `,
+  });
+  migrations.push({
+    name: "transactions.shipping_country",
+    sql: "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS shipping_country text",
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

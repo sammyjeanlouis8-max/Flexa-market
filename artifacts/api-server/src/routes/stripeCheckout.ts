@@ -173,7 +173,7 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
   try {
     const {
       listingId, shippingName, shippingPhone, shippingEmail, shippingStreet,
-      shippingCity, shippingRegion, shippingZip, deliveryFeeUsd, deliveryMethod,
+      shippingCity, shippingRegion, shippingZip, shippingCountry, deliveryFeeUsd, deliveryMethod,
       deliveryPickupCity, uiMode, saveCard,
     } = req.body;
 
@@ -332,6 +332,7 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
         shippingCity: shippingCity ?? "",
         shippingRegion: shippingRegion ?? "",
         shippingZip: shippingZip ?? "",
+        shippingCountry: shippingCountry ?? listing.country ?? "",
       },
     };
 
@@ -381,6 +382,7 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       shippingCity: shippingCity ?? null,
       shippingRegion: shippingRegion ?? null,
       shippingZip: shippingZip ?? null,
+      shippingCountry: shippingCountry ?? listing.country ?? null,
     });
 
     const publishableKey = await getStripePublishableKey();

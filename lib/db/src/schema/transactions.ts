@@ -25,6 +25,7 @@ export const transactionsTable = pgTable("transactions", {
   shippingCity: text("shipping_city"),
   shippingRegion: text("shipping_region"),
   shippingZip: text("shipping_zip"),
+  shippingCountry: text("shipping_country"),
 
   // Order status flow:
   //   pending → ready_to_ship → shipped → delivered → completed

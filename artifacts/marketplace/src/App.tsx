@@ -66,6 +66,7 @@ const Admin              = lazy(() => import("@/pages/Admin"));
 const AdminLiveSupport   = lazy(() => import("@/pages/AdminLiveSupport"));
 const Settings           = lazy(() => import("@/pages/Settings"));
 const SettingsSecurity   = lazy(() => import("@/pages/SettingsSecurity"));
+const SettingsAddresses  = lazy(() => import("@/pages/SettingsAddresses"));
 const SettingsNotifications = lazy(() => import("@/pages/SettingsNotifications"));
 const SettingsPreferences   = lazy(() => import("@/pages/SettingsPreferences"));
 const SettingsHelp       = lazy(() => import("@/pages/SettingsHelp"));
@@ -295,6 +296,7 @@ function LayoutRoutes() {
           <Route path="/admin/moderation" component={Admin} />
           <Route path="/admin" component={Admin} />
           <Route path="/settings/security" component={SettingsSecurity} />
+          <Route path="/settings/addresses" component={SettingsAddresses} />
           <Route path="/settings/notifications" component={SettingsNotifications} />
           <Route path="/settings/preferences" component={SettingsPreferences} />
           <Route path="/settings/help" component={SettingsHelp} />

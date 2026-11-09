@@ -1,5 +1,6 @@
 import { StateView } from "@/components/StateView";
 import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { apiFetch, resolveMediaUrl } from "@/lib/api";
 import { useAndroidBack } from "@/hooks/useAndroidBack";
@@ -8,6 +9,7 @@ import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  Alert,
   Dimensions,
   Pressable,
   ScrollView,
@@ -30,6 +32,7 @@ type ListingDetail = {
   category?: string | null;
   subcategory?: string | null;
   images?: string[] | null;
+  sellerId?: number;
   sellerName?: string | null;
   sellerRating?: number | null;
   sellerIsVerified?: boolean;
@@ -38,6 +41,8 @@ type ListingDetail = {
   isFavorited?: boolean;
   isOwner?: boolean;
   isBoosted?: boolean;
+  stockQuantity?: number | null;
+  status?: string;
 };
 
 function formatPrice(price: string | number | undefined, currency?: string): string {
@@ -53,8 +58,9 @@ const WIDTH = Dimensions.get("window").width;
 
 export default function ListingScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { t } = useLanguage();
+  const { addItem, isInCart } = useCart();
   const [listing, setListing] = useState<ListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -207,9 +213,80 @@ export default function ListingScreen() {
 
               {error ? <Text style={styles.inlineError}>{error}</Text> : null}
 
+              {!listing.isOwner ? (
+                <View style={styles.actions}>
+                  <Pressable
+                    style={styles.secondaryBtn}
+                    onPress={() => {
+                      const price = typeof listing.price === "number"
+                        ? listing.price
+                        : parseFloat(String(listing.price ?? "0"));
+                      const result = addItem({
+                        listingId: listing.id,
+                        title: listing.title || "Listing",
+                        price: Number.isFinite(price) ? price : 0,
+                        currency: listing.currency || "USD",
+                        image: listing.images?.[0] || null,
+                        country: listing.country || null,
+                        sellerId: listing.sellerId || 0,
+                        stockQuantity: listing.stockQuantity,
+                      });
+                      if (!result.ok) {
+                        Alert.alert("Cart", result.error || "Could not add item.");
+                        return;
+                      }
+                      Alert.alert(
+                        "Cart",
+                        result.alreadyInCart ? "Already in cart." : "Added to cart.",
+                        [
+                          { text: "Keep browsing", style: "cancel" },
+                          { text: "View cart", onPress: () => router.push("/cart") },
+                        ],
+                      );
+                    }}
+                  >
+                    <Text style={styles.secondaryBtnText}>
+                      {isInCart(listing.id) ? "In cart" : "Add to cart"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.primaryBtn}
+                    onPress={() => {
+                      if (!token) {
+                        router.push("/auth/login");
+                        return;
+                      }
+                      if (user?.id && listing.sellerId === user.id) {
+                        Alert.alert("Purchase", "You cannot buy your own listing.");
+                        return;
+                      }
+                      const price = typeof listing.price === "number"
+                        ? listing.price
+                        : parseFloat(String(listing.price ?? "0"));
+                      addItem({
+                        listingId: listing.id,
+                        title: listing.title || "Listing",
+                        price: Number.isFinite(price) ? price : 0,
+                        currency: listing.currency || "USD",
+                        image: listing.images?.[0] || null,
+                        country: listing.country || null,
+                        sellerId: listing.sellerId || 0,
+                        stockQuantity: listing.stockQuantity,
+                      });
+                      router.push({
+                        pathname: "/checkout",
+                        params: { mode: "single", listingId: String(listing.id) },
+                      });
+                    }}
+                  >
+                    <Text style={styles.primaryBtnText}>Buy now</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
               <Text style={styles.note}>
-                Chat, offers, and checkout land in later milestones. Digital goods remain blocked on
-                Android until Play Billing compliance is verified.
+                Physical checkout uses Stripe or Flexa Wallet via existing APIs. Digital goods remain
+                blocked on Android until Play Billing compliance is verified.
               </Text>
             </View>
           </ScrollView>
@@ -262,5 +339,23 @@ const styles = StyleSheet.create({
   section: { marginTop: 18, fontSize: 15, fontWeight: "700", color: "#F8FAFC" },
   body: { color: "#CBD5E1", fontSize: 14, lineHeight: 22 },
   inlineError: { color: "#FCA5A5", marginTop: 10 },
+  actions: { flexDirection: "row", gap: 10, marginTop: 16 },
+  primaryBtn: {
+    flex: 1,
+    backgroundColor: "#F97316",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  primaryBtnText: { color: "#fff", fontWeight: "700" },
+  secondaryBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#334155",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  secondaryBtnText: { color: "#F8FAFC", fontWeight: "600" },
   note: { marginTop: 24, color: "#64748B", fontSize: 12, lineHeight: 18 },
 });

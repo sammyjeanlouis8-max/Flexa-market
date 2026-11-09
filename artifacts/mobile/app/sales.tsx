@@ -1,11 +1,7 @@
-import { NativePlaceholder } from "@/components/NativePlaceholder";
+import { Redirect } from "expo-router";
 import React from "react";
 
-export default function Screen() {
-  return (
-    <NativePlaceholder
-      title='Sales'
-      detail='Sales dashboard will be native.'
-    />
-  );
+/** Seller sales live under My Orders → Selling tab. */
+export default function SalesRedirect() {
+  return <Redirect href="/orders" />;
 }

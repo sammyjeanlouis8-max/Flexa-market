@@ -61,6 +61,7 @@ export default function ProfileTab() {
 
         <View style={styles.menu}>
           <MenuRow icon="package" label={t("myListings")} onPress={() => router.push("/my-listings")} />
+          <MenuRow icon="shopping-cart" label="Cart" onPress={() => router.push("/cart")} />
           <MenuRow icon="heart" label={t("myFavorites")} onPress={() => router.push("/favorites")} />
           <MenuRow icon="shopping-bag" label={t("myOrders")} onPress={() => router.push("/orders")} />
           <MenuRow icon="grid" label="Categories" onPress={() => router.push("/categories")} />

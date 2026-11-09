@@ -1,11 +1,18 @@
-import { NativePlaceholder } from "@/components/NativePlaceholder";
+import { Redirect, useLocalSearchParams } from "expo-router";
 import React from "react";
 
-export default function Screen() {
-  return (
-    <NativePlaceholder
-      title='Checkout'
-      detail='Physical-goods checkout remains Stripe/MonCash via native flow; digital goods stay blocked on Android.'
-    />
-  );
+/** Legacy route — redirect into native checkout (no WebView). */
+export default function StripeCheckoutRedirect() {
+  const params = useLocalSearchParams<{ listingId?: string }>();
+  if (params.listingId) {
+    return (
+      <Redirect
+        href={{
+          pathname: "/checkout",
+          params: { mode: "single", listingId: String(params.listingId) },
+        }}
+      />
+    );
+  }
+  return <Redirect href="/cart" />;
 }

@@ -1,6 +1,6 @@
 # ANDROID_TEST_RESULTS.md
 
-**Phase:** Phase 2 Milestone 3 (+ prior)  
+**Phase:** Phase 2 Milestone 4 (+ prior)  
 **Rule:** Do not claim tests passed unless executed.
 
 ---
@@ -9,6 +9,12 @@
 
 | ID | Activity | Environment | Result |
 |---|---|---|---|
+| M4-TSC | `npm run typecheck` in `@workspace/mobile` | Cloud agent | **PASS** |
+| M4-UNIT | `checkoutMath` + prior unit suites | Cloud agent | **PASS** (14/14) |
+| M4-POLICY | `nativePolicy.test.js` | Cloud agent | **PASS** |
+| M4-API | Live auth gates: orders/purchases, cart/checkout, stripe/checkout, commission quote → 401 | `flexamarket.com` | **PASS** |
+| M4-E2E-PAY | Authenticated Stripe/wallet checkout | — | **NOT RUN** (no credentials; real charges) |
+| M4-EMU | Emulator cart/checkout UI | — | **NOT RUN** |
 | M3-TSC | `npm run typecheck` in `@workspace/mobile` | Cloud agent | **PASS** |
 | M3-UNIT | `sellValidation` + `listingsQuery` unit tests | Cloud agent | **PASS** (10/10) |
 | M3-POLICY | `nativePolicy.test.js` Photo Picker + blocked READ_MEDIA_* | Cloud agent | **PASS** (3/3) |

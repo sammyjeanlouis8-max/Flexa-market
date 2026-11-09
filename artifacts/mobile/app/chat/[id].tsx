@@ -3,6 +3,7 @@
  * GET/POST /api/conversations/:id/messages + Socket.IO realtime + polling fallback.
  */
 import { Feather } from "@expo/vector-icons";
+import { Audio, ResizeMode, Video } from "expo-av";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -23,12 +24,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import {
+  createOffer,
+} from "@/lib/offersApi";
+import {
   fetchConversations,
   fetchMessages,
   formatMessageTime,
   sendMessage,
   translateMessage,
-  uploadChatImage,
+  uploadChatMedia,
   type ChatMessage,
   type Conversation,
 } from "@/lib/chatApi";
@@ -67,8 +71,14 @@ export default function ChatThreadScreen() {
   const [sending, setSending] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
   const [translations, setTranslations] = useState<Record<number, string>>({});
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recordingBusy, setRecordingBusy] = useState(false);
+  const [offerAmount, setOfferAmount] = useState("");
+  const [showOffer, setShowOffer] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   const loadMeta = useCallback(async () => {
     if (!token || !Number.isFinite(convId)) return;
@@ -195,9 +205,15 @@ export default function ChatThreadScreen() {
     try {
       const saved = await sendMessage(
         convId,
-        { content, messageType: "text", clientMessageId },
+        {
+          content,
+          messageType: "text",
+          clientMessageId,
+          replyToMessageId: replyTo?.id && replyTo.id > 0 ? replyTo.id : undefined,
+        },
         { token },
       );
+      setReplyTo(null);
       setMessages((prev) =>
         (prev ?? []).map((m) =>
           m.clientMessageId === clientMessageId ? saved : m,
@@ -214,8 +230,48 @@ export default function ChatThreadScreen() {
     }
   };
 
+  const sendMedia = async (
+    localUri: string,
+    messageType: "image" | "video" | "audio",
+    contentType: string,
+    fileName: string,
+  ) => {
+    if (!token || !user || !Number.isFinite(convId)) return;
+    setSending(true);
+    try {
+      const url = await uploadChatMedia(localUri, {
+        token,
+        contentType,
+        fileName,
+      });
+      const clientMessageId = `m-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const saved = await sendMessage(
+        convId,
+        {
+          content: "",
+          messageType,
+          imageUrl: messageType === "image" ? url : undefined,
+          mediaUrl: url,
+          clientMessageId,
+          replyToMessageId: replyTo?.id && replyTo.id > 0 ? replyTo.id : undefined,
+        },
+        { token },
+      );
+      setReplyTo(null);
+      setMessages((prev) => {
+        const list = prev ?? [];
+        if (list.some((m) => m.id === saved.id)) return list;
+        return [...list, saved];
+      });
+    } catch (e) {
+      Alert.alert("Send failed", e instanceof Error ? e.message : "Could not send media");
+    } finally {
+      setSending(false);
+    }
+  };
+
   const onPickImage = async () => {
-    if (!token || !user || !Number.isFinite(convId) || sending) return;
+    if (!token || sending) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert("Permission needed", "Allow photo access to send images.");
@@ -227,32 +283,116 @@ export default function ChatThreadScreen() {
     });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
+    await sendMedia(
+      asset.uri,
+      "image",
+      asset.mimeType || "image/jpeg",
+      asset.fileName || "chat.jpg",
+    );
+  };
+
+  const onPickVideo = async () => {
+    if (!token || sending) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Allow media access to send videos.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["videos"],
+      quality: 0.7,
+      videoMaxDuration: 60,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    await sendMedia(
+      asset.uri,
+      "video",
+      asset.mimeType || "video/mp4",
+      asset.fileName || "chat.mp4",
+    );
+  };
+
+  const toggleRecording = async () => {
+    if (recordingBusy || sending) return;
+    try {
+      if (recording) {
+        setRecordingBusy(true);
+        await recording.stopAndUnloadAsync();
+        const uri = recording.getURI();
+        setRecording(null);
+        setRecordingBusy(false);
+        if (uri) {
+          await sendMedia(uri, "audio", "audio/m4a", "voice.m4a");
+        }
+        return;
+      }
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Permission needed", "Allow microphone access for voice messages.");
+        return;
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      const rec = new Audio.Recording();
+      await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await rec.startAsync();
+      setRecording(rec);
+    } catch (e) {
+      setRecording(null);
+      setRecordingBusy(false);
+      Alert.alert("Voice", e instanceof Error ? e.message : "Recording failed");
+    }
+  };
+
+  const playAudio = async (uri: string) => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      const { sound } = await Audio.Sound.createAsync({ uri });
+      soundRef.current = sound;
+      await sound.playAsync();
+    } catch {
+      Alert.alert("Playback", "Could not play voice message");
+    }
+  };
+
+  const onSendOffer = async () => {
+    if (!token || !meta?.listingId) {
+      Alert.alert("Offer", "This chat is not linked to a product listing.");
+      return;
+    }
+    const amount = Number(offerAmount);
+    if (!(amount > 0)) {
+      Alert.alert("Offer", "Enter a valid offer amount");
+      return;
+    }
     setSending(true);
     try {
-      const url = await uploadChatImage(asset.uri, {
-        token,
-        contentType: asset.mimeType || "image/jpeg",
-        fileName: asset.fileName || "chat.jpg",
-      });
-      const clientMessageId = `i-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const saved = await sendMessage(
+      const offer = await createOffer(
+        { listingId: meta.listingId, amount, message: "Offer from chat" },
+        { token },
+      );
+      const clientMessageId = `o-${Date.now()}`;
+      await sendMessage(
         convId,
         {
-          content: "",
-          messageType: "image",
-          imageUrl: url,
-          mediaUrl: url,
+          content: `Private offer: $${amount.toFixed(2)} (offer #${offer.id}). Public price unchanged.`,
+          messageType: "text",
           clientMessageId,
         },
         { token },
       );
-      setMessages((prev) => {
-        const list = prev ?? [];
-        if (list.some((m) => m.id === saved.id)) return list;
-        return [...list, saved];
-      });
+      setShowOffer(false);
+      setOfferAmount("");
+      await loadMessages("silent");
+      Alert.alert("Offer sent", "The seller can accept, reject, or counter in Offers.");
     } catch (e) {
-      Alert.alert("Image failed", e instanceof Error ? e.message : "Could not send image");
+      Alert.alert("Offer failed", e instanceof Error ? e.message : "Could not create offer");
     } finally {
       setSending(false);
     }
@@ -351,30 +491,52 @@ export default function ChatThreadScreen() {
           }
           renderItem={({ item }) => {
             const mine = item.senderId === myId;
-            const img = item.messageType === "image" ? mediaUri(item) : null;
+            const media = mediaUri(item);
             const deleted = item.isDeleted;
+            const parent =
+              item.replyToMessageId != null
+                ? (messages ?? []).find((m) => m.id === item.replyToMessageId)
+                : null;
             return (
               <View style={[styles.bubbleWrap, mine ? styles.mine : styles.theirs]}>
                 <Pressable
                   onLongPress={() => {
+                    setReplyTo(item);
                     if (!mine && item.messageType === "text" && item.content) {
                       void onTranslate(item);
                     }
                   }}
                   style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
                 >
+                  {parent ? (
+                    <Text style={[styles.replyPreview, mine && styles.replyPreviewMine]} numberOfLines={2}>
+                      ↩ {parent.content || parent.messageType}
+                    </Text>
+                  ) : null}
                   {deleted ? (
                     <Text style={styles.deleted}>Message deleted</Text>
-                  ) : img ? (
-                    <Image source={{ uri: img }} style={styles.msgImage} contentFit="cover" />
+                  ) : item.messageType === "image" && media ? (
+                    <Image source={{ uri: media }} style={styles.msgImage} contentFit="cover" />
+                  ) : item.messageType === "video" && media ? (
+                    <Video
+                      source={{ uri: media }}
+                      style={styles.msgVideo}
+                      useNativeControls
+                      resizeMode={ResizeMode.CONTAIN}
+                    />
+                  ) : item.messageType === "audio" && media ? (
+                    <Pressable
+                      style={styles.audioBtn}
+                      onPress={() => void playAudio(media)}
+                    >
+                      <Feather name="play" size={16} color={mine ? "#fff" : "#0F172A"} />
+                      <Text style={[styles.msgText, mine && styles.msgTextMine]}>
+                        Voice message
+                      </Text>
+                    </Pressable>
                   ) : (
                     <Text style={[styles.msgText, mine && styles.msgTextMine]}>
-                      {item.content ||
-                        (item.messageType === "audio"
-                          ? "🎤 Voice message"
-                          : item.messageType === "video"
-                            ? "🎥 Video"
-                            : "")}
+                      {item.content || ""}
                     </Text>
                   )}
                   {translations[item.id] ? (
@@ -382,6 +544,7 @@ export default function ChatThreadScreen() {
                   ) : null}
                   <Text style={[styles.msgTime, mine && styles.msgTimeMine]}>
                     {formatMessageTime(item.createdAt)}
+                    {mine ? (item.isRead ? " · Read" : " · Sent") : ""}
                   </Text>
                 </Pressable>
               </View>
@@ -390,18 +553,62 @@ export default function ChatThreadScreen() {
         />
       )}
 
+      {replyTo ? (
+        <View style={styles.replyBar}>
+          <Text style={styles.replyBarText} numberOfLines={1}>
+            Replying to: {replyTo.content || replyTo.messageType}
+          </Text>
+          <Pressable onPress={() => setReplyTo(null)}>
+            <Feather name="x" size={16} color="#64748B" />
+          </Pressable>
+        </View>
+      ) : null}
+
+      {showOffer ? (
+        <View style={styles.offerBar}>
+          <TextInput
+            style={styles.offerInput}
+            value={offerAmount}
+            onChangeText={setOfferAmount}
+            placeholder="Offer amount (USD)"
+            placeholderTextColor="#94A3B8"
+            keyboardType="decimal-pad"
+          />
+          <Pressable style={styles.offerSend} onPress={() => void onSendOffer()}>
+            <Text style={styles.offerSendText}>Send offer</Text>
+          </Pressable>
+          <Pressable onPress={() => setShowOffer(false)}>
+            <Feather name="x" size={18} color="#64748B" />
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
         <Pressable style={styles.attach} onPress={() => void onPickImage()} disabled={sending}>
-          <Feather name="image" size={20} color="#0F172A" />
+          <Feather name="image" size={18} color="#0F172A" />
+        </Pressable>
+        <Pressable style={styles.attach} onPress={() => void onPickVideo()} disabled={sending}>
+          <Feather name="video" size={18} color="#0F172A" />
+        </Pressable>
+        <Pressable
+          style={[styles.attach, recording && styles.attachRec]}
+          onPress={() => void toggleRecording()}
+          disabled={sending || recordingBusy}
+        >
+          <Feather name="mic" size={18} color={recording ? "#fff" : "#0F172A"} />
+        </Pressable>
+        <Pressable style={styles.attach} onPress={() => setShowOffer(true)} disabled={sending}>
+          <Feather name="tag" size={18} color="#0F172A" />
         </Pressable>
         <TextInput
           style={styles.input}
           value={draft}
           onChangeText={onChangeDraft}
-          placeholder="Type a message"
+          placeholder={recording ? "Recording… tap mic to send" : "Type a message"}
           placeholderTextColor="#94A3B8"
           multiline
           maxLength={4000}
+          editable={!recording}
         />
         <Pressable
           style={[styles.send, (!draft.trim() || sending) && styles.sendDisabled]}
@@ -491,6 +698,15 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
   },
   msgImage: { width: 220, height: 220, borderRadius: 12 },
+  msgVideo: { width: 220, height: 160, borderRadius: 12, backgroundColor: "#0F172A" },
+  audioBtn: { flexDirection: "row", alignItems: "center", gap: 8 },
+  replyPreview: {
+    fontSize: 12,
+    color: "#64748B",
+    marginBottom: 6,
+    fontStyle: "italic",
+  },
+  replyPreviewMine: { color: "rgba(255,255,255,0.85)" },
   msgTime: {
     alignSelf: "flex-end",
     fontSize: 10,
@@ -498,27 +714,67 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   msgTimeMine: { color: "rgba(255,255,255,0.8)" },
+  replyBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#FFF7ED",
+    borderTopWidth: 1,
+    borderTopColor: "#FED7AA",
+  },
+  replyBarText: { flex: 1, color: "#9A3412", fontSize: 12, fontWeight: "600" },
+  offerBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: "#FFFFFF",
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+  },
+  offerInput: {
+    flex: 1,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 12,
+    color: "#0F172A",
+  },
+  offerSend: {
+    height: 40,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: "#0F172A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  offerSendText: { color: "#fff", fontWeight: "800", fontSize: 12 },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 8,
-    paddingHorizontal: 10,
+    gap: 6,
+    paddingHorizontal: 8,
     paddingTop: 8,
     backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
     borderTopColor: "#E2E8F0",
   },
   attach: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#F8FAFC",
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    marginBottom: 2,
+    marginBottom: 4,
   },
+  attachRec: { backgroundColor: "#EF4444", borderColor: "#EF4444" },
   input: {
     flex: 1,
     minHeight: 40,
@@ -527,7 +783,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
     backgroundColor: "#F8FAFC",
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     color: "#0F172A",
     fontSize: 15,

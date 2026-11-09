@@ -28,11 +28,19 @@ import { createStripeCheckoutSession } from "@/lib/stripeCheckoutApi";
 export default function StripeCheckoutScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { listingId: listingIdParam, canceled } = useLocalSearchParams<{
+  const {
+    listingId: listingIdParam,
+    offerId: offerIdParam,
+    offerAmount,
+    canceled,
+  } = useLocalSearchParams<{
     listingId?: string;
+    offerId?: string;
+    offerAmount?: string;
     canceled?: string;
   }>();
   const listingId = Number(listingIdParam);
+  const offerId = offerIdParam ? Number(offerIdParam) : undefined;
   const { token, user, isLoading: authLoading } = useAuth();
 
   const [listing, setListing] = useState<Listing | null>(null);
@@ -127,7 +135,7 @@ export default function StripeCheckoutScreen() {
           buyerCity: city.trim(),
           country: listing.country || user?.country || "Haiti",
           method: deliveryMethod,
-          listingPriceUsd: Number(listing.price) || 0,
+          listingPriceUsd: price,
         },
         { token },
       );
@@ -154,6 +162,7 @@ export default function StripeCheckoutScreen() {
       const session = await createStripeCheckoutSession(
         {
           listingId: listing.id,
+          offerId: offerId && Number.isFinite(offerId) ? offerId : undefined,
           shippingName: name.trim(),
           shippingPhone: phone.trim(),
           shippingEmail: email.trim() || undefined,
@@ -199,7 +208,10 @@ export default function StripeCheckoutScreen() {
   };
 
   const dominican = isDominicanListingCountry(listing?.country);
-  const price = Number(listing?.price ?? 0) || 0;
+  const listPrice = Number(listing?.price ?? 0) || 0;
+  const negotiated = offerAmount != null ? Number(offerAmount) : NaN;
+  const price =
+    offerId && Number.isFinite(negotiated) && negotiated > 0 ? negotiated : listPrice;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
@@ -240,7 +252,13 @@ export default function StripeCheckoutScreen() {
                 )
               </Text>
             </Text>
-            {dominican ? (
+            {offerId ? (
+              <Text style={styles.drNote}>
+                Private offer #{offerId}: paying negotiated ${price.toFixed(2)} (listed $
+                {listPrice.toFixed(2)}). Public listing price is unchanged. Server validates
+                the accepted offer before charging.
+              </Text>
+            ) : dominican ? (
               <Text style={styles.drNote}>
                 Dominican Republic listings use Stripe card checkout with seller shipping
                 (wallet cart checkout is not available).

@@ -41,6 +41,8 @@ export default function RootLayout() {
                   <Stack.Screen name="listing/[id]" />
                   <Stack.Screen name="categories/index" />
                   <Stack.Screen name="categories/[slug]" />
+                  <Stack.Screen name="sell/edit/[id]" />
+                  <Stack.Screen name="my-listings" />
                   <Stack.Screen name="country-picker" options={{ presentation: "modal" }} />
                   <Stack.Screen name="language-picker" options={{ presentation: "modal" }} />
                   <Stack.Screen name="+not-found" />

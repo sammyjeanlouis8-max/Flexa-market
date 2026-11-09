@@ -206,8 +206,11 @@ export default function App() {
     // edge-to-edge at the bottom. CSS must own the home-indicator inset via
     // --sab (env(safe-area-inset-bottom) is often 0 inside WKWebView).
     const sat = Math.round(initialWindowMetrics?.insets.top ?? 0);
-    const sab = Math.round(
-      initialWindowMetrics?.insets.bottom ?? (Platform.OS === "ios" ? 34 : 0),
+    // Cap --sab at 48px so a bad inset never becomes a tall black band that
+    // covers Promotional Videos tab icons in the marketplace WebView.
+    const sab = Math.min(
+      48,
+      Math.round(initialWindowMetrics?.insets.bottom ?? (Platform.OS === "ios" ? 34 : 0)),
     );
     webRef.current?.injectJavaScript(
       `(function(){` +

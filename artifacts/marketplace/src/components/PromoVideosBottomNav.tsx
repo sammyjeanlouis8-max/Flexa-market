@@ -6,13 +6,19 @@ import { cn } from "@/lib/utils";
 
 /**
  * Single bottom inset for the promo nav.
- * Prefer CSS env(); fall back to --sab (iOS / FlexaMarket WebView heuristic)
- * and --flexa-android-bottom. Use max() — never sum.
+ *
+ * Prefer CSS env(); fall back to --sab (iOS / FlexaMarket WKWebView heuristic)
+ * and --flexa-android-bottom. Always max() — never sum — so insets cannot stack
+ * into an oversized black band that covers the tab icons.
+ *
+ * Cap at 48px: iPhone home-indicator is ~34px; Android gesture/nav bars are
+ * typically ≤48px. Uncapped --sab/--sat mixups previously produced a tall
+ * black slab over the buttons.
  */
 export const PROMO_NAV_SAFE_BOTTOM =
-  "max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px))";
+  "min(48px, max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px)))";
 
-/** Compact content row (icons + labels). */
+/** Compact content row (icons + labels). Safe-area lives in a sibling spacer. */
 export const PROMO_NAV_CONTENT_PX = 52;
 
 export const PROMO_NAV_HEIGHT_CSS = `calc(${PROMO_NAV_CONTENT_PX}px + ${PROMO_NAV_SAFE_BOTTOM})`;
@@ -31,30 +37,36 @@ function resolveActive(pathname: string): ActiveTab {
 }
 
 /**
- * TikTok-inspired fixed bottom navigation for Promotional Videos.
+ * TikTok-style fixed bottom navigation for Promotional Videos.
  *
- * Watch feed (iOS WebView): fully transparent overlay — no black bar, no
- * gradient slab. Icons float over the video; safe-area is empty padding so
- * the video shows through the home-indicator zone.
+ * Layout (matches mockup):
+ *   ┌─────────────────────────────┐
+ *   │  Home Discover [+] Fav Me   │  ← 52px icon row (always fully visible)
+ *   ├─────────────────────────────┤
+ *   │     home-indicator spacer   │  ← safe-area only (black, never covers icons)
+ *   └─────────────────────────────┘
+ *
+ * Root cause of the iPhone "ba nwa" covering buttons:
+ * padding/height/box-shadow seals on one element let the safe-area band and
+ * the icon row share a box that WebKit clipped or over-painted. Splitting the
+ * icon row from the safe spacer makes covering impossible.
  */
 export default function PromoVideosBottomNav({
   active,
   onAdd,
   className,
-  immersive,
+  immersive: _immersive,
 }: {
   active?: ActiveTab;
   onAdd?: () => void;
   className?: string;
-  /** Force watch-feed transparent mode (VideoFeed should pass true). */
+  /** Kept for callers; watch/discover/favorites all use the same solid mockup bar. */
   immersive?: boolean;
 }) {
   const { t } = useTranslation();
   const [location, navigate] = useLocation();
   const { user } = useAuth();
   const current = active ?? resolveActive(location);
-  const path = (location.split("?")[0] || location).replace(/\/$/, "") || "/";
-  const isWatchFeed = immersive === true || path === "/videos/watch" || path.startsWith("/videos/watch/");
 
   const goLogin = (next: string) => {
     navigate(`/auth/login?next=${encodeURIComponent(next)}`);
@@ -91,26 +103,23 @@ export default function PromoVideosBottomNav({
   const itemClass = (isActive: boolean) =>
     cn(
       "flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 transition-colors",
-      isWatchFeed && "drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]",
-      isActive ? "text-white" : isWatchFeed ? "text-white/90" : "text-white/55",
+      isActive ? "text-white" : "text-white/55",
     );
 
   return (
     <nav
       className={cn(
-        "pointer-events-auto fixed inset-x-0 bottom-0 z-[70] lg:hidden",
-        isWatchFeed
-          ? "border-t-0 bg-transparent"
-          : "border-t border-white/10 bg-black",
+        "promo-videos-bottom-nav pointer-events-auto fixed inset-x-0 bottom-0 z-[70] lg:hidden",
+        "border-t border-white/10 bg-black",
         className,
       )}
       style={{
-        // Overlay the video edge-to-edge. Transparent padding keeps icons above
-        // the home indicator without painting any black fill into that zone.
-        paddingBottom: PROMO_NAV_SAFE_BOTTOM,
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
-        backgroundColor: isWatchFeed ? "transparent" : undefined,
+        // No paddingBottom on the nav itself — safe area is a sibling spacer
+        // so the icon row can never be painted into / covered by that band.
+        paddingBottom: 0,
+        backgroundColor: "#000",
         backgroundImage: "none",
         boxShadow: "none",
         overflow: "visible",
@@ -118,11 +127,14 @@ export default function PromoVideosBottomNav({
       aria-label={t("nav.main", { defaultValue: "Main navigation" })}
       data-testid="promo-videos-bottom-nav"
     >
+      {/* Icon row — fixed content height, never shares a box with safe-area padding */}
       <div
         className="grid w-full grid-cols-5 items-center px-1"
         style={{
           height: `${PROMO_NAV_CONTENT_PX}px`,
-          background: "transparent",
+          minHeight: `${PROMO_NAV_CONTENT_PX}px`,
+          maxHeight: `${PROMO_NAV_CONTENT_PX}px`,
+          background: "#000",
         }}
       >
         <button
@@ -154,21 +166,22 @@ export default function PromoVideosBottomNav({
           <button
             type="button"
             onClick={handleAdd}
-            className="relative flex h-11 w-11 items-center justify-center active:scale-95 transition-transform"
+            className="relative flex h-12 w-12 items-center justify-center active:scale-95 transition-transform"
             aria-label={t("videoFeed.addBoost", { defaultValue: "Add promotional video" })}
             data-testid="nav-promo-add"
           >
+            {/* Cyan / pink accents — match mockup (+) */}
             <span
               aria-hidden
-              className="pointer-events-none absolute left-[calc(50%-25px)] top-1/2 h-[42px] w-[5px] -translate-y-1/2 rounded-l-[9px]"
+              className="pointer-events-none absolute left-[calc(50%-26px)] top-1/2 h-[44px] w-[5px] -translate-y-1/2 rounded-l-[10px]"
               style={{ background: "#25F4EE" }}
             />
             <span
               aria-hidden
-              className="pointer-events-none absolute left-[calc(50%+20px)] top-1/2 h-[42px] w-[5px] -translate-y-1/2 rounded-r-[9px]"
+              className="pointer-events-none absolute left-[calc(50%+21px)] top-1/2 h-[44px] w-[5px] -translate-y-1/2 rounded-r-[10px]"
               style={{ background: "#FE2C55" }}
             />
-            <span className="relative z-10 flex h-[40px] w-[44px] items-center justify-center rounded-[9px] bg-white text-black shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
+            <span className="relative z-10 flex h-11 w-11 items-center justify-center rounded-[10px] bg-white text-black shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
               <Plus className="h-5 w-5" strokeWidth={2.75} />
             </span>
           </button>
@@ -199,6 +212,20 @@ export default function PromoVideosBottomNav({
           </span>
         </button>
       </div>
+
+      {/* Safe-area spacer BELOW icons — fills home-indicator zone with the same
+          black as the bar. Cannot cover the icon row because it is a sibling
+          underneath, not padding inside the icon box. */}
+      <div
+        aria-hidden
+        className="pointer-events-none w-full bg-black"
+        style={{
+          height: PROMO_NAV_SAFE_BOTTOM,
+          minHeight: 0,
+          maxHeight: "48px",
+          background: "#000",
+        }}
+      />
     </nav>
   );
 }

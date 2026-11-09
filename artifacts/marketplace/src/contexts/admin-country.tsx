@@ -19,6 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth";
 import { SUPPORTED_COUNTRIES } from "@/lib/countries";
 import {
+  adminVideoFeedParamsKey,
   buildAdminVideoFeedParams,
   canAdminSelectAllCountries,
   getAdminSelectableCountries,
@@ -135,11 +136,23 @@ export function AdminCountryProvider({ children }: { children: ReactNode }) {
     // Refresh marketplace + promo queries that depend on country scope.
     void queryClient.invalidateQueries({ queryKey: ["listings"] });
     void queryClient.invalidateQueries({ queryKey: ["listings-infinite"] });
+    void queryClient.invalidateQueries({ queryKey: ["videos"] });
+    void queryClient.invalidateQueries({ queryKey: ["video-feed"] });
+    void queryClient.invalidateQueries({ queryKey: ["promo-videos"] });
   }, [user, queryClient]);
 
   const effectiveCountry = resolveEffectiveAdminCountry(user, selectedCountry);
   const showCountryFlags = shouldShowAdminCountryFlags(user, effectiveCountry);
-  const videoFeedParams = buildAdminVideoFeedParams(user, effectiveCountry);
+  const videoFeedScopeKey = adminVideoFeedParamsKey(
+    buildAdminVideoFeedParams(user, effectiveCountry),
+  );
+  // Memoize by content so Discover/TikTok feed deps do not thrash every render.
+  const videoFeedParams = useMemo(
+    () => buildAdminVideoFeedParams(user, effectiveCountry),
+    // user + effectiveCountry + scope key — key collapses identical param objects
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [videoFeedScopeKey, isAdminViewer, isSuperAdmin, isGlobalAdmin],
+  );
 
   const value = useMemo<AdminCountryContextValue>(() => ({
     selectedCountry,

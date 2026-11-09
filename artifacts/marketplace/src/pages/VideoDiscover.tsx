@@ -19,6 +19,7 @@ import { COUNTRY_FLAGS } from "@/lib/countries";
 import { useAdminCountry } from "@/contexts/admin-country";
 import { useShoppingLocation } from "@/contexts/shopping-location";
 import { MobileSelect } from "@/components/ui/mobile-select";
+import { adminVideoFeedParamsKey } from "@/lib/adminCountryAccess";
 
 export type DiscoverSort = "all" | "trending" | "new" | "mine";
 
@@ -227,10 +228,19 @@ export default function VideoDiscover() {
       const res = await fetch(`/api/videos/feed?${params}`, { headers });
       if (!res.ok) return;
       const data = await res.json();
-      const incoming: DiscoverVideo[] = (data.videos ?? []).filter(isLiveBoost);
+      // Public Discover tabs only keep live boosts. My Videos is the owner
+      // library — include expired so the creator (and SA for their uploads)
+      // can still open and re-boost without re-uploading.
+      const incoming: DiscoverVideo[] = (data.videos ?? []).filter((v: DiscoverVideo) =>
+        sort === "mine" ? true : isLiveBoost(v),
+      );
       if (replace) {
         setVideos(incoming);
-        setTotalHint(incoming.length + (data.hasMore ? 1 : 0));
+        // Prefer server total when present so All (N) matches filtered results.
+        const serverTotal = typeof data.total === "number" && Number.isFinite(data.total)
+          ? Math.max(0, data.total)
+          : null;
+        setTotalHint(serverTotal ?? (incoming.length + (data.hasMore ? 1 : 0)));
       } else {
         setVideos(prev => {
           const seen = new Set(prev.map(v => v.id));
@@ -245,11 +255,14 @@ export default function VideoDiscover() {
     }
   }, [token, user, browsingCountry, isAdminViewer, sort, debouncedQ, videoFeedParams, allVideosMode, isSuperAdmin, canSelectAll]);
 
+  const feedScopeKey = adminVideoFeedParamsKey(videoFeedParams);
+
   useEffect(() => {
     setVideos([]);
     setHasMore(true);
+    setTotalHint(0);
     void fetchPage(1, true);
-  }, [fetchPage]);
+  }, [fetchPage, feedScopeKey]);
 
   // Restore grid scroll after returning from watch (inner scroller — not window)
   useEffect(() => {
@@ -595,6 +608,16 @@ export default function VideoDiscover() {
             </div>
             <h2 className="text-lg font-black text-foreground">{emptyTitle}</h2>
             <p className="mt-2 max-w-sm text-sm text-muted-foreground leading-relaxed">{emptyDesc}</p>
+            {isAdminViewer && canSelectAll && effectiveCountry && (
+              <button
+                type="button"
+                onClick={() => setAdminCountry(null)}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-5 py-3 text-sm font-black text-violet-900 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100"
+                data-testid="button-promo-all-countries"
+              >
+                🌍 {t("home.allCountriesDesc", "All Countries")}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => navigate("/booster/create")}

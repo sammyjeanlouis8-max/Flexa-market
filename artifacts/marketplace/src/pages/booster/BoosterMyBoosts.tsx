@@ -22,7 +22,7 @@ interface Campaign {
   endsAt: string | null;
 }
 
-type Tab = "all" | "active" | "paused" | "completed" | "draft";
+type Tab = "all" | "active" | "paused" | "expired" | "draft";
 
 export default function BoosterMyBoosts() {
   const { t } = useTranslation();
@@ -51,13 +51,16 @@ export default function BoosterMyBoosts() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const filtered = campaigns.filter((c) => {
-    if (tab === "all") return true;
-    return c.status === tab;
-  });
+  const matchesTab = (status: string, k: Tab) => {
+    if (k === "all") return true;
+    if (k === "expired") return status === "expired" || status === "completed";
+    return status === k;
+  };
+
+  const filtered = campaigns.filter((c) => matchesTab(c.status, tab));
 
   const count = (k: Tab) =>
-    k === "all" ? campaigns.length : campaigns.filter((c) => c.status === k).length;
+    k === "all" ? campaigns.length : campaigns.filter((c) => matchesTab(c.status, k)).length;
 
   const pauseOrResume = async (c: Campaign, action: "pause" | "resume") => {
     if (!token) return;
@@ -91,12 +94,12 @@ export default function BoosterMyBoosts() {
     }
   };
 
-  const tabs: Tab[] = ["all", "active", "paused", "completed", "draft"];
+  const tabs: Tab[] = ["all", "active", "paused", "expired", "draft"];
 
   return (
     <BoosterLayout
       title={t("booster.myBoosts.title", { defaultValue: "My Video Campaigns" })}
-      subtitle={t("booster.myBoosts.subtitle", { defaultValue: "Manage active, paused, and completed campaigns." })}
+      subtitle={t("booster.myBoosts.subtitle", { defaultValue: "Manage active, paused, and expired campaigns." })}
     >
       <div className="bp-tabs" role="tablist">
         {tabs.map((k) => (

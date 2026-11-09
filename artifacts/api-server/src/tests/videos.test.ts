@@ -20,7 +20,11 @@ vi.mock("../lib/boostAnalytics", () => ({
   normalizeTrafficSource: vi.fn(() => "other"),
 }));
 
-import videosRouter, { isVideoVisibleForCountries, resolveViewerScope } from "../routes/videos";
+import videosRouter, {
+  isEligiblePromoVideoListing,
+  isVideoVisibleForCountries,
+  resolveViewerScope,
+} from "../routes/videos";
 
 describe("promo video analytics", () => {
   let server: Server;
@@ -244,5 +248,60 @@ describe("promo video analytics", () => {
     expect(isVideoVisibleForCountries("Haiti", "ALL", ["__denied__"], false)).toBe(false);
     expect(isVideoVisibleForCountries(null, "Haiti", ["Haiti"], false)).toBe(true);
     expect(isVideoVisibleForCountries(null, "ALL", ["Haiti"], false)).toBe(false);
+  });
+
+  it("treats Booster Pro ghost ads as eligible without the legacy description string", () => {
+    const now = new Date("2026-11-09T14:00:00.000Z");
+    const boosterProGhost = {
+      moderationStatus: "approved",
+      status: "hidden",
+      price: 0,
+      isBoosted: true,
+      boostVideoUrl: "https://res.cloudinary.com/demo/video/upload/v1/promo.mp4",
+      boostExpiresAt: "2026-11-12T14:00:00.000Z",
+      boostStartAt: "2026-11-08T14:00:00.000Z",
+    };
+    // Custom ad title/description (Booster Pro) — previously excluded → All (0).
+    expect(isEligiblePromoVideoListing(boosterProGhost, now)).toBe(true);
+
+    const legacyGhost = {
+      ...boosterProGhost,
+      // Legacy path used a fixed description; eligibility no longer depends on it.
+    };
+    expect(isEligiblePromoVideoListing(legacyGhost, now)).toBe(true);
+
+    expect(isEligiblePromoVideoListing({
+      ...boosterProGhost,
+      price: 25,
+    }, now)).toBe(false);
+
+    expect(isEligiblePromoVideoListing({
+      ...boosterProGhost,
+      isBoosted: false,
+    }, now)).toBe(false);
+
+    expect(isEligiblePromoVideoListing({
+      ...boosterProGhost,
+      boostExpiresAt: "2026-11-01T14:00:00.000Z",
+    }, now)).toBe(false);
+
+    expect(isEligiblePromoVideoListing({
+      moderationStatus: "approved",
+      status: "available",
+      stockQuantity: 3,
+      price: 40,
+      isBoosted: true,
+      boostVideoUrl: "https://example.com/v.mp4",
+      boostExpiresAt: "2026-11-12T14:00:00.000Z",
+      boostStartAt: null,
+    }, now)).toBe(true);
+
+    // Regular users / guests must not gain Super Admin worldwide via forceAllCountries.
+    const regularForced = resolveViewerScope({
+      user: { role: "user", isAdmin: false, isSuperAdmin: false, country: "Haiti" },
+      headers: {},
+    } as Request, "Dominican Republic", { forceAllCountries: true });
+    expect(regularForced.globalCountryAccess).toBe(false);
+    expect(regularForced.visibleCountries).toEqual(["Haiti"]);
   });
 });

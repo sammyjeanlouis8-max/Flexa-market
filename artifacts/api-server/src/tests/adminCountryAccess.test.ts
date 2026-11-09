@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  adminVideoFeedParamsKey,
   buildAdminVideoFeedParams,
   canAdminSelectAllCountries,
   isGlobalCountryAdmin,
@@ -70,5 +71,8 @@ describe("marketplace adminCountryAccess helpers", () => {
     expect(buildAdminVideoFeedParams(multi, "Haiti")).toEqual({ country: "Haiti" });
     expect(shouldShowAdminCountryFlags(multi, null)).toBe(true);
     expect(shouldShowAdminCountryFlags(multi, "Haiti")).toBe(false);
+
+    expect(adminVideoFeedParamsKey({ allCountries: "1" })).toBe("|1");
+    expect(adminVideoFeedParamsKey({ country: "Dominican Republic" })).toBe("Dominican Republic|");
   });
 });

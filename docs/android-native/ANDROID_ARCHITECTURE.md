@@ -133,3 +133,42 @@ Each step: feature flag / build flavor so website and old binary behavior stay i
 - Do not replace DigitalOcean API hosting.
 - Do not delete WebView code until native parity gates pass.
 - Do not publish to Play without Sammy approval.
+- Do not change the Android package name until Sammy approves `ANDROID_PACKAGE_MIGRATION_PLAN.md`.
+- Do not modify iOS bundle identifier `com.flexamarket.mobile`.
+- Do not modify production website / DO deploy / Wasabi / user data.
+
+---
+
+## 11. Package identity (audit extension)
+
+| Item | Value |
+|---|---|
+| Current Android package (suspended lineage) | `com.flexa.market` |
+| **Proposed** new Android package | `com.flexamarket.app` |
+| iOS bundle (unchanged) | `com.flexamarket.mobile` |
+| Code applied? | **No** |
+
+See `ANDROID_PACKAGE_MIGRATION_PLAN.md` for Firebase, EAS, FCM, App Links, and Play enforcement caveats.
+
+## 12. Permissions & media architecture (audit extension)
+
+- Default media intake = **Android Photo Picker** (no broad `READ_MEDIA_*`).
+- Camera / mic only on user-initiated capture/record.
+- Uploads continue through existing backend + Wasabi + optional WorkManager uploader.
+- Messaging voice notes: `RECORD_AUDIO` on record only; **support chat remains voice-free**.
+- Music background: MediaSession + typed FGS when implemented; never request mic for playback.
+- Location: Smart Location priority (manual → saved address → GPS → IP → fallback); no startup GPS prompt.
+
+Details: `ANDROID_PERMISSIONS_MATRIX.md`, `ANDROID_UX_BEHAVIOR_AUDIT.md`.
+
+## 13. Updated Phase 2 roadmap (still pending approval)
+
+| Step | Work | Exit |
+|---|---|---|
+| 2.0 | Approve package + Billing strategy | Written go-ahead |
+| 2.1 | Expo native shell + tabs + SecureStore auth | Home without WebView |
+| 2.2 | Apply `com.flexamarket.app` + new Firebase Android app | Build installs; FCM works |
+| 2.3 | Home + Search + Listing (API) | Browse native |
+| 2.4 | Photo Picker sell draft | Upload progress/retry |
+| 2.5 | Cart + physical checkout (Custom Tabs) | Buy physical item |
+| Later waves | Per `ANDROID_SCREEN_INVENTORY.md` W3–W10 | Parity gates |

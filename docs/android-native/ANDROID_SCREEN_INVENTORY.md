@@ -220,3 +220,23 @@ Status legend for **native migration readiness** (not current shipping state):
 - Page modules: `find artifacts/marketplace/src/pages -name '*.tsx'`
 - Mobile WebView usage: `rg SafeWebView|react-native-webview artifacts/mobile`
 - Re-run before Phase 2 kickoff to catch new routes.
+
+---
+
+## 8. Behavior & navigation cross-links (audit extension)
+
+Per-screen native behavior, Back rules, permissions, offline, and media notes live in:
+
+- `ANDROID_SCREEN_BEHAVIOR_MATRIX.md`
+- `ANDROID_UX_BEHAVIOR_AUDIT.md`
+- `ANDROID_NAVIGATION_TEST_PLAN.md`
+- `ANDROID_PERMISSIONS_MATRIX.md`
+
+### Messaging vs support (voice)
+| Channel | Voice messages |
+|---|---|
+| User↔user messaging | Supported (native RECORD_AUDIO on record) |
+| Customer support | **Not supported** — API rejects `audio`/`voice` |
+
+### Video duration (Booster Pro)
+Server constant `MAX_VIDEO_SECONDS = 120` — preserve on native upload validation.

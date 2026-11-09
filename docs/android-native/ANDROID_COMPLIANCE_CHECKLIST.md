@@ -234,4 +234,45 @@ Legend: **M** = mandatory policy/platform requirement · **R** = recommendation/
 3. Permissions + SecureStore (C1/C2).  
 4. UGC report/block + account deletion (E1/C4).  
 5. Data Safety + listing honesty (C5/E3).  
-6. Media FGS only if needed (C3).
+6. Media FGS only if needed (C3).  
+
+---
+
+## I. Package rename & enforcement (audit extension)
+
+### I1. New package name does not clear suspension
+1. **Sources:**  
+   - https://support.google.com/googleplay/android-developer/answer/9899234 (Enforcement Process)  
+   - https://support.google.com/googleplay/android-developer/answer/9899142 (Violations & Appeals)  
+   - https://support.google.com/googleplay/android-developer/answer/9899034 (Spam / Webviews)  
+2. **Requirement themes (from live pages):** Fix violations before republishing removed apps; repeated/serious violations can terminate related accounts; do not treat a clone WebView as remediation.  
+3. **Applicability:** Moving from `com.flexa.market` → proposed `com.flexamarket.app`.  
+4. **Status:** Proposal only; **not** a compliance bypass.  
+5. **Required changes:** Genuine native app + policy remediation + honest Play listing; optional appeal where applicable.  
+6. **Verification:** Compare reviewer-facing build to prior suspension reasons (Console notice — **attach when available**; not fetched here).  
+**Type:** M  
+
+### I2. Photo & Video Permissions / Photo Picker
+1. **Sources:**  
+   - https://support.google.com/googleplay/android-developer/answer/15800983  
+   - https://developer.android.com/training/data-storage/shared/photopicker  
+2. **Requirement:** Prefer system Photo Picker; avoid broad photo/video access without qualification.  
+3. **Applicability:** Sell, boost, chat, KYC media.  
+4. **Status:** `app.json` already blocks READ_MEDIA_*; plan keeps that.  
+5. **Required changes:** Native ImagePicker/Photo Picker flows.  
+6. **Verification:** Merged manifest lacks READ_MEDIA_*; multi-select works.  
+**Type:** M  
+
+### I3. Predictive Back / edge-to-edge (platform quality)
+1. **Sources:**  
+   - https://developer.android.com/guide/navigation/custom-back/predictive-back-gesture  
+   - https://developer.android.com/develop/ui/views/layout/edge-to-edge  
+2. **Requirement:** Support modern back/edge-to-edge behaviors.  
+3. **Applicability:** All native screens.  
+4. **Status:** Spec’d in UX docs; not implemented.  
+5. **Required changes:** RN safe-area + back handlers.  
+6. **Verification:** `ANDROID_NAVIGATION_TEST_PLAN.md`  
+**Type:** R (strongly expected on modern targets)
+
+### Payments FAQ note
+- `answer/10281818` timed out once this session; previously retrieved successfully. Re-open before Billing implementation.

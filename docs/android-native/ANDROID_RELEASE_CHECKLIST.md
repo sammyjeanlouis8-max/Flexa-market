@@ -83,4 +83,18 @@ Keep this checklist updated at the end of each implementation wave; do not mark 
 - https://docs.expo.dev/submit/android/  
 - https://support.google.com/googleplay/android-developer/answer/9899034  
 - https://support.google.com/googleplay/android-developer/answer/9858738  
-- In-repo: `docs/android-purchase-policy.md`
+- https://support.google.com/googleplay/android-developer/answer/9899234  
+- https://support.google.com/googleplay/android-developer/answer/15800983  
+- In-repo: `docs/android-purchase-policy.md`  
+- In-repo: `docs/android-native/ANDROID_PACKAGE_MIGRATION_PLAN.md`
+
+## 12. New package release gate (audit extension)
+
+| Gate | Status |
+|---|---|
+| Sammy approves `com.flexamarket.app` | PENDING |
+| Firebase Android app created for new package | NOT STARTED |
+| New Play Console application (not silent republish of suspended app) | NOT STARTED |
+| Remediation narrative vs prior suspension | NOT STARTED |
+| iOS bundle left as `com.flexamarket.mobile` | REQUIRED |
+| Website/API/DB unchanged by package cutover | REQUIRED |

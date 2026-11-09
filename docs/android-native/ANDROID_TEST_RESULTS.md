@@ -76,3 +76,23 @@ No compliance claim of “Play-ready.” Risks documented in `ANDROID_COMPLIANCE
 ## 8. SOURCE REFERENCES
 
 Same as checklist; test table above.
+
+---
+
+## 9. Audit extension doc fetches (2026-11-09)
+
+| URL | Result |
+|---|---|
+| developer.android.com/training/data-storage/shared/photopicker | 200 |
+| developer.android.com/training/permissions/requesting | 200 |
+| support…/answer/15800983 (Photo & Video Permissions) | 200 |
+| support…/answer/9899234 (Enforcement Process) | 200 |
+| support…/answer/9899142 (Violations & Appeals) | 200 |
+| support…/answer/9858738 (Payments) | 200 |
+| support…/answer/10281818 (Payments FAQ) | Timeout this session — use prior cache / retry |
+| developer.android.com/guide/topics/media/media-controls | 200 |
+| developer.android.com/develop/ui/views/layout/edge-to-edge | 200 |
+| developer.android.com/guide/navigation/custom-back/predictive-back-gesture | 200 |
+| support…/answer/13392821 (FGS) | 200 |
+
+**Not executed:** any emulator/device test from `ANDROID_NAVIGATION_TEST_PLAN.md`.

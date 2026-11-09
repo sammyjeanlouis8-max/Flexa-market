@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function VideosScreen() {
-  return <SafeWebView uri="https://flexamarket.com/videos" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Videos'
+      detail='Video discover will be a native feed.'
+    />
+  );
 }

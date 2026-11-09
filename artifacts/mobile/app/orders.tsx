@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function OrdersScreen() {
-  return <SafeWebView uri="https://flexamarket.com/orders" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Orders'
+      detail='Orders list will be native.'
+    />
+  );
 }

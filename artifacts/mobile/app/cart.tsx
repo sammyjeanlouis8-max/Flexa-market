@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function CartScreen() {
-  return <SafeWebView uri="https://flexamarket.com/cart" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Cart'
+      detail='Cart will use native screens against existing cart/order APIs.'
+    />
+  );
 }

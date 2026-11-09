@@ -1,8 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
-import { useLocalSearchParams } from "expo-router";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function ChatScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  return <SafeWebView uri={`https://flexamarket.com/chat/${id}`} />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Chat'
+      detail='Chat threads will be native React Native messaging UI.'
+    />
+  );
 }

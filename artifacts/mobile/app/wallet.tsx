@@ -1,8 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
-    import React from "react";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
+import React from "react";
 
-    export default function WalletScreen() {
-    // Show the real Flexa Wallet on all platforms (iOS + Android)
-    return <SafeWebView uri="https://flexamarket.com/wallet" showBack={false} />;
-    }
-    
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Wallet'
+      detail='Wallet will be native; digital top-ups stay policy-gated.'
+    />
+  );
+}

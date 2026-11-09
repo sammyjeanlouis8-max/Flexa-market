@@ -1,6 +1,12 @@
-import SafeWebView from "@/components/SafeWebView";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
 import React from "react";
 
 export default function SellTab() {
-  return <SafeWebView uri="https://flexamarket.com/sell" showBack={false} />;
+  return (
+    <NativePlaceholder
+      title="Sell (native wave next)"
+      detail="Listing creation will use native forms, Android Photo Picker, and the existing /api/listings endpoints. No WebView shell."
+      showBack={false}
+    />
+  );
 }

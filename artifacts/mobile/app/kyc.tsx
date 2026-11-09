@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function KycScreen() {
-  return <SafeWebView uri="https://flexamarket.com/kyc" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='KYC'
+      detail='KYC upload will use native Photo Picker and existing KYC endpoints.'
+    />
+  );
 }

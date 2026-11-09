@@ -1,32 +1,33 @@
 # ANDROID_ARCHITECTURE.md
 
-**Status:** Proposal only — **NOT STARTED** for implementation  
-**Constraint:** Preserve production website + backend. Dedicated migration branch. No WebView-primary shell.
+**Status:** Phase 2 foundation **IN PROGRESS** on isolated branch  
+**Constraint:** Preserve production website + backend. No WebView-primary shell. No AAB/publish without approval.
 
 ---
 
-## 1. Current architecture (as audited)
+## 1. Current architecture (Phase 2 corrective path)
 
 ```
-┌────────────────────────────┐     HTTPS      ┌──────────────────────────┐
-│ Expo app (artifacts/mobile)│ ───────────────▶│ flexamarket.com (Vite)   │
-│  App.tsx + SafeWebView     │   WebView load  │ artifacts/marketplace    │
-│  Push / WorkManager upload │◀── postMessage ─│ React SPA                │
-└────────────────────────────┘                 └────────────┬─────────────┘
-                                                            │ /api/*
-                                                            ▼
-                                               ┌──────────────────────────┐
-                                               │ Express API + Postgres   │
-                                               │ artifacts/api-server     │
-                                               │ Wasabi media             │
-                                               └──────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ Flexa Market Android (Expo + RN + TypeScript)│
+│  index.js → expo-router/entry                │
+│  Native Home / Search / Listing / Login      │
+│  AuthContext JWT → existing /api             │
+│  Placeholders for remaining feature waves    │
+│  LegacyWebViewShell.tsx QUARANTINED (unused) │
+└───────────────────────┬──────────────────────┘
+                        │ HTTPS JSON only
+                        ▼
+          Existing API + Postgres + Wasabi
+          (website SPA still independent)
 ```
 
-**Facts:**
-- `artifacts/mobile/App.tsx` header: “WebView shell with Android push notifications.”
-- Tab routes (`index`, `search`, `sell`, `inbox`, `profile`) and most stack screens wrap `SafeWebView` → `https://flexamarket.com/...`.
-- Native exceptions today: push (`expo-notifications`), background upload module, partial `delivery-tracking.tsx`, AuthContext/AsyncStorage, adaptive layout plugin.
-- Backend already enforces Android digital-purchase initiation blocks (`androidDigitalPurchaseGuard.ts`) and UA marker `FlexaMarketAndroid/1.0`.
+**Facts (post Phase 2 foundation):**
+- Entry is `expo-router`, not `registerRootComponent(WebView App)`.
+- Android package config: `com.flexamarket.app` (proposed; not published).
+- iOS bundle remains `com.flexamarket.mobile`.
+- Backend still enforces `androidDigitalPurchaseGuard` for Android digital goods.
+- Suspended prior binary: `com.flexa.market` version code 48 (Webviews / Affiliate Spam).
 
 ## 2. Target architecture (approved design intent)
 

@@ -55,9 +55,9 @@ Legend: **M** = mandatory policy/platform requirement · **R** = recommendation/
 ### B1. Webviews and Affiliate Spam
 1. **Source:** https://support.google.com/googleplay/android-developer/answer/9899034 (Spam)  
 2. **Requirement (quoted theme from live page):** Apps whose **primary purpose** is to drive affiliate traffic or provide a **webview of a website** without permission are not allowed.  
-3. **Applicability:** **Critical** — current Android app is explicitly a Flexa Market WebView shell.  
-4. **Status:** **NON-COMPLIANT INTENT vs goal** for “genuine native.” Ownership of flexamarket.com mitigates “without permission,” but **mere WebView primary purpose** remains a review risk (also echoed in Families policy language).  
-5. **Required changes:** Replace primary UI with native RN screens providing substantial functionality (see architecture).  
+3. **Applicability:** **Critical** — prior shipped app `com.flexa.market` v48 was suspended for this policy. Google stated primary purpose was driving traffic to a website without permission.  
+4. **Status:** **CORRECTIVE PATH IN PROGRESS** — Phase 2 native expo-router shell (Home/Search/Listing/Login). Legacy WebView shell quarantined and not the entry point. See `ANDROID_SUSPENSION_AND_CORRECTIVE_ACTIONS.md`.  
+5. **Required changes:** Finish feature waves; device-verify no WebView-primary path; Console remediation before submit.  
 6. **Verification:** Manual review checklist; reviewer login; screenshots show native UI not a browser frame.  
 **Type:** M
 

@@ -1,9 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
-import { useLocalSearchParams } from "expo-router";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function WebsiteScreen() {
-  const { url } = useLocalSearchParams<{ url: string }>();
-  const uri = url ? decodeURIComponent(url) : "https://flexamarket.com";
-  return <SafeWebView uri={uri} />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Website bridge removed'
+      detail='In-app website WebView bridge is disabled for Play compliance.'
+    />
+  );
 }

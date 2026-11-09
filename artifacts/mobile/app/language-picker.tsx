@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function LanguagePickerScreen() {
-  return <SafeWebView uri="https://flexamarket.com" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Language'
+      detail='Language selection will be a native picker.'
+    />
+  );
 }

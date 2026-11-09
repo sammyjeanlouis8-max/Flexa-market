@@ -21,9 +21,29 @@ import { logger } from "../lib/logger";
 import { uploadToStorage } from "../lib/storage";
 import { sendEmail } from "../lib/email";
 import { kycStatusEmail } from "../lib/emailTemplates";
+import { logAdminAction } from "../lib/auditLogger";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const KYC_ALLOWED_MIMES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const mime = (file.mimetype || "").split(";")[0].trim().toLowerCase();
+    if (KYC_ALLOWED_MIMES.has(mime) || mime.startsWith("image/")) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error("KYC_INVALID_MIME"));
+  },
+});
 
 // ─── GET /api/kyc/status ──────────────────────────────────────────────────────
 
@@ -177,16 +197,39 @@ router.patch("/admin/kyc/:userId/decide", requireAdmin, async (req, res): Promis
   const newStatus = decision === "approve" ? "approved" : "rejected";
   const reasonVal = decision === "reject" ? String(rejectionReason).trim() : null;
 
-  await db.execute(sql`
-    UPDATE users
-    SET kyc_status           = ${newStatus},
-        kyc_rejection_reason = ${reasonVal},
-        kyc_reviewed_at      = NOW(),
-        kyc_reviewed_by      = ${req.userId!}
-    WHERE id = ${userId}
-  `);
+  // Approved KYC grants the public verified seller badge. Rejection never clears
+  // an earlier admin-granted verify unless explicitly unverified elsewhere.
+  if (decision === "approve") {
+    await db.execute(sql`
+      UPDATE users
+      SET kyc_status           = ${newStatus},
+          kyc_rejection_reason = ${reasonVal},
+          kyc_reviewed_at      = NOW(),
+          kyc_reviewed_by      = ${req.userId!},
+          is_verified          = true
+      WHERE id = ${userId}
+    `);
+  } else {
+    await db.execute(sql`
+      UPDATE users
+      SET kyc_status           = ${newStatus},
+          kyc_rejection_reason = ${reasonVal},
+          kyc_reviewed_at      = NOW(),
+          kyc_reviewed_by      = ${req.userId!}
+      WHERE id = ${userId}
+    `);
+  }
 
   logger.info({ userId, decision, reviewedBy: req.userId }, "KYC decision recorded");
+  await logAdminAction(req, {
+    actionType: decision === "approve" ? "kyc_approve" : "kyc_reject",
+    actionCategory: "user",
+    description: `KYC ${decision} for ${user.name} (${user.email})`,
+    targetType: "user",
+    targetId: userId,
+    targetName: user.name,
+    riskLevel: "high",
+  }).catch(() => {});
 
   // Email notification — fire and forget
   void (async () => {

@@ -237,7 +237,8 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       name, email, passwordHash,
       ...(normPhone ? { phone: normPhone } : {}),
       country: country ?? null,
-      isPhoneVerified: false, isVerified: true,
+      // Verified badge is earned via KYC / admin verification — never granted at signup.
+      isPhoneVerified: false, isVerified: false,
       location: location ?? null, bio: bio ?? null, avatar: avatar ?? null,
       deviceId, registrationIp: ip,
       isFlagged, flagReason: flagReasons.length > 0 ? flagReasons.join("; ") : null,

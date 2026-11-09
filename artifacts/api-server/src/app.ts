@@ -14,13 +14,17 @@ const app: Express = express();
 app.set("trust proxy", 1);
 
 // ─── HTTP request logger (replaces pino-http to avoid TS compatibility issues) ─
-app.use((req: Request, _res: Response, next: NextFunction) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const reqId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (req as any).log = logger.child({
-    reqId: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    reqId,
     method: req.method,
     url: req.url?.split("?")[0],
   });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (req as any).reqId = reqId;
+  res.setHeader("X-Request-Id", reqId);
   next();
 });
 
@@ -264,7 +268,12 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction): void => 
     "Unhandled route error",
   );
   if (!res.headersSent) {
-    res.status(500).json({ error: "Internal server error" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reqId = (req as any).reqId as string | undefined;
+    res.status(500).json({
+      error: "Internal server error",
+      ...(reqId ? { reqId } : {}),
+    });
   }
 });
 

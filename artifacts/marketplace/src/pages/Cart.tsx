@@ -90,13 +90,22 @@ function CheckoutModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [requiresItemCheckout, setRequiresItemCheckout] = useState(false);
+  const [checkoutTimedOut, setCheckoutTimedOut] = useState(false);
   const submitLock = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const groups = groupBySeller(selectedItems);
   const deliveryTotal = deliveryFees.reduce((s, d) => s + d.feeUsd, 0);
   // $0.50 referral surcharge for referred buyers on orders > $14.99
   const cartReferralFee = (user as any)?.referredByUserId && total > 14.99 ? 0.50 : 0;
   const grandTotal = total + deliveryTotal + cartReferralFee;
+
+  const cancelInFlightCheckout = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    submitLock.current = false;
+  };
 
   const handleConfirm = async () => {
     if (submitLock.current || loading) return;
@@ -106,10 +115,16 @@ function CheckoutModal({
     submitLock.current = true;
     setLoading(true);
     setError("");
+    setCheckoutTimedOut(false);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const softTimeout = window.setTimeout(() => setCheckoutTimedOut(true), 8_000);
+    const hardTimeout = window.setTimeout(() => controller.abort(), 45_000);
     try {
       const res = await fetch("/api/cart/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        signal: controller.signal,
         body: JSON.stringify({
           items: selectedItems.map(i => ({ listingId: i.listingId, quantity: i.quantity ?? 1 })),
           shippingName: name.trim(),
@@ -134,11 +149,21 @@ function CheckoutModal({
         region: region.trim(),
       });
       onSuccess(data.orders ?? [], data.deliveryTotal ?? 0);
-    } catch {
-      setError(t("cart.networkError"));
+    } catch (err) {
+      if ((err as DOMException)?.name === "AbortError") {
+        setError(t("cart.checkoutTimeout", {
+          defaultValue: "Checkout is taking too long. You can cancel and try again safely.",
+        }));
+      } else {
+        setError(t("cart.networkError"));
+      }
     } finally {
+      window.clearTimeout(softTimeout);
+      window.clearTimeout(hardTimeout);
+      abortRef.current = null;
       setLoading(false);
       submitLock.current = false;
+      setCheckoutTimedOut(false);
     }
   };
 
@@ -159,10 +184,26 @@ function CheckoutModal({
               })} · ${grandTotal.toFixed(2)}
             </p>
           </div>
-          <button type="button" onClick={onClose} disabled={loading} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#f1f5f9" }} aria-label={t("cart.closeCheckout")}>
+          <button
+            type="button"
+            onClick={() => {
+              if (loading) cancelInFlightCheckout();
+              onClose();
+            }}
+            className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ background: "#f1f5f9" }}
+            aria-label={t("cart.closeCheckout")}
+          >
             <X className="h-4 w-4 text-gray-600" />
           </button>
         </div>
+        {loading && checkoutTimedOut && (
+          <div className="mx-5 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+            {t("cart.checkoutSlow", {
+              defaultValue: "Still processing… You can close this sheet and retry. Duplicate charges are blocked server-side.",
+            })}
+          </div>
+        )}
 
         <div className="px-5 py-4 space-y-4">
           {/* Seller groups summary */}

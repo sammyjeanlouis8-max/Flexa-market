@@ -3227,6 +3227,69 @@ export async function runStartupMigrations(): Promise<void> {
     `,
   });
 
+  // Buyer Protection disputes (no auto-refund)
+  migrations.push({
+    name: "order_disputes.create",
+    sql: `
+      CREATE TABLE IF NOT EXISTS order_disputes (
+        id serial PRIMARY KEY,
+        order_id integer NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+        buyer_id integer NOT NULL REFERENCES users(id),
+        seller_id integer NOT NULL REFERENCES users(id),
+        reason text NOT NULL,
+        category text NOT NULL DEFAULT 'other',
+        status text NOT NULL DEFAULT 'OPEN',
+        evidence_urls text[] NOT NULL DEFAULT '{}',
+        buyer_notes text,
+        seller_notes text,
+        admin_notes text,
+        assigned_admin_id integer REFERENCES users(id),
+        support_thread_id integer,
+        resolution text,
+        resolved_at timestamptz,
+        closed_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS order_disputes_order_id_idx ON order_disputes(order_id);
+      CREATE INDEX IF NOT EXISTS order_disputes_buyer_id_idx ON order_disputes(buyer_id);
+      CREATE INDEX IF NOT EXISTS order_disputes_seller_id_idx ON order_disputes(seller_id);
+      CREATE INDEX IF NOT EXISTS order_disputes_status_idx ON order_disputes(status);
+      CREATE UNIQUE INDEX IF NOT EXISTS order_disputes_buyer_order_uniq
+        ON order_disputes(buyer_id, order_id)
+    `,
+  });
+
+  // Verified-purchase reviews: NULL-safe uniqueness (skip if legacy duplicates exist)
+  migrations.push({
+    name: "reviews.partial_unique_verified",
+    sql: `
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM reviews
+          WHERE listing_id IS NOT NULL
+          GROUP BY reviewer_id, seller_id, listing_id
+          HAVING COUNT(*) > 1
+        ) THEN
+          CREATE UNIQUE INDEX IF NOT EXISTS reviews_reviewer_seller_listing_uniq
+            ON reviews(reviewer_id, seller_id, listing_id)
+            WHERE listing_id IS NOT NULL;
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM reviews
+          WHERE listing_id IS NULL
+          GROUP BY reviewer_id, seller_id
+          HAVING COUNT(*) > 1
+        ) THEN
+          CREATE UNIQUE INDEX IF NOT EXISTS reviews_reviewer_seller_null_listing_uniq
+            ON reviews(reviewer_id, seller_id)
+            WHERE listing_id IS NULL;
+        END IF;
+      END $$
+    `,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

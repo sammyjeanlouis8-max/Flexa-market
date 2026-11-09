@@ -147,6 +147,26 @@ export default function AdminControlCenterDashboard() {
     enabled: isSuperAdmin,
   });
 
+  type SystemHealth = {
+    status?: string;
+    durationMs?: number;
+    checkedAt?: string;
+    checks?: {
+      database?: { status?: string; latencyMs?: number; pool?: { total?: number; idle?: number; waiting?: number } };
+      stripeWebhooks?: { status?: string; pending?: number; lastReceivedAt?: string | null };
+      orderDisputes?: { status?: string; open?: number; total?: number };
+      videoStorage?: { status?: string; ready?: boolean; lastError?: string | null };
+      api?: { status?: string; uptimeSec?: number; memoryRssMb?: number };
+    };
+  };
+
+  const healthQ = useQuery({
+    queryKey: ["admin-system-health"],
+    queryFn: () => adminGet<SystemHealth>("/api/admin/system-health"),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
   const money = useMemo(() => {
     const rev = revenueQ.data?.summary;
     return {
@@ -445,6 +465,111 @@ export default function AdminControlCenterDashboard() {
         <AdminAnalyticsDashboard rangeDays={rangeDays} />
       </div>
 
+      {/* System health — measured probes only */}
+      <section className="rounded-xl border border-border bg-card p-3 shadow-sm" data-testid="admin-system-health">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-foreground">
+              {t("adminControl.systemHealthTitle", { defaultValue: "System Health" })}
+            </h3>
+            <p className="text-[11px] text-muted-foreground">
+              {t("adminControl.systemHealthSub", {
+                defaultValue: "Live probes from this environment — never fabricated.",
+              })}
+            </p>
+          </div>
+          <Badge
+            variant="outline"
+            className={cn(
+              healthQ.data?.status === "ok" && "border-emerald-400 text-emerald-700",
+              healthQ.data?.status === "degraded" && "border-amber-400 text-amber-700",
+              healthQ.data?.status === "error" && "border-red-400 text-red-700",
+              !healthQ.data && "text-muted-foreground",
+            )}
+          >
+            {healthQ.isLoading
+              ? "…"
+              : (healthQ.data?.status ?? t("adminControl.healthUnavailable", { defaultValue: "unavailable" }))}
+          </Badge>
+        </div>
+        {healthQ.data?.checks ? (
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <MetricCard
+              label={t("adminControl.healthDb", { defaultValue: "Database" })}
+              value={healthQ.data.checks.database?.status ?? "—"}
+              hint={
+                <p className="text-[10px] text-muted-foreground">
+                  {healthQ.data.checks.database?.latencyMs != null
+                    ? `${healthQ.data.checks.database.latencyMs} ms`
+                    : null}
+                  {healthQ.data.checks.database?.pool
+                    ? ` · pool ${healthQ.data.checks.database.pool.total ?? 0}`
+                    : null}
+                </p>
+              }
+              tone={healthQ.data.checks.database?.status === "ok" ? "ok" : "alert"}
+              icon={Activity}
+            />
+            <MetricCard
+              label={t("adminControl.healthStripe", { defaultValue: "Stripe webhooks" })}
+              value={
+                healthQ.data.checks.stripeWebhooks?.status === "ok"
+                  ? fmtInt(healthQ.data.checks.stripeWebhooks.pending)
+                  : (healthQ.data.checks.stripeWebhooks?.status ?? "—")
+              }
+              hint={
+                <p className="text-[10px] text-muted-foreground">
+                  {healthQ.data.checks.stripeWebhooks?.status === "ok"
+                    ? t("adminControl.healthPending", { defaultValue: "pending events" })
+                    : t("adminControl.healthProbeUnavailable", { defaultValue: "probe unavailable" })}
+                </p>
+              }
+              tone={healthQ.data.checks.stripeWebhooks?.status === "ok" ? "ok" : "default"}
+              icon={Banknote}
+            />
+            <MetricCard
+              label={t("adminControl.healthDisputes", { defaultValue: "Buyer disputes" })}
+              value={
+                healthQ.data.checks.orderDisputes?.status === "ok"
+                  ? fmtInt(healthQ.data.checks.orderDisputes.open)
+                  : (healthQ.data.checks.orderDisputes?.status ?? "—")
+              }
+              hint={
+                <p className="text-[10px] text-muted-foreground">
+                  {healthQ.data.checks.orderDisputes?.status === "ok"
+                    ? t("adminControl.healthOpen", { defaultValue: "open cases" })
+                    : t("adminControl.healthProbeUnavailable", { defaultValue: "probe unavailable" })}
+                </p>
+              }
+              tone={
+                (healthQ.data.checks.orderDisputes?.open ?? 0) > 0 ? "alert" : "ok"
+              }
+              icon={Flag}
+            />
+            <MetricCard
+              label={t("adminControl.healthStorage", { defaultValue: "Video storage" })}
+              value={healthQ.data.checks.videoStorage?.ready ? "ready" : (healthQ.data.checks.videoStorage?.status ?? "—")}
+              hint={
+                <p className="text-[10px] text-muted-foreground line-clamp-2">
+                  {healthQ.data.checks.videoStorage?.lastError
+                    ?? (healthQ.data.checks.api?.uptimeSec != null
+                      ? `API up ${Math.round((healthQ.data.checks.api.uptimeSec ?? 0) / 60)}m`
+                      : null)}
+                </p>
+              }
+              tone={healthQ.data.checks.videoStorage?.ready ? "ok" : "alert"}
+              icon={Wifi}
+            />
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t("adminControl.healthLoadFailed", {
+              defaultValue: "System health could not be loaded for this session.",
+            })}
+          </p>
+        )}
+      </section>
+
       {/* Explicitly unavailable advanced analytics — never fake */}
       <section className="rounded-xl border border-dashed border-border bg-muted/20 p-3">
         <h3 className="text-sm font-bold text-foreground">{t("adminControl.unavailableHeading")}</h3>
@@ -457,7 +582,6 @@ export default function AdminControlCenterDashboard() {
           <UnavailableChip label={t("adminControl.missing.abandonedCarts")} />
           <UnavailableChip label={t("adminControl.missing.pagePaths")} />
           <UnavailableChip label={t("adminControl.missing.systemHealthDo")} />
-          <UnavailableChip label={t("adminControl.missing.wasabi")} />
         </div>
       </section>
     </div>

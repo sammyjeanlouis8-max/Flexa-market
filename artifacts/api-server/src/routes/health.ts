@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
+import { getBoostVideoUploadReadiness } from "../lib/boostVideoUploadReadiness";
 
 const router: IRouter = Router();
 
@@ -13,10 +14,17 @@ const router: IRouter = Router();
 router.get("/healthz", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
+    const videoStorage = getBoostVideoUploadReadiness();
     const data = HealthCheckResponse.parse({ status: "ok" });
-    res.json(data);
+    res.json({
+      ...data,
+      checks: {
+        database: "ok",
+        videoStorage: videoStorage.ready ? "ok" : "degraded",
+      },
+    });
   } catch {
-    res.status(503).json({ status: "degraded" });
+    res.status(503).json({ status: "degraded", checks: { database: "error" } });
   }
 });
 

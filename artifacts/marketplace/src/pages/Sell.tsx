@@ -257,8 +257,13 @@ export default function Sell() {
   const isStripeOnlySeller = isStripeOnlySale(user?.country, selectedCountry);
 
   useEffect(() => {
-    if (!authLoading && !user) setLocation("/auth/login");
-  }, [user, authLoading]);
+    if (!authLoading && !user) {
+      const next = typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}`
+        : "/sell";
+      setLocation(`/auth/login?next=${encodeURIComponent(next)}`);
+    }
+  }, [user, authLoading, setLocation]);
 
   useEffect(() => {
     const tk = localStorage.getItem("flexamarket_token") ?? "";
@@ -849,28 +854,41 @@ export default function Sell() {
       toast({ title: t("sell.videoTooBig"), variant: "destructive" });
       return;
     }
+    if (!user) {
+      toast({ title: validationMessages.videoUploadFailed, variant: "destructive" });
+      return;
+    }
     setVideoUploading(true);
     try {
-      if (!user) {
-        toast({ title: validationMessages.videoUploadFailed, variant: "destructive" });
-        return;
-      }
       const seconds = await probeVideoDuration(file);
       if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
         toast({ title: validationMessages.videoTooLong, variant: "destructive" });
+        setVideoUploading(false);
         return;
       }
-      // Queue runs in VideoUploadCenter; do not block the Sell form on ffmpeg.
-      const uploadedUrl = await startVideoUpload(file, token, {
+      // Queue + ffmpeg run in VideoUploadCenter. Do not await the full pipeline
+      // here — that freezes the Sell form for minutes on slow networks.
+      void startVideoUpload(file, token, {
         ownerId: user.id,
         purpose: "listing",
         returnPath: typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined,
+      }).then((uploadedUrl) => {
+        setListingVideoUrl(uploadedUrl);
+        toast({ title: t("sell.videoReady", { defaultValue: "Video ready." }) });
+      }).catch((err: unknown) => {
+        const retryable = !!(err && typeof err === "object" && "retryable" in err && (err as { retryable?: boolean }).retryable);
+        toast({
+          title: retryable
+            ? t("sell.videoUploadPaused", { defaultValue: "Upload paused — it will resume automatically." })
+            : validationMessages.videoUploadFailed,
+          variant: retryable ? "default" : "destructive",
+        });
+      }).finally(() => {
+        setVideoUploading(false);
       });
-      setListingVideoUrl(uploadedUrl);
     } catch {
-      toast({ title: validationMessages.videoUploadFailed, variant: "destructive" });
-    } finally {
       setVideoUploading(false);
+      toast({ title: validationMessages.videoUploadFailed, variant: "destructive" });
     }
   };
 

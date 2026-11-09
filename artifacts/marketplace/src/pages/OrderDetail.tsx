@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRoute, useLocation } from "wouter";
 import {
   Printer, ChevronLeft, Truck, CheckCircle2, Package, Clock, MapPin,
-  ExternalLink, ShieldCheck, ChevronDown, ChevronUp, RotateCcw, AlertTriangle, X, Copy, Lock, XCircle, Bus, Footprints, Info, Pencil, Phone,
+  ExternalLink, ShieldCheck, ShieldAlert, Flag, ChevronDown, ChevronUp, RotateCcw, AlertTriangle, X, Copy, Lock, XCircle, Bus, Footprints, Info, Pencil, Phone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -518,6 +518,11 @@ export default function OrderDetail() {
   const [busTrackingLink, setBusTrackingLink] = useState("");
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectBusy, setRejectBusy] = useState(false);
+  const [disputeBusy, setDisputeBusy] = useState(false);
+  const [disputeOpenedId, setDisputeOpenedId] = useState<number | null>(null);
+  const [showDisputeDialog, setShowDisputeDialog] = useState(false);
+  const [disputeCategory, setDisputeCategory] = useState("missing_order");
+  const [disputeReason, setDisputeReason] = useState("");
 
   const trackingLabel = (key: string) => {
     const map: Record<string, string> = {
@@ -2075,6 +2080,123 @@ export default function OrderDetail() {
       )}
 
       {order.isBuyer && order.paymentMethod === "stripe" && <CardCancellationPanel orderId={orderId} onChanged={load} />}
+
+      {/* ══ Buyer Protection dispute (all countries) — never auto-refunds ══ */}
+      {order.isBuyer && ["completed", "delivered", "shipped"].includes(order.orderStatus) && (
+        <div className="rounded-2xl border border-border bg-card p-5 space-y-3" data-testid="buyer-protection-card">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <ShieldAlert className="h-4 w-4" />
+            {t("orderDetail.buyerProtection", { defaultValue: "Buyer Protection" })}
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {t("orderDetail.buyerProtectionHint", {
+              defaultValue: "Report a missing, incorrect, or damaged order. Support reviews the case — funds are never released automatically from this form.",
+            })}
+          </p>
+          {disputeOpenedId ? (
+            <p className="text-sm font-semibold text-emerald-700">
+              {t("orderDetail.disputeOpened", {
+                defaultValue: "Dispute #{{id}} opened. Track it in Support.",
+                id: disputeOpenedId,
+              })}
+            </p>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => setShowDisputeDialog(true)}
+              data-testid="button-open-dispute"
+            >
+              <Flag className="h-3.5 w-3.5" />
+              {t("orderDetail.openDispute", { defaultValue: "Open a dispute" })}
+            </Button>
+          )}
+        </div>
+      )}
+
+      <Dialog open={showDisputeDialog} onOpenChange={setShowDisputeDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("orderDetail.openDispute", { defaultValue: "Open a dispute" })}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>{t("orderDetail.disputeCategory", { defaultValue: "Issue type" })}</Label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={disputeCategory}
+                onChange={(e) => setDisputeCategory(e.target.value)}
+              >
+                <option value="missing_order">Missing order</option>
+                <option value="incorrect_product">Incorrect product</option>
+                <option value="damaged_product">Damaged product</option>
+                <option value="refund_request">Refund request</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>{t("orderDetail.disputeReason", { defaultValue: "Describe the issue" })}</Label>
+              <Textarea
+                value={disputeReason}
+                onChange={(e) => setDisputeReason(e.target.value)}
+                rows={4}
+                placeholder={t("orderDetail.disputeReasonPlaceholder", {
+                  defaultValue: "What happened? Include dates and details.",
+                })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDisputeDialog(false)} disabled={disputeBusy}>
+              {t("buttons.cancel")}
+            </Button>
+            <Button
+              disabled={disputeBusy || disputeReason.trim().length < 8}
+              onClick={async () => {
+                setDisputeBusy(true);
+                try {
+                  const token = localStorage.getItem("flexamarket_token");
+                  const res = await fetch("/api/order-disputes", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                      orderId: Number(orderId),
+                      category: disputeCategory,
+                      reason: disputeReason.trim(),
+                    }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) {
+                    toast({
+                      title: data.error || t("common.tryAgain"),
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  setDisputeOpenedId(data.id ?? data.disputeId ?? null);
+                  setShowDisputeDialog(false);
+                  toast({
+                    title: t("orderDetail.disputeOpenedToast", {
+                      defaultValue: "Dispute submitted to support.",
+                    }),
+                  });
+                } catch {
+                  toast({ title: t("common.tryAgain"), variant: "destructive" });
+                } finally {
+                  setDisputeBusy(false);
+                }
+              }}
+            >
+              {disputeBusy ? t("buttons.sending") : t("buttons.submit", { defaultValue: "Submit" })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ══ Return Request System (non-Haiti / entènasyonal) ══ */}
       {!order.isHaiti && ["completed", "return_refunded"].includes(order.orderStatus) && (() => {
         const releaseDate = (order as any).escrowReleasedAt ?? order.deliveredAt ?? order.buyerConfirmedAt;

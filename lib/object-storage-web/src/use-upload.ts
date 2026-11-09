@@ -15,6 +15,16 @@ async function convertImageToJpeg(file: File): Promise<File> {
   // Videos/audio skip. JPEG still gets optional downscale when oversized.
   if (!file.type.startsWith("image/")) return file;
   return new Promise<File>((resolve) => {
+    let settled = false;
+    const finish = (result: File) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    // Safari/WebView can hang on HEIC/corrupt images with neither onload nor onerror.
+    // Never block the Sell form publish button indefinitely.
+    const timer = setTimeout(() => finish(file), 10_000);
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
     img.onload = () => {
@@ -25,32 +35,32 @@ async function convertImageToJpeg(file: File): Promise<File> {
         const scale = Math.min(1, MAX_IMAGE_EDGE_PX / Math.max(srcW, srcH));
         const alreadyJpeg = file.type === "image/jpeg";
         if (alreadyJpeg && scale >= 1 && file.size <= 2.5 * 1024 * 1024) {
-          resolve(file);
+          finish(file);
           return;
         }
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(srcW * scale));
         canvas.height = Math.max(1, Math.round(srcH * scale));
         const ctx = canvas.getContext("2d");
-        if (!ctx) { resolve(file); return; }
+        if (!ctx) { finish(file); return; }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(
           (blob) => {
             if (blob) {
               const jpegName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
-              resolve(new File([blob], jpegName, { type: "image/jpeg", lastModified: file.lastModified }));
+              finish(new File([blob], jpegName, { type: "image/jpeg", lastModified: file.lastModified }));
             } else {
-              resolve(file);
+              finish(file);
             }
           },
           "image/jpeg",
           scale < 1 ? 0.82 : 0.88,
         );
       } catch {
-        resolve(file);
+        finish(file);
       }
     };
-    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file); };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); finish(file); };
     img.src = objectUrl;
   });
 }

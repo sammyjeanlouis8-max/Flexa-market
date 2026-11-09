@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUpload } from "@workspace/object-storage-web";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { MAX_BOOST_VIDEO_BYTES } from "@/lib/boostVideoUpload";
+import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import { BoostAudiencePanel, type BoostAudiencePanelHandle } from "@/components/boost/BoostAudiencePanel";
 import { AdaptiveVideoPlayer } from "@/components/media/AdaptiveVideoPlayer";
 import { extractVideoPoster } from "@/lib/videoPoster";
@@ -282,19 +283,12 @@ export default function BoosterCreate() {
       toast({ title: t("booster.create.videoTooLarge"), variant: "destructive" });
       return;
     }
-    const probe = document.createElement("video");
-    probe.preload = "metadata";
-    const objectUrl = URL.createObjectURL(file);
-    probe.src = objectUrl;
-    await new Promise<void>((resolve) => {
-      probe.onloadedmetadata = () => resolve();
-      probe.onerror = () => resolve();
-    });
-    if (Number.isFinite(probe.duration) && probe.duration > MAX_VIDEO_SECONDS + 0.5) {
-      URL.revokeObjectURL(objectUrl);
+    const seconds = await probeVideoDuration(file);
+    if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
       toast({ title: t("booster.create.videoTooLong"), variant: "destructive" });
       return;
     }
+    const objectUrl = URL.createObjectURL(file);
     // Capture a clear still immediately so the preview is never a blank white box.
     const posterPromise = extractVideoPoster(file);
     setMediaPreview(objectUrl);
@@ -320,12 +314,22 @@ export default function BoosterCreate() {
       if (frame) setVideoPoster(frame);
       setUploadPercent(100);
       toast({ title: t("boost.videoReadyPreview", { defaultValue: "Video ready for preview." }) });
-    } catch {
-      toast({ title: t("booster.create.uploadFailed"), variant: "destructive" });
-      setVideoUrl(null);
-      setVideoPoster(null);
-      setMediaPreview(null);
-      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      const retryable = !!(err && typeof err === "object" && "retryable" in err && (err as { retryable?: boolean }).retryable);
+      // Never wipe the preview on a pause/offline blip — the durable queue resumes.
+      if (retryable) {
+        toast({
+          title: t("booster.create.uploadPaused", {
+            defaultValue: "Upload paused. It will resume when your connection returns.",
+          }),
+        });
+      } else {
+        toast({ title: t("booster.create.uploadFailed"), variant: "destructive" });
+        setVideoUrl(null);
+        setVideoPoster(null);
+        setMediaPreview(null);
+        URL.revokeObjectURL(objectUrl);
+      }
     } finally {
       setUploading(false);
     }

@@ -508,18 +508,23 @@ function Router() {
     applyScroll(0);
   }, [location, searchString]);
 
-  // Redirect to profile completion only after auth has settled
+  // Soft profile-completion nudge. Never blank the screen or yank users out of
+  // active seller/boost/checkout flows — that caused freezes and lost drafts.
+  const profileGateExempt =
+    location === "/profile/edit"
+    || location.startsWith("/sell")
+    || location.startsWith("/booster")
+    || location.startsWith("/boost")
+    || location.startsWith("/cart")
+    || location.startsWith("/checkout")
+    || location.startsWith("/auth/")
+    || location.startsWith("/videos");
+
   useEffect(() => {
-    if (!isLoading && user && user.profileCompleted === false && location !== "/profile/edit") {
+    if (!isLoading && user && user.profileCompleted === false && !profileGateExempt) {
       setLocation("/profile/edit");
     }
-  }, [user, isLoading, location, setLocation]);
-
-  // Brief null guard: prevents a flash of the current page while the redirect
-  // to /profile/edit is in flight (one render cycle after auth resolves).
-  if (!isLoading && user && user.profileCompleted === false && location !== "/profile/edit") {
-    return null;
-  }
+  }, [user, isLoading, location, setLocation, profileGateExempt]);
 
   return (
     <Switch>

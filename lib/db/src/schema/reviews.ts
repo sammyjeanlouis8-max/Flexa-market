@@ -17,6 +17,7 @@ export const reviewsTable = pgTable("reviews", {
   reviewsSellerIdx: index("reviews_seller_id_idx").on(t.sellerId),
   reviewsListingIdx: index("reviews_listing_id_idx").on(t.listingId),
   reviewsReviewerIdx: index("reviews_reviewer_id_idx").on(t.reviewerId),
+  // Partial unique indexes are created in migrations.ts (NULL-safe).
 }));
 
 export const insertReviewSchema = createInsertSchema(reviewsTable).omit({ id: true, createdAt: true });

@@ -1,8 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
-import { useLocalSearchParams } from "expo-router";
+import NativePlaceholder from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function OrderScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  return <SafeWebView uri={`https://flexamarket.com/orders/${id}`} />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Order details'
+      subtitle='Native order detail is queued after cart/checkout.'
+    />
+  );
 }

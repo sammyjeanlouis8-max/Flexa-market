@@ -1,13 +1,13 @@
 /**
- * Flexa Market — native auth + marketplace WebView shell.
+ * LEGACY WebView shell — NOT the app entry anymore.
+ * Entry is `index.js` → `expo-router/entry` (native tabs + auth).
+ * Kept temporarily for reference / push-bridge patterns during migration.
  *
- * Key behaviors:
+ * Key behaviors (legacy):
  * 1. Native Login / Signup with GPU-rendered rotating flag globe (expo-gl).
  * 2. Push token registration (FCM/APNs) — injected into WebView on load.
- * 3. Cold-start navigation — notification URL captured before WebView loads,
- *    injected in onLoadEnd (fixes the double-tap bug).
- * 4. Durable background uploads — trusted WebView requests are handed to a
- *    native WorkManager foreground worker after their file has been staged.
+ * 3. Cold-start navigation — notification URL captured before WebView loads.
+ * 4. Durable background uploads via native WorkManager.
  */
 import React, { useCallback, useRef, useState, useEffect } from "react";
 import {

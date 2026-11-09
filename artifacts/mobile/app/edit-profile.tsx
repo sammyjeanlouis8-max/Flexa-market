@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import NativePlaceholder from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function EditProfileScreen() {
-  return <SafeWebView uri="https://flexamarket.com/edit-profile" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Edit profile'
+      subtitle='Native profile editing is queued.'
+    />
+  );
 }

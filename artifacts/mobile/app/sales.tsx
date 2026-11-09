@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import NativePlaceholder from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function SalesScreen() {
-  return <SafeWebView uri="https://flexamarket.com/sales" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Sales'
+      subtitle='Native seller sales dashboard is queued.'
+    />
+  );
 }

@@ -25,13 +25,21 @@ test("Android blocks broad storage and battery permissions", () => {
   }
 });
 
-test("Android gallery selection uses the system picker without broad media permission", () => {
+test("Home tab is native marketplace browse without WebView or broad media permission", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "app", "(tabs)", "index.tsx"),
     "utf8",
   );
+  assert.equal(source.includes("SafeWebView"), false);
+  assert.equal(source.includes("react-native-webview"), false);
   assert.equal(source.includes("requestMediaLibraryPermissionsAsync"), false);
-  assert.equal(source.includes("launchImageLibraryAsync"), true);
+  assert.match(source, /fetchListings|fetchHomeStats/);
+});
+
+test("App entry uses Expo Router instead of the WebView shell", () => {
+  const entry = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  assert.match(entry, /expo-router\/entry/);
+  assert.equal(entry.includes('from "./App"'), false);
 });
 
 test("dependency check accepts exact lock versions and never repairs files", () => {

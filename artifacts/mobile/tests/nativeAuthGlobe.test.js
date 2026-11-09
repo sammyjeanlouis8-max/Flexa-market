@@ -35,13 +35,15 @@ test("Auth globe uses expo-gl GPU rendering with the flag atlas asset", () => {
   assert.ok(fs.existsSync(path.join(root, "assets/images/auth-globe-flags.jpg")));
 });
 
-test("App shell intercepts website auth routes into native screens", () => {
-  const source = fs.readFileSync(path.join(root, "App.tsx"), "utf8");
-  assert.match(source, /LoginScreen/);
-  assert.match(source, /RegisterScreen/);
-  assert.match(source, /detectNativeAuthMode/);
-  assert.match(source, /AuthProvider/);
-  assert.match(source, /expo-gl|AuthGlobe|LoginScreen/);
+test("Expo Router auth routes render native Login/Signup screens", () => {
+  const login = fs.readFileSync(path.join(root, "app/auth/login.tsx"), "utf8");
+  const register = fs.readFileSync(path.join(root, "app/auth/register.tsx"), "utf8");
+  const entry = fs.readFileSync(path.join(root, "index.js"), "utf8");
+  assert.match(login, /LoginScreen/);
+  assert.match(register, /RegisterScreen/);
+  assert.match(entry, /expo-router\/entry/);
+  assert.equal(login.includes("SafeWebView"), false);
+  assert.equal(register.includes("SafeWebView"), false);
 });
 
 test("native auth bridge maps login/register paths correctly", () => {

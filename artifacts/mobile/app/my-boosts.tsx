@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import NativePlaceholder from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function MyBoostsScreen() {
-  return <SafeWebView uri="https://flexamarket.com/my-boosts" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='My boosts'
+      subtitle='Native boost management is queued.'
+    />
+  );
 }

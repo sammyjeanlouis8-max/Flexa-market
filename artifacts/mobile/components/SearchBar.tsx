@@ -10,7 +10,13 @@ interface SearchBarProps {
   autoFocus?: boolean;
 }
 
-export function SearchBar({ value, onChangeText, onSubmit, placeholder = "Chèche nan FlexaMarket…", autoFocus }: SearchBarProps) {
+export function SearchBar({
+  value,
+  onChangeText,
+  onSubmit,
+  placeholder = "Search Flexa Market…",
+  autoFocus,
+}: SearchBarProps) {
   return (
     <View style={styles.container}>
       <Feather name="search" size={18} color="#94a3b8" style={styles.icon} />
@@ -36,7 +42,17 @@ export function SearchBar({ value, onChangeText, onSubmit, placeholder = "Chèch
 }
 
 const styles = StyleSheet.create({
-  container: { flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: "#1e293b", backgroundColor: "#1e293b", paddingHorizontal: 12, height: 44, gap: 8 },
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 12,
+    height: 44,
+    gap: 8,
+  },
   icon: {},
-  input: { flex: 1, fontSize: 14, height: "100%", color: "#F8FAFC" },
+  input: { flex: 1, fontSize: 14, height: "100%", color: "#0F172A" },
 });

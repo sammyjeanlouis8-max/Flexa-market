@@ -1,263 +1,324 @@
 /**
- * Flexa Market — 100% WebView shell
- *
- * Features:
- *  - Full-screen WebView loading flexamarket.com
- *  - Push notifications via expo-notifications (injected into WebView)
- *  - Stripe opens inside the same WebView (fixes missing payment buttons)
- *  - iOS video-input interceptor (WKWebView can't open camera for video)
- *  - Android hardware-back navigates WebView history
- *  - External links open in system browser
- *  - Safe-area insets injected as CSS variables (--sat / --sab)
+ * Native Home — marketplace browse (no WebView).
+ * Loads country-scoped feeds from DigitalOcean via /api/stats/home + /api/listings.
  */
-
-import * as FileSystem from "expo-file-system/legacy";
-import * as ImagePicker from "expo-image-picker";
-import * as Notifications from "expo-notifications";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActionSheetIOS,
-  BackHandler,
-  Linking,
-  Platform,
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
   StyleSheet,
+  Text,
+  View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import WebView from "react-native-webview";
-import { usePushNotifications } from "../../hooks/usePushNotifications";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ListingCard } from "@/components/ListingCard";
+import { SearchBar } from "@/components/SearchBar";
+import { SkeletonCard } from "@/components/SkeletonCard";
+import { useAuth } from "@/context/AuthContext";
+import { useMarketplace } from "@/context/MarketplaceContext";
 import {
-  ANDROID_UA_SUFFIX,
-  classifyWebUrl,
-  platformBridgeScript,
-} from "../../security/webviewPolicy";
+  fetchHomeStats,
+  fetchListings,
+  type Listing,
+} from "@/lib/api";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const WEBSITE = "https://flexamarket.com";
-const MAX_BRIDGE_BYTES = 40 * 1024 * 1024; // 40 MB
+type Section = "featured" | "recent" | "all";
 
-// The marketplace WebView owns the bottom safe-area inset. Reserving the
-// bottom edge here shrinks the WebView and puts a native white strip over the
-// chat composer and the bottom ad controls, making their visible center
-// untappable on iPhone.
-const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
-  Platform.OS === "ios" ? ["top"] : [];
-
-// ─── Injected script ──────────────────────────────────────────────────────────
-const INIT_SCRIPT = `
-(function(){
-  ${platformBridgeScript(Platform.OS)}
-  if(!window.__flexaCtxBlocked){
-    window.__flexaCtxBlocked=true;
-    document.addEventListener('contextmenu',function(e){e.preventDefault();},true);
-  }
-  ${Platform.OS === "ios" ? `
-  if(!window.__flexaVideoInterceptInit){
-    window.__flexaVideoInterceptInit=true;
-    var _pi=null;
-    function _isVid(el){return el&&el.tagName==='INPUT'&&el.type==='file'&&/video/i.test(el.accept||'');}
-    function _hook(el){
-      if(!el||el.__fxh||!_isVid(el))return;
-      el.__fxh=true;
-      el.addEventListener('click',function(e){
-        e.preventDefault();e.stopImmediatePropagation();
-        _pi=el;
-        window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'PICK_VIDEO'}));
-      },true);
-    }
-    document.querySelectorAll('input[type="file"]').forEach(_hook);
-    new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){
-      if(!n||n.nodeType!==1)return;
-      if(n.tagName==='INPUT')_hook(n);
-      if(n.querySelectorAll)n.querySelectorAll('input[type="file"]').forEach(_hook);
-    });});}).observe(document.body,{childList:true,subtree:true});
-    var _oc=HTMLInputElement.prototype.click;
-    HTMLInputElement.prototype.click=function(){
-      if(_isVid(this)&&window.ReactNativeWebView){_pi=this;window.ReactNativeWebView.postMessage(JSON.stringify({type:'PICK_VIDEO'}));return;}
-      _oc.call(this);
-    };
-    window.__flexaReceiveVideo=function(b64,mime,name){
-      var inp=_pi;_pi=null;if(!inp)return;
-      try{
-        var bs=atob(b64),bytes=new Uint8Array(bs.length);
-        for(var i=0;i<bs.length;i++)bytes[i]=bs.charCodeAt(i);
-        var f=new File([new Blob([bytes],{type:mime})],name,{type:mime,lastModified:Date.now()});
-        var dt=new DataTransfer();dt.items.add(f);
-        inp.files=dt.files;
-        inp.dispatchEvent(new Event('change',{bubbles:true}));
-      }catch(e){console.error('[FxVid]',e);}
-    };
-    window.__flexaVideoCancel=function(){_pi=null;};
-  }
-  ` : ""}
-})();true;
-`.trim();
-
-// ─── Component ────────────────────────────────────────────────────────────────
 export default function HomeTab() {
-  const webRef = useRef<any>(null);
-  const [canGoBack, setCanGoBack] = useState(false);
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { token, user } = useAuth();
+  const { country, isReady } = useMarketplace();
 
-  const injectJs = useCallback((script: string) => {
-    webRef.current?.injectJavaScript(script);
-  }, []);
+  const [query, setQuery] = useState("");
+  const [section, setSection] = useState<Section>("all");
+  const [featured, setFeatured] = useState<Listing[]>([]);
+  const [recent, setRecent] = useState<Listing[]>([]);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Push notifications — token injected into WebView on load
-  const tokenRef = usePushNotifications(injectJs);
+  const loadHome = useCallback(
+    async (mode: "initial" | "refresh" = "initial") => {
+      if (!isReady) return;
+      if (mode === "refresh") setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+      try {
+        const [stats, page1] = await Promise.all([
+          fetchHomeStats(country, { token }),
+          fetchListings({ country, page: 1, limit: 20 }, { token }),
+        ]);
+        setFeatured(stats.featuredListings ?? []);
+        setRecent(stats.recentListings ?? []);
+        setListings(page1.listings ?? []);
+        setPage(page1.page ?? 1);
+        setTotalPages(page1.totalPages ?? 1);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load marketplace");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [country, isReady, token],
+  );
 
-  // Android hardware back
   useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (canGoBack) { webRef.current?.goBack(); return true; }
-      return false;
-    });
-    return () => sub.remove();
-  }, [canGoBack]);
+    void loadHome("initial");
+  }, [loadHome]);
 
-  // Re-inject safe-area vars + push token on every page load
-  const onLoadEnd = useCallback(() => {
-    injectJs(
-      `(function(){
-        document.documentElement.style.setProperty('--sat','${Math.round(insets.top)}px');
-        document.documentElement.style.setProperty('--sab','${Math.round(insets.bottom)}px');
-      })();true;`
-    );
-    const token = tokenRef.current;
-    if (token) {
-      const p = Platform.OS;
-      injectJs(
-        `(function(){
-          try{if(location.protocol!=="https:"||!(location.hostname==="flexamarket.com"||location.hostname.endsWith(".flexamarket.com")))return;}catch(e){return;}
-          window.__expoPushToken=${JSON.stringify(token)};
-          window.__expoPushPlatform=${JSON.stringify(p)};
-          if(typeof window.__onExpoPushToken==='function')
-            window.__onExpoPushToken(${JSON.stringify(token)},${JSON.stringify(p)});
-        })();true;`
-      );
-    }
-  }, [insets, injectJs, tokenRef]);
-
-  const onShouldStartLoadWithRequest = useCallback((req: any) => {
-    const route = classifyWebUrl(req.url);
-    if (route === "flexa" || route === "stripe" || route === "moncash") return true;
-    if (route === "external") Linking.openURL(req.url).catch(() => {});
-    return false;
-  }, []);
-
-  const onOpenWindow = useCallback((event: any) => {
-    const url = event.nativeEvent?.targetUrl;
-    if (!url) return;
-    const route = classifyWebUrl(url);
-    if (route === "flexa" || route === "stripe" || route === "moncash") {
-      webRef.current?.injectJavaScript(`window.location.href=${JSON.stringify(url)};true;`);
-    } else if (route === "external") {
-      Linking.openURL(url).catch(() => {});
-    }
-  }, []);
-
-  const handleMessage = useCallback((event: any) => {
-    if (Platform.OS !== "ios") return;
+  const runSearch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setSection("all");
     try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "PICK_VIDEO") handleNativeVideoPick();
-    } catch { /* ignore non-JSON */ }
-  }, []);
-
-  // ── Video picker ────────────────────────────────────────────────────────────
-  const cancelVideoPick = useCallback(() => {
-    injectJs("window.__flexaVideoCancel&&window.__flexaVideoCancel();true;");
-  }, [injectJs]);
-
-  const deliverVideo = useCallback(async (uri: string) => {
-    try {
-      const info = await FileSystem.getInfoAsync(uri);
-      if (((info as any).size ?? 0) > MAX_BRIDGE_BYTES) {
-        injectJs(`window.__flexaVideoCancel&&window.__flexaVideoCancel();alert('Vidéo a twò gwo (limit: 40 MB).');true;`);
-        return;
-      }
-      const ext = (uri.split(".").pop() ?? "mp4").toLowerCase().split("?")[0];
-      const mime = ext === "mov" ? "video/quicktime" : ext === "webm" ? "video/webm" : "video/mp4";
-      const name = `video_${Date.now()}.${ext}`;
-      const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-      const CHUNK = 256 * 1024;
-      injectJs("window.__flexaB64=[];true;");
-      for (let i = 0; i < b64.length; i += CHUNK) {
-        injectJs(`window.__flexaB64.push(${JSON.stringify(b64.slice(i, i + CHUNK))});true;`);
-      }
-      injectJs(
-        `window.__flexaReceiveVideo(window.__flexaB64.join(''),${JSON.stringify(mime)},${JSON.stringify(name)});window.__flexaB64=null;true;`
+      const page1 = await fetchListings(
+        { country, q: query.trim() || undefined, page: 1, limit: 20 },
+        { token },
       );
+      setListings(page1.listings ?? []);
+      setPage(page1.page ?? 1);
+      setTotalPages(page1.totalPages ?? 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Search failed");
+    } finally {
+      setLoading(false);
+    }
+  }, [country, query, token]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || loading || page >= totalPages || section !== "all") return;
+    setLoadingMore(true);
+    try {
+      const next = page + 1;
+      const data = await fetchListings(
+        { country, q: query.trim() || undefined, page: next, limit: 20 },
+        { token },
+      );
+      setListings((prev) => [...prev, ...(data.listings ?? [])]);
+      setPage(data.page ?? next);
+      setTotalPages(data.totalPages ?? totalPages);
     } catch {
-      cancelVideoPick();
+      /* keep existing rows */
+    } finally {
+      setLoadingMore(false);
     }
-  }, [injectJs, cancelVideoPick]);
+  }, [country, loading, loadingMore, page, query, section, token, totalPages]);
 
-  const pickVideoFromCamera = useCallback(async () => {
-    const { granted } = await ImagePicker.requestCameraPermissionsAsync();
-    if (!granted) { cancelVideoPick(); return; }
-    const r = await ImagePicker.launchCameraAsync({ mediaTypes: "videos", videoMaxDuration: 180 });
-    if (r.canceled || !r.assets?.[0]?.uri) { cancelVideoPick(); return; }
-    await deliverVideo(r.assets[0].uri);
-  }, [cancelVideoPick, deliverVideo]);
-
-  const pickVideoFromLibrary = useCallback(async () => {
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "videos", videoMaxDuration: 180 });
-    if (r.canceled || !r.assets?.[0]?.uri) { cancelVideoPick(); return; }
-    await deliverVideo(r.assets[0].uri);
-  }, [cancelVideoPick, deliverVideo]);
-
-  const handleNativeVideoPick = useCallback(() => {
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: ["Anile", "Anrejistre Vidéo", "Chwazi nan Galeri"], cancelButtonIndex: 0 },
-        (i) => {
-          if (i === 1) pickVideoFromCamera();
-          else if (i === 2) pickVideoFromLibrary();
-          else cancelVideoPick();
-        }
-      );
-    } else {
-      pickVideoFromLibrary();
-    }
-  }, [pickVideoFromCamera, pickVideoFromLibrary, cancelVideoPick]);
+  const data =
+    section === "featured"
+      ? featured
+      : section === "recent"
+        ? recent
+        : listings;
 
   return (
-    <SafeAreaView style={styles.container} edges={SAFE_EDGES}>
-      <WebView
-        ref={webRef}
-        source={{ uri: WEBSITE }}
-        style={styles.webview}
-        javaScriptEnabled
-        domStorageEnabled
-        thirdPartyCookiesEnabled
-        injectedJavaScript={INIT_SCRIPT}
-        injectedJavaScriptBeforeContentLoaded={INIT_SCRIPT}
-        applicationNameForUserAgent={
-          Platform.OS === "android" ? ANDROID_UA_SUFFIX : undefined
-        }
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        allowsFullscreenVideo
-        allowsBackForwardNavigationGestures={Platform.OS === "ios"}
-        setSupportMultipleWindows={false}
-        originWhitelist={["https://*"]}
-        mixedContentMode="never"
-        cacheEnabled
-        startInLoadingState
-        keyboardDisplayRequiresUserAction={false}
-        renderToHardwareTextureAndroid
-        onNavigationStateChange={(s) => setCanGoBack(s.canGoBack)}
-        onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
-        onOpenWindow={onOpenWindow}
-        onLoadEnd={onLoadEnd}
-        onMessage={handleMessage}
-      />
-    </SafeAreaView>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
+        <View style={styles.brandRow}>
+          <Text style={styles.brand}>Flexa Market</Text>
+          <Pressable
+            style={styles.countryChip}
+            onPress={() => router.push("/settings")}
+            accessibilityRole="button"
+          >
+            <Feather name="map-pin" size={14} color="#F97316" />
+            <Text style={styles.countryText}>{country}</Text>
+          </Pressable>
+        </View>
+        <SearchBar
+          value={query}
+          onChangeText={setQuery}
+          onSubmit={runSearch}
+          placeholder="Search products…"
+        />
+        <View style={styles.chips}>
+          {(
+            [
+              ["all", "For you"],
+              ["featured", "Boosted"],
+              ["recent", "New"],
+            ] as const
+          ).map(([key, label]) => (
+            <Pressable
+              key={key}
+              onPress={() => setSection(key)}
+              style={[styles.chip, section === key && styles.chipOn]}
+            >
+              <Text style={[styles.chipText, section === key && styles.chipTextOn]}>
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+          <Pressable
+            style={styles.chip}
+            onPress={() => router.push("/cart")}
+            accessibilityRole="button"
+          >
+            <Feather name="shopping-cart" size={14} color="#475569" />
+            <Text style={styles.chipText}>Cart</Text>
+          </Pressable>
+        </View>
+        {!user ? (
+          <Pressable
+            style={styles.authBanner}
+            onPress={() => router.push("/auth/login")}
+          >
+            <Text style={styles.authBannerText}>
+              Sign in for a personalized feed in your country
+            </Text>
+            <Feather name="chevron-right" size={18} color="#F97316" />
+          </Pressable>
+        ) : null}
+      </View>
+
+      {loading && !refreshing ? (
+        <View style={styles.gridPad}>
+          <View style={styles.grid}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </View>
+        </View>
+      ) : error ? (
+        <View style={styles.centered}>
+          <Text style={styles.errorTitle}>Couldn’t load listings</Text>
+          <Text style={styles.errorBody}>{error}</Text>
+          <Pressable style={styles.retry} onPress={() => loadHome("refresh")}>
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <FlatList
+          data={data}
+          keyExtractor={(item) => String(item.id)}
+          numColumns={2}
+          columnWrapperStyle={styles.row}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadHome("refresh")}
+              tintColor="#F97316"
+            />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
+          ListEmptyComponent={
+            <View style={styles.centered}>
+              <Text style={styles.emptyTitle}>No listings yet</Text>
+              <Text style={styles.emptyBody}>
+                Try another country or check back soon.
+              </Text>
+            </View>
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator color="#F97316" style={{ marginVertical: 16 }} />
+            ) : null
+          }
+          renderItem={({ item }) => <ListingCard item={item} />}
+          removeClippedSubviews
+          windowSize={7}
+          maxToRenderPerBatch={8}
+          initialNumToRender={8}
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  webview: { flex: 1 },
+  root: { flex: 1, backgroundColor: "#F8FAFC" },
+  header: {
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    gap: 10,
+    backgroundColor: "#F8FAFC",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E2E8F0",
+  },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 8,
+  },
+  brand: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#0F172A",
+    letterSpacing: -0.4,
+  },
+  countryChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FFF7ED",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+  },
+  countryText: { color: "#C2410C", fontSize: 12, fontWeight: "700" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  chipOn: { backgroundColor: "#0F172A", borderColor: "#0F172A" },
+  chipText: { fontSize: 12, fontWeight: "700", color: "#475569" },
+  chipTextOn: { color: "#FFFFFF" },
+  authBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFF7ED",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+  },
+  authBannerText: { flex: 1, color: "#9A3412", fontSize: 13, fontWeight: "600" },
+  gridPad: { paddingHorizontal: 12, paddingTop: 12 },
+  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  listContent: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 24 },
+  row: { justifyContent: "space-between" },
+  centered: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingVertical: 64,
+    gap: 8,
+  },
+  errorTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
+  errorBody: { fontSize: 14, color: "#64748B", textAlign: "center" },
+  retry: {
+    marginTop: 8,
+    backgroundColor: "#F97316",
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  retryText: { color: "#fff", fontWeight: "800" },
+  emptyTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
+  emptyBody: { fontSize: 14, color: "#64748B", textAlign: "center" },
 });

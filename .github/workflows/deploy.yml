@@ -191,3 +191,5 @@ jobs:
 # Owner requested test+deploy: promo nav black bar verified then DO deploy (2026-11-09).
 
 # Owner requested fe deploy: Vant Mwen sales dashboard overview bind fix (#153) (2026-11-09).
+
+# Owner requested fe deploy ALL: auth 3D globe (#154) + promo nav black-bar fix (#155) (2026-11-09).

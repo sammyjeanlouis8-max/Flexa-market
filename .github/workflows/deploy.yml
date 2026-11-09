@@ -185,3 +185,5 @@ jobs:
 # Owner requested fe deploy: iOS WebView remove black bar over promo nav (2026-11-09).
 
 # Owner requested deploy retry: iOS WebView promo nav clear (2026-11-09).
+
+# Owner requested fe deploy: fully remove iOS promo black bar (2026-11-09).

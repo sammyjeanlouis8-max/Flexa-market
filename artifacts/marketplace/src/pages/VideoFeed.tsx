@@ -31,8 +31,20 @@ import PromoVideosBottomNav, {
 } from "@/components/PromoVideosBottomNav";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
-import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+import {
+  isAudioUnlocked,
+  setAudioUnlocked,
+  isUserMutedPreference,
+  setUserMutedPreference,
+  preferUnmutedAutoplay,
+} from "@/lib/audioUnlocked";
 import { COUNTRY_FLAGS } from "@/lib/countries";
+import {
+  buildPromoChatDraft,
+  getPublicPromoVideoUrl,
+  openWhatsAppWithPromoVideo,
+  storePromoChatDraft,
+} from "@/lib/promoVideoContact";
 
 /** Covers iOS home-indicator AND Android WebViews that report safe-area-inset-bottom as 0. */
 const FEED_SAFE_BOTTOM = PROMO_NAV_SAFE_BOTTOM;
@@ -906,7 +918,11 @@ function VideoCard({
   const hardReloadTriedRef = useRef(false);
   const [following, setFollowing] = useState(video.sellerIsFollowing ?? false);
   const [messagePending, setMessagePending] = useState(false);
-  const [muted, setMuted] = useState(false);
+  // Honor explicit user mute; otherwise prefer sound (native / prior unlock).
+  const [muted, setMuted] = useState(() =>
+    isUserMutedPreference() ? true : !preferUnmutedAutoplay(isNativeMobileApp()),
+  );
+  const [soundLocked, setSoundLocked] = useState(false);
   const [generatedThumbnail, setGeneratedThumbnail] = useState<string | null>(null);
   const [videoBuffering, setVideoBuffering] = useState(true);
   const [hasVisibleFrame, setHasVisibleFrame] = useState(false);
@@ -919,16 +935,33 @@ function VideoCard({
     }
   }, [isActive, isNext, video.thumbnailUrl]);
 
-  // Sync muted state across all VideoCard instances when audio is unlocked
+  // Sync muted state across cards when unlock / user-mute preference changes.
   useEffect(() => {
-    const handler = (e: Event) => {
+    const onUnlocked = (e: Event) => {
       if (!isActiveRef.current || !visibleFrameRef.current) return;
+      if (isUserMutedPreference()) return;
       const unlocked = (e as CustomEvent<boolean>).detail;
-      setMuted(!unlocked);
-      if (videoRef.current) videoRef.current.muted = !unlocked;
+      if (!unlocked) return;
+      setMuted(false);
+      setSoundLocked(false);
+      if (videoRef.current) {
+        videoRef.current.muted = false;
+        videoRef.current.play().catch(() => {});
+      }
     };
-    window.addEventListener("flexa:audio-unlocked", handler);
-    return () => window.removeEventListener("flexa:audio-unlocked", handler);
+    const onUserMuted = (e: Event) => {
+      if (!isActiveRef.current) return;
+      const userMuted = (e as CustomEvent<boolean>).detail;
+      setMuted(userMuted);
+      if (videoRef.current) videoRef.current.muted = userMuted;
+      if (!userMuted) setSoundLocked(false);
+    };
+    window.addEventListener("flexa:audio-unlocked", onUnlocked);
+    window.addEventListener("flexa:user-muted", onUserMuted);
+    return () => {
+      window.removeEventListener("flexa:audio-unlocked", onUnlocked);
+      window.removeEventListener("flexa:user-muted", onUserMuted);
+    };
   }, []);
 
   const cancelVisualReadinessChecks = useCallback(() => {
@@ -973,9 +1006,16 @@ function VideoCard({
     setLoadFailed(false);
     // Preserve an already-unmuted stream. Re-forcing mute here would undo a
     // successful unmuted autoplay before session unlock is written.
+    if (isUserMutedPreference()) {
+      el.muted = true;
+      setMuted(true);
+      setSoundLocked(false);
+      return true;
+    }
     const wantSound = !el.muted || isAudioUnlocked() || isNativeMobileApp();
     el.muted = !wantSound;
     setMuted(!wantSound);
+    setSoundLocked(!wantSound);
     if (wantSound) setAudioUnlocked(true);
     return true;
   }, [cancelVisualReadinessChecks]);
@@ -1089,10 +1129,24 @@ function VideoCard({
   }, [hardReloadVideoOnce, isActive, showPlaybackFailure]);
 
   const handleMuteToggle = useCallback(() => {
-    const nowUnlocked = muted;
-    setAudioUnlocked(nowUnlocked);
-    setMuted(!nowUnlocked);
-    if (videoRef.current) videoRef.current.muted = !nowUnlocked;
+    const turnOn = muted; // currently muted → unmute
+    if (turnOn) {
+      setUserMutedPreference(false);
+      setAudioUnlocked(true);
+      setSoundLocked(false);
+      setMuted(false);
+      if (videoRef.current) {
+        videoRef.current.muted = false;
+        videoRef.current.play().catch(() => {});
+      }
+    } else {
+      // Explicit mute — remember across video switches; keep unlock so we
+      // know the platform allows sound when they unmute later.
+      setUserMutedPreference(true);
+      setMuted(true);
+      setSoundLocked(false);
+      if (videoRef.current) videoRef.current.muted = true;
+    }
   }, [muted]);
 
   // Auto-play / pause + WhatsApp overlay + impression tracking + skip countdown
@@ -1119,13 +1173,19 @@ function VideoCard({
         if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
         // Prefer unmuted autoplay wherever the platform permits it (native
         // WebViews, prior unlock, and browsers that allow sound). Rejected
-        // unmuted play falls back to muted; a later gesture unlocks sound and
-        // stays unlocked across video switches.
-        const playMutedFallback = () => {
+        // unmuted play falls back to muted + minimal tap-for-sound hint.
+        // Explicit user mute is preserved across video switches.
+        const playMutedFallback = (showHint: boolean) => {
           el.muted = true;
           setMuted(true);
+          setSoundLocked(showHint && !isUserMutedPreference());
           void el.play().catch(() => {});
         };
+
+        if (isUserMutedPreference()) {
+          playMutedFallback(false);
+          return;
+        }
 
         // Safari/WebViews commonly reject play() transiently while a newly active
         // element is changing source or has not loaded data yet. Keep the card in
@@ -1133,9 +1193,11 @@ function VideoCard({
         // error or the bounded visible-frame timeout should enter retry UI.
         el.muted = false;
         setMuted(false);
+        setSoundLocked(false);
         void el.play().then(() => {
           if (!isActiveRef.current) return;
           setAudioUnlocked(true);
+          setSoundLocked(false);
         }).catch(() => {
           if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
           // If sound was already unlocked this session, keep trying unmuted so
@@ -1143,10 +1205,10 @@ function VideoCard({
           if (isAudioUnlocked() || isNativeMobileApp()) {
             el.muted = false;
             setMuted(false);
-            void el.play().catch(playMutedFallback);
+            void el.play().catch(() => playMutedFallback(true));
             return;
           }
-          playMutedFallback();
+          playMutedFallback(true);
         });
       };
       const activationGeneration = activationGenerationRef.current;
@@ -1281,11 +1343,13 @@ function VideoCard({
       if (Date.now() - activatedAtRef.current < 500) return;
       const el = videoRef.current;
       if (!el) return;
-      // First meaningful tap enables sound. Autoplay is forced muted by the browser,
-      // so the very first user gesture should turn sound ON (the #1 user complaint),
-      // not pause the video. Once unmuted, single-tap toggles play/pause as usual.
-      if (el.muted || muted) {
+      // First meaningful tap enables sound when the browser blocked unmuted
+      // autoplay (or user had not unmuted yet). Once sound is on, single-tap
+      // toggles play/pause as usual. Explicit mute uses the mute button.
+      if ((el.muted || muted || soundLocked) && !isUserMutedPreference()) {
+        setUserMutedPreference(false);
         setAudioUnlocked(true);
+        setSoundLocked(false);
         setMuted(false);
         el.muted = false;
         el.play().catch(() => {});
@@ -1303,7 +1367,7 @@ function VideoCard({
         setPlaying(false);
       }
     }
-  }, [liked, token, video.id, muted, showPlaybackFailure]);
+  }, [liked, token, video.id, muted, soundLocked, showPlaybackFailure]);
 
   const handleLike = async () => {
     if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
@@ -1445,7 +1509,20 @@ function VideoCard({
       });
       if (!response.ok) throw new Error("Conversation request failed");
       const conversation = await response.json();
-      setLocation(`/messages/${conversation.id}`);
+      const videoUrl = getPublicPromoVideoUrl(video.id, window.location.origin);
+      // Prefill composer — user reviews and sends (never auto-send).
+      storePromoChatDraft(conversation.id, {
+        text: buildPromoChatDraft({
+          videoId: video.id,
+          title: video.title,
+          origin: window.location.origin,
+        }),
+        videoId: video.id,
+        videoTitle: video.title,
+        videoUrl,
+        thumbnailUrl: video.thumbnailUrl ?? null,
+      });
+      setLocation(`/messages/${conversation.id}?composeVideo=${video.id}`);
     } catch {
       toast({
         title: t("errors.serverError"),
@@ -1459,7 +1536,7 @@ function VideoCard({
 
   const handleShare = async () => {
     if (isRestricted) { showRestrictionToast(); return; }
-    const url = `${window.location.origin}/videos/watch?video=${video.id}`;
+    const url = getPublicPromoVideoUrl(video.id, window.location.origin);
     let sharedOrCopied = false;
     try {
       if (typeof navigator.share === "function") {
@@ -1523,13 +1600,14 @@ function VideoCard({
     trackBuyClick();
     // Prefer boost-specific WhatsApp number, fall back to seller's profile phone
     const rawPhone = video.sellerWhatsapp || video.sellerPhone || "";
-    const phone = rawPhone.replace(/[^\d+]/g, "").replace(/^\+/, "");
-    if (!phone) return; // no number available — button should be hidden
-    const msg = encodeURIComponent(
-      `Bonjou! Mwen wè videyo pwodwi ou a sou FLEXA MARKET epi mwen enterese. Èske ou disponib?`
-    );
-    window.open(`https://wa.me/${phone}?text=${msg}`, "_blank", "noopener,noreferrer");
-  }, [trackBuyClick, video.sellerWhatsapp, video.sellerPhone]);
+    if (!rawPhone) return;
+    openWhatsAppWithPromoVideo({
+      phone: rawPhone,
+      videoId: video.id,
+      title: video.title,
+      origin: window.location.origin,
+    });
+  }, [trackBuyClick, video.sellerWhatsapp, video.sellerPhone, video.id, video.title]);
 
   if (!video.videoUrl) return null;
 
@@ -1679,6 +1757,21 @@ function VideoCard({
       >
         {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
       </button>
+
+      {/* Minimal tap-for-sound when browser blocked unmuted autoplay */}
+      {isActive && soundLocked && muted && !pausedByUser && !loadFailed && (
+        <div
+          className="absolute inset-0 z-[15] flex items-center justify-center pointer-events-none"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2 rounded-full bg-black/70 px-4 py-2">
+            <VolumeX className="h-4 w-4 text-white" />
+            <span className="text-sm font-semibold text-white">
+              {t("tr.tapForSound", { defaultValue: "Tap for sound" })}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── Bottom gradient — light only for caption legibility; video must
           still read through behind the transparent tab icons. ── */}

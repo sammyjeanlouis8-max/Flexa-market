@@ -5,6 +5,8 @@ export type Conversation = {
   listingTitle: string;
   listingImage?: string | null;
   listingPrice?: number | null;
+  /** Video-only / hidden promo ghost — open watch URL instead of PDP. */
+  listingIsVideoOnly?: boolean | null;
   otherUserId: number;
   otherUserName: string;
   otherUserAvatar?: string | null;

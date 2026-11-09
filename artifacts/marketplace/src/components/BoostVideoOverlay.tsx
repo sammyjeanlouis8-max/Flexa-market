@@ -3,8 +3,20 @@ import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
-import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+import {
+  isAudioUnlocked,
+  setAudioUnlocked,
+  isUserMutedPreference,
+  setUserMutedPreference,
+  preferUnmutedAutoplay,
+} from "@/lib/audioUnlocked";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
+import {
+  buildPromoChatDraft,
+  getPublicPromoVideoUrl,
+  openWhatsAppWithPromoVideo,
+  storePromoChatDraft,
+} from "@/lib/promoVideoContact";
 
 /**
  * Video Booster overlay — floating player, no dark background.
@@ -105,7 +117,9 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;
   const [soundLocked, setSoundLocked] = useState(false); // true = browser forced muted start
-  const [muted, setMuted] = useState(!(isAudioUnlocked() || isNativeMobileApp()));
+  const [muted, setMuted] = useState(
+    () => isUserMutedPreference() ? true : !preferUnmutedAutoplay(isNativeMobileApp()),
+  );
   const [videoPct, setVideoPct] = useState(0); // 0–100 for the progress bar
   const [videoFailed, setVideoFailed] = useState(false);
 
@@ -153,9 +167,11 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
 
     // Turn sound on, persist the unlock session-wide, and clear listeners.
     const unlockAudio = () => {
+      if (isUserMutedPreference()) return;
       const v = videoRef.current;
       if (v) { v.muted = false; setMuted(false); v.play().catch(() => {}); }
       setSoundLocked(false);
+      setUserMutedPreference(false);
       setAudioUnlocked(true);
       window.removeEventListener("touchstart",  unlockAudio, { capture: true });
       window.removeEventListener("pointerdown", unlockAudio, { capture: true });
@@ -163,7 +179,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     };
 
     const armGestureUnlock = () => {
-      if (!isAudioUnlocked()) setSoundLocked(true);
+      if (!isAudioUnlocked() && !isUserMutedPreference()) setSoundLocked(true);
       window.addEventListener("touchstart",  unlockAudio, { capture: true, once: true, passive: true });
       window.addEventListener("pointerdown", unlockAudio, { capture: true, once: true, passive: true });
       window.addEventListener("click",       unlockAudio, { capture: true, once: true });
@@ -187,8 +203,12 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
       }
     };
 
-    // Try unmuted first wherever permitted; Safari/web may reject → muted path.
-    void attemptPlay(true);
+    // Honor explicit mute; otherwise try unmuted first (Safari may reject → muted).
+    if (isUserMutedPreference()) {
+      void attemptPlay(false);
+    } else {
+      void attemptPlay(true);
+    }
 
     // If audio gets unlocked elsewhere (e.g. the video feed) while this ad plays.
     const onUnlocked = (e: Event) => {
@@ -237,15 +257,21 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     e.stopPropagation();
     e.preventDefault();
     const vid = videoRef.current;
-    const next = !muted;
-    setMuted(next);
-    if (vid) {
-      vid.muted = next;
-      if (!next) {
-        setAudioUnlocked(true);
-        setSoundLocked(false);
+    const turnOn = muted;
+    if (turnOn) {
+      setUserMutedPreference(false);
+      setAudioUnlocked(true);
+      setSoundLocked(false);
+      setMuted(false);
+      if (vid) {
+        vid.muted = false;
         vid.play().catch(() => {});
       }
+    } else {
+      setUserMutedPreference(true);
+      setMuted(true);
+      setSoundLocked(false);
+      if (vid) vid.muted = true;
     }
   }, [muted]);
 
@@ -287,7 +313,12 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
       return;
     }
     if (type === "whatsapp" && listing.boostWhatsappNumber) {
-      window.open(`https://wa.me/${listing.boostWhatsappNumber.replace(/\D/g, "")}`, "_blank", "noopener,noreferrer");
+      openWhatsAppWithPromoVideo({
+        phone: listing.boostWhatsappNumber,
+        videoId: listing.id,
+        title: listing.title,
+        origin: window.location.origin,
+      });
       onClose();
       return;
     }
@@ -310,7 +341,21 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         });
         if (response.ok) {
           const conversation = await response.json();
-          setLocation(`/messages/${conversation.id}`);
+          const videoUrl = getPublicPromoVideoUrl(listing.id, window.location.origin);
+          storePromoChatDraft(conversation.id, {
+            text: buildPromoChatDraft({
+              videoId: listing.id,
+              title: listing.title,
+              origin: window.location.origin,
+            }),
+            videoId: listing.id,
+            videoTitle: listing.title ?? "",
+            videoUrl,
+            thumbnailUrl: listing.boostImageUrl
+              ?? listing.thumbnail
+              ?? null,
+          });
+          setLocation(`/messages/${conversation.id}?composeVideo=${listing.id}`);
           onClose();
           return;
         }

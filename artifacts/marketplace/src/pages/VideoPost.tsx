@@ -25,7 +25,14 @@ import { EmojiPickerButton, insertEmojiAtCursor } from "@/components/EmojiPicker
 import { formatPrice } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
-import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+import {
+  isAudioUnlocked,
+  isUserMutedPreference,
+  preferUnmutedAutoplay,
+  setAudioUnlocked,
+  setUserMutedPreference,
+} from "@/lib/audioUnlocked";
+import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -170,7 +177,9 @@ export default function VideoPost() {
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [playing, setPlaying] = useState(true);
   const [videoReady, setVideoReady] = useState(false);
-  const [muted, setMuted] = useState(!isAudioUnlocked());
+  const [muted, setMuted] = useState(
+    () => (isUserMutedPreference() ? true : !preferUnmutedAutoplay(isNativeMobileApp())),
+  );
 
   // ── Engagement state ────────────────────────────────────────────────────────
   const liked = isFavorited(id);
@@ -355,21 +364,66 @@ export default function VideoPost() {
   }, []);
 
   const handleMuteToggle = useCallback(() => {
-    const nowUnlocked = muted;
-    setAudioUnlocked(nowUnlocked);
-    setMuted(!nowUnlocked);
-    if (videoRef.current) videoRef.current.muted = !nowUnlocked;
+    const turnOn = muted;
+    if (turnOn) {
+      setUserMutedPreference(false);
+      setAudioUnlocked(true);
+      setMuted(false);
+      if (videoRef.current) {
+        videoRef.current.muted = false;
+        videoRef.current.play().catch(() => {});
+      }
+    } else {
+      setUserMutedPreference(true);
+      setMuted(true);
+      if (videoRef.current) videoRef.current.muted = true;
+    }
   }, [muted]);
 
-  // Sync with other pages that may unlock audio
+  // Prefer unmuted autoplay; fall back to muted when the browser blocks sound.
   useEffect(() => {
-    const handler = (e: Event) => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isUserMutedPreference()) {
+      v.muted = true;
+      setMuted(true);
+      void v.play().catch(() => {});
+      return;
+    }
+    v.muted = false;
+    setMuted(false);
+    void v.play().then(() => {
+      setAudioUnlocked(true);
+    }).catch(() => {
+      v.muted = true;
+      setMuted(true);
+      void v.play().catch(() => {});
+    });
+  }, [id]);
+
+  // Sync with other pages that may unlock / mute audio
+  useEffect(() => {
+    const onUnlocked = (e: Event) => {
+      if (isUserMutedPreference()) return;
       const unlocked = (e as CustomEvent<boolean>).detail;
-      setMuted(!unlocked);
-      if (videoRef.current) videoRef.current.muted = !unlocked;
+      if (!unlocked) return;
+      setMuted(false);
+      if (videoRef.current) {
+        videoRef.current.muted = false;
+        videoRef.current.play().catch(() => {});
+      }
     };
-    window.addEventListener("flexa:audio-unlocked", handler);
-    return () => window.removeEventListener("flexa:audio-unlocked", handler);
+    const onUserMuted = (e: Event) => {
+      const userMuted = (e as CustomEvent<boolean>).detail;
+      setMuted(userMuted);
+      if (videoRef.current) videoRef.current.muted = userMuted;
+    };
+    window.addEventListener("flexa:audio-unlocked", onUnlocked);
+    window.addEventListener("flexa:user-muted", onUserMuted);
+    return () => {
+      window.removeEventListener("flexa:audio-unlocked", onUnlocked);
+      window.removeEventListener("flexa:user-muted", onUserMuted);
+    };
   }, []);
 
 
@@ -505,15 +559,17 @@ export default function VideoPost() {
               ref={videoRef}
               src={videoUrl}
               autoPlay
-              muted
+              muted={muted}
               playsInline
               loop
               preload="auto"
               className="w-full h-full object-contain"
               onCanPlay={() => {
                 setVideoReady(true);
-                if (videoRef.current) {
-                  videoRef.current.muted = !isAudioUnlocked();
+                if (!videoRef.current || isUserMutedPreference()) return;
+                if (isAudioUnlocked() || isNativeMobileApp()) {
+                  videoRef.current.muted = false;
+                  setMuted(false);
                 }
               }}
               onPlay={() => { setPlaying(true); if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; } }}

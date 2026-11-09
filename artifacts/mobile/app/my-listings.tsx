@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import NativePlaceholder from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function MyListingsScreen() {
-  return <SafeWebView uri="https://flexamarket.com/my-listings" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='My listings'
+      subtitle='Native seller listings management is queued with Sell.'
+    />
+  );
 }

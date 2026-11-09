@@ -1,278 +1,462 @@
+/**
+ * Native Stripe single-item checkout (physical goods).
+ * Creates hosted Checkout Session via POST /api/stripe/checkout, then opens
+ * session.url in the system browser (expo-web-browser) — not an in-app marketplace shell.
+ * Required for Dominican Republic listings (wallet cart blocked).
+ */
 import { Feather } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
-  Platform,
+  Alert,
   Pressable,
+  ScrollView,
   StyleSheet,
+  Text,
+  TextInput,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import WebView from "react-native-webview";
-import {
-  ANDROID_UA_SUFFIX,
-  classifyWebUrl,
-  isTrustedFlexaUrl,
-  isTrustedStripeUrl,
-} from "../security/webviewPolicy";
-
-const FLEXA_HOST = "flexamarket.com";
-
-// When Stripe redirects back to flexamarket.com the WebView blocks the
-// navigation. Activate the verified session server-side, then route to the
-// matching fresh web screen so wallet and Artist Plan state cannot stay stale.
-function handleFlexaSuccessUrl(url: string): {
-  cardSuccess: boolean;
-  artistPlanSuccess: boolean;
-  sessionId: string | null;
-  ref: string | null;
-} {
-  try {
-    const parsed = new URL(url);
-    const sessionId = parsed.searchParams.get("session_id");
-    const ref       = parsed.searchParams.get("ref");
-    const cardSuccess = parsed.searchParams.get("card_success") === "1";
-    const artistPlanSuccess = parsed.searchParams.get("artist_plan") === "success";
-    if ((cardSuccess || artistPlanSuccess) && sessionId) {
-      fetch(
-        `https://${FLEXA_HOST}/api/stripe/checkout/activate?session_id=${encodeURIComponent(sessionId)}`,
-      ).catch(() => {});
-    }
-    return { cardSuccess, artistPlanSuccess, sessionId, ref };
-  } catch {
-    return { cardSuccess: false, artistPlanSuccess: false, sessionId: null, ref: null };
-  }
-}
-
-function isFlexa(url: string): boolean {
-  return isTrustedFlexaUrl(url);
-}
-
-// Set proper mobile viewport so Stripe's responsive layout matches the rest of the app.
-// Do NOT set user-scalable=no — it breaks keyboard-triggered zoom on input fields.
-const VIEWPORT_FIX = `
-(function() {
-  var meta = document.querySelector('meta[name="viewport"]');
-  if (!meta) {
-    meta = document.createElement('meta');
-    meta.name = 'viewport';
-    document.head.appendChild(meta);
-  }
-  meta.content = 'width=device-width, initial-scale=1.0';
-  true;
-})();
-`.trim();
-
-// SafeAreaView edges — include "top" on both platforms so the native close
-// button is never hidden behind the status bar (Android) or Dynamic Island (iOS).
-const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
-  Platform.OS === "ios" ? ["top", "bottom"] : ["top"];
-
-/**
- * Build the same injection script used for the main WebView's conversation
- * page, adapted for Stripe's hosted checkout.
- *
- * Strategy (mirrors Messages.tsx / index.html approach):
- *  1. Inject a position:fixed white bar at the very top of Stripe's page that
- *     covers the Dynamic Island / notch area — so Stripe content is never
- *     physically behind the cutout.
- *  2. Add matching padding-top to <html> so Stripe's own scroll area starts
- *     below the bar (not hidden under it).
- *  3. Run BEFORE content loads so the first paint is already correct.
- */
-function buildStripeInjectScript(topInset: number): string {
-  if (topInset <= 0) return VIEWPORT_FIX;
-  return `
-${VIEWPORT_FIX}
-(function() {
-  var sat = ${topInset};
-  // White status-bar overlay — covers Dynamic Island / notch
-  var bar = document.createElement('div');
-  bar.id = '__flexa_sat';
-  bar.style.cssText = [
-    'position:fixed',
-    'top:0',
-    'left:0',
-    'right:0',
-    'height:' + sat + 'px',
-    'background:#ffffff',
-    'z-index:2147483647',
-    'pointer-events:none',
-  ].join(';');
-  function injectBar() {
-    if (document.body && !document.getElementById('__flexa_sat')) {
-      document.body.appendChild(bar);
-      document.documentElement.style.paddingTop = sat + 'px';
-    }
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', injectBar);
-  } else {
-    injectBar();
-  }
-  true;
-})();
-`.trim();
-}
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/context/AuthContext";
+import { listAddresses, type UserAddress } from "@/lib/addressesApi";
+import { calculateDeliveryPrice, isDominicanListingCountry } from "@/lib/checkoutApi";
+import { fetchListing, type Listing } from "@/lib/api";
+import { createStripeCheckoutSession } from "@/lib/stripeCheckoutApi";
 
 export default function StripeCheckoutScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
-  const _rawInsets = useSafeAreaInsets();
-    // Guarantee a safe-area top even on first render before iOS measures the Dynamic Island.
-    // 59pt covers iPhone 14 Pro / 15 Pro Dynamic Island; shorter iPhones will have the
-    // real measurement available immediately.
-    const insets = {
-      ..._rawInsets,
-      top: _rawInsets.top > 0 ? _rawInsets.top : (Platform.OS === 'ios' ? 59 : 0),
-    };
-  const { url } = useLocalSearchParams<{ url: string }>();
-  const webRef = useRef<any>(null);
-  const handledReturnRef = useRef(false);
-  const [loading, setLoading] = useState(true);
+  const { listingId: listingIdParam, canceled } = useLocalSearchParams<{
+    listingId?: string;
+    canceled?: string;
+  }>();
+  const listingId = Number(listingIdParam);
+  const { token, user, isLoading: authLoading } = useAuth();
 
-  const stripeUrl = typeof url === "string" && isTrustedStripeUrl(url) ? url : null;
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [name, setName] = useState(user?.name ?? "");
+  const [phone, setPhone] = useState(user?.phone ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState(user?.city ?? user?.location ?? "");
+  const [region, setRegion] = useState("");
+  const [zip, setZip] = useState("");
+  const [deliveryMethod, setDeliveryMethod] = useState<"motorcycle" | "car" | "pickup">(
+    "motorcycle",
+  );
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [addresses, setAddresses] = useState<UserAddress[]>([]);
 
-  if (!stripeUrl) {
-    router.back();
-    return null;
-  }
+  useEffect(() => {
+    if (!authLoading && !token) router.replace("/auth/login");
+  }, [authLoading, token, router]);
 
-  const finishFlexaReturn = (returnUrl: string) => {
-    if (handledReturnRef.current) return;
-    handledReturnRef.current = true;
-    const { cardSuccess, artistPlanSuccess, sessionId } = handleFlexaSuccessUrl(returnUrl);
-    setTimeout(() => {
-      if (cardSuccess && sessionId) {
-        router.replace({
-          pathname: "/(tabs)/wallet",
-          params: { card_success: "1", session_id: sessionId },
-        } as any);
-      } else if (artistPlanSuccess && sessionId) {
-        router.replace({
-          pathname: "/website",
-          params: {
-            url: `https://${FLEXA_HOST}/music?artist_plan=success&session_id=${encodeURIComponent(sessionId)}`,
-          },
-        } as any);
-      } else {
-        router.back();
+  useEffect(() => {
+    if (canceled === "1") {
+      Alert.alert("Checkout canceled", "Stripe checkout was canceled. You can try again.");
+    }
+  }, [canceled]);
+
+  useEffect(() => {
+    if (!listingId || !Number.isFinite(listingId)) {
+      setLoadError("Missing listing");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const row = await fetchListing(listingId);
+        if (!cancelled) {
+          setListing(row);
+          setLoadError(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setLoadError(e instanceof Error ? e.message : "Listing not found");
+        }
       }
-    }, 0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [listingId]);
+
+  useEffect(() => {
+    if (!token) return;
+    listAddresses({ token }, "delivery")
+      .then((data) => {
+        setAddresses(data.addresses);
+        const d = data.defaultAddress ?? data.addresses[0];
+        if (d) {
+          setName(d.fullName);
+          setPhone(d.phone);
+          setStreet(d.street);
+          setCity(d.city);
+          setRegion(d.region);
+          setZip(d.postalCode ?? "");
+          if (d.email) setEmail(d.email);
+        }
+      })
+      .catch(() => {});
+  }, [token]);
+
+  const refreshDelivery = useCallback(async () => {
+    if (!token || !listing || !city.trim()) {
+      setDeliveryFee(0);
+      return;
+    }
+    if (deliveryMethod === "pickup") {
+      setDeliveryFee(0);
+      return;
+    }
+    const sellerCity = listing.city || listing.location || "";
+    if (!sellerCity) {
+      setDeliveryFee(0);
+      return;
+    }
+    setDeliveryLoading(true);
+    try {
+      const quote = await calculateDeliveryPrice(
+        {
+          sellerCity,
+          buyerCity: city.trim(),
+          country: listing.country || user?.country || "Haiti",
+          method: deliveryMethod,
+          listingPriceUsd: Number(listing.price) || 0,
+        },
+        { token },
+      );
+      setDeliveryFee(quote.feeUsd);
+    } catch {
+      setDeliveryFee(0);
+    } finally {
+      setDeliveryLoading(false);
+    }
+  }, [token, listing, city, deliveryMethod, user?.country]);
+
+  useEffect(() => {
+    void refreshDelivery();
+  }, [refreshDelivery]);
+
+  const onPay = async () => {
+    if (!token || !listing) return;
+    if (!name.trim() || !phone.trim() || !street.trim() || !city.trim()) {
+      Alert.alert("Shipping required", "Name, phone, street, and city are required.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const session = await createStripeCheckoutSession(
+        {
+          listingId: listing.id,
+          shippingName: name.trim(),
+          shippingPhone: phone.trim(),
+          shippingEmail: email.trim() || undefined,
+          shippingStreet: street.trim(),
+          shippingCity: city.trim(),
+          shippingRegion: region.trim() || undefined,
+          shippingZip: zip.trim() || undefined,
+          shippingCountry: listing.country || user?.country || undefined,
+          deliveryFeeUsd: deliveryFee > 0 ? deliveryFee : undefined,
+          deliveryMethod,
+        },
+        { token },
+      );
+      if (!session.url) {
+        throw new Error("Stripe did not return a checkout URL");
+      }
+      const result = await WebBrowser.openBrowserAsync(session.url, {
+        enableBarCollapsing: true,
+        showInRecents: true,
+      });
+      if (result.type === "cancel" || result.type === "dismiss") {
+        Alert.alert(
+          "Returned from Stripe",
+          "If you completed payment, your order will appear under Orders shortly. If not, you can try again.",
+          [
+            { text: "View orders", onPress: () => router.replace("/orders") },
+            { text: "OK" },
+          ],
+        );
+      }
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      if (err.code === "PAYMENT_METHOD_UNAVAILABLE") {
+        Alert.alert("Card unavailable", err.message);
+      } else if (err.code === "ANDROID_DIGITAL_PURCHASE_UNAVAILABLE") {
+        Alert.alert("Not available", err.message);
+      } else {
+        Alert.alert("Checkout failed", err.message || "Could not start Stripe checkout");
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
+  const dominican = isDominicanListingCountry(listing?.country);
+  const price = Number(listing?.price ?? 0) || 0;
+
   return (
-    // SafeAreaView with edges=["top","bottom"] lets React Native measure and
-    // apply the exact Dynamic Island / home-indicator insets natively — no
-    // manual useSafeAreaInsets() calculation that can return 0 on first render.
-    <SafeAreaView style={[styles.root, { backgroundColor: "#ffffff" }]} edges={SAFE_EDGES}>
-
-      {/* Native close button — always inside the safe area, never behind Dynamic Island */}
-      <View style={styles.closeRow}>
+    <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
+      <View style={styles.topBar}>
         <Pressable
-          hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-          onPress={() => router.back()}
-          style={styles.closeBtn}
-          accessibilityLabel="Fèmè peman an"
-          accessibilityRole="button"
+          style={styles.back}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
         >
-          <Feather name="x" size={22} color="#111827" />
+          <Feather name="arrow-left" size={22} color="#0F172A" />
         </Pressable>
+        <Text style={styles.title}>Card checkout</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      {/* Stripe checkout WebView */}
-      <View style={styles.webviewContainer}>
-        {loading && (
-          <View style={styles.loader}>
-            <ActivityIndicator size="large" color="#F97316" />
+      {!listing && !loadError ? (
+        <ActivityIndicator color="#F97316" style={{ marginTop: 40 }} />
+      ) : loadError || !listing ? (
+        <View style={styles.centered}>
+          <Text style={styles.error}>{loadError ?? "Listing not found"}</Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.summary}>
+            <Text style={styles.summaryTitle} numberOfLines={2}>
+              {listing.title}
+            </Text>
+            <Text style={styles.summaryPrice}>
+              ${(price + deliveryFee).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{" "}
+              <Text style={styles.summaryMuted}>
+                (item ${price.toFixed(2)}
+                {deliveryLoading ? " · delivery…" : deliveryFee ? ` · delivery $${deliveryFee.toFixed(2)}` : ""}
+                )
+              </Text>
+            </Text>
+            {dominican ? (
+              <Text style={styles.drNote}>
+                Dominican Republic listings use Stripe card checkout with seller shipping
+                (wallet cart checkout is not available).
+              </Text>
+            ) : (
+              <Text style={styles.drNote}>
+                Pay securely with Stripe for this physical good. Server verifies payment
+                via webhook before releasing the order.
+              </Text>
+            )}
           </View>
-        )}
-        <WebView
-          ref={webRef}
-          source={{ uri: stripeUrl }}
-          style={styles.webview}
-          javaScriptEnabled
-          domStorageEnabled
-          sharedCookiesEnabled
-          thirdPartyCookiesEnabled
-          allowsInlineMediaPlayback
-          mediaPlaybackRequiresUserAction={false}
-          overScrollMode="never"
-          scalesPageToFit={false}
-          injectedJavaScriptBeforeContentLoaded={buildStripeInjectScript(insets.top)}
-          injectedJavaScript={buildStripeInjectScript(insets.top)}
-          applicationNameForUserAgent={
-            Platform.OS === "android" ? ANDROID_UA_SUFFIX : undefined
-          }
-          injectedJavaScriptForMainFrameOnly
-          onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
-          onShouldStartLoadWithRequest={(request) => {
-            const route = classifyWebUrl(request.url);
-            if (route === "flexa") {
-              finishFlexaReturn(request.url);
-              return false;
-            }
-            if (route === "stripe") return true;
-            if (route === "external") Linking.openURL(request.url).catch(() => {});
-            return false;
-          }}
-          onNavigationStateChange={(state) => {
-            if (isFlexa(state.url)) {
-              finishFlexaReturn(state.url);
-            }
-          }}
-          onOpenWindow={(event) => {
-            const targetUrl = event.nativeEvent.targetUrl;
-            const route = classifyWebUrl(targetUrl);
-            if (route === "stripe") {
-              webRef.current?.injectJavaScript(
-                `window.location.href=${JSON.stringify(targetUrl)};true;`,
-              );
-            } else if (route === "flexa") {
-              finishFlexaReturn(targetUrl);
-            } else if (route === "external") {
-              Linking.openURL(targetUrl).catch(() => {});
-            }
-          }}
-        />
-      </View>
-    </SafeAreaView>
+
+          {addresses.length > 0 ? (
+            <View style={styles.savedBlock}>
+              <Text style={styles.section}>Saved addresses</Text>
+              {addresses.slice(0, 3).map((a) => (
+                <Pressable
+                  key={a.id}
+                  style={styles.savedRow}
+                  onPress={() => {
+                    setName(a.fullName);
+                    setPhone(a.phone);
+                    setStreet(a.street);
+                    setCity(a.city);
+                    setRegion(a.region);
+                    setZip(a.postalCode ?? "");
+                  }}
+                >
+                  <Text style={styles.savedText} numberOfLines={1}>
+                    {a.label || a.fullName} · {a.city}
+                  </Text>
+                  <Feather name="chevron-right" size={16} color="#94A3B8" />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          <Text style={styles.section}>Shipping</Text>
+          <Field label="Full name" value={name} onChangeText={setName} />
+          <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+          <Field
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+          <Field label="Street" value={street} onChangeText={setStreet} />
+          <Field label="City" value={city} onChangeText={setCity} />
+          <Field label="Region / state" value={region} onChangeText={setRegion} />
+          <Field label="Postal code" value={zip} onChangeText={setZip} />
+
+          <Text style={styles.section}>Delivery method</Text>
+          <View style={styles.methods}>
+            {(
+              [
+                ["motorcycle", "Motorcycle"],
+                ["car", "Car"],
+                ["pickup", "Pickup"],
+              ] as const
+            ).map(([key, label]) => (
+              <Pressable
+                key={key}
+                style={[styles.method, deliveryMethod === key && styles.methodOn]}
+                onPress={() => setDeliveryMethod(key)}
+              >
+                <Text
+                  style={[styles.methodText, deliveryMethod === key && styles.methodTextOn]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Pressable
+            style={[styles.payBtn, submitting && { opacity: 0.7 }]}
+            onPress={() => void onPay()}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.payBtnText}>Continue to Stripe</Text>
+            )}
+          </Pressable>
+          <Text style={styles.footerNote}>
+            Opens Stripe’s secure hosted checkout in your system browser. No card details
+            are entered inside the Flexa Market app.
+          </Text>
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function Field(props: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  keyboardType?: "default" | "phone-pad" | "email-address";
+  autoCapitalize?: "none" | "sentences" | "words";
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{props.label}</Text>
+      <TextInput
+        style={styles.input}
+        value={props.value}
+        onChangeText={props.onChangeText}
+        placeholderTextColor="#94A3B8"
+        keyboardType={props.keyboardType}
+        autoCapitalize={props.autoCapitalize ?? "sentences"}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  closeRow: {
+  root: { flex: 1, backgroundColor: "#F8FAFC", paddingHorizontal: 16 },
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  back: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  title: { fontSize: 18, fontWeight: "800", color: "#0F172A" },
+  centered: { paddingTop: 40, alignItems: "center" },
+  error: { color: "#B91C1C", fontWeight: "600" },
+  summary: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 14,
+    marginBottom: 12,
+  },
+  summaryTitle: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
+  summaryPrice: { marginTop: 8, fontSize: 20, fontWeight: "800", color: "#0F172A" },
+  summaryMuted: { fontSize: 13, fontWeight: "600", color: "#64748B" },
+  drNote: { marginTop: 10, fontSize: 13, lineHeight: 18, color: "#64748B" },
+  savedBlock: { marginBottom: 8 },
+  section: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  savedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: "#ffffff",
+    paddingVertical: 12,
+    marginBottom: 8,
   },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#f1f5f9",
+  savedText: { flex: 1, color: "#0F172A", fontWeight: "600", marginRight: 8 },
+  field: { marginBottom: 12 },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#94A3B8",
+    marginBottom: 6,
+  },
+  input: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 14,
+    color: "#0F172A",
+    fontSize: 15,
+  },
+  methods: { flexDirection: "row", gap: 8, marginBottom: 16 },
+  method: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
   },
-  webviewContainer: {
-    flex: 1,
-    backgroundColor: "#ffffff",
-  },
-  webview: {
-    flex: 1,
-  },
-  loader: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#ffffff",
+  methodOn: { borderColor: "#F97316", backgroundColor: "#FFF7ED" },
+  methodText: { fontWeight: "700", color: "#64748B", fontSize: 13 },
+  methodTextOn: { color: "#C2410C" },
+  payBtn: {
+    height: 52,
+    borderRadius: 999,
+    backgroundColor: "#635BFF",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 10,
+  },
+  payBtnText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  footerNote: {
+    marginTop: 12,
+    fontSize: 12,
+    lineHeight: 17,
+    color: "#64748B",
+    textAlign: "center",
   },
 });

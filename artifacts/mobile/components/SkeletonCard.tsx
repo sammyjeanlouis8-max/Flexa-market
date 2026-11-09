@@ -11,7 +11,7 @@ export function SkeletonCard() {
       Animated.sequence([
         Animated.timing(opacity, { toValue: 1, duration: 800, useNativeDriver: true }),
         Animated.timing(opacity, { toValue: 0.4, duration: 800, useNativeDriver: true }),
-      ])
+      ]),
     );
     animation.start();
     return () => animation.stop();
@@ -30,8 +30,16 @@ export function SkeletonCard() {
 }
 
 const styles = StyleSheet.create({
-  card: { width: CARD_WIDTH, borderRadius: 14, borderWidth: 1, borderColor: "#1e293b", overflow: "hidden", marginBottom: 12, backgroundColor: "#0F172A" },
-  imageArea: { width: "100%", height: CARD_WIDTH, backgroundColor: "#1e293b" },
+  card: {
+    width: CARD_WIDTH,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden",
+    marginBottom: 12,
+    backgroundColor: "#FFFFFF",
+  },
+  imageArea: { width: "100%", height: CARD_WIDTH, backgroundColor: "#E2E8F0" },
   info: { padding: 10, gap: 8 },
-  line: { height: 12, borderRadius: 6, backgroundColor: "#1e293b" },
+  line: { height: 12, borderRadius: 6, backgroundColor: "#E2E8F0" },
 });

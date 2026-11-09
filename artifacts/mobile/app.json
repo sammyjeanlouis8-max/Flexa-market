@@ -104,6 +104,9 @@
         }
       ],
       "./modules/flexa-background-upload/app.plugin.js",
+      "./plugins/withOptionalGoogleServices.js",
+      "expo-asset",
+      "expo-font",
       "./plugins/withAndroidAdaptiveLayout.js"
     ],
     "experiments": {},

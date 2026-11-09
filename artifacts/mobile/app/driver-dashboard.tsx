@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import NativePlaceholder from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function DriverDashboardScreen() {
-  return <SafeWebView uri="https://flexamarket.com/driver-dashboard" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Driver dashboard'
+      subtitle='Native driver dashboard is queued.'
+    />
+  );
 }

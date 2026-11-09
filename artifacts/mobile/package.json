@@ -9,7 +9,9 @@
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "release:check": "node scripts/release-preflight.mjs",
-    "postinstall": "node scripts/patch-expo-router-ctx.js"
+    "postinstall": "node scripts/patch-expo-router-ctx.js",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -54,9 +56,14 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "@expo-google-fonts/dm-sans": "^0.4.2",
+    "@expo-google-fonts/space-grotesk": "^0.4.1",
+    "expo-asset": "~12.0.14",
     "expo-build-properties": "~1.0.10",
     "expo-device": "~8.0.10",
+    "expo-gl": "~16.0.10",
     "expo-notifications": "~0.32.17",
-    "expo-updates": "~29.0.20"
+    "expo-updates": "~29.0.20",
+    "socket.io-client": "^4.8.3"
   }
 }

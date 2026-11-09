@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import NativePlaceholder from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function KycScreen() {
-  return <SafeWebView uri="https://flexamarket.com/kyc" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Identity verification'
+      subtitle='Native KYC upload flow is queued.'
+    />
+  );
 }

@@ -1,12 +1,13 @@
 /**
- * Flexa Market — WebView shell with Android push notifications.
+ * LEGACY WebView shell — NOT the app entry anymore.
+ * Entry is `index.js` → `expo-router/entry` (native tabs + auth).
+ * Kept temporarily for reference / push-bridge patterns during migration.
  *
- * Key behaviors:
- * 1. Push token registration (FCM/APNs) — injected into WebView on load.
- * 2. Cold-start navigation — notification URL captured before WebView loads,
- *    injected in onLoadEnd (fixes the double-tap bug).
- * 3. Durable background uploads — trusted WebView requests are handed to a
- *    native WorkManager foreground worker after their file has been staged.
+ * Key behaviors (legacy):
+ * 1. Native Login / Signup with GPU-rendered rotating flag globe (expo-gl).
+ * 2. Push token registration (FCM/APNs) — injected into WebView on load.
+ * 3. Cold-start navigation — notification URL captured before WebView loads.
+ * 4. Durable background uploads via native WorkManager.
  */
 import React, { useCallback, useRef, useState, useEffect } from "react";
 import {
@@ -27,18 +28,28 @@ import {
 } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 import * as Notifications from "expo-notifications";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { usePushNotifications } from "./hooks/usePushNotifications";
+import {
+  detectNativeAuthMode,
+  makeAuthTokenInjection,
+  NATIVE_AUTH_WATCH_SCRIPT,
+} from "./lib/nativeAuthBridge";
+import {
+  dispatchFlexaUpload,
+  hasNativeBackgroundUploads,
+  parseFlexaUploadMessage,
+} from "./native/backgroundUploads";
+import LoginScreen from "./screens/auth/LoginScreen";
+import RegisterScreen from "./screens/auth/RegisterScreen";
 import {
   ANDROID_UA_SUFFIX,
   classifyWebUrl,
   isTrustedFlexaUrl,
   platformBridgeScript,
 } from "./security/webviewPolicy";
-import {
-  dispatchFlexaUpload,
-  hasNativeBackgroundUploads,
-  parseFlexaUploadMessage,
-} from "./native/backgroundUploads";
+
+type NativeAuthMode = "login" | "register";
 
 const WEBSITE = "https://flexamarket.com";
 const INITIAL_LOAD_TIMEOUT_MS = 20_000;
@@ -64,12 +75,14 @@ async function registerPushTokenDirect(token: string, jwt: string): Promise<void
   }
 }
 
-export default function App() {
+function MarketplaceShell() {
+  const { login: saveAuthToken } = useAuth();
   const webRef = useRef<any>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [authMode, setAuthMode] = useState<NativeAuthMode | null>(null);
   const initialPageReadyRef = useRef(false);
   const currentLoadFailedRef = useRef(false);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -146,6 +159,10 @@ export default function App() {
     );
   }, []);
 
+  const openNativeAuth = useCallback((mode: NativeAuthMode) => {
+    setAuthMode(mode);
+  }, []);
+
   // ── onMessage: receive JWT + native background-upload bridge ───────────
   // The marketplace sends { type: "AUTH_TOKEN", token: jwt } after the user
   // loads.  We store it and, if we already have an Expo push token, call the
@@ -154,6 +171,11 @@ export default function App() {
     if (!isTrustedFlexaUrl(currentUrlRef.current)) return;
     try {
       const msg = JSON.parse(event.nativeEvent.data);
+
+      if (msg?.type === "NATIVE_AUTH" && (msg.mode === "login" || msg.mode === "register")) {
+        openNativeAuth(msg.mode);
+        return;
+      }
 
       if (msg?.type === "AUTH_TOKEN" && typeof msg.token === "string") {
         jwtRef.current = msg.token;
@@ -176,12 +198,16 @@ export default function App() {
     } catch {
       // not our message
     }
-  }, [emitUploadResult]);
+  }, [emitUploadResult, openNativeAuth]);
 
   // ── Android hardware back button ───────────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (authMode) {
+        setAuthMode(null);
+        return true;
+      }
       if (canGoBack) {
         webRef.current?.goBack();
         return true;
@@ -189,7 +215,29 @@ export default function App() {
       return false;
     });
     return () => sub.remove();
-  }, [canGoBack]);
+  }, [authMode, canGoBack]);
+
+  const finishNativeAuth = useCallback(
+    async (token: string) => {
+      await saveAuthToken(token);
+      jwtRef.current = token;
+      setAuthMode(null);
+
+      const pushToken = tokenRef.current;
+      if (pushToken) {
+        registerPushTokenDirect(pushToken, token).catch(() => {});
+      }
+
+      // Return the marketplace to home with the JWT available to the SPA.
+      if (webRef.current && isTrustedFlexaUrl(currentUrlRef.current)) {
+        webRef.current.injectJavaScript(makeAuthTokenInjection(token));
+        webRef.current.injectJavaScript(
+          `window.location.href=${JSON.stringify(WEBSITE)};true;`,
+        );
+      }
+    },
+    [saveAuthToken],
+  );
 
   // ── onLoadEnd: inject token + handle pending notification URL ──────────
   const onLoadEnd = useCallback(() => {
@@ -218,6 +266,7 @@ export default function App() {
         `document.documentElement.style.setProperty('--sab','${sab}px');` +
       `})();true;`,
     );
+    webRef.current?.injectJavaScript(NATIVE_AUTH_WATCH_SCRIPT);
 
     // Drain any script that arrived before the page was ready
     if (pendingScript.current && isTrustedFlexaUrl(currentUrlRef.current)) {
@@ -330,7 +379,6 @@ export default function App() {
   }, [clearErrorTimer, clearStartupTimer]);
 
   return (
-    <SafeAreaProvider>
       <SafeAreaView
         style={styles.container}
         // The marketplace WebView owns the bottom safe-area inset itself
@@ -357,10 +405,10 @@ export default function App() {
           applicationNameForUserAgent={
             Platform.OS === "android" ? ANDROID_UA_SUFFIX : undefined
           }
-          injectedJavaScriptBeforeContentLoaded={platformBridgeScript(
-            Platform.OS,
-            hasNativeBackgroundUploads,
-          )}
+          injectedJavaScriptBeforeContentLoaded={
+            platformBridgeScript(Platform.OS, hasNativeBackgroundUploads) +
+            NATIVE_AUTH_WATCH_SCRIPT
+          }
           originWhitelist={["https://*"]}
           mixedContentMode="never"
           cacheEnabled
@@ -389,6 +437,11 @@ export default function App() {
           }}
           onMessage={onMessage}
           onShouldStartLoadWithRequest={(request) => {
+            const auth = detectNativeAuthMode(request.url);
+            if (auth) {
+              openNativeAuth(auth);
+              return false;
+            }
             const route = classifyWebUrl(request.url);
             if (route === "moncash" && Platform.OS === "android") {
               Linking.openURL(request.url).catch(() => {});
@@ -400,6 +453,11 @@ export default function App() {
           }}
           onOpenWindow={(event) => {
             const targetUrl = event.nativeEvent.targetUrl;
+            const auth = detectNativeAuthMode(targetUrl);
+            if (auth) {
+              openNativeAuth(auth);
+              return;
+            }
             const route = classifyWebUrl(targetUrl);
             if (route === "moncash" && Platform.OS === "android") {
               Linking.openURL(targetUrl).catch(() => {});
@@ -413,7 +471,37 @@ export default function App() {
           }}
         />
 
-        {isLoading && !loadError && (
+        {authMode === "login" && (
+          <View style={styles.authOverlay} pointerEvents="box-none">
+            <LoginScreen
+              onSuccess={finishNativeAuth}
+              onGoRegister={() => setAuthMode("register")}
+              onOpenWebsite={(path) => {
+                setAuthMode(null);
+                webRef.current?.injectJavaScript(
+                  `window.location.href=${JSON.stringify(`https://flexamarket.com${path}`)};true;`,
+                );
+              }}
+            />
+          </View>
+        )}
+
+        {authMode === "register" && (
+          <View style={styles.authOverlay} pointerEvents="box-none">
+            <RegisterScreen
+              onSuccess={finishNativeAuth}
+              onGoLogin={() => setAuthMode("login")}
+              onOpenWebsite={(path) => {
+                setAuthMode(null);
+                webRef.current?.injectJavaScript(
+                  `window.location.href=${JSON.stringify(`https://flexamarket.com${path}`)};true;`,
+                );
+              }}
+            />
+          </View>
+        )}
+
+        {isLoading && !loadError && !authMode && (
           <View style={styles.statusScreen} accessibilityLiveRegion="polite">
             <Image
               source={require("./assets/images/icon.png")}
@@ -432,7 +520,7 @@ export default function App() {
           </View>
         )}
 
-        {loadError && (
+        {loadError && !authMode && (
           <View style={styles.statusScreen} accessibilityLiveRegion="assertive">
             <View style={styles.offlineIcon}>
               <Text style={styles.offlineIconText}>!</Text>
@@ -464,6 +552,15 @@ export default function App() {
           </View>
         )}
       </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AuthProvider>
+        <MarketplaceShell />
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }
@@ -471,6 +568,12 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   webview: { flex: 1, backgroundColor: "#F8FAFC" },
+  authOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#FFFFFF",
+    zIndex: 30,
+    elevation: 30,
+  },
   statusScreen: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",

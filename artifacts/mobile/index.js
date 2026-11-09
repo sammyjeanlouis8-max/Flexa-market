@@ -1,6 +1,6 @@
-import { registerRootComponent } from "expo";
-import App from "./App";
-
-// Plain React Native entry — no expo-router, no file-based routing.
-// This is intentional: the app is a single-screen WebView shell.
-registerRootComponent(App);
+/**
+ * Flexa Market native entry — Expo Router (file-based navigation).
+ * Replaces the previous single-screen WebView shell.
+ */
+import "react-native-gesture-handler";
+import "expo-router/entry";

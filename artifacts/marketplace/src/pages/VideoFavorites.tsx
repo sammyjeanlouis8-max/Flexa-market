@@ -10,7 +10,7 @@ import { useVideoSaves } from "@/contexts/videoSaves";
 import { useToast } from "@/hooks/use-toast";
 import { formatPrice } from "@/lib/currency";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
-import PromoVideosBottomNav, { PROMO_NAV_HEIGHT_CSS, PROMO_NAV_SAFE_BOTTOM } from "@/components/PromoVideosBottomNav";
+import PromoVideosBottomNav, { PROMO_NAV_HEIGHT_CSS } from "@/components/PromoVideosBottomNav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
@@ -118,10 +118,6 @@ export default function VideoFavorites() {
   return (
     <div
       className="fixed inset-0 z-[60] flex flex-col bg-black text-white"
-      style={{
-        bottom: `calc(-1 * ${PROMO_NAV_SAFE_BOTTOM})`,
-        minHeight: `calc(100dvh + ${PROMO_NAV_SAFE_BOTTOM})`,
-      }}
       data-testid="video-favorites-page"
     >
       <header

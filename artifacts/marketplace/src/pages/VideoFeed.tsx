@@ -2378,11 +2378,6 @@ export default function VideoFeed() {
     return (
       <div
         className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black gap-4"
-        style={{
-          bottom: `calc(-1 * ${FEED_SAFE_BOTTOM})`,
-          minHeight: `calc(100dvh + ${FEED_SAFE_BOTTOM})`,
-          boxShadow: "0 64px 0 0 #000",
-        }}
         data-testid="video-feed-loading"
       >
         {/* Transparent header on loading too */}
@@ -2408,21 +2403,16 @@ export default function VideoFeed() {
 
   // ── Single return — empty + populated share one component tree so the
   //    BoostWizard is never re-mounted when videos.length changes.
-  //    fixed inset-0 paints edge-to-edge over the marketplace shell (TikTok-style),
-  //    so Android system-nav / safe-area gaps never show the light bg-background.
+  //    fixed inset-0 paints edge-to-edge over the marketplace shell (TikTok-style).
+  //    Do NOT extend past the viewport with negative bottom / box-shadow fills —
+  //    that clipped the fixed promo nav inside overflow:hidden ancestors on iOS.
+  //    Safe-area black fill belongs on PromoVideosBottomNav itself.
   return (
     <div
       className={cn(
         "fixed inset-0 z-[60] bg-black",
         videos.length === 0 ? "flex flex-col" : "flex",
       )}
-      style={{
-        // Extend past the layout bottom so Android system-nav / safe-area
-        // gaps stay black even when env(safe-area-inset-bottom) is 0.
-        bottom: `calc(-1 * ${FEED_SAFE_BOTTOM})`,
-        minHeight: `calc(100dvh + ${FEED_SAFE_BOTTOM})`,
-        boxShadow: "0 64px 0 0 #000",
-      }}
       data-testid="video-feed-immersive"
     >
 
@@ -2626,9 +2616,6 @@ export default function VideoFeed() {
             </div>
           </div>
         )}
-
-        {/* TikTok-style bottom nav — center (+) opens existing Booster create flow */}
-        <PromoVideosBottomNav active="discover" onAdd={openWizard} />
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
@@ -2723,6 +2710,10 @@ export default function VideoFeed() {
           </button>
         </div>
       </div>
+
+      {/* Viewport-fixed sibling of the overflow:hidden video column — never nested
+          inside it, or WebKit clips the bar and produces the intermittent black overlay. */}
+      <PromoVideosBottomNav active="discover" onAdd={openWizard} />
 
       <BoostWizard open={wizardOpen} onClose={() => { closeWizard(); fetchPage(1, true); }} />
     </div>

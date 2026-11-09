@@ -4,11 +4,18 @@ import { Home, Compass, Bookmark, UserRound, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
 
-/** Covers iOS home-indicator AND Android WebViews that report safe-area-inset-bottom as 0. */
+/**
+ * Single bottom inset for the promo nav.
+ * Uses max() — never sum — so iOS home-indicator and Android system-nav
+ * do not double-count into an oversized black band.
+ */
 export const PROMO_NAV_SAFE_BOTTOM =
   "max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px))";
 
-export const PROMO_NAV_HEIGHT_CSS = `calc(58px + ${PROMO_NAV_SAFE_BOTTOM})`;
+/** Compact content row (icons + labels). Safe-area padding is separate. */
+export const PROMO_NAV_CONTENT_PX = 52;
+
+export const PROMO_NAV_HEIGHT_CSS = `calc(${PROMO_NAV_CONTENT_PX}px + ${PROMO_NAV_SAFE_BOTTOM})`;
 
 type ActiveTab = "home" | "discover" | "add" | "favorites" | "profile";
 
@@ -26,6 +33,10 @@ function resolveActive(pathname: string): ActiveTab {
 /**
  * TikTok-inspired fixed bottom navigation for Promotional Videos.
  * Center (+) opens the existing Booster create flow — never a duplicate uploader.
+ *
+ * Must NOT be nested inside an overflow:hidden / transformed ancestor that can
+ * clip position:fixed descendants (WebKit). Parents should leave this as a
+ * viewport-fixed sibling of the scroll surface.
  */
 export default function PromoVideosBottomNav({
   active,
@@ -75,24 +86,34 @@ export default function PromoVideosBottomNav({
 
   const itemClass = (isActive: boolean) =>
     cn(
-      "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 pt-1 transition-colors",
+      "flex min-h-[44px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 transition-colors",
       isActive ? "text-white" : "text-white/55",
     );
 
   return (
     <nav
       className={cn(
-        "fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-black/95 backdrop-blur-md lg:hidden",
+        // z-[70] sits above the immersive feed shell (z-60) and video overlays
+        "pointer-events-auto fixed inset-x-0 bottom-0 z-[70] border-t border-white/10 bg-black lg:hidden",
         className,
       )}
       style={{
+        // Border-box: height includes paddingBottom so the icon row stays fully
+        // on-screen and the safe-area band is filled by this same black nav —
+        // never by a separate overflowing black shell behind/over the icons.
+        boxSizing: "border-box",
         height: PROMO_NAV_HEIGHT_CSS,
         paddingBottom: PROMO_NAV_SAFE_BOTTOM,
+        paddingLeft: "env(safe-area-inset-left, 0px)",
+        paddingRight: "env(safe-area-inset-right, 0px)",
       }}
       aria-label={t("nav.main", { defaultValue: "Main navigation" })}
       data-testid="promo-videos-bottom-nav"
     >
-      <div className="flex h-[58px] w-full items-end justify-around px-1">
+      <div
+        className="grid h-[52px] w-full grid-cols-5 items-center px-1"
+        style={{ height: `${PROMO_NAV_CONTENT_PX}px` }}
+      >
         <button
           type="button"
           onClick={() => navigate("/")}
@@ -100,7 +121,7 @@ export default function PromoVideosBottomNav({
           data-testid="nav-promo-home"
         >
           <Home className={cn("h-[22px] w-[22px]", current === "home" && "fill-white/15")} strokeWidth={current === "home" ? 2.4 : 1.9} />
-          <span className={cn("text-[9px] leading-none", current === "home" ? "font-black" : "font-semibold")}>
+          <span className={cn("text-[10px] leading-none", current === "home" ? "font-black" : "font-semibold")}>
             {t("nav.home")}
           </span>
         </button>
@@ -113,33 +134,33 @@ export default function PromoVideosBottomNav({
           aria-current={current === "discover" ? "page" : undefined}
         >
           <Compass className={cn("h-[22px] w-[22px]", current === "discover" && "fill-white/15")} strokeWidth={current === "discover" ? 2.4 : 1.9} />
-          <span className={cn("text-[9px] leading-none", current === "discover" ? "font-black" : "font-semibold")}>
+          <span className={cn("text-[10px] leading-none", current === "discover" ? "font-black" : "font-semibold")}>
             {t("nav.discover")}
           </span>
         </button>
 
-        {/* Center Add (+) — TikTok-inspired layered button */}
-        <div className="relative flex min-w-[72px] flex-1 items-end justify-center pb-1">
+        {/* Center Add (+) — compact TikTok-inspired control, vertically centered */}
+        <div className="relative flex min-h-[44px] items-center justify-center">
           <button
             type="button"
             onClick={handleAdd}
-            className="relative -mt-4 flex h-11 w-[52px] items-center justify-center rounded-[11px] bg-white text-black shadow-[0_4px_16px_rgba(0,0,0,0.45)] active:scale-95 transition-transform"
+            className="relative flex h-11 w-11 items-center justify-center active:scale-95 transition-transform"
             aria-label={t("videoFeed.addBoost", { defaultValue: "Add promotional video" })}
             data-testid="nav-promo-add"
           >
-            {/* Cyan / magenta side slivers (TikTok create affordance) */}
+            {/* Visual face ~46×42 with cyan/pink side accents; 44×44 touch target on the button */}
             <span
               aria-hidden
-              className="pointer-events-none absolute -left-[3px] top-1 bottom-1 w-[5px] rounded-l-[10px]"
+              className="pointer-events-none absolute left-[calc(50%-25px)] top-1/2 h-[42px] w-[5px] -translate-y-1/2 rounded-l-[9px]"
               style={{ background: "#25F4EE" }}
             />
             <span
               aria-hidden
-              className="pointer-events-none absolute -right-[3px] top-1 bottom-1 w-[5px] rounded-r-[10px]"
+              className="pointer-events-none absolute left-[calc(50%+20px)] top-1/2 h-[42px] w-[5px] -translate-y-1/2 rounded-r-[9px]"
               style={{ background: "#FE2C55" }}
             />
-            <span className="relative z-10 flex h-full w-[44px] items-center justify-center rounded-[9px] bg-white">
-              <Plus className="h-7 w-7" strokeWidth={2.75} />
+            <span className="relative z-10 flex h-[40px] w-[44px] items-center justify-center rounded-[9px] bg-white text-black shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
+              <Plus className="h-5 w-5" strokeWidth={2.75} />
             </span>
           </button>
         </div>
@@ -152,7 +173,7 @@ export default function PromoVideosBottomNav({
           aria-current={current === "favorites" ? "page" : undefined}
         >
           <Bookmark className={cn("h-[22px] w-[22px]", current === "favorites" && "fill-white")} strokeWidth={current === "favorites" ? 2.4 : 1.9} />
-          <span className={cn("text-[9px] leading-none", current === "favorites" ? "font-black" : "font-semibold")}>
+          <span className={cn("text-[10px] leading-none", current === "favorites" ? "font-black" : "font-semibold")}>
             {t("nav.favorites", { defaultValue: "Favorites" })}
           </span>
         </button>
@@ -164,7 +185,7 @@ export default function PromoVideosBottomNav({
           data-testid="nav-promo-profile"
         >
           <UserRound className={cn("h-[22px] w-[22px]", current === "profile" && "fill-white/15")} strokeWidth={current === "profile" ? 2.4 : 1.9} />
-          <span className={cn("text-[9px] leading-none", current === "profile" ? "font-black" : "font-semibold")}>
+          <span className={cn("text-[10px] leading-none", current === "profile" ? "font-black" : "font-semibold")}>
             {t("nav.profile")}
           </span>
         </button>

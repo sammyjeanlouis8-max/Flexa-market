@@ -40,6 +40,7 @@ export default function RootLayout() {
                   <Stack.Screen name="orders/[id]" />
                   <Stack.Screen name="favorites" />
                   <Stack.Screen name="wallet" />
+                  <Stack.Screen name="chat/[id]" />
                   <Stack.Screen name="addresses" />
                   <Stack.Screen name="edit-profile" />
                   <Stack.Screen name="stripe-checkout" />

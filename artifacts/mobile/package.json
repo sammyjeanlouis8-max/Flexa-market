@@ -63,6 +63,7 @@
     "expo-device": "~8.0.10",
     "expo-gl": "~16.0.10",
     "expo-notifications": "~0.32.17",
-    "expo-updates": "~29.0.20"
+    "expo-updates": "~29.0.20",
+    "socket.io-client": "^4.8.3"
   }
 }

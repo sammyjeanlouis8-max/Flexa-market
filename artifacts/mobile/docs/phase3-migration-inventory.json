@@ -11,16 +11,19 @@
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
-    "placeholderRouteCount": 18,
-    "fullyNativeRouteCount": 20,
+    "placeholderRouteCount": 16,
+    "fullyNativeRouteCount": 23,
     "partiallyNativeRouteCount": 5,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
       "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
       "Wallet top-up remains BLOCKED by Android digital purchase guard.",
-      "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell)."
+      "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell).",
+      "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
+      "Realtime via socket.io /api/socket.io with HTTP polling fallback."
     ],
-    "phase3b": true
+    "phase3b": true,
+    "phase3c": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -89,9 +92,9 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 20,
+    "FULLY_NATIVE": 23,
     "PARTIALLY_NATIVE": 5,
-    "PLACEHOLDER": 18,
+    "PLACEHOLDER": 16,
     "MISSING": 33,
     "BLOCKED": 5
   },
@@ -528,9 +531,9 @@
       "status": "PARTIALLY_NATIVE",
       "missing": [
         "public shop profile",
-        "inbox/sell deep links still placeholder"
+        "sell still placeholder"
       ],
-      "work": "Phase 3B links: edit-profile, addresses, wallet native"
+      "work": "Phase 3C: inbox/chat deep-links native"
     },
     {
       "id": "edit-profile",
@@ -595,7 +598,7 @@
       "missing": [
         "Foreground FCM delivery verification on device"
       ],
-      "work": "In-app center complete; push prep only"
+      "work": "Phase 3A list + Phase 3C push tap deep-links to chat/orders"
     },
     {
       "id": "push-fcm",
@@ -797,13 +800,12 @@
       "nativeRoute": "/inbox",
       "role": "buyer",
       "apis": [
-        "/api/conversations"
+        "/api/conversations",
+        "/api/conversations/unread-count"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "conversation list"
-      ],
-      "work": "Critical Phase 3"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3C: Flexa Chat inbox with role filters, unread, socket+poll refresh"
     },
     {
       "id": "chat-thread",
@@ -813,15 +815,17 @@
       "nativeRoute": "/chat/[id]",
       "role": "buyer",
       "apis": [
-        "/api/conversations/:id/messages"
+        "/api/conversations/:id/messages",
+        "/api/messages/:id/translate",
+        "/api/storage/uploads/*",
+        "socket.io /api/socket.io"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "thread UI",
-        "attachments",
-        "translate"
+        "voice notes UI",
+        "video attachments UI"
       ],
-      "work": "Pair with Inbox"
+      "work": "Phase 3C: thread + text/image send, typing, translate long-press, socket realtime"
     },
     {
       "id": "support-tickets",
@@ -1422,6 +1426,23 @@
         "provider integration"
       ],
       "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready"
+    },
+    {
+      "id": "smart-notifications",
+      "name": "Smart notification deep-links",
+      "domain": "communication",
+      "webRoute": null,
+      "nativeRoute": "PushBootstrap",
+      "role": "buyer",
+      "apis": [
+        "expo-notifications",
+        "/api/push/expo-token"
+      ],
+      "status": "FULLY_NATIVE",
+      "missing": [
+        "physical FCM delivery verification"
+      ],
+      "work": "Phase 3C: notification tap \u2192 /chat/:id, /orders/:id, /wallet"
     }
   ],
   "recommendedPhase3Order": [
@@ -1456,7 +1477,9 @@
         "chat-thread",
         "support-tickets",
         "offers"
-      ]
+      ],
+      "status": "completed_core",
+      "note": "Inbox + chat-thread + smart deep-links done; support/chatbot still later"
     },
     {
       "wave": "3D",
@@ -1523,5 +1546,6 @@
       "notes": "Push token registration prepared via expo-notifications + POST /api/push/expo-token. No simulated notifications."
     }
   },
-  "phase3bCompletedAt": "2026-11-09T23:30:00Z"
+  "phase3bCompletedAt": "2026-11-09T23:30:00Z",
+  "phase3cCompletedAt": "2026-11-09T23:55:00Z"
 }

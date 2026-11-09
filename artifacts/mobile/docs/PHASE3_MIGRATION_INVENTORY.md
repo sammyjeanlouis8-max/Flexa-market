@@ -8,60 +8,41 @@
 
 | Check | Result |
 |---|---|
-| Phase 1–2 screens intact | Yes — Login, Signup, AuthGlobe, Home, Search, Cart, Checkout still native |
-| Phase 3A intact | Orders, Order detail, Favorites, Notifications |
-| Phase 3B | Wallet, Addresses, Edit Profile, Stripe single-item, Language |
-| eSIM | **DEFERRED** — honest `/esim` screen; no fake catalog |
-| TypeScript | Run in CI / local `pnpm typecheck` |
-| WebView restored for marketplace? | No — entry remains Expo Router |
+| Phase 1–2 intact | Login, Signup, AuthGlobe, Home, Search, Cart, Checkout |
+| Phase 3A intact | Orders, Order detail, Favorites, Notifications list |
+| Phase 3B intact | Wallet, Addresses, Edit Profile, Stripe, Language |
+| Phase 3C | Flexa Chat inbox + thread + smart notification deep-links |
+| eSIM | **DEFERRED** |
+| WebView marketplace shell? | No — Expo Router entry |
 
-## Status legend
-
-| Status | Meaning |
-|---|---|
-| **FULLY_NATIVE** | Real RN UI + API wiring |
-| **PARTIALLY_NATIVE** | Native UI incomplete / critical deep-links stubbed |
-| **PLACEHOLDER** | `NativePlaceholder` or redirect stub |
-| **MISSING** | On website/API, no native route |
-| **BLOCKED** | Android policy / digital-purchase guard / deferred provider |
-
-## Snapshot counts (after Phase 3B)
+## Snapshot counts (after Phase 3C)
 
 | Status | Count |
 |---|---|
-| FULLY_NATIVE | 20 |
+| FULLY_NATIVE | 23 |
 | PARTIALLY_NATIVE | 5 |
-| PLACEHOLDER | 18 |
+| PLACEHOLDER | 16 |
 | MISSING | 33 |
 | BLOCKED | 5 |
-| **Total features audited** | **81** |
+| **Total** | **82** |
 
-## Phase 3B completed
+## Phase 3C completed
 
-- **Wallet / Card FM** — `/wallet` balance + history + transaction detail; top-up CTA explains Android block (no fake recharge)
-- **Addresses** — `/addresses` list/add/edit/delete/default + HT/DO country
-- **Edit Profile** — `/edit-profile` name/phone/location/bio/avatar/language/password via existing APIs
-- **Stripe single-item** — `/stripe-checkout` + listing “Buy with card” (DR primary); hosted Stripe URL via `expo-web-browser`
-- **Language** — `/language-picker` + LanguageProvider
-- **eSIM** — `/esim` marked **DEFERRED** (no plans/prices/QR)
+- **Inbox / Flexa Chat** — `/inbox` conversation list, Buying/Selling filters, unread badges, socket + poll refresh
+- **Chat thread** — `/chat/[id]` text + image send, typing indicators, long-press translate, Socket.IO realtime with HTTP polling fallback
+- **Listing → Message** — creates/opens conversation via `POST /api/conversations`
+- **Smart notifications** — push tap routing to `/chat/:id`, `/orders/:id`, `/wallet`
+- Tab badge from `GET /api/conversations/unread-count`
 
-## Explicitly BLOCKED / DEFERRED (do not fake)
+## Still open (do not fake)
 
-- Wallet card top-up initiate → `ANDROID_DIGITAL_PURCHASE_UNAVAILABLE`
-- Paid boost / subscription / music digital purchases
-- Flexa eSIM provider purchases (**DEFERRED**)
-- Firebase delivery claims beyond Expo token registration prep
+- Voice/video message composers
+- Support tickets / FlexaBot
+- Sell / upload listings
+- Wallet top-up (BLOCKED) · eSIM (DEFERRED)
 
-## Recommended next wave (Phase 3C — do not auto-start)
+## Recommended Phase 3D (do not auto-start)
 
-1. Inbox + Chat (real-time messaging)
-2. Public shop profile
-3. Remaining settings subpages (privacy/help)
-4. Seller tools wave remains 3D
-
-## Discovery sources
-
-- Expo Router under `artifacts/mobile/app`
-- Marketplace website routes
-- API server under `artifacts/api-server/src/routes`
-- Android digital purchase guard middleware
+1. Sell + image upload + my listings  
+2. Seller order ship/label actions  
+3. Support center (reuse chat patterns)

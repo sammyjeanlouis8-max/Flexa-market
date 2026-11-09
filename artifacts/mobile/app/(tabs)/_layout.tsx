@@ -1,9 +1,36 @@
 import { Feather } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import React from "react";
-import { Platform } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Platform, View } from "react-native";
+import { useAuth } from "@/context/AuthContext";
+import { fetchUnreadCount } from "@/lib/chatApi";
 
 export default function TabLayout() {
+  const { token } = useAuth();
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    if (!token) {
+      setUnread(0);
+      return;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const n = await fetchUnreadCount({ token });
+        if (!cancelled) setUnread(n);
+      } catch {
+        /* keep previous badge */
+      }
+    };
+    void tick();
+    const id = setInterval(tick, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [token]);
+
   return (
     <Tabs
       screenOptions={{
@@ -53,9 +80,18 @@ export default function TabLayout() {
       <Tabs.Screen
         name="inbox"
         options={{
-          title: "Inbox",
+          title: "Chat",
+          tabBarBadge: unread > 0 ? (unread > 99 ? "99+" : unread) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: "#F97316",
+            color: "#FFFFFF",
+            fontSize: 10,
+            fontWeight: "800",
+          },
           tabBarIcon: ({ color, size }) => (
-            <Feather name="message-circle" color={color} size={size} />
+            <View>
+              <Feather name="message-circle" color={color} size={size} />
+            </View>
           ),
         }}
       />

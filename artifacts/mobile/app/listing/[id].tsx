@@ -17,6 +17,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { fetchListing, type Listing } from "@/lib/api";
 import { isDominicanListingCountry } from "@/lib/checkoutApi";
+import { createConversation } from "@/lib/chatApi";
 import {
   addFavorite,
   isFavorite,
@@ -38,6 +39,7 @@ export default function ListingDetailScreen() {
   const [addedFlash, setAddedFlash] = useState(false);
   const [favorited, setFavorited] = useState(false);
   const [favBusy, setFavBusy] = useState(false);
+  const [msgBusy, setMsgBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +106,37 @@ export default function ListingDetailScreen() {
       );
     } finally {
       setFavBusy(false);
+    }
+  };
+
+  const onMessageSeller = async () => {
+    if (!token) {
+      router.push("/auth/login");
+      return;
+    }
+    if (!listing?.sellerId || !listingId) {
+      Alert.alert("Unavailable", "This listing cannot be messaged yet.");
+      return;
+    }
+    if (isOwnListing) {
+      Alert.alert("Your listing", "You cannot message yourself.");
+      return;
+    }
+    if (msgBusy) return;
+    setMsgBusy(true);
+    try {
+      const conv = await createConversation(
+        { listingId, sellerId: listing.sellerId },
+        { token },
+      );
+      router.push(`/chat/${conv.id}`);
+    } catch (e) {
+      Alert.alert(
+        "Chat",
+        e instanceof Error ? e.message : "Could not start conversation",
+      );
+    } finally {
+      setMsgBusy(false);
     }
   };
 
@@ -249,12 +282,13 @@ export default function ListingDetailScreen() {
           <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             <View style={styles.footer}>
               <Pressable
-                style={styles.secondaryCta}
-                onPress={() =>
-                  token ? router.push("/(tabs)/inbox") : router.push("/auth/login")
-                }
+                style={[styles.secondaryCta, msgBusy && { opacity: 0.7 }]}
+                onPress={() => void onMessageSeller()}
+                disabled={msgBusy || isOwnListing}
               >
-                <Text style={styles.secondaryCtaText}>Message</Text>
+                <Text style={styles.secondaryCtaText}>
+                  {msgBusy ? "Opening…" : "Message"}
+                </Text>
               </Pressable>
               {dominican && !isOwnListing ? (
                 <Pressable

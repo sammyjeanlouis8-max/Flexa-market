@@ -3,27 +3,25 @@
 **Project:** Flexa Market — Native Android Migration  
 **Branch:** `cursor/native-android-migration-audit-b867`  
 **PR:** #171  
-**Updated:** 2026-11-09 10:07 America/New_York  
-**Scope:** Phase 0–1 audit **extension** (package, permissions, UX, billing)  
+**Updated:** 2026-11-09 10:25 America/New_York  
+**Scope:** Phase 0–1 + **final Phase 2 pre-approval audit**  
 **Implementation:** **NOT STARTED** — awaiting Sammy approval  
 
 ---
 
 ## 1. COMPLETED WORK
 
-### Prior (Phase 0–1)
+### Prior (Phase 0–1 + extension)
 - Official Android/Play/Expo/RN research + repo WebView audit  
-- Architecture proposal, screen inventory, compliance/test/release docs  
+- Architecture, inventory, permissions, UX matrices, package proposal  
 
-### This update (audit extension — docs only)
-- Proposed new Android package **`com.flexamarket.app`** (not applied in code)  
-- Documented Firebase/EAS/FCM/deep-link impact + Play enforcement caveats  
-- Photo Picker / video / mic / location permission matrices  
-- Smart Location priority preserved in docs  
-- Full screen behavior matrix + UX audit + navigation test plan  
-- Refined Play Billing vs physical goods classification  
-- Confirmed support chat **excludes** voice; messaging voice is in-scope  
-- Booster video duration cap **120s** documented  
+### Final pre-approval audit (this turn — docs only)
+- Account ACTIVE / **app-only** suspension context recorded  
+- Exact Console suspension reason marked **UNVERIFIED HERE** (needs Sammy paste)  
+- Validated `com.flexamarket.app` vs conflicts (not applied)  
+- Billing matrix: physical vs digital; no Play Billing SDK in mobile today  
+- Architecture validation: Expo 54 / RN 0.81 / expo-router OK for Phase 2  
+- New doc: `ANDROID_PHASE2_PREAPPROVAL_AUDIT.md`  
 
 **No production, website, iOS, DB, or package-name code changes.**
 
@@ -34,6 +32,7 @@
 | 0 Documentation research | VERIFIED COMPLETE (+ extension sources) |
 | 1 Repo audit | VERIFIED COMPLETE |
 | 1b Package / permissions / UX extension | VERIFIED COMPLETE (docs) |
+| 1c Phase 2 pre-approval audit | VERIFIED COMPLETE (docs) |
 | 2 Native architecture implementation | NOT STARTED |
 | 3 Feature migration | NOT STARTED |
 | 4 Compliance implementation | NOT STARTED |
@@ -71,7 +70,10 @@
 Wait for **explicit approval** of:
 1. Package `com.flexamarket.app`  
 2. Phase 2 start (native shell, no WebView home)  
-3. Billing strategy (implement Play Billing vs keep digital blocked)
+3. Billing strategy (keep digital blocked initially — recommended)  
+4. Optional: paste exact Play Console suspension citation into pre-approval doc  
+
+**Pre-approval verdict:** Phase 2 may be approved **conditionally** — see `ANDROID_PHASE2_PREAPPROVAL_AUDIT.md`.
 
 ## 7. COMPLIANCE STATUS
 

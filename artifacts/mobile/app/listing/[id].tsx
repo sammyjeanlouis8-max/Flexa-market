@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Pressable,
   ScrollView,
@@ -13,7 +14,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
 import { fetchListing, type Listing } from "@/lib/api";
+import { isDominicanListingCountry } from "@/lib/checkoutApi";
 
 const WIDTH = Dimensions.get("window").width;
 
@@ -21,11 +24,13 @@ export default function ListingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const { addItem, isInCart } = useCart();
   const [listing, setListing] = useState<Listing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [imageIndex, setImageIndex] = useState(0);
+  const [addedFlash, setAddedFlash] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +56,52 @@ export default function ListingDetailScreen() {
 
   const images = listing?.images?.length ? listing.images : [];
   const price = Number(listing?.price || 0);
-  const currency = listing?.currency === "HTG" ? "G" : "$";
+  const currency =
+    listing?.currency === "HTG"
+      ? "G"
+      : listing?.currency === "DOP"
+        ? "RD$"
+        : "$";
+  const listingId = Number(listing?.id || id);
+  const inCart = listingId ? isInCart(listingId) : false;
+  const isOwnListing =
+    !!user?.id && !!listing?.sellerId && user.id === listing.sellerId;
+  const dominican = isDominicanListingCountry(listing?.country);
+
+  const onAddToCart = () => {
+    if (!listing || !listingId) return;
+    if (!listing.sellerId) {
+      Alert.alert("Unavailable", "This listing cannot be added to cart yet.");
+      return;
+    }
+    if (isOwnListing) {
+      Alert.alert("Your listing", "You cannot buy your own product.");
+      return;
+    }
+    if (inCart) {
+      router.push("/cart");
+      return;
+    }
+    addItem({
+      listingId,
+      title: listing.title,
+      price,
+      currency: listing.currency ?? "USD",
+      image: listing.images?.[0] ?? null,
+      country: listing.country ?? null,
+      city: listing.city ?? listing.location ?? null,
+      sellerId: listing.sellerId,
+      quantity: 1,
+    });
+    setAddedFlash(true);
+    setTimeout(() => setAddedFlash(false), 1600);
+    if (dominican) {
+      Alert.alert(
+        "Added to cart",
+        "Dominican Republic items must be checked out from the product page (seller shipping). Cart wallet checkout is not available for these listings.",
+      );
+    }
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -150,15 +200,30 @@ export default function ListingDetailScreen() {
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             <Pressable
               style={styles.secondaryCta}
-              onPress={() => router.push("/auth/login")}
+              onPress={() =>
+                token ? router.push("/(tabs)/inbox") : router.push("/auth/login")
+              }
             >
               <Text style={styles.secondaryCtaText}>Message</Text>
             </Pressable>
             <Pressable
-              style={styles.primaryCta}
-              onPress={() => router.push("/cart")}
+              style={[
+                styles.primaryCta,
+                (inCart || addedFlash) && styles.primaryCtaInCart,
+                isOwnListing && styles.primaryCtaDisabled,
+              ]}
+              onPress={onAddToCart}
+              disabled={isOwnListing}
             >
-              <Text style={styles.primaryCtaText}>Buy / Cart</Text>
+              <Text style={styles.primaryCtaText}>
+                {isOwnListing
+                  ? "Your listing"
+                  : addedFlash
+                    ? "Added!"
+                    : inCart
+                      ? "In cart · View"
+                      : "Add to Cart"}
+              </Text>
             </Pressable>
           </View>
         </>
@@ -253,6 +318,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  primaryCtaInCart: { backgroundColor: "#EA580C" },
+  primaryCtaDisabled: { backgroundColor: "#CBD5E1" },
   primaryCtaText: { fontWeight: "800", color: "#FFFFFF" },
   centered: { alignItems: "center", padding: 32, gap: 12 },
   error: { color: "#64748B", textAlign: "center" },

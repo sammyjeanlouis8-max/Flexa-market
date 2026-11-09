@@ -48,3 +48,10 @@ test("API helpers target Flexa production ingress", () => {
   const auth = read("context/AuthContext.tsx");
   assert.match(auth, /flexamarket\.com\/api/);
 });
+
+test("cart is a real native screen wired to checkout APIs", () => {
+  const cart = read("app/cart.tsx");
+  assert.equal(cart.includes("NativePlaceholder"), false);
+  assert.match(cart, /useCart/);
+  assert.match(read("lib/checkoutApi.ts"), /\/cart\/checkout/);
+});

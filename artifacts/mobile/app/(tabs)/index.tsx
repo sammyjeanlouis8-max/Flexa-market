@@ -19,6 +19,7 @@ import { ListingCard } from "@/components/ListingCard";
 import { SearchBar } from "@/components/SearchBar";
 import { SkeletonCard } from "@/components/SkeletonCard";
 import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
 import {
   fetchHomeStats,
@@ -32,6 +33,7 @@ export default function HomeTab() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, user } = useAuth();
+  const { count: cartCount } = useCart();
   const { country, isReady } = useMarketplace();
 
   const [query, setQuery] = useState("");
@@ -165,7 +167,9 @@ export default function HomeTab() {
             accessibilityRole="button"
           >
             <Feather name="shopping-cart" size={14} color="#475569" />
-            <Text style={styles.chipText}>Cart</Text>
+            <Text style={styles.chipText}>
+              Cart{cartCount > 0 ? ` (${cartCount})` : ""}
+            </Text>
           </Pressable>
         </View>
         {!user ? (

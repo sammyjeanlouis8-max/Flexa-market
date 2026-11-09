@@ -8,6 +8,7 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/context/AuthContext";
+import { CartProvider } from "@/context/CartContext";
 import { MarketplaceProvider } from "@/context/MarketplaceContext";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -22,21 +23,25 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <MarketplaceProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="auth/login" />
-              <Stack.Screen name="auth/register" />
-              <Stack.Screen name="listing/[id]" />
-              <Stack.Screen name="cart" />
-              <Stack.Screen name="orders" />
-              <Stack.Screen name="orders/[id]" />
-              <Stack.Screen name="favorites" />
-              <Stack.Screen name="wallet" />
-              <Stack.Screen name="notifications" />
-              <Stack.Screen name="settings" />
-              <Stack.Screen name="delivery-tracking" />
-              <Stack.Screen name="+not-found" />
-            </Stack>
+            <CartProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="auth/login" />
+                <Stack.Screen name="auth/register" />
+                <Stack.Screen name="listing/[id]" />
+                <Stack.Screen name="cart" />
+                <Stack.Screen name="checkout" />
+                <Stack.Screen name="checkout-success" />
+                <Stack.Screen name="orders" />
+                <Stack.Screen name="orders/[id]" />
+                <Stack.Screen name="favorites" />
+                <Stack.Screen name="wallet" />
+                <Stack.Screen name="notifications" />
+                <Stack.Screen name="settings" />
+                <Stack.Screen name="delivery-tracking" />
+                <Stack.Screen name="+not-found" />
+              </Stack>
+            </CartProvider>
           </MarketplaceProvider>
         </AuthProvider>
       </SafeAreaProvider>

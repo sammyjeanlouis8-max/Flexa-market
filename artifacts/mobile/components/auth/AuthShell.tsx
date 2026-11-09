@@ -10,7 +10,7 @@ import {
 } from "@expo-google-fonts/space-grotesk";
 import { useFonts } from "expo-font";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { type ReactNode } from "react";
+import React, { useEffect, type ReactNode } from "react";
 import {
   Image,
   KeyboardAvoidingView,
@@ -23,6 +23,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { prefetchFlagAtlas } from "../../lib/globeAssetCache";
 import AuthGlobe from "./AuthGlobe";
 
 export const AUTH = {
@@ -68,6 +69,11 @@ export default function AuthShell({
     DMSans_500Medium,
     DMSans_700Bold,
   });
+
+  // Warm the flag atlas while the form paints — globe mounts deferred.
+  useEffect(() => {
+    prefetchFlagAtlas();
+  }, []);
 
   const titleFont = fontsLoaded ? "SpaceGrotesk_700Bold" : undefined;
   const bodyFont = fontsLoaded ? "DMSans_400Regular" : undefined;
@@ -157,7 +163,7 @@ export default function AuthShell({
                     {brandSubtitle}
                   </Text>
                 </View>
-                <AuthGlobe size={globeSize} active={globeActive} />
+                <AuthGlobe size={globeSize} active={globeActive} deferMount />
               </View>
             </LinearGradient>
 

@@ -28,10 +28,10 @@ test("Auth globe uses expo-gl GPU rendering with the flag atlas asset", () => {
   const source = fs.readFileSync(path.join(root, "components/auth/AuthGlobe.tsx"), "utf8");
   assert.match(source, /from ["']expo-gl["']/);
   assert.match(source, /GLView/);
-  assert.match(source, /auth-globe-flags\.jpg/);
+  assert.match(source, /getFlagAtlasAsset|auth-globe-flags/);
   assert.match(source, /REVOLUTION_MS\s*=\s*12_000/);
   assert.match(source, /endFrameEXP/);
-  assert.equal(source.includes("static"), false);
+  assert.match(source, /AuthGlobeLite/);
   assert.ok(fs.existsSync(path.join(root, "assets/images/auth-globe-flags.jpg")));
 });
 

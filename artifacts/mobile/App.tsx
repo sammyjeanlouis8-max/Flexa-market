@@ -35,8 +35,6 @@ import {
   makeAuthTokenInjection,
   NATIVE_AUTH_WATCH_SCRIPT,
 } from "./lib/nativeAuthBridge";
-
-type NativeAuthMode = "login" | "register";
 import {
   dispatchFlexaUpload,
   hasNativeBackgroundUploads,
@@ -50,6 +48,8 @@ import {
   isTrustedFlexaUrl,
   platformBridgeScript,
 } from "./security/webviewPolicy";
+
+type NativeAuthMode = "login" | "register";
 
 const WEBSITE = "https://flexamarket.com";
 const INITIAL_LOAD_TIMEOUT_MS = 20_000;

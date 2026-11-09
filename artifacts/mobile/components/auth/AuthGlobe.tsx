@@ -1,24 +1,44 @@
 /**
- * Native auth brand globe — GPU-rendered flag sphere via expo-gl.
- * Ports marketplace AuthGlobe: one Y-axis revolution every 12s, soft wrap
- * lighting, transparent clear, pauses when backgrounded / reduced-motion.
+ * Native auth brand globe — adaptive GPU / lightweight rendering.
+ *
+ * High/mid/low: expo-gl sphere textured with the website flag atlas.
+ * Lite / GL failure / sustained jank: AuthGlobeLite (native-driver Animated).
+ *
+ * Performance:
+ * - Async atlas load via shared cache (does not block Login form)
+ * - Device-tier mesh/DPR/FPS caps
+ * - Runtime FPS monitor auto-downgrades quality
+ * - Pauses when inactive / backgrounded / reduce-motion
+ * - Explicit GL resource teardown to avoid leaks
  */
-import { Asset } from "expo-asset";
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   AppState,
   type AppStateStatus,
+  InteractionManager,
   PixelRatio,
   StyleSheet,
   View,
   type ViewStyle,
 } from "react-native";
+import {
+  detectPerfTierAsync,
+  detectPerfTierSync,
+  downgradeTier,
+  qualityForTier,
+  type GlobeQuality,
+  type PerfTier,
+} from "../../lib/devicePerf";
+import { getFlagAtlasAsset } from "../../lib/globeAssetCache";
+import AuthGlobeLite from "./AuthGlobeLite";
 
 const REVOLUTION_MS = 12_000;
-const SEG_X = 64;
-const SEG_Y = 36;
+/** Downgrade after this many consecutive slow frames. */
+const JANK_STREAK = 18;
+/** Frame considered slow if it exceeds target interval by this factor. */
+const JANK_FACTOR = 1.85;
 
 type Mesh = {
   positions: Float32Array;
@@ -28,12 +48,12 @@ type Mesh = {
 };
 
 type Renderer = {
-  resize: (cssW: number, cssH: number) => void;
+  resize: (cssW: number, cssH: number, maxDpr: number) => void;
   render: (angleRad: number) => void;
   destroy: () => void;
 };
 
-function buildSphereMesh(): Mesh {
+function buildSphereMesh(segX: number, segY: number): Mesh {
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
@@ -49,15 +69,15 @@ function buildSphereMesh(): Mesh {
   push(0, 1, 0, 0.5, 0.04);
 
   const ringStart: number[] = [];
-  for (let y = 1; y < SEG_Y; y++) {
+  for (let y = 1; y < segY; y++) {
     ringStart.push(positions.length / 3);
-    const v = y / SEG_Y;
+    const v = y / segY;
     const theta = v * Math.PI;
     const sinT = Math.sin(theta);
     const cosT = Math.cos(theta);
     const vv = 0.04 + v * 0.92;
-    for (let x = 0; x <= SEG_X; x++) {
-      const u = x / SEG_X;
+    for (let x = 0; x <= segX; x++) {
+      const u = x / segX;
       const phi = u * Math.PI * 2;
       push(sinT * Math.cos(phi), cosT, sinT * Math.sin(phi), 1 - u, vv);
     }
@@ -68,7 +88,7 @@ function buildSphereMesh(): Mesh {
 
   {
     const rs = ringStart[0];
-    for (let x = 0; x < SEG_X; x++) {
+    for (let x = 0; x < segX; x++) {
       indices.push(northIdx, rs + x, rs + x + 1);
     }
   }
@@ -76,7 +96,7 @@ function buildSphereMesh(): Mesh {
   for (let r = 0; r < ringStart.length - 1; r++) {
     const a0 = ringStart[r];
     const b0 = ringStart[r + 1];
-    for (let x = 0; x < SEG_X; x++) {
+    for (let x = 0; x < segX; x++) {
       const a = a0 + x;
       const b = b0 + x;
       indices.push(a, b, a + 1, b, b + 1, a + 1);
@@ -85,7 +105,7 @@ function buildSphereMesh(): Mesh {
 
   {
     const rs = ringStart[ringStart.length - 1];
-    for (let x = 0; x < SEG_X; x++) {
+    for (let x = 0; x < segX; x++) {
       indices.push(rs + x, southIdx, rs + x + 1);
     }
   }
@@ -239,29 +259,12 @@ void main() {
 }
 `;
 
-/** Solid navy fallback if the flag atlas fails to upload. */
-const FALLBACK_FS = `
-precision mediump float;
-uniform vec3 uLight;
-varying vec3 vNorm;
-varying vec2 vUv;
-void main() {
-  vec3 n = normalize(vNorm);
-  float diff = max(dot(n, normalize(uLight)), 0.0);
-  float wrap = diff * 0.55 + 0.45;
-  float bands = floor(vUv.x * 16.0) + floor(vUv.y * 8.0);
-  float stripe = mod(bands, 2.0);
-  vec3 base = mix(vec3(0.08, 0.18, 0.38), vec3(0.16, 0.32, 0.58), stripe);
-  gl_FragColor = vec4(base * wrap, 1.0);
-}
-`;
-
-async function createRenderer(gl: ExpoWebGLRenderingContext): Promise<Renderer> {
-  const mesh = buildSphereMesh();
-  let usedFallback = false;
-
-  const asset = Asset.fromModule(require("../../assets/images/auth-globe-flags.jpg"));
-  await asset.downloadAsync();
+async function createRenderer(
+  gl: ExpoWebGLRenderingContext,
+  quality: GlobeQuality,
+): Promise<Renderer> {
+  const mesh = buildSphereMesh(quality.segX, quality.segY);
+  const asset = await getFlagAtlasAsset();
 
   const tex = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -270,18 +273,12 @@ async function createRenderer(gl: ExpoWebGLRenderingContext): Promise<Renderer> 
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-  try {
-    // expo-gl accepts Expo Asset objects for texImage2D uploads.
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, asset as any);
-    if (gl.getError() !== gl.NO_ERROR) {
-      usedFallback = true;
-    }
-  } catch {
-    usedFallback = true;
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, asset as any);
+  if (gl.getError() !== gl.NO_ERROR) {
+    throw new Error("flag atlas texture upload failed");
   }
 
-  const globeProg = linkProgram(gl, GLOBE_VS, usedFallback ? FALLBACK_FS : GLOBE_FS);
+  const globeProg = linkProgram(gl, GLOBE_VS, GLOBE_FS);
 
   const pos = gl.createBuffer()!;
   gl.bindBuffer(gl.ARRAY_BUFFER, pos);
@@ -318,14 +315,13 @@ async function createRenderer(gl: ExpoWebGLRenderingContext): Promise<Renderer> 
   const aUvG = gl.getAttribLocation(globeProg, "aUv");
   const uMVPG = gl.getUniformLocation(globeProg, "uMVP");
   const uModelG = gl.getUniformLocation(globeProg, "uModel");
-  const uTex = usedFallback ? null : gl.getUniformLocation(globeProg, "uTex");
+  const uTex = gl.getUniformLocation(globeProg, "uTex");
   const uLight = gl.getUniformLocation(globeProg, "uLight");
 
-  function resize(cssW: number, cssH: number) {
-    const dpr = Math.min(PixelRatio.get(), 2);
+  function resize(cssW: number, cssH: number, maxDpr: number) {
+    const dpr = Math.min(PixelRatio.get(), maxDpr);
     const w = Math.max(1, Math.round(cssW * dpr));
     const h = Math.max(1, Math.round(cssH * dpr));
-    // expo-gl manages the drawing buffer; we only set the viewport.
     gl.viewport(0, 0, gl.drawingBufferWidth || w, gl.drawingBufferHeight || h);
     const aspect =
       (gl.drawingBufferWidth || w) / Math.max(1, gl.drawingBufferHeight || h);
@@ -346,11 +342,9 @@ async function createRenderer(gl: ExpoWebGLRenderingContext): Promise<Renderer> 
     gl.uniformMatrix4fv(uModelG, false, model);
     gl.uniform3f(uLight, 0.35, 0.55, 1.0);
 
-    if (!usedFallback && uTex) {
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.uniform1i(uTex, 0);
-    }
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.uniform1i(uTex, 0);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, pos);
     gl.enableVertexAttribArray(aPosG);
@@ -370,12 +364,16 @@ async function createRenderer(gl: ExpoWebGLRenderingContext): Promise<Renderer> 
   }
 
   function destroy() {
-    gl.deleteTexture(tex);
-    gl.deleteBuffer(pos);
-    gl.deleteBuffer(norm);
-    gl.deleteBuffer(uv);
-    gl.deleteBuffer(idx);
-    gl.deleteProgram(globeProg);
+    try {
+      gl.deleteTexture(tex);
+      gl.deleteBuffer(pos);
+      gl.deleteBuffer(norm);
+      gl.deleteBuffer(uv);
+      gl.deleteBuffer(idx);
+      gl.deleteProgram(globeProg);
+    } catch {
+      /* already lost context */
+    }
   }
 
   return { resize, render, destroy };
@@ -386,20 +384,115 @@ type AuthGlobeProps = {
   style?: ViewStyle;
   /** When false, pause continuous rotation (keeps last frame). */
   active?: boolean;
+  /** Defer mounting GL until after interactions (default true). */
+  deferMount?: boolean;
 };
 
-export default function AuthGlobe({ size = 128, style, active = true }: AuthGlobeProps) {
+export default function AuthGlobe({
+  size = 128,
+  style,
+  active = true,
+  deferMount = true,
+}: AuthGlobeProps) {
+  const [ready, setReady] = useState(!deferMount);
+  const [tier, setTier] = useState<PerfTier>(() => detectPerfTierSync());
+  const [forceLite, setForceLite] = useState(false);
+
+  const quality = qualityForTier(tier);
+  const useLite = forceLite || !quality.useGl;
+
+  // Prefetch atlas + refine tier while the form is already interactive.
+  useEffect(() => {
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+      void getFlagAtlasAsset().catch(() => {});
+      void detectPerfTierAsync().then((t) => {
+        if (!cancelled) setTier(t);
+      });
+      if (deferMount) {
+        // Small yield so first paint of inputs is never blocked by GLView.
+        setTimeout(() => {
+          if (!cancelled) setReady(true);
+        }, 48);
+      }
+    });
+    return () => {
+      cancelled = true;
+      task.cancel?.();
+    };
+  }, [deferMount]);
+
+  if (!ready) {
+    return (
+      <View
+        style={[
+          styles.wrap,
+          styles.placeholder,
+          { width: size, height: size, borderRadius: size / 2 },
+          style,
+        ]}
+        pointerEvents="none"
+      />
+    );
+  }
+
+  if (useLite) {
+    return <AuthGlobeLite size={size} style={style} active={active} />;
+  }
+
+  return (
+    <AuthGlobeGl
+      key={tier}
+      size={size}
+      style={style}
+      active={active}
+      quality={quality}
+      onNeedDowngrade={() => {
+        const next = downgradeTier(tier);
+        if (next === "lite" || next === tier) {
+          setForceLite(true);
+        } else {
+          setTier(next);
+        }
+      }}
+      onGlFailed={() => setForceLite(true)}
+    />
+  );
+}
+
+type GlProps = AuthGlobeProps & {
+  quality: GlobeQuality;
+  onNeedDowngrade: () => void;
+  onGlFailed: () => void;
+};
+
+function AuthGlobeGl({
+  size = 128,
+  style,
+  active = true,
+  quality,
+  onNeedDowngrade,
+  onGlFailed,
+}: GlProps) {
   const rendererRef = useRef<Renderer | null>(null);
   const rafRef = useRef(0);
   const startRef = useRef(Date.now());
+  const lastFrameRef = useRef(0);
+  const jankRef = useRef(0);
   const sizeRef = useRef(size);
+  const qualityRef = useRef(quality);
   const reducedRef = useRef(false);
   const appActiveRef = useRef(true);
   const screenActiveRef = useRef(active);
   const cancelledRef = useRef(false);
+  const downgradeRef = useRef(onNeedDowngrade);
+  const failedRef = useRef(onGlFailed);
 
   sizeRef.current = size;
+  qualityRef.current = quality;
   screenActiveRef.current = active;
+  downgradeRef.current = onNeedDowngrade;
+  failedRef.current = onGlFailed;
 
   const shouldAnimate = useCallback(
     () =>
@@ -421,8 +514,35 @@ export default function AuthGlobe({ size = 128, style, active = true }: AuthGlob
       return;
     }
 
+    lastFrameRef.current = 0;
+    jankRef.current = 0;
+
     const loop = (now: number) => {
       if (!shouldAnimate() || !rendererRef.current) return;
+
+      const q = qualityRef.current;
+      const last = lastFrameRef.current;
+      if (last > 0) {
+        const dt = now - last;
+        if (dt > q.frameIntervalMs * JANK_FACTOR) {
+          jankRef.current += 1;
+          if (jankRef.current >= JANK_STREAK) {
+            jankRef.current = 0;
+            downgradeRef.current();
+            return;
+          }
+        } else if (dt <= q.frameIntervalMs * 1.15) {
+          jankRef.current = Math.max(0, jankRef.current - 1);
+        }
+
+        // Frame pacing — skip draw if we're ahead of the tier target.
+        if (dt < q.frameIntervalMs * 0.85) {
+          rafRef.current = requestAnimationFrame(loop);
+          return;
+        }
+      }
+      lastFrameRef.current = now;
+
       const angle = ((now - startRef.current) / REVOLUTION_MS) * Math.PI * 2;
       rendererRef.current.render(angle);
       rafRef.current = requestAnimationFrame(loop);
@@ -476,16 +596,17 @@ export default function AuthGlobe({ size = 128, style, active = true }: AuthGlob
   const onContextCreate = useCallback(
     async (gl: ExpoWebGLRenderingContext) => {
       try {
-        const renderer = await createRenderer(gl);
+        const renderer = await createRenderer(gl, qualityRef.current);
         if (cancelledRef.current) {
           renderer.destroy();
           return;
         }
         rendererRef.current = renderer;
-        renderer.resize(sizeRef.current, sizeRef.current);
+        renderer.resize(sizeRef.current, sizeRef.current, qualityRef.current.maxDpr);
         kick();
       } catch (error) {
-        console.warn("[AuthGlobe] WebGL init failed", error);
+        console.warn("[AuthGlobe] WebGL init failed — using lite fallback", error);
+        failedRef.current();
       }
     },
     [kick],
@@ -511,6 +632,9 @@ const styles = StyleSheet.create({
   wrap: {
     backgroundColor: "transparent",
     overflow: "visible",
+  },
+  placeholder: {
+    backgroundColor: "rgba(26, 51, 88, 0.55)",
   },
   canvas: {
     width: "100%",

@@ -9,9 +9,13 @@ import { useMarketplace } from "@/context/MarketplaceContext";
 const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap }[] = [
   { label: "Edit profile", href: "/edit-profile", icon: "edit-2" },
   { label: "My orders", href: "/orders", icon: "package" },
+  { label: "Seller sales", href: "/sales", icon: "bar-chart-2" },
+  { label: "My listings", href: "/my-listings", icon: "grid" },
+  { label: "Private offers", href: "/offers", icon: "tag" },
   { label: "Favorites", href: "/favorites", icon: "heart" },
   { label: "Wallet", href: "/wallet", icon: "credit-card" },
   { label: "Addresses", href: "/addresses", icon: "map-pin" },
+  { label: "Support", href: "/support", icon: "life-buoy" },
   { label: "Notifications", href: "/notifications", icon: "bell" },
   { label: "Settings", href: "/settings", icon: "settings" },
   { label: "Delivery tracking", href: "/delivery-tracking", icon: "map" },

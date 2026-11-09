@@ -155,48 +155,27 @@ export async function translateMessage(
   };
 }
 
-/** Upload image for chat attachment via existing Wasabi put-proxy flow. */
+/** Upload chat media (image/video/audio) via Wasabi put-proxy. */
+export async function uploadChatMedia(
+  localUri: string,
+  opts: AuthOpts & { contentType?: string; fileName?: string },
+): Promise<string> {
+  const { uploadLocalFile } = await import("./mediaUpload");
+  const result = await uploadLocalFile(localUri, {
+    token: opts.token,
+    signal: opts.signal,
+    contentType: opts.contentType || "image/jpeg",
+    fileName: opts.fileName || "chat.bin",
+  });
+  return result.url;
+}
+
+/** @deprecated prefer uploadChatMedia */
 export async function uploadChatImage(
   localUri: string,
   opts: AuthOpts & { contentType?: string; fileName?: string },
 ): Promise<string> {
-  const contentType = opts.contentType || "image/jpeg";
-  const fileName = opts.fileName || "chat.jpg";
-  const fileRes = await fetch(localUri);
-  const blob = await fileRes.blob();
-  const size = blob.size;
-  if (!size) throw new Error("Could not read image");
-
-  const reqRes = await authedFetch("/storage/uploads/request-url", {
-    ...opts,
-    method: "POST",
-    body: { name: fileName, size, contentType },
-  });
-  const reqData = await readJson(reqRes);
-  if (!reqRes.ok) throw new Error(reqData.error || "Upload request failed");
-  const uploadURL: string = reqData.uploadURL;
-  if (!uploadURL) throw new Error("No upload URL");
-
-  const absolutePut = uploadURL.startsWith("http")
-    ? uploadURL
-    : `${getApiBase().replace(/\/api$/, "")}${uploadURL}`;
-
-  const putRes = await fetch(absolutePut, {
-    method: "PUT",
-    headers: {
-      "Content-Type": contentType,
-      "Content-Length": String(size),
-      Authorization: `Bearer ${opts.token}`,
-    },
-    body: blob,
-    signal: opts.signal,
-  });
-  const putData = await readJson(putRes);
-  if (!putRes.ok) throw new Error(putData.error || `Upload failed (${putRes.status})`);
-  const url: string = putData.url || "";
-  if (!url) throw new Error("Upload succeeded but no URL returned");
-  if (url.startsWith("/")) return `https://flexamarket.com${url}`;
-  return url;
+  return uploadChatMedia(localUri, opts);
 }
 
 export function formatMessageTime(iso: string | null | undefined): string {

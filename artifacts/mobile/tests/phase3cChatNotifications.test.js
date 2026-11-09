@@ -72,7 +72,7 @@ test("inventory marks inbox and chat-thread FULLY_NATIVE", () => {
   assert.equal(byId.inbox.status, "FULLY_NATIVE");
   assert.equal(byId["chat-thread"].status, "FULLY_NATIVE");
   assert.equal(byId["smart-notifications"].status, "FULLY_NATIVE");
-  assert.equal(byId.sell.status, "PLACEHOLDER");
+  assert.equal(byId.sell.status, "FULLY_NATIVE");
   assert.ok(data.summaryCounts.FULLY_NATIVE >= 22);
 });
 

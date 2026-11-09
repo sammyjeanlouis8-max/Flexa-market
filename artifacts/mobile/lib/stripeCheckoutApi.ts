@@ -9,6 +9,8 @@ import { getApiBase } from "./api";
 
 export type StripeCheckoutBody = {
   listingId: number;
+  /** Accepted private offer — server uses negotiated price; public listing price unchanged. */
+  offerId?: number;
   shippingName: string;
   shippingPhone: string;
   shippingEmail?: string;
@@ -58,6 +60,7 @@ export async function createStripeCheckoutSession(
     },
     body: JSON.stringify({
       listingId: body.listingId,
+      offerId: body.offerId,
       shippingName: body.shippingName,
       shippingPhone: body.shippingPhone,
       shippingEmail: body.shippingEmail,

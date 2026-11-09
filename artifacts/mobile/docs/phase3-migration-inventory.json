@@ -11,8 +11,8 @@
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
-    "placeholderRouteCount": 16,
-    "fullyNativeRouteCount": 23,
+    "placeholderRouteCount": 12,
+    "fullyNativeRouteCount": 29,
     "partiallyNativeRouteCount": 5,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
@@ -23,7 +23,8 @@
       "Realtime via socket.io /api/socket.io with HTTP polling fallback."
     ],
     "phase3b": true,
-    "phase3c": true
+    "phase3c": true,
+    "phase3d": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -92,10 +93,10 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 23,
+    "FULLY_NATIVE": 29,
     "PARTIALLY_NATIVE": 5,
-    "PLACEHOLDER": 16,
-    "MISSING": 33,
+    "PLACEHOLDER": 12,
+    "MISSING": 31,
     "BLOCKED": 5
   },
   "features": [
@@ -656,14 +657,12 @@
       "nativeRoute": "/offers",
       "role": "buyer",
       "apis": [
-        "/api/offers",
-        "/api/offers/stream"
+        "/api/offers*",
+        "/api/stripe/checkout?offerId"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "offer list + accept/counter"
-      ],
-      "work": "After messaging"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3D: private offers accept/reject/counter + Stripe offer checkout"
     },
     {
       "id": "subscription",
@@ -822,44 +821,39 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [
-        "voice notes UI",
-        "video attachments UI"
+        "link unfurling previews"
       ],
-      "work": "Phase 3C: thread + text/image send, typing, translate long-press, socket realtime"
+      "work": "Phase 3D: voice/video/reply/read receipts/offer-from-chat"
     },
     {
       "id": "support-tickets",
       "name": "Support Center / Tickets",
       "domain": "communication",
       "webRoute": "/support,/support/:id",
-      "nativeRoute": null,
+      "nativeRoute": "/support",
       "role": "buyer",
       "apis": [
-        "/api/support/threads",
-        "/api/support/messages"
+        "/api/support/threads*"
       ],
-      "status": "MISSING",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "ticket list + thread + rating"
+        "agent assignment UI (staff web)"
       ],
-      "work": "After Inbox pattern reused"
+      "work": "Phase 3D: customer support home + ticket thread; voice prohibited"
     },
     {
       "id": "chatbot",
       "name": "FlexaBot Chatbot",
       "domain": "communication",
       "webRoute": "/chatbot",
-      "nativeRoute": null,
+      "nativeRoute": "/chatbot",
       "role": "buyer",
       "apis": [
-        "/api/chatbot/message",
-        "/api/support/threads"
+        "/api/chatbot/message"
       ],
-      "status": "MISSING",
-      "missing": [
-        "bot UI"
-      ],
-      "work": "After support"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3D: FlexaBot native screen"
     },
     {
       "id": "sell",
@@ -870,16 +864,15 @@
       "role": "buyer+",
       "apis": [
         "/api/listings",
-        "/api/storage/uploads",
-        "/api/flexa-ai/product-description"
+        "/api/categories",
+        "/api/storage/uploads/*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "create listing form",
-        "image upload",
-        "payout checks"
+        "advanced shipping dimensions UI",
+        "listing video composer"
       ],
-      "work": "Critical seller Phase 3"
+      "work": "Phase 3D: native sell with Wasabi multi-image progress/cancel/retry"
     },
     {
       "id": "my-listings",
@@ -893,11 +886,11 @@
         "PATCH /api/listings/:id",
         "DELETE /api/listings/:id"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "manage list + edit"
+        "inline edit form"
       ],
-      "work": "With Sell"
+      "work": "Phase 3D: /my-listings via /users/:id/listings + delete"
     },
     {
       "id": "edit-listing",
@@ -966,7 +959,7 @@
       "work": "With my-listings"
     },
     {
-      "id": "sales",
+      "id": "sales-dashboard",
       "name": "Seller Dashboard / Sales",
       "domain": "seller",
       "webRoute": "/sales",
@@ -974,13 +967,11 @@
       "role": "seller",
       "apis": [
         "/api/sales/dashboard",
-        "/api/sales/summary"
+        "/api/orders/sales"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "dashboard UI"
-      ],
-      "work": "After Orders"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3D: /sales dashboard + seller orders"
     },
     {
       "id": "seller-analytics",
@@ -1440,9 +1431,9 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [
-        "physical FCM delivery verification"
+        "physical-device FCM delivery verification"
       ],
-      "work": "Phase 3C: notification tap \u2192 /chat/:id, /orders/:id, /wallet"
+      "work": "Phase 3D: expanded deep-link map (chat/support/orders/offers/sales/listing/wallet)"
     }
   ],
   "recommendedPhase3Order": [
@@ -1491,7 +1482,9 @@
         "edit-listing",
         "sales",
         "seller-orders"
-      ]
+      ],
+      "status": "completed_core",
+      "note": "Seller center + chat completion + support/chatbot + smart deep-links; admin deferred"
     },
     {
       "wave": "3E",
@@ -1547,5 +1540,7 @@
     }
   },
   "phase3bCompletedAt": "2026-11-09T23:30:00Z",
-  "phase3cCompletedAt": "2026-11-09T23:55:00Z"
+  "phase3cCompletedAt": "2026-11-09T23:55:00Z",
+  "phase3dCompletedAt": "2026-11-10T00:20:00Z",
+  "phase3dBranch": "cursor/native-seller-phase3d-09ff"
 }

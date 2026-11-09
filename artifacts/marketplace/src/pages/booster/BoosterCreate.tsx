@@ -101,6 +101,7 @@ export default function BoosterCreate() {
   const [audienceType, setAudienceType] = useState<"advantage_plus" | "custom">("advantage_plus");
   const [departments, setDepartments] = useState<string[]>([]);
   const [cities, setCities] = useState<string[]>([]);
+  const [places, setPlaces] = useState<import("@/lib/geoPlaces").GeoPlace[]>([]);
   const [radiusKm, setRadiusKm] = useState(25);
   const [ageMin, setAgeMin] = useState(18);
   const [ageMax, setAgeMax] = useState(65);
@@ -362,7 +363,13 @@ export default function BoosterCreate() {
       }
     }
     if (s === "audience") {
-      if (accountCountry === "Haiti" && audienceType === "custom" && departments.length === 0) {
+      if (
+        accountCountry === "Haiti"
+        && audienceType === "custom"
+        && departments.length === 0
+        && cities.length === 0
+        && places.length === 0
+      ) {
         const msg = t("boost.geoSelectAreaError", {
           defaultValue: "Please select at least one geographic area to continue.",
         });
@@ -458,7 +465,13 @@ export default function BoosterCreate() {
         });
         return;
       }
-      if (accountCountry === "Haiti" && audienceType === "custom" && departments.length === 0) {
+      if (
+        accountCountry === "Haiti"
+        && audienceType === "custom"
+        && departments.length === 0
+        && cities.length === 0
+        && places.length === 0
+      ) {
         const msg = t("boost.geoSelectAreaError", {
           defaultValue: "Please select at least one geographic area to continue.",
         });
@@ -503,6 +516,7 @@ export default function BoosterCreate() {
             state: departments[0] || null,
             states: departments.length > 0 ? departments : null,
             cities,
+            places: places.length > 0 ? places : null,
             radiusKm,
             audienceType,
             ageMin,
@@ -849,6 +863,8 @@ export default function BoosterCreate() {
             setAudStates={setDepartments}
             audCities={cities}
             setAudCities={setCities}
+            audPlaces={places}
+            setAudPlaces={setPlaces}
             audRadiusKm={radiusKm}
             setAudRadiusKm={setRadiusKm}
             ageMin={ageMin}

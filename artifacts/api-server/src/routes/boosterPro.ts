@@ -512,6 +512,7 @@ router.post("/booster/campaigns", requireAuth, requireNotRestricted, requireCard
         boostAudienceCities: audience.cities ?? null,
         boostAudienceNeighborhood: audience.neighborhood ?? null,
         boostAudienceRadiusKm: audience.radiusKm ?? null,
+        boostAudienceInterests: audience.interests ?? null,
         boostAudienceAgeMin: audience.ageMin ?? 18,
         boostAudienceAgeMax: audience.ageMax ?? 65,
         boostAudienceGender: audience.gender ?? "all",

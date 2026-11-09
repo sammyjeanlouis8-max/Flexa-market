@@ -4,7 +4,9 @@ import { AlertCircle, Check, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { COUNTRY_FLAGS } from "@/lib/countries";
 import { HAITI_COMMUNES_BY_DEPARTMENT, HAITI_DEPARTMENTS } from "@/lib/haitiCommunes";
+import { placesToStatesCities, type GeoPlace } from "@/lib/geoPlaces";
 import { HaitiDepartmentsMap } from "./HaitiDepartmentsMap";
+import { LocationAutocomplete } from "./LocationAutocomplete";
 import { MobileSelect } from "@/components/ui/mobile-select";
 
 export type AudienceTab = "automatic" | "manual" | "map";
@@ -28,6 +30,9 @@ type Props = {
   setAudStates: (v: string[]) => void;
   audCities: string[];
   setAudCities: (v: string[]) => void;
+  /** Structured multi-location targets (worldwide autocomplete). */
+  audPlaces?: GeoPlace[];
+  setAudPlaces?: (v: GeoPlace[]) => void;
   audRadiusKm: number;
   setAudRadiusKm: (v: number) => void;
   ageMin: number;
@@ -51,6 +56,8 @@ export const BoostAudiencePanel = forwardRef<BoostAudiencePanelHandle, Props>(fu
   setAudStates,
   audCities,
   setAudCities,
+  audPlaces = [],
+  setAudPlaces,
   audRadiusKm,
   setAudRadiusKm,
   ageMin,
@@ -136,6 +143,20 @@ export const BoostAudiencePanel = forwardRef<BoostAudiencePanelHandle, Props>(fu
     onGeoErrorClear?.();
     setAudStates([]);
     setAudCities([]);
+    setAudPlaces?.([]);
+  };
+
+  const syncPlaces = (places: GeoPlace[]) => {
+    onGeoErrorClear?.();
+    onAudienceType("custom");
+    setAudPlaces?.(places);
+    const { states, cities } = placesToStatesCities(places);
+    // Merge map-selected Haiti departments with autocomplete places.
+    const mapStates = audStates.filter((s) =>
+      HAITI_DEPARTMENTS.includes(s as (typeof HAITI_DEPARTMENTS)[number]),
+    );
+    setAudStates(Array.from(new Set([...mapStates, ...states])));
+    setAudCities(cities);
   };
 
   const sizeDots = estimatedSize === "large" ? 3 : estimatedSize === "medium" ? 2 : 1;
@@ -405,6 +426,17 @@ export const BoostAudiencePanel = forwardRef<BoostAudiencePanelHandle, Props>(fu
             </>
           )}
 
+          <div className="space-y-1.5">
+            <label className="fb-label">
+              {t("boost.worldwideLocations", { defaultValue: "Locations" })}
+            </label>
+            <LocationAutocomplete
+              country={country}
+              selected={audPlaces}
+              onChange={syncPlaces}
+            />
+          </div>
+
           {!isHaiti && (
             <div className="fb-auto-card">
               <p className="text-sm font-semibold">
@@ -412,9 +444,36 @@ export const BoostAudiencePanel = forwardRef<BoostAudiencePanelHandle, Props>(fu
               </p>
               <p className="text-xs text-slate-500 mt-1">
                 {t("boost.mapNonHaitiHint", {
-                  defaultValue: "Department map is available for Haiti. Use city tags and radius for other countries.",
+                  defaultValue: "Search and add cities, regions, or postal codes above. Optional radius refines nearby delivery.",
                 })}
               </p>
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="fb-label mb-0">{t("boost.radiusDistance", { defaultValue: "Radius distance" })}</label>
+                  <span className="text-sm font-bold text-violet-700">{audRadiusKm} km</span>
+                </div>
+                <input
+                  type="range"
+                  min={5}
+                  max={50}
+                  step={5}
+                  value={audRadiusKm}
+                  onChange={(e) => setAudRadiusKm(Number(e.target.value))}
+                  className="w-full accent-violet-600"
+                />
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {RADIUS_OPTIONS.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      className={cn("fb-chip", audRadiusKm === r && "on")}
+                      onClick={() => setAudRadiusKm(r)}
+                    >
+                      {r} km
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 

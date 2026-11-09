@@ -1,3 +1,12 @@
+import {
+  dedupeOverlappingPlaces,
+  MAX_GEO_PLACES,
+  normalizePlaceInput,
+  placesToLegacyAudience,
+  serializeGeoPlaces,
+  type GeoPlace,
+} from "./geoPlaces";
+
 export const VALID_PLANS = ["1day", "3day", "7day"] as const;
 export type Plan = (typeof VALID_PLANS)[number];
 
@@ -51,6 +60,10 @@ export type Audience = {
   cities?: string[] | null;
   neighborhood?: string | null;
   radiusKm?: number | null;
+  /** Structured worldwide places (ids + coords). Encoded into interests for storage. */
+  places?: GeoPlace[] | null;
+  /** Interests array including optional geo places marker payload. */
+  interests?: string[] | null;
   audienceType?: AudienceType | null;
   ageMin?: number | null;
   ageMax?: number | null;
@@ -109,20 +122,38 @@ export function validateAudience(
       ? Math.round(a.radiusKm)
       : null;
 
+  // Structured worldwide places (optional) — preferred over free-text cities.
+  let places: GeoPlace[] | null = null;
+  if (Array.isArray(a.places)) {
+    const cleaned: GeoPlace[] = [];
+    const seen = new Set<string>();
+    for (const raw of a.places) {
+      const place = normalizePlaceInput(raw);
+      if (!place) continue;
+      if (place.country !== country) {
+        return { ok: false, error: "All targeted locations must be in your advertising market country" };
+      }
+      if (seen.has(place.id)) continue;
+      seen.add(place.id);
+      cleaned.push(place);
+      if (cleaned.length >= MAX_GEO_PLACES) break;
+    }
+    if (cleaned.length > 0) places = dedupeOverlappingPlaces(cleaned);
+  }
+
   // Multi-department / state selection (preferred) + legacy single `state`.
   let states: string[] | null = null;
   if (Array.isArray(a.states)) {
     const cleaned = (a.states as unknown[])
       .map((s) => (typeof s === "string" ? s.trim() : ""))
       .filter((s) => s.length > 0)
-      .slice(0, 20);
+      .slice(0, MAX_GEO_PLACES);
     if (cleaned.length > 0) states = Array.from(new Set(cleaned));
   } else if (typeof a.state === "string" && a.state.trim()) {
     // Support comma-encoded multi from clients that still send `state`.
     const decoded = decodeAudienceStates(a.state);
     if (decoded.length > 0) states = decoded;
   }
-  const state = states && states.length > 0 ? states[0] : null;
 
   // Support both legacy single city and new multi-city array.
   let cities: string[] | null = null;
@@ -130,11 +161,22 @@ export function validateAudience(
     const cleaned = (a.cities as unknown[])
       .map(c => (typeof c === "string" ? c.trim() : ""))
       .filter(c => c.length > 0)
-      .slice(0, 20); // hard cap 20 cities
-    if (cleaned.length > 0) cities = cleaned;
+      .slice(0, MAX_GEO_PLACES);
+    if (cleaned.length > 0) cities = Array.from(new Set(cleaned));
   } else if (typeof a.city === "string" && a.city.trim()) {
     cities = [a.city.trim()];
   }
+
+  // Merge structured places into legacy columns for delivery SQL.
+  if (places && places.length > 0) {
+    const legacy = placesToLegacyAudience(places);
+    states = Array.from(new Set([...(states ?? []), ...legacy.states]));
+    cities = Array.from(new Set([...(cities ?? []), ...legacy.cities]));
+    if (states.length === 0) states = null;
+    if (cities.length === 0) cities = null;
+  }
+
+  const state = states && states.length > 0 ? states[0] : null;
   // Legacy single-city field (kept for backward compat).
   const city = cities && cities.length > 0 ? cities[0] : null;
 
@@ -142,15 +184,18 @@ export function validateAudience(
   const audienceType = VALID_AUDIENCE_TYPES.includes(a.audienceType as AudienceType) ? (a.audienceType as AudienceType) : "advantage_plus";
 
   if (country === "Haiti" && audienceType === "custom") {
-    if (!states || states.length === 0) {
-      return { ok: false, error: "Please select at least one department to continue." };
+    const hasPlaces = (places?.length ?? 0) > 0;
+    if ((!states || states.length === 0) && !hasPlaces && !(cities && cities.length > 0)) {
+      return { ok: false, error: "Please select at least one department or location to continue." };
     }
-    for (const s of states) {
+    for (const s of states ?? []) {
       if (!HAITI_DEPARTMENTS.includes(s as typeof HAITI_DEPARTMENTS[number])) {
         return { ok: false, error: "Invalid Haitian department" };
       }
     }
   }
+
+  const interests = serializeGeoPlaces(places);
 
   if (radiusKm !== null && !VALID_RADIUS_KM.includes(radiusKm as typeof VALID_RADIUS_KM[number])) {
     return { ok: false, error: "Invalid radius" };
@@ -174,6 +219,8 @@ export function validateAudience(
       cities,
       neighborhood,
       radiusKm,
+      places,
+      interests,
       audienceType,
       ageMin,
       ageMax,
@@ -188,11 +235,18 @@ export function estimateReach(budget: number, plan: Plan, audience: Audience): n
   const { days } = PLAN_META[plan];
   // ~667 impressions per dollar per day → $5 × 3 days ≈ 10 000 views (no geo filter)
   let base = Math.max(50, Math.floor(budget * 667 * days));
-  const cityCount = audience.cities?.length ?? (audience.city ? 1 : 0);
-  const stateCount = audience.states?.length ?? (audience.state ? decodeAudienceStates(audience.state).length : 0);
+  const effectivePlaces = audience.places?.length
+    ? dedupeOverlappingPlaces(audience.places)
+    : [];
+  const cityCount = effectivePlaces.length > 0
+    ? effectivePlaces.filter((p) => p.kind === "city" || p.kind === "commune" || p.kind === "district").length
+    : (audience.cities?.length ?? (audience.city ? 1 : 0));
+  const stateCount = effectivePlaces.length > 0
+    ? effectivePlaces.filter((p) => p.kind === "department" || p.kind === "state" || p.kind === "region").length
+    : (audience.states?.length ?? (audience.state ? decodeAudienceStates(audience.state).length : 0));
   if (audience.neighborhood) base = Math.floor(base * 0.35);
-  else if (cityCount > 0) base = Math.floor(base * Math.min(0.55 + cityCount * 0.04, 0.85));
-  else if (stateCount > 0) base = Math.floor(base * Math.min(0.55 + stateCount * 0.05, 0.95));
+  else if (cityCount > 0) base = Math.floor(base * Math.min(0.55 + cityCount * 0.03, 0.85));
+  else if (stateCount > 0) base = Math.floor(base * Math.min(0.55 + stateCount * 0.04, 0.95));
   return Math.max(50, base);
 }
 

@@ -1,13 +1,19 @@
 /**
- * Native Home — listings feed from GET /api/listings.
+ * Native Marketplace Home — listings feed + category chips.
  * Corrective path for Google Play Webviews / Affiliate Spam suspension.
  */
-import { ListingCard, type ListingCardItem } from "@/components/ListingCard";
+import { CategoryChips } from "@/components/CategoryChips";
+import { ListingCard } from "@/components/ListingCard";
+import { SkeletonCard } from "@/components/SkeletonCard";
+import { StateView } from "@/components/StateView";
 import { useAuth } from "@/context/AuthContext";
-import { apiFetch, getMarketplaceCountry } from "@/lib/api";
+import { useLanguage } from "@/context/LanguageContext";
+import { useMarketplace } from "@/context/MarketplaceContext";
+import { useListingsFeed } from "@/hooks/useListingsFeed";
+import { countryFlag } from "@/lib/countries";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -20,97 +26,99 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeTab() {
-  const { token, user, isLoading: authLoading } = useAuth();
-  const [listings, setListings] = useState<ListingCardItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [country, setCountry] = useState("HT");
+  const { token, user } = useAuth();
+  const { t } = useLanguage();
+  const { country, categories, isOffline } = useMarketplace();
+  const [categorySlug, setCategorySlug] = useState<string | null>(null);
 
-  const load = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
-    try {
-      const marketplaceCountry = user?.country || (await getMarketplaceCountry());
-      setCountry(marketplaceCountry);
-      const params = new URLSearchParams({ page: "1", limit: "20" });
-      if (!token) params.set("country", marketplaceCountry);
-      const res = await apiFetch(`/listings?${params.toString()}`, {
-        token,
-        auth: Boolean(token),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Failed to load listings (${res.status})`);
-      }
-      const data = await res.json();
-      setListings(Array.isArray(data.listings) ? data.listings : []);
-    } catch (e: any) {
-      setError(e?.message || "Could not load marketplace feed.");
-      setListings([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [token, user?.country]);
+  const filter = useMemo(
+    () => ({
+      category: categorySlug || undefined,
+      limit: 20,
+    }),
+    [categorySlug],
+  );
 
-  useEffect(() => {
-    if (!authLoading) void load();
-  }, [authLoading, load]);
+  const feed = useListingsFeed(filter);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerText}>
           <Text style={styles.brand}>Flexa Market</Text>
           <Text style={styles.sub}>
-            {user ? `Hi, ${user.name?.split(" ")[0] || "there"}` : `Browsing ${country}`}
+            {user ? `${t("greeting")}, ${user.name?.split(" ")[0] || "there"}` : t("tabHome")}
           </Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.headerBtn}
-          onPress={() => router.push(token ? "/(tabs)/profile" : "/auth/login")}
-        >
-          <Feather name={token ? "user" : "log-in"} size={18} color="#F8FAFC" />
-        </Pressable>
-      </View>
-
-      {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color="#F97316" size="large" />
-          <Text style={styles.muted}>Loading listings…</Text>
-        </View>
-      ) : error ? (
-        <View style={styles.centered}>
-          <Text style={styles.error}>{error}</Text>
-          <Pressable style={styles.retry} onPress={() => void load()}>
-            <Text style={styles.retryText}>Retry</Text>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Select country"
+            style={styles.headerBtn}
+            onPress={() => router.push("/country-picker")}
+          >
+            <Text style={styles.flag}>{countryFlag(country)}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            style={styles.headerBtn}
+            onPress={() => router.push(token ? "/(tabs)/profile" : "/auth/login")}
+          >
+            <Feather name={token ? "user" : "log-in"} size={18} color="#F8FAFC" />
           </Pressable>
         </View>
+      </View>
+
+      <CategoryChips
+        categories={categories}
+        selectedSlug={categorySlug}
+        onSelect={setCategorySlug}
+        onSeeAll={() => router.push("/categories")}
+      />
+
+      {feed.loading && feed.listings.length === 0 ? (
+        <View style={styles.skeletonGrid}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </View>
       ) : (
-        <FlatList
-          data={listings}
-          keyExtractor={(item) => String(item.id)}
-          numColumns={2}
-          columnWrapperStyle={styles.row}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => void load(true)}
-              tintColor="#F97316"
-              colors={["#F97316"]}
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.centered}>
-              <Text style={styles.muted}>No listings in this marketplace yet.</Text>
-            </View>
-          }
-          renderItem={({ item }) => <ListingCard item={item} />}
-        />
+        <StateView
+          error={feed.listings.length === 0 ? feed.error : null}
+          offline={feed.listings.length === 0 && (feed.offline || isOffline)}
+          empty={!feed.loading && !feed.error && feed.listings.length === 0}
+          emptyTitle={t("noListings")}
+          emptyDetail={`No results in ${country}${categorySlug ? ` · ${categorySlug}` : ""}.`}
+          onRetry={feed.reload}
+        >
+          <FlatList
+            data={feed.listings}
+            keyExtractor={(item) => String(item.id)}
+            numColumns={2}
+            columnWrapperStyle={styles.row}
+            contentContainerStyle={styles.list}
+            refreshControl={
+              <RefreshControl
+                refreshing={feed.refreshing}
+                onRefresh={feed.refresh}
+                tintColor="#F97316"
+                colors={["#F97316"]}
+              />
+            }
+            onEndReached={() => feed.loadMore()}
+            onEndReachedThreshold={0.4}
+            ListFooterComponent={
+              feed.loadingMore ? (
+                <ActivityIndicator color="#F97316" style={{ marginVertical: 16 }} />
+              ) : (
+                <Text style={styles.footerMeta}>
+                  {feed.total > 0 ? `${feed.listings.length} / ${feed.total}` : ""}
+                </Text>
+              )
+            }
+            renderItem={({ item }) => <ListingCard item={item} />}
+          />
+        </StateView>
       )}
     </SafeAreaView>
   );
@@ -120,32 +128,37 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#0B1220" },
   header: {
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
+  headerText: { flex: 1, paddingRight: 8 },
   brand: { fontSize: 26, fontWeight: "800", color: "#F8FAFC", letterSpacing: -0.4 },
   sub: { marginTop: 2, fontSize: 13, color: "#94A3B8" },
+  headerActions: { flexDirection: "row", gap: 8 },
   headerBtn: {
-    width: 40,
+    minWidth: 40,
     height: 40,
     borderRadius: 12,
     backgroundColor: "#1E293B",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 8,
   },
+  flag: { fontSize: 18 },
   list: { paddingHorizontal: 12, paddingBottom: 24 },
   row: { justifyContent: "space-between" },
-  centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12 },
-  muted: { color: "#94A3B8", fontSize: 14 },
-  error: { color: "#FCA5A5", fontSize: 14, textAlign: "center" },
-  retry: {
-    marginTop: 4,
-    backgroundColor: "#F97316",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
+  skeletonGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
   },
-  retryText: { color: "#fff", fontWeight: "700" },
+  footerMeta: {
+    textAlign: "center",
+    color: "#64748B",
+    fontSize: 12,
+    marginVertical: 12,
+  },
 });

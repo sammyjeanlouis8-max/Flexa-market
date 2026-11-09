@@ -1,9 +1,9 @@
 # Remaining Compliance Risks & Technical Blockers
 
-**Updated:** 2026-11-09 (America/New_York)  
+**Updated:** 2026-11-09 11:05 (America/New_York)  
 **Submission stance:** **NO-GO** for Google Play until items below are cleared or explicitly accepted.
 
-Related: `ANDROID_SUSPENSION_AND_CORRECTIVE_ACTIONS.md`
+Related: `ANDROID_SUSPENSION_AND_CORRECTIVE_ACTIONS.md`, `ANDROID_PHASE2_MILESTONE2.md`
 
 ---
 
@@ -37,10 +37,11 @@ Related: `ANDROID_SUSPENSION_AND_CORRECTIVE_ACTIONS.md`
 ## What already addresses the prior suspension
 
 1. App entry is no longer a full-screen website WebView.
-2. Home, Search, Listing detail, and Login are React Native screens calling `/api`.
-3. App name remains Flexa Market; iOS bundle unchanged.
-4. Backend, Postgres, DigitalOcean, Wasabi, and accounts preserved.
-5. Suspension + corrective actions documented under `docs/android-native/`.
+2. Home, Search, Categories, Product Details, and Login are React Native screens calling `/api`.
+3. Guest country uses canonical names (`Haiti`) matching server gates.
+4. App name remains Flexa Market; iOS bundle unchanged.
+5. Backend, Postgres, DigitalOcean, Wasabi, and accounts preserved.
+6. Suspension + corrective actions documented under `docs/android-native/`.
 
 ---
 

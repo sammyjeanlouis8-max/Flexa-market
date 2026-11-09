@@ -1,5 +1,7 @@
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { apiFetch } from "@/lib/api";
+import { useAndroidBack } from "@/hooks/useAndroidBack";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useState } from "react";
@@ -19,10 +21,12 @@ const EULA_VERSION_ACK = true;
 
 export default function LoginScreen() {
   const { login } = useAuth();
+  const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useAndroidBack();
 
   async function onSubmit() {
     setBusy(true);
@@ -107,6 +111,7 @@ export default function LoginScreen() {
           <Pressable onPress={() => router.replace("/auth/register")}>
             <Text style={styles.link}>Create an account</Text>
           </Pressable>
+          <Text style={styles.hint}>{t("sLanguage")} available in Profile.</Text>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -143,4 +148,5 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.6 },
   primaryText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   link: { marginTop: 16, color: "#F97316", fontWeight: "600", textAlign: "center" },
+  hint: { marginTop: 12, color: "#64748B", fontSize: 12, textAlign: "center" },
 });

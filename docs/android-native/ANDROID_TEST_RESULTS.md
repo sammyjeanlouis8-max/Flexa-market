@@ -1,16 +1,19 @@
 # ANDROID_TEST_RESULTS.md
 
-**Phase:** 0–1 audit only  
+**Phase:** Phase 2 Milestone 2 (+ prior audits)  
 **Rule:** Do not claim tests passed unless executed.
 
 ---
 
-## 1. COMPLETED WORK (testing this phase)
+## 1. COMPLETED WORK (testing)
 
 | ID | Activity | Environment | Result |
 |---|---|---|---|
+| M2-TSC | `npm run typecheck` in `@workspace/mobile` | Cloud agent | **PASS** |
+| M2-UNIT | `listingsQuery` / country normalize unit tests | Cloud agent | **PASS** (6/6) |
+| M2-API | Live smoke: categories, listings Haiti/HT, fashion, q, detail, detect-country, login reject | `flexamarket.com` | **PASS** (see `ANDROID_PHASE2_MILESTONE2.md`) |
 | DOC-FETCH | HTTP fetch of official Android/Play/Expo/RN pages | Cloud agent network | **PARTIAL PASS** — see failures below |
-| STATIC-WV | Ripgrep inventory of WebView usage in `artifacts/mobile` | Repo checkout | **PASS** — WebView-primary confirmed |
+| STATIC-WV | Ripgrep inventory of WebView usage in `artifacts/mobile` | Repo checkout | **PASS** — entry now expo-router; shell quarantined |
 | STATIC-ROUTES | Inventory of marketplace `Route path=` entries | Repo checkout | **PASS** — inventory written |
 | STATIC-PAY | Review `androidDigitalPurchaseGuard` + purchase policy doc | Repo checkout | **PASS** — digital initiation blocked by design |
 | EMU | Android Emulator migration tests | — | **NOT RUN** |
@@ -20,7 +23,8 @@
 
 ## 2. CURRENT POSITION
 
-Testing status for native migration: **NOT STARTED** (no native rewrite yet).  
+Milestone 2 unit + API smoke: **EXECUTED**.  
+Device / emulator UI verification: **NOT RUN**.  
 Audit verification: **VERIFIED COMPLETE**.
 
 ## 3. REMAINING WORK

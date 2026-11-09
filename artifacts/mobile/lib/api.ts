@@ -1,4 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  DEFAULT_MARKETPLACE_COUNTRY,
+  normalizeMarketplaceCountry,
+} from "@/lib/countries";
 
 const TOKEN_KEY = "flexamarket_token";
 const COUNTRY_KEY = "flexamarket_marketplace_country";
@@ -7,7 +11,6 @@ const COUNTRY_KEY = "flexamarket_marketplace_country";
 export function getBaseUrl(): string {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
   if (domain) return `https://${domain}/api`;
-  // Prefer the public website API origin so native and web share one backend.
   return "https://flexamarket.com/api";
 }
 
@@ -22,15 +25,21 @@ export async function getStoredToken(): Promise<string | null> {
 export async function getMarketplaceCountry(): Promise<string> {
   try {
     const stored = await AsyncStorage.getItem(COUNTRY_KEY);
-    if (stored && stored.length === 2) return stored.toUpperCase();
+    const normalized = normalizeMarketplaceCountry(stored);
+    // Migrate legacy ISO values (e.g. "HT") so guest feeds are not empty.
+    if (stored && stored !== normalized) {
+      await AsyncStorage.setItem(COUNTRY_KEY, normalized);
+    }
+    return normalized;
   } catch {
-    /* ignore */
+    return DEFAULT_MARKETPLACE_COUNTRY;
   }
-  return "HT";
 }
 
-export async function setMarketplaceCountry(country: string): Promise<void> {
-  await AsyncStorage.setItem(COUNTRY_KEY, country.toUpperCase());
+export async function setMarketplaceCountry(country: string): Promise<string> {
+  const normalized = normalizeMarketplaceCountry(country);
+  await AsyncStorage.setItem(COUNTRY_KEY, normalized);
+  return normalized;
 }
 
 export type ApiFetchOptions = RequestInit & {
@@ -61,3 +70,13 @@ export function resolveMediaUrl(url: string | null | undefined): string | null {
   if (url.startsWith("/")) return `https://flexamarket.com${url}`;
   return url;
 }
+
+export type CategoryNode = {
+  id: number;
+  name: string;
+  slug: string;
+  icon: string | null;
+  listingCount?: number | null;
+  parentId?: number | null;
+  children?: CategoryNode[];
+};

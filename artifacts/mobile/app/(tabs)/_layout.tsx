@@ -1,9 +1,11 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { Feather } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
 import { Platform } from "react-native";
 
 export default function TabLayout() {
+  const { t } = useLanguage();
   return (
     <Tabs
       screenOptions={{
@@ -27,35 +29,35 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: t("tabHome"),
           tabBarIcon: ({ color, size }) => <Feather name="home" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
-          title: "Search",
+          title: t("tabSearch"),
           tabBarIcon: ({ color, size }) => <Feather name="search" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="sell"
         options={{
-          title: "Sell",
+          title: t("tabSell"),
           tabBarIcon: ({ color, size }) => <Feather name="plus-circle" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="inbox"
         options={{
-          title: "Inbox",
+          title: t("tabMessages"),
           tabBarIcon: ({ color, size }) => <Feather name="message-circle" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profile",
+          title: t("tabProfile"),
           tabBarIcon: ({ color, size }) => <Feather name="user" color={color} size={size} />,
         }}
       />

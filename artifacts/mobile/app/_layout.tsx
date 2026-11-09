@@ -10,6 +10,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { PushBootstrap } from "@/components/PushBootstrap";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
+import { LanguageProvider } from "@/context/LanguageContext";
 import { MarketplaceProvider } from "@/context/MarketplaceContext";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -23,28 +24,35 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
-          <MarketplaceProvider>
-            <CartProvider>
-              <PushBootstrap />
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="auth/login" />
-                <Stack.Screen name="auth/register" />
-                <Stack.Screen name="listing/[id]" />
-                <Stack.Screen name="cart" />
-                <Stack.Screen name="checkout" />
-                <Stack.Screen name="checkout-success" />
-                <Stack.Screen name="orders" />
-                <Stack.Screen name="orders/[id]" />
-                <Stack.Screen name="favorites" />
-                <Stack.Screen name="wallet" />
-                <Stack.Screen name="notifications" />
-                <Stack.Screen name="settings" />
-                <Stack.Screen name="delivery-tracking" />
-                <Stack.Screen name="+not-found" />
-              </Stack>
-            </CartProvider>
-          </MarketplaceProvider>
+          <LanguageProvider>
+            <MarketplaceProvider>
+              <CartProvider>
+                <PushBootstrap />
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="auth/login" />
+                  <Stack.Screen name="auth/register" />
+                  <Stack.Screen name="listing/[id]" />
+                  <Stack.Screen name="cart" />
+                  <Stack.Screen name="checkout" />
+                  <Stack.Screen name="checkout-success" />
+                  <Stack.Screen name="orders" />
+                  <Stack.Screen name="orders/[id]" />
+                  <Stack.Screen name="favorites" />
+                  <Stack.Screen name="wallet" />
+                  <Stack.Screen name="addresses" />
+                  <Stack.Screen name="edit-profile" />
+                  <Stack.Screen name="stripe-checkout" />
+                  <Stack.Screen name="language-picker" />
+                  <Stack.Screen name="esim" />
+                  <Stack.Screen name="notifications" />
+                  <Stack.Screen name="settings" />
+                  <Stack.Screen name="delivery-tracking" />
+                  <Stack.Screen name="+not-found" />
+                </Stack>
+              </CartProvider>
+            </MarketplaceProvider>
+          </LanguageProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

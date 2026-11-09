@@ -246,34 +246,80 @@ export default function ListingDetailScreen() {
             </View>
           </ScrollView>
 
-          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-            <Pressable
-              style={styles.secondaryCta}
-              onPress={() =>
-                token ? router.push("/(tabs)/inbox") : router.push("/auth/login")
-              }
-            >
-              <Text style={styles.secondaryCtaText}>Message</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.primaryCta,
-                (inCart || addedFlash) && styles.primaryCtaInCart,
-                isOwnListing && styles.primaryCtaDisabled,
-              ]}
-              onPress={onAddToCart}
-              disabled={isOwnListing}
-            >
-              <Text style={styles.primaryCtaText}>
-                {isOwnListing
-                  ? "Your listing"
-                  : addedFlash
-                    ? "Added!"
-                    : inCart
-                      ? "In cart · View"
-                      : "Add to Cart"}
-              </Text>
-            </Pressable>
+          <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <View style={styles.footer}>
+              <Pressable
+                style={styles.secondaryCta}
+                onPress={() =>
+                  token ? router.push("/(tabs)/inbox") : router.push("/auth/login")
+                }
+              >
+                <Text style={styles.secondaryCtaText}>Message</Text>
+              </Pressable>
+              {dominican && !isOwnListing ? (
+                <Pressable
+                  style={styles.primaryCta}
+                  onPress={() => {
+                    if (!token) {
+                      router.push("/auth/login");
+                      return;
+                    }
+                    router.push({
+                      pathname: "/stripe-checkout",
+                      params: { listingId: String(listingId) },
+                    });
+                  }}
+                >
+                  <Text style={styles.primaryCtaText}>Buy with card</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={[
+                    styles.primaryCta,
+                    (inCart || addedFlash) && styles.primaryCtaInCart,
+                    isOwnListing && styles.primaryCtaDisabled,
+                  ]}
+                  onPress={onAddToCart}
+                  disabled={isOwnListing}
+                >
+                  <Text style={styles.primaryCtaText}>
+                    {isOwnListing
+                      ? "Your listing"
+                      : addedFlash
+                        ? "Added!"
+                        : inCart
+                          ? "In cart · View"
+                          : "Add to Cart"}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+            {dominican && !isOwnListing ? (
+              <Pressable style={styles.cartAlt} onPress={onAddToCart}>
+                <Text style={styles.cartAltText}>
+                  {inCart
+                    ? "Saved in cart (wallet checkout unavailable for DR)"
+                    : "Save to cart"}
+                </Text>
+              </Pressable>
+            ) : !isOwnListing && !dominican ? (
+              <Pressable
+                style={styles.cartAlt}
+                onPress={() => {
+                  if (!token) {
+                    router.push("/auth/login");
+                    return;
+                  }
+                  if (!listingId) return;
+                  router.push({
+                    pathname: "/stripe-checkout",
+                    params: { listingId: String(listingId) },
+                  });
+                }}
+              >
+                <Text style={styles.cartAltText}>Or pay with card (Stripe)</Text>
+              </Pressable>
+            ) : null}
           </View>
         </>
       )}
@@ -336,18 +382,20 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   description: { fontSize: 15, lineHeight: 22, color: "#334155" },
-  footer: {
+  bottomBar: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    flexDirection: "row",
-    gap: 10,
     paddingHorizontal: 16,
     paddingTop: 12,
     backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
     borderTopColor: "#E2E8F0",
+  },
+  footer: {
+    flexDirection: "row",
+    gap: 10,
   },
   secondaryCta: {
     flex: 1,
@@ -370,6 +418,8 @@ const styles = StyleSheet.create({
   primaryCtaInCart: { backgroundColor: "#EA580C" },
   primaryCtaDisabled: { backgroundColor: "#CBD5E1" },
   primaryCtaText: { fontWeight: "800", color: "#FFFFFF" },
+  cartAlt: { alignItems: "center", paddingTop: 10, paddingBottom: 2 },
+  cartAltText: { color: "#64748B", fontWeight: "700", fontSize: 12 },
   centered: { alignItems: "center", padding: 32, gap: 12 },
   error: { color: "#64748B", textAlign: "center" },
   retry: {

@@ -11,15 +11,16 @@
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
-    "placeholderRouteCount": 23,
-    "fullyNativeRouteCount": 12,
-    "partiallyNativeRouteCount": 3,
+    "placeholderRouteCount": 18,
+    "fullyNativeRouteCount": 20,
+    "partiallyNativeRouteCount": 5,
     "notes": [
-      "Entry remains expo-router/entry (not WebView App.tsx).",
-      "AuthGlobe, Cart, Checkout still native; no WebView in Phase 1–2 routes.",
-      "Account/Profile hub is partial because deep links hit placeholders.",
-      "Listing detail Message CTA lands on inbox placeholder."
-    ]
+      "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
+      "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
+      "Wallet top-up remains BLOCKED by Android digital purchase guard.",
+      "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell)."
+    ],
+    "phase3b": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -69,7 +70,7 @@
       "affects": [
         "cart wallet checkout for Dominican listings"
       ],
-      "implication": "Need native single-item listing checkout (Stripe/seller shipping) — still PLACEHOLDER at /stripe-checkout"
+      "implication": "Native /stripe-checkout single-item path implemented in Phase 3B"
     },
     {
       "code": "CARD_BLOCKED",
@@ -88,11 +89,11 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 14,
-    "PARTIALLY_NATIVE": 6,
-    "PLACEHOLDER": 22,
-    "MISSING": 34,
-    "BLOCKED": 4
+    "FULLY_NATIVE": 20,
+    "PARTIALLY_NATIVE": 5,
+    "PLACEHOLDER": 18,
+    "MISSING": 33,
+    "BLOCKED": 5
   },
   "features": [
     {
@@ -298,11 +299,11 @@
         "/api/stripe/checkout",
         "/api/listings/:id purchase paths"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "full Stripe PaymentSheet / Checkout Session native flow"
+        "PaymentSheet embedded mode (hosted browser used)"
       ],
-      "work": "Required for DR listings and non-wallet buys"
+      "work": "Phase 3B: native form + hosted Stripe URL via expo-web-browser; DR Buy with card"
     },
     {
       "id": "favorites",
@@ -405,16 +406,14 @@
       "name": "Addresses",
       "domain": "customer",
       "webRoute": "/settings/addresses",
-      "nativeRoute": "/checkout (inline)",
+      "nativeRoute": "/addresses",
       "role": "buyer",
       "apis": [
         "/api/me/addresses"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "dedicated address book CRUD screen"
-      ],
-      "work": "Settings → Addresses management"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3B: dedicated /addresses CRUD + default + country"
     },
     {
       "id": "wallet",
@@ -427,14 +426,13 @@
         "/api/wallet/balance",
         "/api/wallet/history"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "balance UI",
-        "history",
-        "transfer",
+        "top-up (BLOCKED)",
+        "P2P transfer (deferred)",
         "virtual card panel"
       ],
-      "work": "High priority; balance already used in checkout"
+      "work": "Phase 3B: balance + history + detail modal; top-up CTA explains Android block"
     },
     {
       "id": "wallet-topup",
@@ -475,17 +473,15 @@
       "name": "Transaction History",
       "domain": "customer",
       "webRoute": "/wallet/history",
-      "nativeRoute": null,
+      "nativeRoute": "/wallet",
       "role": "buyer",
       "apis": [
         "/api/wallet/history",
         "/api/transactions/me"
       ],
-      "status": "MISSING",
-      "missing": [
-        "history list"
-      ],
-      "work": "Include in Wallet module"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3B: included in /wallet with filters + detail"
     },
     {
       "id": "flex-card-repay",
@@ -532,9 +528,9 @@
       "status": "PARTIALLY_NATIVE",
       "missing": [
         "public shop profile",
-        "most menu destinations"
+        "inbox/sell deep links still placeholder"
       ],
-      "work": "Deep-link destinations Phase 3"
+      "work": "Phase 3B links: edit-profile, addresses, wallet native"
     },
     {
       "id": "edit-profile",
@@ -544,14 +540,16 @@
       "nativeRoute": "/edit-profile",
       "role": "buyer",
       "apis": [
-        "/api/auth/me",
-        "/api/users/me"
+        "/api/users/:id",
+        "/api/auth/language",
+        "/api/auth/change-password",
+        "/api/storage/uploads/*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "edit form"
+        "email change (website)"
       ],
-      "work": "Needed for PROFILE_INCOMPLETE"
+      "work": "Phase 3B: PUT /users/:id, avatar upload, language, password"
     },
     {
       "id": "settings",
@@ -563,9 +561,9 @@
       "apis": [],
       "status": "FULLY_NATIVE",
       "missing": [
-        "identity/security/privacy/preferences/help rows"
+        "privacy/help/payments rows"
       ],
-      "work": "Expand settings hub"
+      "work": "Phase 3B: links to edit-profile, addresses, language-picker"
     },
     {
       "id": "settings-subpages",
@@ -641,13 +639,11 @@
       "nativeRoute": "/language-picker",
       "role": "guest+",
       "apis": [
-        "/api/auth/translate-preference"
+        "/api/auth/language"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "i18n wiring"
-      ],
-      "work": "Wire LanguageContext"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3B: LanguageContext + PATCH /api/auth/language when signed in"
     },
     {
       "id": "offers",
@@ -1154,7 +1150,7 @@
       "domain": "driver",
       "webRoute": "/delivery/apply",
       "nativeRoute": "/driver-apply",
-      "role": "buyer→driver",
+      "role": "buyer\u2192driver",
       "apis": [
         "/api/delivery/apply"
       ],
@@ -1412,6 +1408,20 @@
         "intentionally not embedding website"
       ],
       "work": "Do not restore WebView marketplace wrapper"
+    },
+    {
+      "id": "esim",
+      "name": "Flexa eSIM",
+      "domain": "customer",
+      "webRoute": null,
+      "nativeRoute": "/esim",
+      "role": "buyer",
+      "apis": [],
+      "status": "BLOCKED",
+      "missing": [
+        "provider integration"
+      ],
+      "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready"
     }
   ],
   "recommendedPhase3Order": [
@@ -1512,5 +1522,6 @@
       "pushDeliveryClaimed": false,
       "notes": "Push token registration prepared via expo-notifications + POST /api/push/expo-token. No simulated notifications."
     }
-  }
+  },
+  "phase3bCompletedAt": "2026-11-09T23:30:00Z"
 }

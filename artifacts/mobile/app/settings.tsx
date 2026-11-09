@@ -42,6 +42,33 @@ export default function SettingsScreen() {
         <Feather name="chevron-right" size={18} color="#94A3B8" />
       </Pressable>
 
+      <Pressable style={[styles.row, { marginTop: 10 }]} onPress={() => router.push("/edit-profile")}>
+        <View>
+          <Text style={styles.label}>Account</Text>
+          <Text style={styles.value}>Edit profile</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
+      <Pressable style={[styles.row, { marginTop: 10 }]} onPress={() => router.push("/addresses")}>
+        <View>
+          <Text style={styles.label}>Delivery</Text>
+          <Text style={styles.value}>Address book</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
+      <Pressable
+        style={[styles.row, { marginTop: 10 }]}
+        onPress={() => router.push("/language-picker")}
+      >
+        <View>
+          <Text style={styles.label}>Preferences</Text>
+          <Text style={styles.value}>Language</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
       <Text style={styles.hint}>
         Guests browse listings for the selected country. Signed-in shoppers use
         their account country from the DigitalOcean backend.

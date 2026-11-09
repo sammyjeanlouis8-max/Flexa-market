@@ -6,11 +6,12 @@ import { cn } from "@/lib/utils";
 
 /**
  * Single bottom inset for the promo nav.
- * Uses max() — never sum — so iOS home-indicator and Android system-nav
- * do not double-count into an oversized black band.
+ * Prefer CSS env(); fall back to --sab (iOS WebView heuristic from index.html)
+ * and --flexa-android-bottom (Android system nav). Use max() — never sum —
+ * so insets do not stack into an oversized black band.
  */
 export const PROMO_NAV_SAFE_BOTTOM =
-  "max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px))";
+  "max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px))";
 
 /** Compact content row (icons + labels). Safe-area padding is separate. */
 export const PROMO_NAV_CONTENT_PX = 52;
@@ -86,7 +87,7 @@ export default function PromoVideosBottomNav({
 
   const itemClass = (isActive: boolean) =>
     cn(
-      "flex min-h-[44px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 transition-colors",
+      "flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 transition-colors",
       isActive ? "text-white" : "text-white/55",
     );
 
@@ -98,20 +99,22 @@ export default function PromoVideosBottomNav({
         className,
       )}
       style={{
-        // Border-box: height includes paddingBottom so the icon row stays fully
-        // on-screen and the safe-area band is filled by this same black nav —
-        // never by a separate overflowing black shell behind/over the icons.
-        boxSizing: "border-box",
-        height: PROMO_NAV_HEIGHT_CSS,
+        // Content-box height for the icon row only; paddingBottom paints the
+        // home-indicator band with the same black background so video cannot
+        // peek under the buttons. box-shadow seals any remaining sub-pixel gap.
+        boxSizing: "content-box",
+        height: `${PROMO_NAV_CONTENT_PX}px`,
         paddingBottom: PROMO_NAV_SAFE_BOTTOM,
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
+        boxShadow: "0 48px 0 0 #000",
+        overflow: "visible",
       }}
       aria-label={t("nav.main", { defaultValue: "Main navigation" })}
       data-testid="promo-videos-bottom-nav"
     >
       <div
-        className="grid h-[52px] w-full grid-cols-5 items-center px-1"
+        className="grid w-full grid-cols-5 items-center px-1"
         style={{ height: `${PROMO_NAV_CONTENT_PX}px` }}
       >
         <button
@@ -140,7 +143,7 @@ export default function PromoVideosBottomNav({
         </button>
 
         {/* Center Add (+) — compact TikTok-inspired control, vertically centered */}
-        <div className="relative flex min-h-[44px] items-center justify-center">
+        <div className="relative flex h-full items-center justify-center">
           <button
             type="button"
             onClick={handleAdd}
@@ -148,7 +151,6 @@ export default function PromoVideosBottomNav({
             aria-label={t("videoFeed.addBoost", { defaultValue: "Add promotional video" })}
             data-testid="nav-promo-add"
           >
-            {/* Visual face ~46×42 with cyan/pink side accents; 44×44 touch target on the button */}
             <span
               aria-hidden
               className="pointer-events-none absolute left-[calc(50%-25px)] top-1/2 h-[42px] w-[5px] -translate-y-1/2 rounded-l-[9px]"

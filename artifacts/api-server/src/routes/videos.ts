@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, listingsTable, usersTable, commentsTable, followsTable } from "@workspace/db";
+import { db, listingsTable, usersTable, commentsTable, followsTable, promoVideoSavesTable } from "@workspace/db";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { getRole, hasRole, optionalAuth } from "../middlewares/auth";
 import { extractWasabiKey } from "../lib/s3";
@@ -447,18 +447,44 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
 
     // Resolve which sellers the viewing user already follows (one batch query)
     const followedSellerIds = new Set<number>();
-    if (req.userId && items.length > 0) {
-      const sellerIds = [...new Set(items.map(r => r.sellerId).filter(Boolean))] as number[];
-      const followRows = await db
-        .select({ followingId: followsTable.followingId })
-        .from(followsTable)
-        .where(
-          and(
-            eq(followsTable.followerId, req.userId),
-            inArray(followsTable.followingId, sellerIds),
-          ),
-        );
-      followRows.forEach(f => followedSellerIds.add(f.followingId));
+    const savedListingIds = new Set<number>();
+    const saveCountByListing = new Map<number, number>();
+    if (items.length > 0) {
+      const listingIds = items.map(r => r.id);
+      if (req.userId) {
+        const sellerIds = [...new Set(items.map(r => r.sellerId).filter(Boolean))] as number[];
+        const followRows = await db
+          .select({ followingId: followsTable.followingId })
+          .from(followsTable)
+          .where(
+            and(
+              eq(followsTable.followerId, req.userId),
+              inArray(followsTable.followingId, sellerIds),
+            ),
+          );
+        followRows.forEach(f => followedSellerIds.add(f.followingId));
+
+        const saveRows = await db
+          .select({ listingId: promoVideoSavesTable.listingId })
+          .from(promoVideoSavesTable)
+          .where(
+            and(
+              eq(promoVideoSavesTable.userId, req.userId),
+              inArray(promoVideoSavesTable.listingId, listingIds),
+            ),
+          );
+        saveRows.forEach(s => savedListingIds.add(s.listingId));
+      }
+
+      const saveCounts = await db
+        .select({
+          listingId: promoVideoSavesTable.listingId,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(promoVideoSavesTable)
+        .where(inArray(promoVideoSavesTable.listingId, listingIds))
+        .groupBy(promoVideoSavesTable.listingId);
+      saveCounts.forEach(c => saveCountByListing.set(c.listingId, c.count));
     }
 
     const videos = items.flatMap(r => {
@@ -493,6 +519,8 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
         sellerIsFollowing: r.sellerId ? followedSellerIds.has(r.sellerId) : false,
         viewCount:        r.viewCount,
         likeCount:        r.favoriteCount,
+        saveCount:        saveCountByListing.get(r.id) ?? 0,
+        isSaved:          savedListingIds.has(r.id),
         sharesCount:      r.sharesCount,
         commentCount:     r.commentCount ?? 0,
         isBoosted:        true,                     // always true by construction

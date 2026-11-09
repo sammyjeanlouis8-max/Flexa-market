@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/auth";
 import { FavoritesProvider } from "@/contexts/favorites";
+import { VideoSavesProvider } from "@/contexts/videoSaves";
 import { CartProvider } from "@/contexts/cart";
 import { ShoppingLocationProvider } from "@/contexts/shopping-location";
 import { BroadcastProvider } from "@/contexts/broadcast";
@@ -93,6 +94,7 @@ const SubscriptionPage   = lazy(() => import("@/pages/Subscription"));
 const VideoPost          = lazy(() => import("@/pages/VideoPost"));
 const VideoFeed          = lazy(() => import("@/pages/VideoFeed"));
 const VideoDiscover      = lazy(() => import("@/pages/VideoDiscover"));
+const VideoFavorites     = lazy(() => import("@/pages/VideoFavorites"));
 const MyBoosts           = lazy(() => import("@/pages/MyBoosts"));
 const BoosterMyBoosts    = lazy(() => import("@/pages/booster/BoosterMyBoosts"));
 const BoosterCreate      = lazy(() => import("@/pages/booster/BoosterCreate"));
@@ -241,6 +243,7 @@ function LayoutRoutes() {
             {() => { setLocation("/sell"); return null; }}
           </Route>
           <Route path="/videos/watch" component={VideoFeed} />
+          <Route path="/videos/favorites" component={VideoFavorites} />
           <Route path="/videos" component={VideoDiscover} />
           <Route path="/booster/create" component={BoosterCreate} />
           <Route path="/booster/analytics">
@@ -552,6 +555,7 @@ function App() {
             <VideoUploadCenter />
             <CartProvider>
             <FavoritesProvider>
+            <VideoSavesProvider>
               <BroadcastProvider>
                 <MusicUploadProvider>
                   <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
@@ -563,6 +567,7 @@ function App() {
                 </MusicUploadProvider>
               </BroadcastProvider>
               <Toaster />
+            </VideoSavesProvider>
             </FavoritesProvider>
             </CartProvider>
             </AuthRequiredProvider>

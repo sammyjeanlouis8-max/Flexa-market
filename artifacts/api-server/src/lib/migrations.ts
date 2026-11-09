@@ -3208,6 +3208,25 @@ export async function runStartupMigrations(): Promise<void> {
     `,
   });
 
+  // Promotional video Favorites / Save (separate from listing likes/`favorites`)
+  migrations.push({
+    name: "promo_video_saves.create",
+    sql: `
+      CREATE TABLE IF NOT EXISTS promo_video_saves (
+        id serial PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        listing_id integer NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS promo_video_saves_user_listing_uniq
+        ON promo_video_saves(user_id, listing_id);
+      CREATE INDEX IF NOT EXISTS promo_video_saves_user_id_idx
+        ON promo_video_saves(user_id);
+      CREATE INDEX IF NOT EXISTS promo_video_saves_listing_id_idx
+        ON promo_video_saves(listing_id)
+    `,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

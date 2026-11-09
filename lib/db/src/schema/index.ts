@@ -46,3 +46,4 @@ export * from "./stripe_refunds";
 export * from "./shipments";
 export * from "./settlementRecovery";
 export * from "./promax_rotation";
+export * from "./promo_video_saves";

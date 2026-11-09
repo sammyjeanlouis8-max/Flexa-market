@@ -9,8 +9,12 @@ import { useSEO } from "@/hooks/useSEO";
 import { useAuth } from "@/contexts/auth";
 import { formatPrice } from "@/lib/currency";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
+import PromoVideosBottomNav, {
+  PROMO_NAV_HEIGHT_CSS,
+} from "@/components/PromoVideosBottomNav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 export type DiscoverSort = "all" | "trending" | "new" | "mine";
 
@@ -66,6 +70,12 @@ export default function VideoDiscover() {
   useSEO({ title: t("videoFeed.title"), description: t("tr.videoFeedSeoDesc"), path: "/videos" });
   const [, navigate] = useLocation();
   const { token, user } = useAuth();
+
+  useEffect(() => {
+    if (isAndroidApp() || /Android/i.test(navigator.userAgent)) {
+      document.documentElement.style.setProperty("--flexa-android-bottom", "48px");
+    }
+  }, []);
 
   const [sort, setSort] = useState<DiscoverSort>(() => {
     try {
@@ -289,8 +299,11 @@ export default function VideoDiscover() {
 
   return (
     <div ref={scrollRootRef} className="min-h-dvh bg-white dark:bg-background" data-testid="video-discover-page">
-      {/* Sub-header under global Layout header */}
-      <div className="sticky top-0 z-30 border-b border-border/70 bg-white/95 dark:bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+      {/* Own header — marketplace Layout chrome is hidden on /videos* */}
+      <div
+        className="sticky top-0 z-30 border-b border-border/70 bg-white/95 dark:bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-white/80"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
         <div className="mx-auto flex max-w-5xl items-center gap-2 px-3 py-2.5">
           <button
             type="button"
@@ -360,7 +373,10 @@ export default function VideoDiscover() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-5xl px-3 pb-28 pt-3">
+      <div
+        className="mx-auto max-w-5xl px-3 pt-3"
+        style={{ paddingBottom: `calc(${PROMO_NAV_HEIGHT_CSS} + 24px)` }}
+      >
         <div className="mb-4 space-y-3">
             <div className="grid grid-cols-3 gap-2">
               {[
@@ -542,15 +558,10 @@ export default function VideoDiscover() {
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={() => navigate("/booster/create")}
-        className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-violet-700 text-white shadow-xl md:bottom-8 hover:bg-violet-800"
-        aria-label={t("videoFeed.createPromo", { defaultValue: "Create Promotional Video" })}
-        data-testid="fab-boost-video"
-      >
-        <Plus className="h-7 w-7" />
-      </button>
+      <PromoVideosBottomNav
+        active="discover"
+        onAdd={() => navigate(user ? "/booster/create" : "/auth/login?next=%2Fbooster%2Fcreate")}
+      />
 
     </div>
   );

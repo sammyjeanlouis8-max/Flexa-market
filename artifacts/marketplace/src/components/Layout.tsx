@@ -517,6 +517,11 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isMessages = location.startsWith("/messages");
   // Video feed also needs full-height, immersive layout
   const isVideoFeed = location === "/videos/watch" || location.startsWith("/videos/watch?");
+  // Entire Promotional Videos section owns its TikTok-style chrome (header + bottom nav).
+  const isPromoVideosSection =
+    location === "/videos"
+    || location.startsWith("/videos?")
+    || location.startsWith("/videos/");
   // Inside a specific conversation: hide the mobile bottom nav (WhatsApp style)
   const isMessageThread = /^\/messages\/[^/]+/.test(location);
   // Listing detail — hide footer + bottom nav for a cleaner immersive view
@@ -547,7 +552,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/settings(?:\/|$)/,
     /^\/order-label\//,
     /^\/orders(?:\/|$)/,
-    /^\/videos(?:\/watch)?\/?$/,
+    /^\/videos(?:\/(?:watch|favorites))?\/?$/,
     /^\/wallet/,
     /^\/subscription\/?$/,
     /^\/chatbot/,
@@ -624,12 +629,12 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
   return (
     <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
-    <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col ${isMessages || isVideoFeed ? "h-dvh overflow-clip" : "min-h-dvh"} ${isVideoFeed ? "bg-black" : isCommissionPromoPage ? "bg-[#0B1B3A]" : "bg-background"}`}>
+    <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col ${isMessages || isPromoVideosSection ? "h-dvh overflow-clip" : "min-h-dvh"} ${isPromoVideosSection ? "bg-black" : isCommissionPromoPage ? "bg-[#0B1B3A]" : "bg-background"}`}>
 
       {/* ── Top header ── */}
       {/* Safe-area top inset is applied once via .mobile-app-header CSS
           (env(safe-area-inset-top), with --sat only as WebView fallback). */}
-      {!isVideoFeed && (
+      {!isPromoVideosSection && (
         <header
           className={cn(
             "mobile-app-header sticky top-0 z-50 border-b shadow-sm md:pl-56",
@@ -790,23 +795,23 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       )}
 
       {/* Push-notification one-time prompt */}
-      {!isVideoFeed && <PushNotificationsBanner isLoggedIn={!!user} />}
+      {!isPromoVideosSection && <PushNotificationsBanner isLoggedIn={!!user} />}
 
       {/* Legacy password upgrade prompt */}
-      {!isVideoFeed && <PasswordUpgradeBanner />}
+      {!isPromoVideosSection && <PasswordUpgradeBanner />}
 
       {/* Flex Card debt block — permanent until repaid (account stays usable) */}
-      {!isVideoFeed && <FlexCardDebtBanner />}
+      {!isPromoVideosSection && <FlexCardDebtBanner />}
 
       {/* Slow / offline connection notice */}
-      {!isVideoFeed && <OfflineBar />}
+      {!isPromoVideosSection && <OfflineBar />}
 
       {/* ── Main content ── */}
       {/* pb-safe-nav = calc(56px + env(safe-area-inset-bottom)) so content
           never hides under the fixed bottom nav on any iPhone model. */}
       <main className={
-        isMessages || isVideoFeed
-          ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isMessageThread ? " message-thread-main" : ""}${isVideoFeed ? "" : " md:pl-56"}`
+        isMessages || isPromoVideosSection
+          ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isMessageThread ? " message-thread-main" : ""}${isPromoVideosSection ? "" : " md:pl-56"}`
           : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage ? "" : "pb-safe-nav"} md:pl-56`
       }
         style={isSellPage ? { paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px))" } : undefined}
@@ -838,7 +843,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isPromoVideosSection || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) ? "hidden" : ""}`}
         aria-label="Main navigation"
         data-testid="mobile-bottom-nav"
       >
@@ -976,7 +981,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Desktop sidebar ── */}
       <nav
-        className={`${isVideoFeed ? "hidden" : "hidden md:flex"} fixed left-0 top-16 bottom-0 w-56 bg-background border-r border-border flex-col py-3 px-2.5 gap-0 z-40 overflow-y-auto`}
+        className={`${isPromoVideosSection ? "hidden" : "hidden md:flex"} fixed left-0 top-16 bottom-0 w-56 bg-background border-r border-border flex-col py-3 px-2.5 gap-0 z-40 overflow-y-auto`}
         aria-label="Sidebar navigation"
       >
         {desktopSections.map((section, si) => (

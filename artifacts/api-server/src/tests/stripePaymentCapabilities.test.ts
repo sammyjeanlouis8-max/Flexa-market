@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   modernCheckoutSessionExtras,
   resolveWalletCapabilities,
@@ -34,5 +36,15 @@ describe("stripePaymentCapabilities", () => {
       allowSaveCard: false,
     });
     expect(extras.saved_payment_method_options).toBeUndefined();
+  });
+
+  it("exposes capabilities only from stripeCheckout (Connect must not shadow /stripe/config)", () => {
+    const root = join(process.cwd(), "src/routes");
+    const connect = readFileSync(join(root, "stripeConnect.ts"), "utf8");
+    const checkout = readFileSync(join(root, "stripeCheckout.ts"), "utf8");
+    expect(connect).not.toMatch(/router\.get\(\s*["']\/stripe\/config["']/);
+    expect(checkout).toContain('router.get("/stripe/config"');
+    expect(checkout).toContain("resolveWalletCapabilities");
+    expect(checkout).toContain("capabilities");
   });
 });

@@ -1,12 +1,12 @@
 /**
- * Auth brand globe — real WebGL 3D sphere of international flags with
- * cyan + orange neon orbital rings. One full Y-axis revolution / 18s.
- * Matches the Flexa Market login mockup. Respects reduced-motion.
+ * Auth brand globe — clean WebGL 3D sphere of international flags.
+ * One full Y-axis revolution every 12s. No rings, flares, halos, or glow.
+ * Transparent canvas; pauses when tab is hidden / reduced-motion.
  */
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
-const REVOLUTION_MS = 18_000;
+const REVOLUTION_MS = 12_000;
 const FLAG_TEX_URLS = ["/auth-globe-flags.jpg"] as const;
 const SEG_X = 64;
 const SEG_Y = 36;
@@ -40,10 +40,26 @@ function toPowerOfTwoAtlas(source: CanvasImageSource): HTMLCanvasElement {
   const ctx = canvas.getContext("2d")!;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.fillStyle = "#0b1b3a";
+  // Soft mid-tone fill — never pure black (avoids pole/seam pin dots).
+  ctx.fillStyle = "#2a4a7a";
   ctx.fillRect(0, 0, TEX_W, TEX_H);
   ctx.drawImage(source, 0, 0, TEX_W, TEX_H);
+  // Heal dark pole bands in the photo atlas — UV spheres sample v≈0/1 into a
+  // single texel, which otherwise shows as a black pin at the south/north pole.
+  healAtlasPoles(ctx, TEX_W, TEX_H);
   return canvas;
+}
+
+/** Replace near-black pole strips with stretched mid-latitude flag rows. */
+function healAtlasPoles(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const band = Math.max(8, Math.round(h * 0.04));
+  // Copy a healthy row just inside the dark strip across the pole caps.
+  const topSrc = ctx.getImageData(0, band, w, 1);
+  const botSrc = ctx.getImageData(0, h - band - 1, w, 1);
+  for (let y = 0; y < band; y++) {
+    ctx.putImageData(topSrc, 0, y);
+    ctx.putImageData(botSrc, 0, h - 1 - y);
+  }
 }
 
 async function loadFlagAtlas(): Promise<HTMLCanvasElement> {
@@ -66,7 +82,7 @@ function buildFallbackAtlas(): HTMLCanvasElement {
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#0b1b3a";
+  ctx.fillStyle = "#2a4a7a";
   ctx.fillRect(0, 0, W, H);
 
   const emoji = [
@@ -91,7 +107,7 @@ function buildFallbackAtlas(): HTMLCanvasElement {
       const x = c * tw;
       const y = r * th;
       const i = r * cols + c;
-      ctx.fillStyle = "#071225";
+      ctx.fillStyle = "#1e3a5f";
       ctx.fillRect(x, y, tw, th);
       const g = geom[i % geom.length];
       const band = th / g.length;
@@ -110,68 +126,77 @@ function buildFallbackAtlas(): HTMLCanvasElement {
   return canvas;
 }
 
+/**
+ * UV sphere with real polar caps (single apex + ring). Degenerate lat-long
+ * poles leave a 1px hole that reads as a black pin against the navy panel.
+ */
 function buildSphereMesh() {
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
-  for (let y = 0; y <= SEG_Y; y++) {
+
+  const push = (px: number, py: number, pz: number, u: number, v: number) => {
+    positions.push(px, py, pz);
+    normals.push(px, py, pz);
+    uvs.push(u, v);
+  };
+
+  // North pole apex — one vertex, colorful UV (not atlas edge).
+  const northIdx = 0;
+  push(0, 1, 0, 0.5, 0.04);
+
+  // Latitude rings between poles (exclusive).
+  const ringStart: number[] = [];
+  for (let y = 1; y < SEG_Y; y++) {
+    ringStart.push(positions.length / 3);
     const v = y / SEG_Y;
     const theta = v * Math.PI;
     const sinT = Math.sin(theta);
     const cosT = Math.cos(theta);
+    const vv = 0.04 + v * 0.92;
     for (let x = 0; x <= SEG_X; x++) {
       const u = x / SEG_X;
       const phi = u * Math.PI * 2;
-      const px = sinT * Math.cos(phi);
-      const py = cosT;
-      const pz = sinT * Math.sin(phi);
-      positions.push(px, py, pz);
-      normals.push(px, py, pz);
-      uvs.push(1 - u, v);
+      push(sinT * Math.cos(phi), cosT, sinT * Math.sin(phi), 1 - u, vv);
     }
   }
-  for (let y = 0; y < SEG_Y; y++) {
+
+  // South pole apex.
+  const southIdx = positions.length / 3;
+  push(0, -1, 0, 0.5, 0.96);
+
+  // North cap fan: apex → first ring.
+  {
+    const rs = ringStart[0];
     for (let x = 0; x < SEG_X; x++) {
-      const a = y * (SEG_X + 1) + x;
-      const b = a + SEG_X + 1;
+      indices.push(northIdx, rs + x, rs + x + 1);
+    }
+  }
+
+  // Quad strips between rings.
+  for (let r = 0; r < ringStart.length - 1; r++) {
+    const a0 = ringStart[r];
+    const b0 = ringStart[r + 1];
+    for (let x = 0; x < SEG_X; x++) {
+      const a = a0 + x;
+      const b = b0 + x;
       indices.push(a, b, a + 1, b, b + 1, a + 1);
     }
   }
+
+  // South cap fan: last ring → apex.
+  {
+    const rs = ringStart[ringStart.length - 1];
+    for (let x = 0; x < SEG_X; x++) {
+      indices.push(rs + x, southIdx, rs + x + 1);
+    }
+  }
+
   return {
     positions: new Float32Array(positions),
     normals: new Float32Array(normals),
     uvs: new Float32Array(uvs),
-    indices: new Uint16Array(indices),
-  };
-}
-
-function buildRingMesh(tubeR = 0.02, majorR = 1.12, seg = 128, tubeSeg = 12) {
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const indices: number[] = [];
-  for (let i = 0; i <= seg; i++) {
-    const u = (i / seg) * Math.PI * 2;
-    const cu = Math.cos(u);
-    const su = Math.sin(u);
-    for (let j = 0; j <= tubeSeg; j++) {
-      const v = (j / tubeSeg) * Math.PI * 2;
-      const cv = Math.cos(v);
-      const sv = Math.sin(v);
-      positions.push((majorR + tubeR * cv) * cu, tubeR * sv, (majorR + tubeR * cv) * su);
-      normals.push(cv * cu, sv, cv * su);
-    }
-  }
-  for (let i = 0; i < seg; i++) {
-    for (let j = 0; j < tubeSeg; j++) {
-      const a = i * (tubeSeg + 1) + j;
-      const b = a + tubeSeg + 1;
-      indices.push(a, b, a + 1, b, b + 1, a + 1);
-    }
-  }
-  return {
-    positions: new Float32Array(positions),
-    normals: new Float32Array(normals),
     indices: new Uint16Array(indices),
   };
 }
@@ -226,11 +251,6 @@ function rotateX(out: Float32Array, rad: number) {
   const c = Math.cos(rad), s = Math.sin(rad);
   out[5] = c; out[6] = s; out[9] = -s; out[10] = c;
 }
-function rotateZ(out: Float32Array, rad: number) {
-  identity(out);
-  const c = Math.cos(rad), s = Math.sin(rad);
-  out[0] = c; out[1] = s; out[4] = -s; out[5] = c;
-}
 
 function compile(gl: WebGLRenderingContext, type: number, src: string) {
   const sh = gl.createShader(type)!;
@@ -269,6 +289,7 @@ void main() {
 }
 `;
 
+/** Clean flag lighting — no specular hotspot, no cyan/orange rim glow. */
 const GLOBE_FS = `
 precision mediump float;
 uniform sampler2D uTex;
@@ -277,42 +298,12 @@ varying vec3 vNorm;
 varying vec2 vUv;
 void main() {
   vec3 n = normalize(vNorm);
-  vec3 L = normalize(uLight);
-  float diff = max(dot(n, L), 0.0);
-  float halfL = max(dot(n, normalize(L + vec3(0.0, 0.2, 1.0))), 0.0);
-  float spec = pow(halfL, 28.0) * 0.35;
-  float rim = pow(1.0 - max(dot(n, vec3(0.05, 0.1, 1.0)), 0.0), 2.4);
+  float diff = max(dot(n, normalize(uLight)), 0.0);
+  // Soft wrap lighting keeps the front even — no black center pin.
+  float wrap = diff * 0.55 + 0.45;
   vec3 tex = texture2D(uTex, vUv).rgb;
-  vec3 col = tex * (0.38 + 0.62 * diff);
-  col += vec3(1.0) * spec;
-  col += vec3(0.35, 0.75, 1.0) * rim * 0.28;
-  col += vec3(1.0, 0.55, 0.18) * rim * 0.1;
-  float limb = smoothstep(-0.15, 0.9, n.z);
-  col *= 0.58 + 0.42 * limb;
+  vec3 col = tex * wrap;
   gl_FragColor = vec4(col, 1.0);
-}
-`;
-
-const RING_VS = `
-attribute vec3 aPos;
-attribute vec3 aNorm;
-uniform mat4 uMVP;
-uniform mat4 uModel;
-varying float vFres;
-void main() {
-  vec3 n = normalize(mat3(uModel) * aNorm);
-  vFres = pow(1.0 - abs(n.z), 1.35);
-  gl_Position = uMVP * vec4(aPos, 1.0);
-}
-`;
-
-const RING_FS = `
-precision mediump float;
-uniform vec3 uColor;
-varying float vFres;
-void main() {
-  float a = 0.55 + 0.45 * vFres;
-  gl_FragColor = vec4(uColor * (0.75 + 0.55 * vFres), a);
 }
 `;
 
@@ -347,21 +338,18 @@ function uploadMesh(
 }
 
 async function createRenderer(canvas: HTMLCanvasElement) {
+  // premultipliedAlpha:false avoids dark fringe / center artifacts on iOS WKWebView.
   const gl = canvas.getContext("webgl", {
     alpha: true,
     antialias: true,
-    premultipliedAlpha: true,
+    premultipliedAlpha: false,
     preserveDrawingBuffer: false,
+    powerPreference: "low-power",
   });
   if (!gl) return null;
 
   const globeProg = linkProgram(gl, GLOBE_VS, GLOBE_FS);
-  const ringProg = linkProgram(gl, RING_VS, RING_FS);
   const sphere = uploadMesh(gl, buildSphereMesh());
-  // Thin neon core + soft glow shell — matches mockup rings.
-  const ringCore = uploadMesh(gl, buildRingMesh(0.018, 1.13));
-  const ringGlow = uploadMesh(gl, buildRingMesh(0.065, 1.13));
-
   const texSource = await loadFlagAtlas();
 
   const tex = gl.createTexture()!;
@@ -372,16 +360,14 @@ async function createRenderer(canvas: HTMLCanvasElement) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texSource);
-  // Ensure incomplete texture never leaves a black sphere.
-  const err = gl.getError();
-  if (err !== gl.NO_ERROR) {
+  if (gl.getError() !== gl.NO_ERROR) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, toPowerOfTwoAtlas(buildFallbackAtlas()));
   }
 
   gl.enable(gl.DEPTH_TEST);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.disable(gl.BLEND);
   gl.clearColor(0, 0, 0, 0);
+  gl.colorMask(true, true, true, true);
 
   const proj = new Float32Array(16);
   const view = new Float32Array(16);
@@ -390,12 +376,9 @@ async function createRenderer(canvas: HTMLCanvasElement) {
   const tmp = new Float32Array(16);
   const tilt = new Float32Array(16);
   const spin = new Float32Array(16);
-  const ringModel = new Float32Array(16);
-  const rx = new Float32Array(16);
-  const rz = new Float32Array(16);
 
-  // Framed so sphere + rings + base flare all fit like the mockup.
-  lookAt(view, [0.05, 0.05, 3.05], [0, -0.02, 0], [0, 1, 0]);
+  // Sphere only — framed to fill the canvas without decorative rings.
+  lookAt(view, [0, 0.02, 2.85], [0, 0, 0], [0, 1, 0]);
 
   const aPosG = gl.getAttribLocation(globeProg, "aPos");
   const aNormG = gl.getAttribLocation(globeProg, "aNorm");
@@ -404,12 +387,6 @@ async function createRenderer(canvas: HTMLCanvasElement) {
   const uModelG = gl.getUniformLocation(globeProg, "uModel");
   const uTex = gl.getUniformLocation(globeProg, "uTex");
   const uLight = gl.getUniformLocation(globeProg, "uLight");
-
-  const aPosR = gl.getAttribLocation(ringProg, "aPos");
-  const aNormR = gl.getAttribLocation(ringProg, "aNorm");
-  const uMVPR = gl.getUniformLocation(ringProg, "uMVP");
-  const uModelR = gl.getUniformLocation(ringProg, "uModel");
-  const uColor = gl.getUniformLocation(ringProg, "uColor");
 
   function resize(cssW: number, cssH: number) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -420,24 +397,7 @@ async function createRenderer(canvas: HTMLCanvasElement) {
       canvas.height = h;
     }
     gl!.viewport(0, 0, w, h);
-    perspective(proj, (40 * Math.PI) / 180, w / h, 0.1, 20);
-  }
-
-  function drawRing(mesh: MeshBuf, color: [number, number, number], modelMat: Float32Array) {
-    gl!.useProgram(ringProg);
-    mulMat4(view, modelMat, tmp);
-    mulMat4(proj, tmp, mvp);
-    gl!.uniformMatrix4fv(uMVPR, false, mvp);
-    gl!.uniformMatrix4fv(uModelR, false, modelMat);
-    gl!.uniform3fv(uColor, color);
-    gl!.bindBuffer(gl!.ARRAY_BUFFER, mesh.pos);
-    gl!.enableVertexAttribArray(aPosR);
-    gl!.vertexAttribPointer(aPosR, 3, gl!.FLOAT, false, 0, 0);
-    gl!.bindBuffer(gl!.ARRAY_BUFFER, mesh.norm);
-    gl!.enableVertexAttribArray(aNormR);
-    gl!.vertexAttribPointer(aNormR, 3, gl!.FLOAT, false, 0, 0);
-    gl!.bindBuffer(gl!.ELEMENT_ARRAY_BUFFER, mesh.idx);
-    gl!.drawElements(gl!.TRIANGLES, mesh.count, gl!.UNSIGNED_SHORT, 0);
+    perspective(proj, (38 * Math.PI) / 180, w / h, 0.1, 20);
   }
 
   function render(angleRad: number) {
@@ -452,7 +412,8 @@ async function createRenderer(canvas: HTMLCanvasElement) {
     gl!.useProgram(globeProg);
     gl!.uniformMatrix4fv(uMVPG, false, mvp);
     gl!.uniformMatrix4fv(uModelG, false, model);
-    gl!.uniform3f(uLight, 0.45, 0.85, 1.05);
+    // Soft key light — no specular hotspot / black pin.
+    gl!.uniform3f(uLight, 0.35, 0.55, 1.0);
     gl!.activeTexture(gl!.TEXTURE0);
     gl!.bindTexture(gl!.TEXTURE_2D, tex);
     gl!.uniform1i(uTex, 0);
@@ -467,37 +428,15 @@ async function createRenderer(canvas: HTMLCanvasElement) {
     gl!.vertexAttribPointer(aUvG, 2, gl!.FLOAT, false, 0, 0);
     gl!.bindBuffer(gl!.ELEMENT_ARRAY_BUFFER, sphere.idx);
     gl!.drawElements(gl!.TRIANGLES, sphere.count, gl!.UNSIGNED_SHORT, 0);
-
-    // Additive neon rings (fixed world tilt while globe spins).
-    gl!.depthMask(false);
-    gl!.blendFunc(gl!.SRC_ALPHA, gl!.ONE);
-
-    rotateX(rx, 1.08);
-    rotateZ(rz, 0.7);
-    mulMat4(rx, rz, ringModel);
-    drawRing(ringGlow, [0.15, 0.7, 1.0], ringModel);
-    drawRing(ringCore, [0.45, 0.95, 1.0], ringModel);
-
-    rotateX(rx, -1.15);
-    rotateZ(rz, -0.48);
-    mulMat4(rx, rz, ringModel);
-    drawRing(ringGlow, [1.0, 0.42, 0.05], ringModel);
-    drawRing(ringCore, [1.0, 0.7, 0.2], ringModel);
-
-    gl!.blendFunc(gl!.SRC_ALPHA, gl!.ONE_MINUS_SRC_ALPHA);
-    gl!.depthMask(true);
   }
 
   function destroy() {
     gl.deleteTexture(tex);
-    for (const m of [sphere, ringCore, ringGlow]) {
-      gl.deleteBuffer(m.pos);
-      gl.deleteBuffer(m.norm);
-      if (m.uv) gl.deleteBuffer(m.uv);
-      gl.deleteBuffer(m.idx);
-    }
+    gl.deleteBuffer(sphere.pos);
+    gl.deleteBuffer(sphere.norm);
+    if (sphere.uv) gl.deleteBuffer(sphere.uv);
+    gl.deleteBuffer(sphere.idx);
     gl.deleteProgram(globeProg);
-    gl.deleteProgram(ringProg);
     gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 
@@ -519,6 +458,7 @@ export default function AuthGlobe({ className = "" }: { className?: string }) {
     let start = performance.now();
     let reduced = prefersReducedMotion();
     let visible = document.visibilityState !== "hidden";
+    let inView = true;
 
     const applySize = () => {
       if (!renderer) return;
@@ -527,11 +467,26 @@ export default function AuthGlobe({ className = "" }: { className?: string }) {
       renderer.resize(size, size);
     };
 
+    const shouldAnimate = () => !cancelled && !!renderer && !reduced && visible && inView;
+
     const loop = (now: number) => {
-      if (cancelled || !renderer || reduced || !visible) return;
+      if (!shouldAnimate() || !renderer) return;
       const angle = ((now - start) / REVOLUTION_MS) * Math.PI * 2;
       renderer.render(angle);
       raf = requestAnimationFrame(loop);
+    };
+
+    const kick = () => {
+      cancelAnimationFrame(raf);
+      if (!renderer) return;
+      if (reduced) {
+        renderer.render(0.4);
+        return;
+      }
+      if (shouldAnimate()) {
+        start = performance.now() - ((performance.now() - start) % REVOLUTION_MS);
+        raf = requestAnimationFrame(loop);
+      }
     };
 
     const ro = new ResizeObserver(() => {
@@ -542,25 +497,29 @@ export default function AuthGlobe({ className = "" }: { className?: string }) {
 
     const onVis = () => {
       visible = document.visibilityState !== "hidden";
-      if (visible && !reduced && renderer) {
-        start = performance.now() - ((performance.now() - start) % REVOLUTION_MS);
-        raf = requestAnimationFrame(loop);
-      }
+      kick();
     };
     document.addEventListener("visibilitychange", onVis);
 
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onMq = () => {
       reduced = mq.matches;
-      cancelAnimationFrame(raf);
-      if (!renderer) return;
-      if (reduced) renderer.render(0.4);
-      else {
-        start = performance.now();
-        raf = requestAnimationFrame(loop);
-      }
+      kick();
     };
     mq.addEventListener?.("change", onMq);
+
+    // Pause off-screen to save battery (Login ↔ Sign Up still keep it alive).
+    let io: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== "undefined") {
+      io = new IntersectionObserver(
+        (entries) => {
+          inView = entries.some((e) => e.isIntersecting && e.intersectionRatio > 0);
+          kick();
+        },
+        { threshold: 0.05 },
+      );
+      io.observe(wrap);
+    }
 
     void (async () => {
       try {
@@ -570,14 +529,14 @@ export default function AuthGlobe({ className = "" }: { className?: string }) {
       }
       if (cancelled || !renderer) return;
       applySize();
-      if (reduced) renderer.render(0.4);
-      else raf = requestAnimationFrame(loop);
+      kick();
     })();
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
+      io?.disconnect();
       document.removeEventListener("visibilitychange", onVis);
       mq.removeEventListener?.("change", onMq);
       renderer?.destroy();
@@ -585,13 +544,16 @@ export default function AuthGlobe({ className = "" }: { className?: string }) {
   }, []);
 
   return (
-    <div ref={wrapRef} className={cn("auth-globe-canvas relative", className)} aria-hidden>
-      {/* Base lens flare / horizontal glow — matches mockup under the globe */}
-      <span className="auth-globe-flare" />
+    <div
+      ref={wrapRef}
+      className={cn("auth-globe-canvas relative", className)}
+      aria-hidden
+      style={{ background: "transparent" }}
+    >
       <canvas
         ref={canvasRef}
         className="relative z-[1] block h-full w-full"
-        style={{ width: "100%", height: "100%" }}
+        style={{ width: "100%", height: "100%", background: "transparent" }}
       />
     </div>
   );

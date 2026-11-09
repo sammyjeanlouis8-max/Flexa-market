@@ -6,13 +6,13 @@ import { cn } from "@/lib/utils";
 
 /**
  * Single bottom inset for the promo nav.
- * Prefer CSS env(); fall back to --sab (iOS WebView heuristic from index.html)
- * and --flexa-android-bottom (Android system nav). Use max() — never sum.
+ * Prefer CSS env(); fall back to --sab (iOS / FlexaMarket WebView heuristic
+ * from index.html) and --flexa-android-bottom. Use max() — never sum.
  */
 export const PROMO_NAV_SAFE_BOTTOM =
   "max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px))";
 
-/** Compact content row (icons + labels). Safe-area padding is separate. */
+/** Compact content row (icons + labels). */
 export const PROMO_NAV_CONTENT_PX = 52;
 
 export const PROMO_NAV_HEIGHT_CSS = `calc(${PROMO_NAV_CONTENT_PX}px + ${PROMO_NAV_SAFE_BOTTOM})`;
@@ -32,10 +32,11 @@ function resolveActive(pathname: string): ActiveTab {
 
 /**
  * TikTok-inspired fixed bottom navigation for Promotional Videos.
- * Center (+) opens the existing Booster create flow — never a duplicate uploader.
  *
- * On the fullscreen watch feed the nav is transparent (no solid black slab under
- * the buttons — video stays edge-to-edge). Discover / Favorites keep a solid bar.
+ * iOS / FlexaMarket WKWebView: on the watch feed we LIFT the nav with
+ * `bottom: safe-area` and keep the bar fully transparent so the home-indicator
+ * zone shows video — never a solid black slab covering the tab icons.
+ * Discover / Favorites keep a solid bar that extends into the safe area.
  */
 export default function PromoVideosBottomNav({
   active,
@@ -50,7 +51,6 @@ export default function PromoVideosBottomNav({
   const [location, navigate] = useLocation();
   const { user } = useAuth();
   const current = active ?? resolveActive(location);
-  // Fullscreen player: kill the opaque black bar so video fills the home-indicator zone.
   const isWatchFeed = location.startsWith("/videos/watch");
 
   const goLogin = (next: string) => {
@@ -95,30 +95,45 @@ export default function PromoVideosBottomNav({
   return (
     <nav
       className={cn(
-        "pointer-events-auto fixed inset-x-0 bottom-0 z-[70] lg:hidden",
+        "pointer-events-auto fixed inset-x-0 z-[70] lg:hidden",
         isWatchFeed
           ? "border-t-0 bg-transparent"
-          : "border-t border-white/10 bg-black",
+          : "bottom-0 border-t border-white/10 bg-black",
         className,
       )}
-      style={{
-        // Do NOT set height on the nav — only pad the safe-area. Setting both
-        // height + paddingBottom under border-box clipped the icon row (black
-        // bar covering the lower half of Home/Discover/+ buttons).
-        paddingBottom: PROMO_NAV_SAFE_BOTTOM,
-        paddingLeft: "env(safe-area-inset-left, 0px)",
-        paddingRight: "env(safe-area-inset-right, 0px)",
-        background: isWatchFeed
-          ? "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.2) 55%, transparent 100%)"
-          : undefined,
-        overflow: "visible",
-      }}
+      style={
+        isWatchFeed
+          ? {
+              // Lift the whole icon row above the iOS home indicator / WebView
+              // safe area. Do NOT paint padding with black — that created the
+              // "ba nwa" covering the lower half of the tab buttons.
+              bottom: PROMO_NAV_SAFE_BOTTOM,
+              paddingBottom: 0,
+              paddingLeft: "env(safe-area-inset-left, 0px)",
+              paddingRight: "env(safe-area-inset-right, 0px)",
+              background: "transparent",
+              overflow: "visible",
+            }
+          : {
+              bottom: 0,
+              paddingBottom: PROMO_NAV_SAFE_BOTTOM,
+              paddingLeft: "env(safe-area-inset-left, 0px)",
+              paddingRight: "env(safe-area-inset-right, 0px)",
+              overflow: "visible",
+            }
+      }
       aria-label={t("nav.main", { defaultValue: "Main navigation" })}
       data-testid="promo-videos-bottom-nav"
     >
       <div
         className="grid w-full grid-cols-5 items-center px-1"
-        style={{ height: `${PROMO_NAV_CONTENT_PX}px` }}
+        style={{
+          height: `${PROMO_NAV_CONTENT_PX}px`,
+          // Soft readable fade behind icons only — never fills the home-indicator gap.
+          background: isWatchFeed
+            ? "linear-gradient(to top, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.15) 70%, transparent 100%)"
+            : undefined,
+        }}
       >
         <button
           type="button"

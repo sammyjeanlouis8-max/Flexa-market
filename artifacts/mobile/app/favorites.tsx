@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function FavoritesScreen() {
-  return <SafeWebView uri="https://flexamarket.com/favorites" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Favorites'
+      detail='Favorites will load from the existing favorites API natively.'
+    />
+  );
 }

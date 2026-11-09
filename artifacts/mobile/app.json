@@ -46,9 +46,8 @@
       }
     },
     "android": {
-      "package": "com.flexa.market",
-      "googleServicesFile": "./google-services.json",
-      "versionCode": 39,
+      "package": "com.flexamarket.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0F172A"
@@ -79,6 +78,7 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
+      "expo-router",
       [
         "expo-build-properties",
         {

@@ -1,6 +1,10 @@
-import SafeWebView from "@/components/SafeWebView";
+import { SellForm } from "@/components/SellForm";
 import React from "react";
 
+/**
+ * Native Sell tab — product creation with Android Photo Picker.
+ * No WebView. Reuses existing /api/listings + Wasabi upload routes.
+ */
 export default function SellTab() {
-  return <SafeWebView uri="https://flexamarket.com/sell" showBack={false} />;
+  return <SellForm mode="create" />;
 }

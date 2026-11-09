@@ -1,5 +1,11 @@
-import { Redirect } from "expo-router";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
+import React from "react";
 
-export default function LoansScreen() {
-  return <Redirect href="/" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Loans'
+      detail='Loans feature will be native when this wave lands.'
+    />
+  );
 }

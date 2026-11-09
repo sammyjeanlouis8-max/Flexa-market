@@ -6,7 +6,8 @@ const TOKEN_KEY = "flexamarket_token";
 export function getBaseUrl() {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
   if (domain) return `https://${domain}/api`;
-  return "https://lionfish-app-feohg.ondigitalocean.app/api";
+  // Same production API the website uses — backend / Postgres / Wasabi unchanged.
+  return "https://flexamarket.com/api";
 }
 
 export interface User {

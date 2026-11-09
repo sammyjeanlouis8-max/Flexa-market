@@ -1,6 +1,9 @@
-import { registerRootComponent } from "expo";
-import App from "./App";
-
-// Plain React Native entry — no expo-router, no file-based routing.
-// This is intentional: the app is a single-screen WebView shell.
-registerRootComponent(App);
+/**
+ * Flexa Market — native Expo Router entry (Phase 2 corrective path).
+ *
+ * Google Play suspended com.flexa.market (version code 48) for Webviews and
+ * Affiliate Spam because the prior binary was a WebView shell. Primary UI
+ * must be genuine React Native screens. The legacy WebView shell lives in
+ * LegacyWebViewShell.tsx and is NOT registered as the root component.
+ */
+import "expo-router/entry";

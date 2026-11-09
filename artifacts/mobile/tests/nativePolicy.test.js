@@ -26,12 +26,18 @@ test("Android blocks broad storage and battery permissions", () => {
 });
 
 test("Android gallery selection uses the system picker without broad media permission", () => {
-  const source = fs.readFileSync(
-    path.join(__dirname, "..", "app", "(tabs)", "index.tsx"),
+  const picker = fs.readFileSync(
+    path.join(__dirname, "..", "hooks", "usePhotoPicker.ts"),
     "utf8",
   );
-  assert.equal(source.includes("requestMediaLibraryPermissionsAsync"), false);
-  assert.equal(source.includes("launchImageLibraryAsync"), true);
+  const sell = fs.readFileSync(
+    path.join(__dirname, "..", "app", "(tabs)", "sell.tsx"),
+    "utf8",
+  );
+  assert.equal(picker.includes("requestMediaLibraryPermissionsAsync"), false);
+  assert.equal(picker.includes("launchImageLibraryAsync"), true);
+  assert.equal(sell.includes("SellForm"), true);
+  assert.equal(sell.includes("SafeWebView"), false);
 });
 
 test("dependency check accepts exact lock versions and never repairs files", () => {

@@ -1,6 +1,11 @@
-import SafeWebView from "@/components/SafeWebView";
+import { NativePlaceholder } from "@/components/NativePlaceholder";
 import React from "react";
 
-export default function SettingsScreen() {
-  return <SafeWebView uri="https://flexamarket.com/settings" />;
+export default function Screen() {
+  return (
+    <NativePlaceholder
+      title='Settings'
+      detail='Settings will be native React Native screens.'
+    />
+  );
 }

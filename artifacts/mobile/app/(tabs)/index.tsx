@@ -1,263 +1,164 @@
 /**
- * Flexa Market — 100% WebView shell
- *
- * Features:
- *  - Full-screen WebView loading flexamarket.com
- *  - Push notifications via expo-notifications (injected into WebView)
- *  - Stripe opens inside the same WebView (fixes missing payment buttons)
- *  - iOS video-input interceptor (WKWebView can't open camera for video)
- *  - Android hardware-back navigates WebView history
- *  - External links open in system browser
- *  - Safe-area insets injected as CSS variables (--sat / --sab)
+ * Native Marketplace Home — listings feed + category chips.
+ * Corrective path for Google Play Webviews / Affiliate Spam suspension.
  */
-
-import * as FileSystem from "expo-file-system/legacy";
-import * as ImagePicker from "expo-image-picker";
-import * as Notifications from "expo-notifications";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { CategoryChips } from "@/components/CategoryChips";
+import { ListingCard } from "@/components/ListingCard";
+import { SkeletonCard } from "@/components/SkeletonCard";
+import { StateView } from "@/components/StateView";
+import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { useMarketplace } from "@/context/MarketplaceContext";
+import { useListingsFeed } from "@/hooks/useListingsFeed";
+import { countryFlag } from "@/lib/countries";
+import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
+import React, { useMemo, useState } from "react";
 import {
-  ActionSheetIOS,
-  BackHandler,
-  Linking,
-  Platform,
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
   StyleSheet,
+  Text,
+  View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import WebView from "react-native-webview";
-import { usePushNotifications } from "../../hooks/usePushNotifications";
-import {
-  ANDROID_UA_SUFFIX,
-  classifyWebUrl,
-  platformBridgeScript,
-} from "../../security/webviewPolicy";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const WEBSITE = "https://flexamarket.com";
-const MAX_BRIDGE_BYTES = 40 * 1024 * 1024; // 40 MB
-
-// The marketplace WebView owns the bottom safe-area inset. Reserving the
-// bottom edge here shrinks the WebView and puts a native white strip over the
-// chat composer and the bottom ad controls, making their visible center
-// untappable on iPhone.
-const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
-  Platform.OS === "ios" ? ["top"] : [];
-
-// ─── Injected script ──────────────────────────────────────────────────────────
-const INIT_SCRIPT = `
-(function(){
-  ${platformBridgeScript(Platform.OS)}
-  if(!window.__flexaCtxBlocked){
-    window.__flexaCtxBlocked=true;
-    document.addEventListener('contextmenu',function(e){e.preventDefault();},true);
-  }
-  ${Platform.OS === "ios" ? `
-  if(!window.__flexaVideoInterceptInit){
-    window.__flexaVideoInterceptInit=true;
-    var _pi=null;
-    function _isVid(el){return el&&el.tagName==='INPUT'&&el.type==='file'&&/video/i.test(el.accept||'');}
-    function _hook(el){
-      if(!el||el.__fxh||!_isVid(el))return;
-      el.__fxh=true;
-      el.addEventListener('click',function(e){
-        e.preventDefault();e.stopImmediatePropagation();
-        _pi=el;
-        window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'PICK_VIDEO'}));
-      },true);
-    }
-    document.querySelectorAll('input[type="file"]').forEach(_hook);
-    new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){
-      if(!n||n.nodeType!==1)return;
-      if(n.tagName==='INPUT')_hook(n);
-      if(n.querySelectorAll)n.querySelectorAll('input[type="file"]').forEach(_hook);
-    });});}).observe(document.body,{childList:true,subtree:true});
-    var _oc=HTMLInputElement.prototype.click;
-    HTMLInputElement.prototype.click=function(){
-      if(_isVid(this)&&window.ReactNativeWebView){_pi=this;window.ReactNativeWebView.postMessage(JSON.stringify({type:'PICK_VIDEO'}));return;}
-      _oc.call(this);
-    };
-    window.__flexaReceiveVideo=function(b64,mime,name){
-      var inp=_pi;_pi=null;if(!inp)return;
-      try{
-        var bs=atob(b64),bytes=new Uint8Array(bs.length);
-        for(var i=0;i<bs.length;i++)bytes[i]=bs.charCodeAt(i);
-        var f=new File([new Blob([bytes],{type:mime})],name,{type:mime,lastModified:Date.now()});
-        var dt=new DataTransfer();dt.items.add(f);
-        inp.files=dt.files;
-        inp.dispatchEvent(new Event('change',{bubbles:true}));
-      }catch(e){console.error('[FxVid]',e);}
-    };
-    window.__flexaVideoCancel=function(){_pi=null;};
-  }
-  ` : ""}
-})();true;
-`.trim();
-
-// ─── Component ────────────────────────────────────────────────────────────────
 export default function HomeTab() {
-  const webRef = useRef<any>(null);
-  const [canGoBack, setCanGoBack] = useState(false);
-  const insets = useSafeAreaInsets();
+  const { token, user } = useAuth();
+  const { t } = useLanguage();
+  const { country, categories, isOffline } = useMarketplace();
+  const [categorySlug, setCategorySlug] = useState<string | null>(null);
 
-  const injectJs = useCallback((script: string) => {
-    webRef.current?.injectJavaScript(script);
-  }, []);
+  const filter = useMemo(
+    () => ({
+      category: categorySlug || undefined,
+      limit: 20,
+    }),
+    [categorySlug],
+  );
 
-  // Push notifications — token injected into WebView on load
-  const tokenRef = usePushNotifications(injectJs);
-
-  // Android hardware back
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (canGoBack) { webRef.current?.goBack(); return true; }
-      return false;
-    });
-    return () => sub.remove();
-  }, [canGoBack]);
-
-  // Re-inject safe-area vars + push token on every page load
-  const onLoadEnd = useCallback(() => {
-    injectJs(
-      `(function(){
-        document.documentElement.style.setProperty('--sat','${Math.round(insets.top)}px');
-        document.documentElement.style.setProperty('--sab','${Math.round(insets.bottom)}px');
-      })();true;`
-    );
-    const token = tokenRef.current;
-    if (token) {
-      const p = Platform.OS;
-      injectJs(
-        `(function(){
-          try{if(location.protocol!=="https:"||!(location.hostname==="flexamarket.com"||location.hostname.endsWith(".flexamarket.com")))return;}catch(e){return;}
-          window.__expoPushToken=${JSON.stringify(token)};
-          window.__expoPushPlatform=${JSON.stringify(p)};
-          if(typeof window.__onExpoPushToken==='function')
-            window.__onExpoPushToken(${JSON.stringify(token)},${JSON.stringify(p)});
-        })();true;`
-      );
-    }
-  }, [insets, injectJs, tokenRef]);
-
-  const onShouldStartLoadWithRequest = useCallback((req: any) => {
-    const route = classifyWebUrl(req.url);
-    if (route === "flexa" || route === "stripe" || route === "moncash") return true;
-    if (route === "external") Linking.openURL(req.url).catch(() => {});
-    return false;
-  }, []);
-
-  const onOpenWindow = useCallback((event: any) => {
-    const url = event.nativeEvent?.targetUrl;
-    if (!url) return;
-    const route = classifyWebUrl(url);
-    if (route === "flexa" || route === "stripe" || route === "moncash") {
-      webRef.current?.injectJavaScript(`window.location.href=${JSON.stringify(url)};true;`);
-    } else if (route === "external") {
-      Linking.openURL(url).catch(() => {});
-    }
-  }, []);
-
-  const handleMessage = useCallback((event: any) => {
-    if (Platform.OS !== "ios") return;
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "PICK_VIDEO") handleNativeVideoPick();
-    } catch { /* ignore non-JSON */ }
-  }, []);
-
-  // ── Video picker ────────────────────────────────────────────────────────────
-  const cancelVideoPick = useCallback(() => {
-    injectJs("window.__flexaVideoCancel&&window.__flexaVideoCancel();true;");
-  }, [injectJs]);
-
-  const deliverVideo = useCallback(async (uri: string) => {
-    try {
-      const info = await FileSystem.getInfoAsync(uri);
-      if (((info as any).size ?? 0) > MAX_BRIDGE_BYTES) {
-        injectJs(`window.__flexaVideoCancel&&window.__flexaVideoCancel();alert('Vidéo a twò gwo (limit: 40 MB).');true;`);
-        return;
-      }
-      const ext = (uri.split(".").pop() ?? "mp4").toLowerCase().split("?")[0];
-      const mime = ext === "mov" ? "video/quicktime" : ext === "webm" ? "video/webm" : "video/mp4";
-      const name = `video_${Date.now()}.${ext}`;
-      const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-      const CHUNK = 256 * 1024;
-      injectJs("window.__flexaB64=[];true;");
-      for (let i = 0; i < b64.length; i += CHUNK) {
-        injectJs(`window.__flexaB64.push(${JSON.stringify(b64.slice(i, i + CHUNK))});true;`);
-      }
-      injectJs(
-        `window.__flexaReceiveVideo(window.__flexaB64.join(''),${JSON.stringify(mime)},${JSON.stringify(name)});window.__flexaB64=null;true;`
-      );
-    } catch {
-      cancelVideoPick();
-    }
-  }, [injectJs, cancelVideoPick]);
-
-  const pickVideoFromCamera = useCallback(async () => {
-    const { granted } = await ImagePicker.requestCameraPermissionsAsync();
-    if (!granted) { cancelVideoPick(); return; }
-    const r = await ImagePicker.launchCameraAsync({ mediaTypes: "videos", videoMaxDuration: 180 });
-    if (r.canceled || !r.assets?.[0]?.uri) { cancelVideoPick(); return; }
-    await deliverVideo(r.assets[0].uri);
-  }, [cancelVideoPick, deliverVideo]);
-
-  const pickVideoFromLibrary = useCallback(async () => {
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "videos", videoMaxDuration: 180 });
-    if (r.canceled || !r.assets?.[0]?.uri) { cancelVideoPick(); return; }
-    await deliverVideo(r.assets[0].uri);
-  }, [cancelVideoPick, deliverVideo]);
-
-  const handleNativeVideoPick = useCallback(() => {
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: ["Anile", "Anrejistre Vidéo", "Chwazi nan Galeri"], cancelButtonIndex: 0 },
-        (i) => {
-          if (i === 1) pickVideoFromCamera();
-          else if (i === 2) pickVideoFromLibrary();
-          else cancelVideoPick();
-        }
-      );
-    } else {
-      pickVideoFromLibrary();
-    }
-  }, [pickVideoFromCamera, pickVideoFromLibrary, cancelVideoPick]);
+  const feed = useListingsFeed(filter);
 
   return (
-    <SafeAreaView style={styles.container} edges={SAFE_EDGES}>
-      <WebView
-        ref={webRef}
-        source={{ uri: WEBSITE }}
-        style={styles.webview}
-        javaScriptEnabled
-        domStorageEnabled
-        thirdPartyCookiesEnabled
-        injectedJavaScript={INIT_SCRIPT}
-        injectedJavaScriptBeforeContentLoaded={INIT_SCRIPT}
-        applicationNameForUserAgent={
-          Platform.OS === "android" ? ANDROID_UA_SUFFIX : undefined
-        }
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        allowsFullscreenVideo
-        allowsBackForwardNavigationGestures={Platform.OS === "ios"}
-        setSupportMultipleWindows={false}
-        originWhitelist={["https://*"]}
-        mixedContentMode="never"
-        cacheEnabled
-        startInLoadingState
-        keyboardDisplayRequiresUserAction={false}
-        renderToHardwareTextureAndroid
-        onNavigationStateChange={(s) => setCanGoBack(s.canGoBack)}
-        onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
-        onOpenWindow={onOpenWindow}
-        onLoadEnd={onLoadEnd}
-        onMessage={handleMessage}
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text style={styles.brand}>Flexa Market</Text>
+          <Text style={styles.sub}>
+            {user ? `${t("greeting")}, ${user.name?.split(" ")[0] || "there"}` : t("tabHome")}
+          </Text>
+        </View>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Select country"
+            style={styles.headerBtn}
+            onPress={() => router.push("/country-picker")}
+          >
+            <Text style={styles.flag}>{countryFlag(country)}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            style={styles.headerBtn}
+            onPress={() => router.push(token ? "/(tabs)/profile" : "/auth/login")}
+          >
+            <Feather name={token ? "user" : "log-in"} size={18} color="#F8FAFC" />
+          </Pressable>
+        </View>
+      </View>
+
+      <CategoryChips
+        categories={categories}
+        selectedSlug={categorySlug}
+        onSelect={setCategorySlug}
+        onSeeAll={() => router.push("/categories")}
       />
+
+      {feed.loading && feed.listings.length === 0 ? (
+        <View style={styles.skeletonGrid}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </View>
+      ) : (
+        <StateView
+          error={feed.listings.length === 0 ? feed.error : null}
+          offline={feed.listings.length === 0 && (feed.offline || isOffline)}
+          empty={!feed.loading && !feed.error && feed.listings.length === 0}
+          emptyTitle={t("noListings")}
+          emptyDetail={`No results in ${country}${categorySlug ? ` · ${categorySlug}` : ""}.`}
+          onRetry={feed.reload}
+        >
+          <FlatList
+            data={feed.listings}
+            keyExtractor={(item) => String(item.id)}
+            numColumns={2}
+            columnWrapperStyle={styles.row}
+            contentContainerStyle={styles.list}
+            refreshControl={
+              <RefreshControl
+                refreshing={feed.refreshing}
+                onRefresh={feed.refresh}
+                tintColor="#F97316"
+                colors={["#F97316"]}
+              />
+            }
+            onEndReached={() => feed.loadMore()}
+            onEndReachedThreshold={0.4}
+            ListFooterComponent={
+              feed.loadingMore ? (
+                <ActivityIndicator color="#F97316" style={{ marginVertical: 16 }} />
+              ) : (
+                <Text style={styles.footerMeta}>
+                  {feed.total > 0 ? `${feed.listings.length} / ${feed.total}` : ""}
+                </Text>
+              )
+            }
+            renderItem={({ item }) => <ListingCard item={item} />}
+          />
+        </StateView>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  webview: { flex: 1 },
+  safe: { flex: 1, backgroundColor: "#0B1220" },
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerText: { flex: 1, paddingRight: 8 },
+  brand: { fontSize: 26, fontWeight: "800", color: "#F8FAFC", letterSpacing: -0.4 },
+  sub: { marginTop: 2, fontSize: 13, color: "#94A3B8" },
+  headerActions: { flexDirection: "row", gap: 8 },
+  headerBtn: {
+    minWidth: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#1E293B",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  flag: { fontSize: 18 },
+  list: { paddingHorizontal: 12, paddingBottom: 24 },
+  row: { justifyContent: "space-between" },
+  skeletonGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+  },
+  footerMeta: {
+    textAlign: "center",
+    color: "#64748B",
+    fontSize: 12,
+    marginVertical: 12,
+  },
 });

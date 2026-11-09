@@ -1,12 +1,16 @@
 /**
- * Flexa Market — WebView shell with Android push notifications.
+ * LEGACY — quarantined WebView shell (NOT the app entry point).
  *
- * Key behaviors:
+ * Google Play suspended com.flexa.market version code 48 for Webviews and
+ * Affiliate Spam because this shell made the website the primary UI.
+ * Phase 2 corrective path uses expo-router native screens (see index.js).
+ * Keep this file for historical reference / selective bridge extraction only.
+ * Do not register it with registerRootComponent.
+ *
+ * Former behaviors (for migration reference):
  * 1. Push token registration (FCM/APNs) — injected into WebView on load.
- * 2. Cold-start navigation — notification URL captured before WebView loads,
- *    injected in onLoadEnd (fixes the double-tap bug).
- * 3. Durable background uploads — trusted WebView requests are handed to a
- *    native WorkManager foreground worker after their file has been staged.
+ * 2. Cold-start navigation — notification URL captured before WebView loads.
+ * 3. Durable background uploads via WorkManager after staging.
  */
 import React, { useCallback, useRef, useState, useEffect } from "react";
 import {

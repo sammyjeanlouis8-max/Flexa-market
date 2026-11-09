@@ -1,6 +1,7 @@
-import SafeWebView from "@/components/SafeWebView";
+import { Redirect } from "expo-router";
 import React from "react";
 
-export default function SalesScreen() {
-  return <SafeWebView uri="https://flexamarket.com/sales" />;
+/** Seller sales live under My Orders → Selling tab. */
+export default function SalesRedirect() {
+  return <Redirect href="/orders" />;
 }

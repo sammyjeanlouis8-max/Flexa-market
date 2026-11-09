@@ -1,7 +1,7 @@
 export function getBaseUrl() {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
   if (domain) return `https://${domain}/api`;
-  return "https://lionfish-app-feohg.ondigitalocean.app/api";
+  return "https://flexamarket.com/api";
 }
 
 export function useApi() {

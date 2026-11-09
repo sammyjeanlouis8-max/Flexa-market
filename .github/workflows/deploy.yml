@@ -179,3 +179,5 @@ jobs:
 # Owner requested fe deploy: remove black bar under promo nav buttons (2026-11-09).
 
 # Owner requested fe deploy: Super Admin All Videos all-countries fix (2026-11-09).
+
+# Owner requested deploy retry: Super Admin All Videos + promo nav (2026-11-09).

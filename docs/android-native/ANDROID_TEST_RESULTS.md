@@ -1,7 +1,7 @@
 # ANDROID_TEST_RESULTS.md
 
-**Phase:** Phase 2 Milestone 5 (+ prior)  
-**Rule:** Do not claim tests passed unless executed.
+**Phase:** Phase 2 Milestone 5.1 (+ prior)  
+**Rule:** Do not claim tests passed unless executed. Do not claim push delivery works without device verification.
 
 ---
 
@@ -9,6 +9,10 @@
 
 | ID | Activity | Environment | Result |
 |---|---|---|---|
+| M5.1-TSC | `npm run typecheck` in `@workspace/mobile` | Cloud agent | **PASS** (this turn) |
+| M5.1-UNIT | firebaseAndroidConfig + pushLifecycle + routing + prior | Cloud agent | **PASS** (this turn) |
+| M5.1-FIREBASE-SCRIPT | `node scripts/validate-firebase-android.mjs` | Cloud agent | **EXIT 2** expected — `com.flexamarket.app` missing from JSON |
+| M5.1-FCM-DEVICE | Physical/emulator push delivery | — | **NOT RUN** |
 | M5-TSC | `npm run typecheck` in `@workspace/mobile` | Cloud agent | **PASS** |
 | M5-UNIT | notificationRouting + pushToken + firebaseAndroidConfig + prior suites | Cloud agent | **PASS** (28/28) |
 | M5-API | Live auth gates: conversations, messages, notifications, support, push token, prefs, chatbot → 401; chatbot/status 200 | `flexamarket.com` | **PASS** |

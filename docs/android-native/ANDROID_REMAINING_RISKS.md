@@ -24,9 +24,9 @@ Related: `ANDROID_SUSPENSION_AND_CORRECTIVE_ACTIONS.md`, `ANDROID_PHASE2_MILESTO
 
 | Blocker | Severity | Notes |
 |---|---|---|
-| Firebase / FCM for `com.flexamarket.app` | **High** | Console registration + matching `google-services.json` still required; see `google-services.README.md` |
+| Firebase / FCM for `com.flexamarket.app` | **High** | M5.1: Console registration still owner-blocked; client gates refuse to wire legacy JSON |
 | Emulator / device proof not run | **High** | Cold-start native Home + push cold/warm must be demonstrated before submit |
-| Push notification device delivery | **High** | Client lifecycle coded; physical FCM blocked until Firebase JSON cutover |
+| Push notification device delivery | **High** | Do not claim delivery until post-JSON device test; architecture ready |
 | Release signing / EAS credentials for new package | **Medium** | Configure only when Sammy authorizes a build |
 | Remaining placeholder screens (wallet, settings shell, etc.) | **Medium** | Core chat/notifications native; placeholders intentional for later milestones |
 | Merge to main / production deploy | **Gate** | Forbidden without explicit approval |

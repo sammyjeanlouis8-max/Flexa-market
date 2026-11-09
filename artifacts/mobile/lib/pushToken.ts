@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api";
+import { isExpoPushTokenFormat } from "@/lib/pushLifecycle";
 import { Platform } from "react-native";
 
 /** Register Expo push token with existing backend (FCM via Expo). */
@@ -7,7 +8,7 @@ export async function registerExpoPushToken(
   authJwt: string,
   deviceId: string | null = null,
 ): Promise<boolean> {
-  if (!token.startsWith("ExponentPushToken") && !token.startsWith("Expo")) {
+  if (!isExpoPushTokenFormat(token)) {
     // Backend requires Expo-format tokens.
     return false;
   }

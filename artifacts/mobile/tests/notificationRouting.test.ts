@@ -60,4 +60,15 @@ describe("notificationRouting", () => {
       pathname: "/notifications",
     });
   });
+
+  it("routes Flexa Music and seller sale alerts", () => {
+    assert.deepEqual(routeFromPushUrl("/music/upload"), { pathname: "/notifications" });
+    assert.deepEqual(routeFromNotification({ type: "music_ready" }), {
+      pathname: "/notifications",
+    });
+    assert.deepEqual(routeFromNotification({ type: "new_order_seller", referenceId: 3 }), {
+      pathname: "/orders/[id]",
+      params: { id: "3" },
+    });
+  });
 });

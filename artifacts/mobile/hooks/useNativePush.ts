@@ -1,5 +1,6 @@
 import { useAuth } from "@/context/AuthContext";
-import { routeFromPushUrl } from "@/lib/notificationRouting";
+import { routeFromPushData } from "@/lib/notificationRouting";
+import { planLogoutTokenCleanup, planTokenRegistration } from "@/lib/pushLifecycle";
 import { registerExpoPushToken, unregisterExpoPushToken } from "@/lib/pushToken";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
@@ -9,6 +10,10 @@ import { AppState, Platform } from "react-native";
 
 const EXPO_PROJECT_ID = "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e";
 
+/**
+ * Android notification channels aligned with backend `channelId` values
+ * (orders, default, admin-broadcast, flexa-tv) plus native coverage channels.
+ */
 async function ensureChannels() {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -21,59 +26,88 @@ async function ensureChannels() {
 
   if (Platform.OS !== "android") return;
 
-  await Notifications.setNotificationChannelAsync("flexa-messages", {
-    name: "Messages",
-    description: "Chat and support messages",
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 500, 200, 500],
-    lightColor: "#F97316",
-    sound: "default",
-    showBadge: true,
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-  }).catch(() => {});
+  const defs: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    importance: Notifications.AndroidImportance;
+    bypassDnd?: boolean;
+  }> = [
+    {
+      id: "flexa-messages",
+      name: "Messages",
+      description: "Chat and support messages",
+      importance: Notifications.AndroidImportance.MAX,
+    },
+    {
+      id: "orders",
+      name: "Orders",
+      description: "Orders, payments, delivery, and seller sales",
+      importance: Notifications.AndroidImportance.MAX,
+      bypassDnd: true,
+    },
+    {
+      id: "default",
+      name: "Flexa Market",
+      description: "General Flexa Market alerts",
+      importance: Notifications.AndroidImportance.HIGH,
+    },
+    {
+      id: "promotions",
+      name: "Promotions",
+      description: "Boosts, promotional videos, marketing",
+      importance: Notifications.AndroidImportance.DEFAULT,
+    },
+    {
+      id: "admin-broadcast",
+      name: "Announcements",
+      description: "System announcements and admin communications",
+      importance: Notifications.AndroidImportance.HIGH,
+    },
+    {
+      id: "flexa-tv",
+      name: "Flexa TV",
+      description: "Live TV and broadcast alerts",
+      importance: Notifications.AndroidImportance.DEFAULT,
+    },
+    {
+      id: "wallet",
+      name: "Wallet",
+      description: "Wallet and payout updates",
+      importance: Notifications.AndroidImportance.HIGH,
+    },
+    {
+      id: "security",
+      name: "Security",
+      description: "Account security alerts",
+      importance: Notifications.AndroidImportance.MAX,
+    },
+    {
+      id: "music",
+      name: "Flexa Music",
+      description: "Flexa Music updates",
+      importance: Notifications.AndroidImportance.DEFAULT,
+    },
+  ];
 
-  await Notifications.setNotificationChannelAsync("orders", {
-    name: "Orders",
-    description: "Orders, payments, and delivery updates",
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 500, 200, 500, 200, 500],
-    lightColor: "#F97316",
-    sound: "default",
-    bypassDnd: true,
-    showBadge: true,
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-  }).catch(() => {});
-
-  await Notifications.setNotificationChannelAsync("default", {
-    name: "Flexa Market",
-    importance: Notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 300, 200, 300],
-    lightColor: "#F97316",
-    sound: "default",
-    showBadge: true,
-  }).catch(() => {});
-
-  await Notifications.setNotificationChannelAsync("promotions", {
-    name: "Promotions",
-    description: "Boosts, videos, and promotional updates",
-    importance: Notifications.AndroidImportance.DEFAULT,
-    sound: "default",
-    showBadge: true,
-  }).catch(() => {});
-
-  // Matches backend channelId used by admin broadcast pushes.
-  await Notifications.setNotificationChannelAsync("admin-broadcast", {
-    name: "Announcements",
-    description: "System announcements and admin communications",
-    importance: Notifications.AndroidImportance.HIGH,
-    sound: "default",
-    showBadge: true,
-  }).catch(() => {});
+  for (const ch of defs) {
+    await Notifications.setNotificationChannelAsync(ch.id, {
+      name: ch.name,
+      description: ch.description,
+      importance: ch.importance,
+      vibrationPattern: [0, 400, 200, 400],
+      lightColor: "#F97316",
+      sound: "default",
+      showBadge: true,
+      bypassDnd: ch.bypassDnd,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    }).catch(() => {});
+  }
 }
 
 async function getExpoToken(): Promise<string | null> {
   if (!Device.isDevice) {
-    console.warn("[push] Physical device or configured emulator with FCM required");
+    console.warn("[push] Physical device or FCM-capable emulator required");
     return null;
   }
   await ensureChannels();
@@ -92,30 +126,17 @@ async function getExpoToken(): Promise<string | null> {
     ]);
     return result && "data" in result ? result.data : null;
   } catch (e) {
-    console.warn("[push] getExpoPushTokenAsync failed — Firebase google-services may be missing for com.flexamarket.app", e);
+    // Expected until Firebase Android app com.flexamarket.app + matching google-services.json.
+    console.warn(
+      "[push] getExpoPushTokenAsync failed — register com.flexamarket.app in Firebase and wire googleServicesFile",
+      e,
+    );
     return null;
   }
 }
 
 function navigateFromNotificationData(data: Record<string, unknown> | undefined) {
-  if (!data) {
-    router.push("/notifications");
-    return;
-  }
-  const url = typeof data.url === "string" ? data.url : null;
-  const conversationId =
-    data.conversationId != null
-      ? String(data.conversationId)
-      : data.params && typeof data.params === "object" && (data.params as any).conversationId != null
-        ? String((data.params as any).conversationId)
-        : null;
-
-  if (conversationId) {
-    router.push({ pathname: "/chat/[id]", params: { id: conversationId } });
-    return;
-  }
-
-  const route = routeFromPushUrl(url);
+  const route = routeFromPushData(data);
   if (!route) {
     router.push("/notifications");
     return;
@@ -126,11 +147,11 @@ function navigateFromNotificationData(data: Record<string, unknown> | undefined)
 
 /**
  * Native push bootstrap: Android 13+ permission, channels, token lifecycle,
- * foreground/background tap routing. Requires Firebase Android app for
+ * foreground/background/killed tap routing. Requires Firebase Android app for
  * com.flexamarket.app before tokens succeed on device.
  */
 export function useNativePush() {
-  const { token: jwt, logout } = useAuth();
+  const { token: jwt } = useAuth();
   const pushTokenRef = useRef<string | null>(null);
   const jwtRef = useRef<string | null>(jwt);
   jwtRef.current = jwt;
@@ -148,7 +169,14 @@ export function useNativePush() {
         if (cancelled || !expoToken) return;
         pushTokenRef.current = expoToken;
         const auth = jwtRef.current;
-        if (auth) {
+        const plan = planTokenRegistration({
+          expoToken,
+          authJwt: auth,
+          permissionGranted: true,
+          // Native token mint already succeeded ⇒ FCM config present for this binary.
+          firebaseConfiguredForPackage: true,
+        });
+        if (plan.shouldRegister && auth) {
           await registerExpoPushToken(expoToken, auth);
         }
       } finally {
@@ -161,6 +189,17 @@ export function useNativePush() {
 
     void syncToken();
 
+    // Cold start / killed-state: open the screen for the notification that launched the app.
+    void Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (!response || cancelled) return;
+        const data = response.notification.request.content.data as
+          | Record<string, unknown>
+          | undefined;
+        navigateFromNotificationData(data);
+      })
+      .catch(() => {});
+
     const appStateSub = AppState.addEventListener("change", (state) => {
       if (state === "active") void syncToken();
     });
@@ -171,7 +210,12 @@ export function useNativePush() {
     });
 
     const receiveSub = Notifications.addNotificationReceivedListener(() => {
-      // Foreground: system handler already shows banner; inbox screens poll independently.
+      // Foreground: system handler shows banner; inbox/notification screens poll independently.
+    });
+
+    // Token refresh (FCM rotates device token → Expo token updates).
+    const tokenSub = Notifications.addPushTokenListener(() => {
+      void syncToken();
     });
 
     return () => {
@@ -180,10 +224,11 @@ export function useNativePush() {
       appStateSub.remove();
       responseSub.remove();
       receiveSub.remove();
+      tokenSub.remove();
     };
   }, []);
 
-  // Re-register when JWT appears (login) / clear on logout.
+  // Re-register when JWT appears (login).
   useEffect(() => {
     const expoToken = pushTokenRef.current;
     if (jwt && expoToken) {
@@ -194,13 +239,14 @@ export function useNativePush() {
   return {
     getPushToken: () => pushTokenRef.current,
     unregisterOnLogout: async () => {
-      const expoToken = pushTokenRef.current;
-      const auth = jwtRef.current;
-      if (expoToken && auth) {
-        await unregisterExpoPushToken(expoToken, auth).catch(() => false);
+      const plan = planLogoutTokenCleanup({
+        previousJwt: jwtRef.current,
+        nextJwt: null,
+        expoToken: pushTokenRef.current,
+      });
+      if (plan.shouldUnregister && plan.expoToken && plan.authJwtToUse) {
+        await unregisterExpoPushToken(plan.expoToken, plan.authJwtToUse).catch(() => false);
       }
-      // logout is available if callers need it; token cleanup is primary.
-      void logout;
     },
   };
 }

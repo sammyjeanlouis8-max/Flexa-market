@@ -8,6 +8,7 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "firebase:android:check": "node scripts/validate-firebase-android.mjs",
     "release:check": "node scripts/release-preflight.mjs",
     "postinstall": "node scripts/patch-expo-router-ctx.js"
   },

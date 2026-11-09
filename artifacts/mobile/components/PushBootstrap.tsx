@@ -1,5 +1,6 @@
 import { useAuth } from "@/context/AuthContext";
 import { useNativePush } from "@/hooks/useNativePush";
+import { planLogoutTokenCleanup } from "@/lib/pushLifecycle";
 import { unregisterExpoPushToken } from "@/lib/pushToken";
 import React, { useEffect, useRef } from "react";
 
@@ -12,9 +13,13 @@ export function PushBootstrap() {
   useEffect(() => {
     const prev = prevToken.current;
     const expo = getPushToken();
-    // User logged out — remove device token ownership on server.
-    if (prev && !token && expo) {
-      void unregisterExpoPushToken(expo, prev).catch(() => false);
+    const plan = planLogoutTokenCleanup({
+      previousJwt: prev,
+      nextJwt: token,
+      expoToken: expo,
+    });
+    if (plan.shouldUnregister && plan.expoToken && plan.authJwtToUse) {
+      void unregisterExpoPushToken(plan.expoToken, plan.authJwtToUse).catch(() => false);
     }
     prevToken.current = token;
   }, [token, getPushToken]);

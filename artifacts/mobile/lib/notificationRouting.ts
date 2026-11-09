@@ -41,6 +41,14 @@ export function routeFromPushUrl(url: string | null | undefined): NativeRoute {
   if (path.startsWith("/support")) return { pathname: "/support" };
   if (path === "/notifications") return { pathname: "/notifications" };
   if (path === "/wallet") return { pathname: "/wallet" };
+  // Flexa Music — native music screen not yet migrated; land in notifications center.
+  if (path === "/music" || path.startsWith("/music/")) {
+    return { pathname: "/notifications" };
+  }
+  if (path.startsWith("/videos") || path === "/tv") return { pathname: "/videos" };
+  if (path === "/settings" || path.startsWith("/settings/")) return { pathname: "/settings" };
+  if (path === "/my-boosts" || path.startsWith("/boost")) return { pathname: "/my-boosts" };
+  if (path === "/sales") return { pathname: "/orders" };
   return { pathname: "/notifications" };
 }
 
@@ -84,12 +92,26 @@ export function routeFromNotification(n: NotificationLike): NativeRoute {
     return { pathname: "/orders" };
   }
 
-  if (type.includes("boost") || type.includes("video")) {
+  if (type.includes("boost") || type.includes("video") || type.includes("promo")) {
     return { pathname: "/my-boosts" };
+  }
+
+  if (type.includes("music") || type.includes("flexa_music") || type.includes("flexa-music")) {
+    return { pathname: "/notifications" };
   }
 
   if (type.includes("wallet") || type.includes("payout")) {
     return { pathname: "/wallet" };
+  }
+
+  if (
+    type.includes("seller") ||
+    type.includes("sale") ||
+    type.includes("new_order") ||
+    type.includes("sold")
+  ) {
+    if (n.referenceId) return { pathname: "/orders/[id]", params: { id: String(n.referenceId) } };
+    return { pathname: "/orders" };
   }
 
   if (type.includes("security") || type.includes("login") || type.includes("ban")) {
@@ -106,12 +128,41 @@ export function routeFromNotification(n: NotificationLike): NativeRoute {
 export function notificationCategory(type: string | null | undefined): string {
   const t = (type || "").toLowerCase();
   if (t.includes("message") || t.includes("chat") || t.includes("support")) return "Messages";
-  if (t.includes("order") || t.includes("delivery") || t.includes("ship") || t.includes("payment")) {
+  if (t.includes("order") || t.includes("delivery") || t.includes("ship") || t.includes("payment") || t.includes("seller") || t.includes("sale")) {
     return "Orders";
   }
   if (t.includes("boost") || t.includes("video") || t.includes("promo")) return "Promotions";
+  if (t.includes("music")) return "Music";
   if (t.includes("wallet") || t.includes("payout")) return "Wallet";
   if (t.includes("admin_broadcast") || t.includes("announcement")) return "Announcements";
   if (t.includes("security")) return "Security";
   return "System";
+}
+
+/** Map Expo/FCM data payload (url + type) into a native route. */
+export function routeFromPushData(data: Record<string, unknown> | null | undefined): NativeRoute {
+  if (!data) return { pathname: "/notifications" };
+  const conversationId =
+    data.conversationId != null
+      ? String(data.conversationId)
+      : data.params && typeof data.params === "object" && (data.params as any).conversationId != null
+        ? String((data.params as any).conversationId)
+        : null;
+  if (conversationId) {
+    return { pathname: "/chat/[id]", params: { id: conversationId } };
+  }
+  return (
+    routeFromNotification({
+      type: typeof data.type === "string" ? data.type : null,
+      url: typeof data.url === "string" ? data.url : null,
+      referenceId:
+        data.referenceId != null && Number.isFinite(Number(data.referenceId))
+          ? Number(data.referenceId)
+          : null,
+      listingId:
+        data.listingId != null && Number.isFinite(Number(data.listingId))
+          ? Number(data.listingId)
+          : null,
+    }) || { pathname: "/notifications" }
+  );
 }

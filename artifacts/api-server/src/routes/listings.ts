@@ -48,7 +48,12 @@ import {
   sortPersonalizedRank,
 } from "../lib/personalizedFeed";
 import { logger } from "../lib/logger";
-import { getAdminScopeCities, listingInAdminScope, parseAdminCountries } from "../lib/adminScope";
+import {
+  getAdminScopeCities,
+  hasGlobalCountryAdminScope,
+  listingInAdminScope,
+  parseAdminCountries,
+} from "../lib/adminScope";
 
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
   Haiti: ["Port-au-Prince","Cap-Haïtien","Pétion-Ville","Delmas","Carrefour","Jacmel","Les Cayes","Gonaïves","Jérémie","Port-de-Paix"],
@@ -130,20 +135,19 @@ function toStreamingVideoUrl(url: string): string {
 
 /** Returns the full country-scope list for a scoped admin from JWT fields. */
 function getAdminScopeCountriesList(user: any): string[] {
-  if (!user || user.isSuperAdmin) return [];
+  if (!user || user.isSuperAdmin || hasGlobalCountryAdminScope(user)) return [];
   const parsedCountries = parseAdminCountries(user);
   if (parsedCountries.length > 0) return parsedCountries;
   if (user.adminScopeCountry) return [user.adminScopeCountry];
-  // Legacy admin accounts may predate explicit scope fields. Their profile
-  // country is the safe fallback rather than silently granting global access.
-  return user.country ? [user.country] : [];
+  return [];
 }
 
 /** Appends country-scope conditions without allowing scoped admins to widen access. */
 function enforceAdminCountryScope(conditions: any[], user: any, country?: string): void {
   const isSuperAdmin = user?.isSuperAdmin;
-  // Super admin may select any one country or omit it to see every country.
-  if (isSuperAdmin) {
+  // Super admin and global-country admin may select any one country or omit it
+  // to see every country. Global-country access does not grant Super Admin.
+  if (isSuperAdmin || hasGlobalCountryAdminScope(user)) {
     if (country) conditions.push(eq(listingsTable.country!, country));
     return;
   }

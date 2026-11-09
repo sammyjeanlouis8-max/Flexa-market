@@ -74,8 +74,9 @@ export function AdaptiveVideoPlayer({
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
-  // Autoplay policies require muted for autoplay; otherwise keep original audio available.
-  const [muted, setMuted] = useState(autoPlay ? true : mutedProp);
+  // Prefer the caller's mute preference. Autoplay may still need a muted
+  // fallback when the browser rejects unmuted play — handled in the play effect.
+  const [muted, setMuted] = useState(mutedProp);
 
   const displayPoster = poster || capturedPoster || null;
 
@@ -89,7 +90,7 @@ export function AdaptiveVideoPlayer({
       clearTimeout(primeTimerRef.current);
       primeTimerRef.current = null;
     }
-    setMuted(autoPlay ? true : mutedProp);
+    setMuted(mutedProp);
     return () => {
       if (primeTimerRef.current) {
         clearTimeout(primeTimerRef.current);
@@ -102,6 +103,29 @@ export function AdaptiveVideoPlayer({
     const el = videoRef.current;
     if (el) el.muted = muted;
   }, [muted]);
+
+  // Autoplay with sound when permitted; fall back to muted without a permission prompt.
+  useEffect(() => {
+    if (!autoPlay) return;
+    const el = videoRef.current;
+    if (!el) return;
+    let cancelled = false;
+    el.muted = mutedProp;
+    setMuted(mutedProp);
+    void el.play()
+      .then(() => {
+        if (!cancelled) setPlaying(true);
+      })
+      .catch(() => {
+        if (cancelled || mutedProp) return;
+        el.muted = true;
+        setMuted(true);
+        void el.play()
+          .then(() => { if (!cancelled) setPlaying(true); })
+          .catch(() => {});
+      });
+    return () => { cancelled = true; };
+  }, [autoPlay, mutedProp, src]);
 
   const publishMeta = useCallback((el: HTMLVideoElement) => {
     const w = el.videoWidth;

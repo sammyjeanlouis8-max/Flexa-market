@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 
 /**
  * Video Booster overlay — floating player, no dark background.
@@ -103,8 +104,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
 
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;
-  const [soundLocked, setSoundLocked] = useState(false); // true = iOS forced muted start
-  const [muted, setMuted] = useState(true);
+  const [soundLocked, setSoundLocked] = useState(false); // true = browser forced muted start
+  const [muted, setMuted] = useState(!(isAudioUnlocked() || isNativeMobileApp()));
   const [videoPct, setVideoPct] = useState(0); // 0–100 for the progress bar
   const [videoFailed, setVideoFailed] = useState(false);
 
@@ -141,10 +142,10 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     return () => window.clearInterval(id);
   }, []); // run once on mount
 
-  // ── Autoplay with sound ON ────────────────────────────────────────────────
-  // Boost ads always START muted to avoid unwanted background audio.
-  // The user taps the speaker icon (or anywhere) to enable sound.
-  // Once unlocked, subsequent ads in the same session start with sound.
+  // ── Autoplay with sound ON when the platform allows it ───────────────────
+  // Prefer unmuted autoplay (native WebViews + prior session unlock). Browsers
+  // that block unmuted play fall back to muted, then unlock on first gesture.
+  // No microphone / recording permission is requested for playback.
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
@@ -161,6 +162,13 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
       window.removeEventListener("click",       unlockAudio, { capture: true });
     };
 
+    const armGestureUnlock = () => {
+      if (!isAudioUnlocked()) setSoundLocked(true);
+      window.addEventListener("touchstart",  unlockAudio, { capture: true, once: true, passive: true });
+      window.addEventListener("pointerdown", unlockAudio, { capture: true, once: true, passive: true });
+      window.addEventListener("click",       unlockAudio, { capture: true, once: true });
+    };
+
     const attemptPlay = async (withSound: boolean) => {
       vid.muted = !withSound;
       setMuted(!withSound);
@@ -168,18 +176,10 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         await vid.play();
         if (cancelled) return;
         if (withSound) {
-          // Sound is on — remember it so the next ad needs no gesture.
           setSoundLocked(false);
           setAudioUnlocked(true);
         } else {
-          // Browser forced a muted start. Arm the first-gesture unlock so any
-          // tap turns sound on. Only show the visible hint if audio has NEVER
-          // been unlocked this session — once unlocked, later ads recover sound
-          // silently with no repeated prompt.
-          if (!isAudioUnlocked()) setSoundLocked(true);
-          window.addEventListener("touchstart",  unlockAudio, { capture: true, once: true, passive: true });
-          window.addEventListener("pointerdown", unlockAudio, { capture: true, once: true, passive: true });
-          window.addEventListener("click",       unlockAudio, { capture: true, once: true });
+          armGestureUnlock();
         }
       } catch {
         if (cancelled) return;
@@ -187,7 +187,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
       }
     };
 
-    attemptPlay(false); // always start muted — user taps to enable sound
+    // Try unmuted first wherever permitted; Safari/web may reject → muted path.
+    void attemptPlay(true);
 
     // If audio gets unlocked elsewhere (e.g. the video feed) while this ad plays.
     const onUnlocked = (e: Event) => {

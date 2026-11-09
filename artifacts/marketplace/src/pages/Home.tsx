@@ -41,6 +41,7 @@ import {
 type Scope = "nearby" | "city" | "country";
 
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor } from "@/lib/countries";
+import { isGlobalCountryAdmin, parseAdminScopeCountriesList } from "@/lib/adminCountryAccess";
 import { formatPrice } from "@/lib/currency";
 
 function formatPriceHome(listing: { price: number; country?: string | null; currency?: string | null }) {
@@ -224,21 +225,19 @@ export default function Home() {
     user.subscriptionExpiresAt &&
     new Date(user.subscriptionExpiresAt) > new Date()
   );
-  // Parse multi-country scope list from JWT
-  const adminScopeCountriesList: string[] = (() => {
-    if (!isAdmin || isSuperAdmin) return [];
-    const raw = (user as any)?.adminScopeCountries;
-    if (raw) { try { const p = JSON.parse(raw) as string[]; if (p.length > 0) return p; } catch { /* ignore */ } }
-    const single = (user as any)?.adminScopeCountry;
-    return single ? [single] : [];
-  })();
-  const isMultiCountryAdmin = isAdmin && !isSuperAdmin && adminScopeCountriesList.length > 1;
-  // scopeLock: only for single-country admin; multi-country and super admin use a picker
-  const scopeLock: string | null = (isSuperAdmin || isMultiCountryAdmin)
+  // Parse multi-country scope list from JWT / user profile
+  const adminScopeCountriesList = parseAdminScopeCountriesList(user);
+  const isGlobalAdmin = isGlobalCountryAdmin(user);
+  const isMultiCountryAdmin = isAdmin && !isSuperAdmin && !isGlobalAdmin && adminScopeCountriesList.length > 1;
+  // scopeLock: only for single-country admin; multi/global/super use a picker
+  const scopeLock: string | null = (isSuperAdmin || isGlobalAdmin || isMultiCountryAdmin)
     ? null
     : (adminScopeCountriesList[0] ?? (user as any)?.adminScopeCountry ?? user?.country ?? null);
-  // The country actually used in all queries
-  const effectiveAdminCountry: string | null = isSuperAdmin ? adminCountry : (isMultiCountryAdmin ? adminCountry : scopeLock);
+  // The country actually used in all queries. Global-country admin sees all
+  // countries like Super Admin geographically, without Super Admin privileges.
+  const effectiveAdminCountry: string | null = (isSuperAdmin || isGlobalAdmin || isMultiCountryAdmin)
+    ? adminCountry
+    : scopeLock;
   const setDeliveryMenuCountry = useContext(DeliveryMenuCountryContext);
   useEffect(() => {
     setDeliveryMenuCountry(isAdmin ? effectiveAdminCountry : undefined);
@@ -675,8 +674,8 @@ export default function Home() {
       <div className="px-3 py-2 space-y-4 md:px-4 md:py-4 md:space-y-6">
 
         {/* === ADMIN VIEW BANNER + COUNTRY PICKER === */}
-        {/* Super admin: full dropdown with "All Countries" option */}
-        {isAdmin && isSuperAdmin && (
+        {/* Super admin + global-country admin: full dropdown with "All Countries" */}
+        {isAdmin && (isSuperAdmin || isGlobalAdmin) && (
           <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl px-4 py-3 space-y-2">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-violet-500 shrink-0" />
@@ -703,7 +702,7 @@ export default function Home() {
           </div>
         )}
         {/* Multi-country scoped admin: dropdown limited to their assigned countries */}
-        {isAdmin && !isSuperAdmin && isMultiCountryAdmin && (
+        {isAdmin && !isSuperAdmin && !isGlobalAdmin && isMultiCountryAdmin && (
           <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl px-4 py-3 space-y-2">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-violet-500 shrink-0" />
@@ -733,7 +732,7 @@ export default function Home() {
           </div>
         )}
         {/* Single-country scoped admin: locked banner — no dropdown */}
-        {isAdmin && !isSuperAdmin && !isMultiCountryAdmin && (
+        {isAdmin && !isSuperAdmin && !isGlobalAdmin && !isMultiCountryAdmin && (
           <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl px-4 py-3">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-violet-500 shrink-0" />

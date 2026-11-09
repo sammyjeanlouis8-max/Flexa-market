@@ -1,6 +1,7 @@
 import UIKit
 import WebKit
 import UserNotifications
+import AVFoundation
 
 private let kWebsite = URL(string: "https://flexamarket.com")!
 
@@ -24,6 +25,7 @@ final class WebViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        configureAudioSession()
         setupWebView()
         setupSpinner()
         loadSite()
@@ -34,6 +36,19 @@ final class WebViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleOpenURL(_:)),
             name: .openURL, object: nil)
+    }
+
+    /// Playback category so boosted / promo videos can autoplay with sound in
+    /// the WKWebView without requesting microphone permission.
+    private func configureAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
+            try session.setActive(true, options: [])
+        } catch {
+            // Non-fatal — HTML muted autoplay still works if activation fails.
+            print("[Audio] AVAudioSession setup failed: \(error)")
+        }
     }
 
     deinit {
@@ -62,6 +77,9 @@ final class WebViewController: UIViewController {
     private func setupWebView() {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
+        // Empty set = media (including audio) may autoplay without a tap.
+        // Required for unmuted boosted-video autoplay inside WKWebView.
+        config.mediaTypesRequiringUserActionForPlayback = []
 
         let ucc = config.userContentController
 

@@ -189,13 +189,13 @@ export async function readSellerSalesDashboard(
   const yearEnd = `${yearStart} + INTERVAL '1 year'`;
   const prevYearStart = `${yearStart} - INTERVAL '1 year'`;
 
-  const [total, today, week, month, year] = await Promise.all([
-    totalCard(connection, sellerId),
-    cardForWindow(connection, sellerId, timezone, dayStart, dayEnd, prevDayStart, dayStart),
-    cardForWindow(connection, sellerId, timezone, weekStart, dayEnd, prevWeekStart, prevWeekEnd),
-    cardForWindow(connection, sellerId, timezone, monthStart, monthEnd, prevMonthStart, monthStart),
-    cardForWindow(connection, sellerId, timezone, yearStart, yearEnd, prevYearStart, yearStart),
-  ]);
+  // Sequential on the pinned transaction client — node-pg forbids concurrent
+  // queries on one connection (queued today, hard error in pg@9).
+  const total = await totalCard(connection, sellerId);
+  const today = await cardForWindow(connection, sellerId, timezone, dayStart, dayEnd, prevDayStart, dayStart);
+  const week = await cardForWindow(connection, sellerId, timezone, weekStart, dayEnd, prevWeekStart, prevWeekEnd);
+  const month = await cardForWindow(connection, sellerId, timezone, monthStart, monthEnd, prevMonthStart, monthStart);
+  const year = await cardForWindow(connection, sellerId, timezone, yearStart, yearEnd, prevYearStart, yearStart);
 
   const bucket = seriesBucket(period);
   const seriesSql = `
@@ -234,6 +234,11 @@ export async function readSellerSalesDashboard(
   const topEnd =
     period === "overview" ? `'infinity'::timestamptz` : dayEnd;
 
+  // Overview bounds are plain timestamptz literals (no $2). Passing an unused
+  // timezone bind makes Postgres reject the query:
+  // "bind message supplies 2 parameters, but prepared statement requires 1".
+  // That is the default /sales tab, so the whole dashboard 503'd on every load.
+  const topParams = period === "overview" ? [sellerId] : [sellerId, timezone];
   const topRes = await connection.query(
     `
     SELECT t.listing_id AS "listingId",
@@ -250,7 +255,7 @@ export async function readSellerSalesDashboard(
     ORDER BY revenue DESC, units DESC
     LIMIT 5
     `,
-    [sellerId, timezone],
+    topParams,
   );
   const topProducts: TopProduct[] = topRes.rows.map((r) => ({
     listingId: num(r.listingId),

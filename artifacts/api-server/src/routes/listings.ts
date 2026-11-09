@@ -1906,11 +1906,47 @@ router.post("/listings/:id/boost", requireAuth, async (req, res): Promise<void> 
     res.status(400).json({ error: "Duration must be 1–30 days" }); return;
   }
 
+  // Never trust a client-supplied paymentRef to mark a boost paid / activate feed placement.
+  // Use /boost/initiate + /boost/confirm (Stripe/wallet) for paid activation.
+  if (paymentRef || paymentMethod === "card" || paymentMethod === "stripe" || paymentMethod === "apple_pay" || paymentMethod === "google_pay") {
+    res.status(400).json({
+      error: "Use the Boost checkout flow to pay. Client payment references cannot activate a boost.",
+      code: "USE_BOOST_CHECKOUT",
+    });
+    return;
+  }
+
   const totalPrice = Math.round(dailyBudget * durationDays * 100) / 100;
   const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
 
   // Keep plan field for backward compatibility
   const plan = durationDays === 1 ? "1day" : durationDays <= 3 ? "3day" : "7day";
+
+  // Wallet path only: debit first, then mark paid + activate.
+  if (paymentMethod !== "wallet" && paymentMethod !== "fm_wallet") {
+    res.status(400).json({
+      error: "Unsupported boost payment method on this endpoint",
+      code: "USE_BOOST_CHECKOUT",
+    });
+    return;
+  }
+
+  const { deductWalletHybrid } = await import("./wallet");
+  const debit = await deductWalletHybrid(
+    req.userId!,
+    totalPrice,
+    `Boost listing #${id} — ${durationDays}d`,
+    "boost_debit",
+    req.userId!,
+  );
+  if (!debit.ok) {
+    const available = Math.round((((debit as any).promoBalance ?? 0) + ((debit as any).realBalance ?? 0)) * 100) / 100;
+    res.status(402).json({
+      error: `Insufficient wallet balance. Need $${totalPrice.toFixed(2)}, have $${available.toFixed(2)}`,
+      code: "INSUFFICIENT_BALANCE",
+    });
+    return;
+  }
 
   const [boost] = await db.insert(boostsTable).values({
     listingId: id,
@@ -1930,13 +1966,13 @@ router.post("/listings/:id/boost", requireAuth, async (req, res): Promise<void> 
     audienceAgeMax: ageMax,
     audienceGender: gender,
     audienceInterests: interests.length > 0 ? interests : null,
-    paymentMethod,
-    paymentStatus: paymentRef ? "paid" : "pending",
-    paymentRef,
+    paymentMethod: "wallet",
+    paymentStatus: "paid",
+    paymentRef: `wallet:${req.userId}:${Date.now()}`,
     expiresAt,
   }).returning();
 
-  // Update listing with boost info + audience for feed targeting
+  // Activate listing boost only after successful wallet debit.
   await db.update(listingsTable).set({
     isBoosted: true,
     boostStartAt: new Date(),

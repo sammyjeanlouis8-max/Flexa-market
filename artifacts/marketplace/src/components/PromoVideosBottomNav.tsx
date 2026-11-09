@@ -6,19 +6,13 @@ import { cn } from "@/lib/utils";
 
 /**
  * Single bottom inset for the promo nav.
- *
- * Prefer CSS env(); fall back to --sab (iOS / FlexaMarket WKWebView heuristic)
- * and --flexa-android-bottom. Always max() — never sum — so insets cannot stack
- * into an oversized black band that covers the tab icons.
- *
- * Cap at 48px: iPhone home-indicator is ~34px; Android gesture/nav bars are
- * typically ≤48px. Uncapped --sab/--sat mixups previously produced a tall
- * black slab over the buttons.
+ * Prefer CSS env(); fall back to --sab (iOS FlexaMarket WKWebView) and
+ * --flexa-android-bottom. Always max() — never sum. Cap at 48px.
  */
 export const PROMO_NAV_SAFE_BOTTOM =
   "min(48px, max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px)))";
 
-/** Compact content row (icons + labels). Safe-area lives in a sibling spacer. */
+/** Compact content row (icons + labels). */
 export const PROMO_NAV_CONTENT_PX = 52;
 
 export const PROMO_NAV_HEIGHT_CSS = `calc(${PROMO_NAV_CONTENT_PX}px + ${PROMO_NAV_SAFE_BOTTOM})`;
@@ -37,36 +31,35 @@ function resolveActive(pathname: string): ActiveTab {
 }
 
 /**
- * TikTok-style fixed bottom navigation for Promotional Videos.
+ * Promotional Videos bottom nav.
  *
- * Layout (matches mockup):
- *   ┌─────────────────────────────┐
- *   │  Home Discover [+] Fav Me   │  ← 52px icon row (always fully visible)
- *   ├─────────────────────────────┤
- *   │     home-indicator spacer   │  ← safe-area only (black, never covers icons)
- *   └─────────────────────────────┘
+ * Watch feed (/videos/watch): TRANSPARENT overlay — video stays edge-to-edge
+ * behind the icons and through the home-indicator zone (TikTok / mockup).
+ * A solid black bar here is exactly the "ba nwa" cutting the video.
  *
- * Root cause of the iPhone "ba nwa" covering buttons:
- * padding/height/box-shadow seals on one element let the safe-area band and
- * the icon row share a box that WebKit clipped or over-painted. Splitting the
- * icon row from the safe spacer makes covering impossible.
+ * Discover / Favorites: solid black bar (no fullscreen video behind).
  */
 export default function PromoVideosBottomNav({
   active,
   onAdd,
   className,
-  immersive: _immersive,
+  immersive,
 }: {
   active?: ActiveTab;
   onAdd?: () => void;
   className?: string;
-  /** Kept for callers; watch/discover/favorites all use the same solid mockup bar. */
+  /** Force watch-feed transparent mode (VideoFeed should pass true). */
   immersive?: boolean;
 }) {
   const { t } = useTranslation();
   const [location, navigate] = useLocation();
   const { user } = useAuth();
   const current = active ?? resolveActive(location);
+  const path = (location.split("?")[0] || location).replace(/\/$/, "") || "/";
+  const isWatchFeed =
+    immersive === true
+    || path === "/videos/watch"
+    || path.startsWith("/videos/watch/");
 
   const goLogin = (next: string) => {
     navigate(`/auth/login?next=${encodeURIComponent(next)}`);
@@ -103,38 +96,41 @@ export default function PromoVideosBottomNav({
   const itemClass = (isActive: boolean) =>
     cn(
       "flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 transition-colors",
-      isActive ? "text-white" : "text-white/55",
+      isWatchFeed && "drop-shadow-[0_1px_4px_rgba(0,0,0,0.95)]",
+      isActive ? "text-white" : isWatchFeed ? "text-white/92" : "text-white/55",
     );
 
   return (
     <nav
       className={cn(
         "promo-videos-bottom-nav pointer-events-auto fixed inset-x-0 bottom-0 z-[70] lg:hidden",
-        "border-t border-white/10 bg-black",
+        isWatchFeed ? "border-t-0" : "border-t border-white/10 bg-black",
         className,
       )}
       style={{
+        // Transparent padding lifts icons above the home indicator WITHOUT
+        // painting a black slab — video shows through that zone on watch.
+        paddingBottom: PROMO_NAV_SAFE_BOTTOM,
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
-        // No paddingBottom on the nav itself — safe area is a sibling spacer
-        // so the icon row can never be painted into / covered by that band.
-        paddingBottom: 0,
-        backgroundColor: "#000",
-        backgroundImage: "none",
+        backgroundColor: isWatchFeed ? "transparent" : "#000",
+        backgroundImage: isWatchFeed
+          ? "linear-gradient(to top, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.18) 55%, transparent 100%)"
+          : "none",
         boxShadow: "none",
         overflow: "visible",
       }}
       aria-label={t("nav.main", { defaultValue: "Main navigation" })}
       data-testid="promo-videos-bottom-nav"
+      data-watch-transparent={isWatchFeed ? "true" : "false"}
     >
-      {/* Icon row — fixed content height, never shares a box with safe-area padding */}
       <div
         className="grid w-full grid-cols-5 items-center px-1"
         style={{
           height: `${PROMO_NAV_CONTENT_PX}px`,
           minHeight: `${PROMO_NAV_CONTENT_PX}px`,
           maxHeight: `${PROMO_NAV_CONTENT_PX}px`,
-          background: "#000",
+          background: "transparent",
         }}
       >
         <button
@@ -170,7 +166,6 @@ export default function PromoVideosBottomNav({
             aria-label={t("videoFeed.addBoost", { defaultValue: "Add promotional video" })}
             data-testid="nav-promo-add"
           >
-            {/* Cyan / pink accents — match mockup (+) */}
             <span
               aria-hidden
               className="pointer-events-none absolute left-[calc(50%-26px)] top-1/2 h-[44px] w-[5px] -translate-y-1/2 rounded-l-[10px]"
@@ -212,20 +207,6 @@ export default function PromoVideosBottomNav({
           </span>
         </button>
       </div>
-
-      {/* Safe-area spacer BELOW icons — fills home-indicator zone with the same
-          black as the bar. Cannot cover the icon row because it is a sibling
-          underneath, not padding inside the icon box. */}
-      <div
-        aria-hidden
-        className="pointer-events-none w-full bg-black"
-        style={{
-          height: PROMO_NAV_SAFE_BOTTOM,
-          minHeight: 0,
-          maxHeight: "48px",
-          background: "#000",
-        }}
-      />
     </nav>
   );
 }

@@ -25,6 +25,7 @@ import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
 import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import BoostWizard from "@/components/BoostWizard";
 import PromoVideosBottomNav, {
+  PROMO_NAV_CONTENT_PX,
   PROMO_NAV_SAFE_BOTTOM,
 } from "@/components/PromoVideosBottomNav";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
@@ -1668,13 +1669,13 @@ function VideoCard({
         {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
       </button>
 
-      {/* ── Bottom gradient — keep light so it never reads as a second black
-          bar over the solid promo tab bar (icons stay fully visible). ── */}
+      {/* ── Bottom gradient — light only for caption legibility; video must
+          still read through behind the transparent tab icons. ── */}
       <div
         className="absolute inset-x-0 bottom-0 pointer-events-none"
         style={{
-          height: "110px",
-          background: "linear-gradient(to top, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0.08) 50%, transparent 100%)",
+          height: "100px",
+          background: "linear-gradient(to top, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.06) 55%, transparent 100%)",
         }}
       />
 
@@ -1700,7 +1701,7 @@ function VideoCard({
       {/* ── Right-side engagement column — pure TikTok style ── */}
       <div
         className="absolute right-2 z-10 flex flex-col items-center gap-3.5"
-        style={{ bottom: `calc(88px + ${FEED_SAFE_BOTTOM})` }}
+        style={{ bottom: `calc(${PROMO_NAV_CONTENT_PX + 36}px + ${FEED_SAFE_BOTTOM})` }}
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
         onTouchEnd={e => e.stopPropagation()}
@@ -1805,8 +1806,8 @@ function VideoCard({
         className="absolute left-3 right-16 z-20"
         style={{
           bottom: showWhatsAppOverlay
-            ? `calc(104px + ${FEED_SAFE_BOTTOM})`
-            : `calc(80px + ${FEED_SAFE_BOTTOM})`,
+            ? `calc(${PROMO_NAV_CONTENT_PX + 52}px + ${FEED_SAFE_BOTTOM})`
+            : `calc(${PROMO_NAV_CONTENT_PX + 28}px + ${FEED_SAFE_BOTTOM})`,
           opacity: showWhatsAppOverlay ? 1 : 0,
           transform: showWhatsAppOverlay ? "translateY(0px) scale(1)" : "translateY(14px) scale(0.97)",
           transition: "opacity 0.4s cubic-bezier(0.16,1,0.3,1), transform 0.4s cubic-bezier(0.16,1,0.3,1), bottom 0.4s cubic-bezier(0.16,1,0.3,1)",
@@ -1875,7 +1876,7 @@ function VideoCard({
       {/* ── Bottom info overlay — TikTok exact layout ── */}
       <div
         className="absolute bottom-0 left-0 right-14 px-4 z-10"
-        style={{ paddingBottom: `calc(76px + ${FEED_SAFE_BOTTOM})` }}
+        style={{ paddingBottom: `calc(${PROMO_NAV_CONTENT_PX + 24}px + ${FEED_SAFE_BOTTOM})` }}
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
         onTouchEnd={e => e.stopPropagation()}
@@ -2421,7 +2422,7 @@ export default function VideoFeed() {
   //    fixed inset-0 paints edge-to-edge over the marketplace shell (TikTok-style).
   //    Do NOT extend past the viewport with negative bottom / box-shadow fills —
   //    that clipped the fixed promo nav inside overflow:hidden ancestors on iOS.
-  //    Safe-area black fill belongs on PromoVideosBottomNav itself.
+  //    Watch nav is transparent — video paints through the home-indicator zone.
   return (
     <div
       className={cn(
@@ -2727,8 +2728,8 @@ export default function VideoFeed() {
       </div>
 
       {/* Viewport-fixed sibling of the overflow:hidden video column — never nested
-          inside it, or WebKit clips the bar. Solid black mockup bar; safe-area is a
-          sibling spacer under the icons so it cannot cover the five tab buttons. */}
+          inside it, or WebKit clips the bar. Transparent on watch so video stays
+          edge-to-edge behind the five tab icons (mockup / TikTok). */}
       <PromoVideosBottomNav active="discover" onAdd={openWizard} immersive />
 
       <BoostWizard open={wizardOpen} onClose={() => { closeWizard(); fetchPage(1, true); }} />

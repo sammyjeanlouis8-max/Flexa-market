@@ -175,3 +175,5 @@ jobs:
 # Owner requested fe deploy retry: All Videos + promo nav fix on DigitalOcean (2026-11-09).
 
 # Owner requested fe deploy: seal black gap under promo nav buttons (2026-11-09).
+
+# Owner requested fe deploy: remove black bar under promo nav buttons (2026-11-09).

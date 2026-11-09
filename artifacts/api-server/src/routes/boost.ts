@@ -807,8 +807,23 @@ router.post("/listings/:id/boost/stripe-checkout", requireAuth, requireCardNotBl
 
     const planDays = boost.plan.includes("7") ? 7 : boost.plan.includes("3") ? 3 : 1;
 
+    const [boostBuyer] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+    const { getOrCreateStripeCustomer } = await import("../lib/stripeCustomer");
+    const { modernCheckoutSessionExtras } = await import("../lib/stripePaymentCapabilities");
+    const customerId = boostBuyer
+      ? await getOrCreateStripeCustomer(stripe, {
+        id: boostBuyer.id,
+        email: boostBuyer.email,
+        name: boostBuyer.name,
+        stripeCustomerId: boostBuyer.stripeCustomerId,
+      })
+      : undefined;
+    const modern = customerId
+      ? modernCheckoutSessionExtras({ customerId, allowSaveCard: true })
+      : { payment_method_types: ["card", "link"] as ("card" | "link")[] };
+
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
+      ...modern,
       mode: "payment",
       line_items: [{
         quantity: 1,
@@ -829,6 +844,8 @@ router.post("/listings/:id/boost/stripe-checkout", requireAuth, requireCardNotBl
         listingId:   String(listingId),
         buyerUserId: String(req.userId),
       },
+    }, {
+      idempotencyKey: `boost-checkout-${boost.id}-${amountCents}`,
     });
 
     res.json({ url: session.url, sessionId: session.id });

@@ -8,8 +8,8 @@ import { handleSubscriptionCheckoutCompleted, handleSubscriptionInvoicePaid, han
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { payReferralBonusIfEligible, applyRechargeCredits, getRechargeFeeRate } from "./wallet";
 import { quoteStripeMarketplacePurchase } from "../lib/commission";
-import { requireAuth, requireFinanceAdmin, requireSuperAdmin } from "../middlewares/auth";
-import { getStripeClient, getStripeWebhookSecret } from "../lib/stripeClient";
+import { requireAuth, optionalAuth, requireFinanceAdmin, requireSuperAdmin } from "../middlewares/auth";
+import { getStripeClient, getStripePublishableKey, getStripeWebhookSecret } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
 import type { Request, Response } from "express";
 import Stripe from "stripe";
@@ -22,10 +22,96 @@ import {
 } from "../lib/settlementRecovery";
 import { convertToUsd, getAllRates } from "../lib/exchange-rate";
 import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
+import { getOrCreateStripeCustomer } from "../lib/stripeCustomer";
+import {
+  modernCheckoutSessionExtras,
+  resolveWalletCapabilities,
+} from "../lib/stripePaymentCapabilities";
 
 import { resolveDominicanCheckout } from "../lib/dominicanFulfillment";
 
 const router = Router();
+
+/**
+ * GET /api/stripe/config
+ * Publishable key + country-aware wallet capabilities (never returns secrets).
+ */
+router.get("/stripe/config", optionalAuth, async (req: any, res) => {
+  try {
+    const publishableKey = await getStripePublishableKey();
+    const checkoutCountry = typeof req.query.country === "string" ? req.query.country : null;
+    const accountCountry = req.user?.country ?? null;
+    const capabilities = resolveWalletCapabilities({
+      checkoutCountry,
+      accountCountry,
+    });
+    res.json({
+      publishableKey,
+      capabilities,
+    });
+  } catch (err) {
+    logger.error({ err }, "stripe/config error");
+    res.status(503).json({ error: "Stripe is not configured" });
+  }
+});
+
+/**
+ * GET /api/stripe/payment-methods
+ * List saved cards for the authenticated Stripe customer.
+ */
+router.get("/stripe/payment-methods", requireAuth, async (req: any, res) => {
+  try {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId));
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!user.stripeCustomerId) return res.json({ paymentMethods: [] });
+
+    const stripe = await getStripeClient();
+    const list = await stripe.paymentMethods.list({
+      customer: user.stripeCustomerId,
+      type: "card",
+      limit: 20,
+    });
+    res.json({
+      paymentMethods: list.data.map((pm) => ({
+        id: pm.id,
+        brand: pm.card?.brand ?? "card",
+        last4: pm.card?.last4 ?? "····",
+        expMonth: pm.card?.exp_month ?? null,
+        expYear: pm.card?.exp_year ?? null,
+        allowRedisplay: pm.allow_redisplay ?? null,
+      })),
+    });
+  } catch (err) {
+    logger.error({ err }, "stripe/payment-methods list error");
+    res.status(500).json({ error: "Failed to load saved cards" });
+  }
+});
+
+/**
+ * DELETE /api/stripe/payment-methods/:id
+ * Detach a saved PaymentMethod belonging to the authenticated customer.
+ */
+router.delete("/stripe/payment-methods/:id", requireAuth, async (req: any, res) => {
+  try {
+    const pmId = String(req.params.id || "");
+    if (!pmId.startsWith("pm_")) return res.status(400).json({ error: "Invalid payment method" });
+
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId));
+    if (!user?.stripeCustomerId) return res.status(404).json({ error: "No saved cards" });
+
+    const stripe = await getStripeClient();
+    const pm = await stripe.paymentMethods.retrieve(pmId);
+    if (pm.customer !== user.stripeCustomerId) {
+      return res.status(403).json({ error: "Payment method does not belong to this account" });
+    }
+    await stripe.paymentMethods.detach(pmId);
+    logger.info({ userId: req.userId, pmId }, "Detached Stripe payment method");
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "stripe/payment-methods delete error");
+    res.status(500).json({ error: "Failed to remove card" });
+  }
+});
 
 let artistPlanLedgerReady: Promise<void> | null = null;
 async function ensureArtistPlanPaymentLedger(): Promise<void> {
@@ -85,7 +171,11 @@ async function getPlatformCommission(): Promise<number> {
  */
 router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
   try {
-    const { listingId, shippingName, shippingPhone, shippingEmail, shippingStreet, shippingCity, shippingRegion, shippingZip, deliveryFeeUsd, deliveryMethod, deliveryPickupCity } = req.body;
+    const {
+      listingId, shippingName, shippingPhone, shippingEmail, shippingStreet,
+      shippingCity, shippingRegion, shippingZip, deliveryFeeUsd, deliveryMethod,
+      deliveryPickupCity, uiMode, saveCard,
+    } = req.body;
 
     if (!listingId) return res.status(400).json({ error: "listingId is required" });
 
@@ -97,6 +187,20 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
     if (!listing) return res.status(404).json({ error: "Listing not found" });
     if (listing.status !== "available") return res.status(400).json({ error: "Listing is not available" });
     if (listing.sellerId === req.userId) return res.status(400).json({ error: "Cannot buy your own listing" });
+
+    const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId));
+    if (!buyer) return res.status(401).json({ error: "Unauthorized" });
+
+    const capabilities = resolveWalletCapabilities({
+      checkoutCountry: listing.country,
+      accountCountry: buyer.country,
+    });
+    if (!capabilities.card) {
+      return res.status(400).json({
+        error: capabilities.reason || "Card checkout is not available for this market",
+        code: "PAYMENT_METHOD_UNAVAILABLE",
+      });
+    }
 
     // Offer price override — buyer may have negotiated a custom price.
     const offerIdRaw = typeof req.body?.offerId === "number" ? req.body.offerId : null;
@@ -192,12 +296,25 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       res.status(409).json({ code: "STRIPE_SETUP_REQUIRED", error: NEW_SALE_PAYOUT_ERROR });
       return;
     }
+    const customerId = await getOrCreateStripeCustomer(stripe, {
+      id: buyer.id,
+      email: buyer.email,
+      name: buyer.name,
+      stripeCustomerId: buyer.stripeCustomerId,
+    });
+
+    const embedded = uiMode === "embedded";
+    // Explicit consent only — Checkout shows a save-card checkbox; never force-save.
+    const allowSaveCardPrompt = saveCard !== false && saveCard !== "false";
+    const modern = modernCheckoutSessionExtras({
+      customerId,
+      allowSaveCard: allowSaveCardPrompt,
+    });
+
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
-      payment_method_types: ["card"],
+      ...modern,
       mode: "payment",
       line_items: lineItems,
-      success_url: `${BASE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${BASE_URL}/listings/${listing.id}`,
       metadata: {
         listingId: String(listing.id),
         buyerUserId: String(req.userId),
@@ -218,7 +335,18 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       },
     };
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    if (embedded) {
+      sessionParams.ui_mode = "embedded";
+      sessionParams.return_url = `${BASE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
+    } else {
+      sessionParams.success_url = `${BASE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
+      sessionParams.cancel_url = `${BASE_URL}/listings/${listing.id}`;
+    }
+
+    const idempotencyKey = `listing-checkout-${listing.id}-buyer-${req.userId}-${buyerTotalCents}-${embedded ? "emb" : "host"}`;
+    const session = await stripe.checkout.sessions.create(sessionParams, {
+      idempotencyKey,
+    });
 
     // Create a pending transaction record — amount = listing price (seller side)
     await db.insert(transactionsTable).values({
@@ -255,7 +383,23 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       shippingZip: shippingZip ?? null,
     });
 
-    return res.json({ url: session.url, sessionId: session.id });
+    const publishableKey = await getStripePublishableKey();
+    if (embedded) {
+      return res.json({
+        sessionId: session.id,
+        clientSecret: session.client_secret,
+        publishableKey,
+        uiMode: "embedded",
+        capabilities,
+      });
+    }
+    return res.json({
+      url: session.url,
+      sessionId: session.id,
+      publishableKey,
+      uiMode: "hosted",
+      capabilities,
+    });
   } catch (err) {
     logger.error({ err }, "stripe/checkout error");
     return res.status(500).json({ error: "Failed to create checkout session" });

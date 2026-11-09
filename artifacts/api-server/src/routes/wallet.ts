@@ -4,6 +4,8 @@ import { eq, desc, sql, and, gte, ilike, or, not } from "drizzle-orm";
 import { requireAuth, requireCardNotBlocked, requireAdmin, requireFinanceAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { getStripeClient } from "../lib/stripeClient";
+import { getOrCreateStripeCustomer } from "../lib/stripeCustomer";
+import { modernCheckoutSessionExtras } from "../lib/stripePaymentCapabilities";
 
 const router = Router();
 
@@ -1258,9 +1260,22 @@ router.post("/wallet/topup/card/session", requireAuth, async (req, res): Promise
       : "https://flexamarket.com");
 
   const stripe = await getStripeClient();
+  const [walletUser] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+  const customerId = walletUser
+    ? await getOrCreateStripeCustomer(stripe, {
+      id: walletUser.id,
+      email: walletUser.email,
+      name: walletUser.name,
+      stripeCustomerId: walletUser.stripeCustomerId,
+    })
+    : undefined;
+  const modern = customerId
+    ? modernCheckoutSessionExtras({ customerId, allowSaveCard: true })
+    : { payment_method_types: ["card", "link"] as ("card" | "link")[] };
+
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    payment_method_types: ["card"],
+    ...modern,
     line_items: [{
       price_data: {
         currency: "usd",
@@ -1282,6 +1297,8 @@ router.post("/wallet/topup/card/session", requireAuth, async (req, res): Promise
     // complete-redirect credits wallet server-side before the browser arrives
     success_url: `${baseUrl}/api/stripe/checkout/complete-redirect?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${baseUrl}/wallet?card_cancel=1&return_app=1`,
+  }, {
+    idempotencyKey: `wallet-recharge-${req.userId}-${paymentRef}`,
   });
 
   // Back-fill the session ID into the note so the admin retry endpoint can find it later

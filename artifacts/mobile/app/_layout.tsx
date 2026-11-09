@@ -1,11 +1,13 @@
 /**
- * Root layout — as minimal as possible for a 100% WebView shell.
- * No fonts, no gesture handler, no error boundary — just SafeArea + Stack.
+ * Root layout for the expo-router tree (native auth + tab screens).
+ * Production entry currently uses App.tsx; this layout stays ready for
+ * the continuing native migration.
  */
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { AuthProvider } from "@/context/AuthContext";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -16,10 +18,14 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" options={{ headerShown: false }} />
-      </Stack>
+      <AuthProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/login" options={{ headerShown: false }} />
+          <Stack.Screen name="auth/register" options={{ headerShown: false }} />
+          <Stack.Screen name="+not-found" options={{ headerShown: false }} />
+        </Stack>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }

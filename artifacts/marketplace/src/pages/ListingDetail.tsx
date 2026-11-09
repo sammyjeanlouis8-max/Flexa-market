@@ -34,6 +34,8 @@ import { useViewTracker, formatViewCount } from "@/hooks/useViewTracker";
 import { formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
+import { persistCheckoutAddress, type SavedUserAddress } from "@/lib/userAddressesApi";
+import { SavedAddressPicker } from "@/components/checkout/SavedAddressPicker";
 
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
 import { listingImageProps } from "@/lib/listingImage";
@@ -143,6 +145,10 @@ export default function ListingDetail() {
   } | null>(null);
   const [stripeCaps, setStripeCaps] = useState<StripeCapabilities | null>(null);
   const [addressEditMode, setAddressEditMode] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [shipApartment, setShipApartment] = useState("");
+  const [shipCountry, setShipCountry] = useState("");
   const [lastPaidMethod, setLastPaidMethod] = useState<string>("Stripe");
   const [lastTransactionId, setLastTransactionId] = useState<string>("");
   const [walletPayLoading, setWalletPayLoading] = useState(false);
@@ -614,7 +620,23 @@ export default function ListingDetail() {
     if (u.state) setShipRegion(v => v || u.state!.trim());
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const applySavedAddress = (address: SavedUserAddress) => {
+    setSelectedAddressId(address.id);
+    setShipName(address.fullName);
+    setShipPhone(address.phone);
+    setShipEmail(address.email || "");
+    setShipStreet(address.street);
+    setShipApartment(address.apartment || "");
+    setShipCity(address.city);
+    setShipRegion(address.region);
+    setShipZip(address.postalCode || "");
+    setShipCountry(address.country);
+    setShowAddressForm(false);
+    setAddressEditMode(false);
+  };
+
   const rememberCheckoutAddress = () => {
+    const country = (shipCountry || (listing as any)?.country || user?.country || "").trim();
     saveCheckoutAddress((user as any)?.id, {
       name: shipName.trim(),
       phone: shipPhone.trim(),
@@ -624,6 +646,19 @@ export default function ListingDetail() {
       region: shipRegion.trim(),
       zip: shipZip.trim() || undefined,
     });
+    if (token && country && shipStreet.trim().length >= 3 && shipCity.trim().length >= 2) {
+      void persistCheckoutAddress(token, (user as any)?.id, {
+        name: shipName.trim(),
+        phone: shipPhone.trim(),
+        email: shipEmail.trim() || undefined,
+        street: [shipStreet.trim(), shipApartment.trim()].filter(Boolean).join(", "),
+        apartment: shipApartment.trim() || undefined,
+        city: shipCity.trim(),
+        region: shipRegion.trim(),
+        zip: shipZip.trim() || undefined,
+        country,
+      }, { existingId: selectedAddressId });
+    }
   };
 
   useEffect(() => {
@@ -1299,6 +1334,7 @@ export default function ListingDetail() {
         shippingCity: shipCity.trim(),
         shippingRegion: shipRegion.trim(),
         shippingZip: shipZip.trim() || undefined,
+        shippingCountry: (shipCountry || (listing as any)?.country || user?.country || undefined),
         deliveryType: deliverySpeedTier === "pickup" ? "pickup" : "delivery",
         buyerProposedDeliveryFee: deliverySpeedTier === "custom" && deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined,
         deliveryFeeUsd: deliverySpeedTier === "pickup" ? undefined : (deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined),
@@ -3356,7 +3392,65 @@ export default function ListingDetail() {
                     <DialogTitle className="text-base font-bold text-white">{t("listing.checkoutStepAddress")}</DialogTitle>
                   </div>
 
-                  {addressIsComplete && !addressEditMode ? (
+                  {token ? (
+                    <div className="space-y-3">
+                      <SavedAddressPicker
+                        token={token}
+                        listingCountry={(listing as any)?.country}
+                        accountCountry={user?.country}
+                        selectedId={selectedAddressId}
+                        onSelect={applySavedAddress}
+                        onNeedForm={() => {
+                          setShowAddressForm(true);
+                          setAddressEditMode(true);
+                          if (!shipCountry) setShipCountry(((listing as any)?.country || user?.country || "") as string);
+                        }}
+                        onCancelForm={() => { setShowAddressForm(false); setAddressEditMode(false); }}
+                        showForm={showAddressForm || (!selectedAddressId && !addressIsComplete)}
+                        draft={{
+                          fullName: shipName,
+                          phone: shipPhone,
+                          email: shipEmail,
+                          street: shipStreet,
+                          apartment: shipApartment,
+                          city: shipCity,
+                          region: shipRegion,
+                          postalCode: shipZip,
+                          country: shipCountry || (listing as any)?.country || user?.country || "",
+                          label: "Home",
+                        }}
+                        onDraftChange={(patch) => {
+                          if (patch.fullName !== undefined) setShipName(patch.fullName);
+                          if (patch.phone !== undefined) setShipPhone(patch.phone);
+                          if (patch.email !== undefined) setShipEmail(patch.email);
+                          if (patch.street !== undefined) setShipStreet(patch.street);
+                          if (patch.apartment !== undefined) setShipApartment(patch.apartment);
+                          if (patch.city !== undefined) setShipCity(patch.city);
+                          if (patch.region !== undefined) setShipRegion(patch.region);
+                          if (patch.postalCode !== undefined) setShipZip(patch.postalCode);
+                          if (patch.country !== undefined) setShipCountry(patch.country);
+                        }}
+                        onSaved={(addr) => {
+                          applySavedAddress(addr);
+                          rememberCheckoutAddress();
+                          setPayStep("delivery");
+                        }}
+                        requirePostal={!isLocalDelivery}
+                      />
+                      {!showAddressForm && selectedAddressId && addressIsComplete && (
+                        <CheckoutPrimaryButton
+                          testId="button-shipping-continue"
+                          onClick={() => {
+                            rememberCheckoutAddress();
+                            setPayStep("delivery");
+                          }}
+                        >
+                          {t("listing.continueBtn")}
+                        </CheckoutPrimaryButton>
+                      )}
+                      <button type="button" onClick={() => setBuyNowOpen(false)} className="w-full text-center text-sm text-[#8B9BB8] hover:text-white py-1">{t("buttons.cancel")}</button>
+                    </div>
+                  ) : addressIsComplete && !addressEditMode ? (
                     <div className="space-y-2.5">
                       <GlassCard selected className="p-3.5">
                         <div className="flex items-start gap-3">
@@ -3372,9 +3466,6 @@ export default function ListingDetail() {
                           </div>
                         </div>
                       </GlassCard>
-                      <CheckoutOutlineButton onClick={() => { setAddressEditMode(true); }} className="border-dashed">
-                        <MapPin className="h-4 w-4" /> {t("listing.addNewAddress", { defaultValue: "Add New Address" })}
-                      </CheckoutOutlineButton>
                       <CheckoutPrimaryButton onClick={() => setPayStep("delivery")} testId="button-shipping-continue">
                         {t("listing.continueBtn")}
                       </CheckoutPrimaryButton>
@@ -3382,7 +3473,6 @@ export default function ListingDetail() {
                   ) : (
                     <div className="space-y-3">
                       <GlassCard className="overflow-hidden divide-y divide-white/10 !p-0">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[#8B9BB8] px-4 pt-3 pb-2">{t("listing.contactInfo")}</p>
                         <div className="px-4 py-3">
                           <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.fullName")} <span className="text-red-400">*</span></label>
                           <input type="text" value={shipName} onChange={e => setShipName(e.target.value)} placeholder="ex: Jean Pierre" data-testid="input-ship-name" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
@@ -3392,56 +3482,20 @@ export default function ListingDetail() {
                           <input type="tel" value={shipPhone} onChange={e => setShipPhone(e.target.value)} placeholder="ex: +509 1234-5678" data-testid="input-ship-phone" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
                         </div>
                         <div className="px-4 py-3">
-                          <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.emailLabel")} <span className="text-[#8B9BB8] font-normal">{t("listing.optionalLabel")}</span></label>
-                          <input type="email" value={shipEmail} onChange={e => setShipEmail(e.target.value)} placeholder="ex: jean@gmail.com" data-testid="input-ship-email" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
-                        </div>
-                      </GlassCard>
-
-                      <GlassCard className="overflow-hidden divide-y divide-white/10 !p-0">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[#8B9BB8] px-4 pt-3 pb-2">{t("listing.checkoutDeliveryAddress")}</p>
-                        <div className="relative px-4 py-3">
-                          <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">
-                            {t("listing.streetAddress")} <span className="text-red-400">*</span>
-                            {suggestLoading && <span className="ml-2 text-[10px] text-[#4C8DFF] font-normal normal-case">Ap chèche…</span>}
-                          </label>
-                          <input type="text" value={shipStreet} onChange={e => handleStreetChange(e.target.value)} onFocus={() => streetSuggestions.length > 0 && setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 180)} placeholder="ex: 12 Rue des Miracles" data-testid="input-ship-street" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" autoComplete="off" />
-                          {showSuggestions && streetSuggestions.length > 0 && (
-                            <div className="absolute left-0 right-0 top-full z-50 bg-[#0B1228] border border-white/15 rounded-xl shadow-xl overflow-hidden mt-1 mx-1">
-                              {streetSuggestions.map((s, i) => {
-                                const parts = s.display_name.split(",");
-                                const main = parts.slice(0, 2).join(",").trim();
-                                const sub  = parts.slice(2, 4).join(",").trim();
-                                return (
-                                  <button key={i} type="button" onMouseDown={() => applySuggestion(s)} className="w-full flex items-start gap-3 px-4 py-3 hover:bg-white/5 text-left transition-colors border-b border-white/10 last:border-0">
-                                    <MapPin className="h-4 w-4 text-[#4C8DFF] mt-0.5 shrink-0" />
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-medium text-white truncate">{main}</p>
-                                      {sub && <p className="text-xs text-[#8B9BB8] truncate">{sub}</p>}
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
+                          <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.streetAddress")} <span className="text-red-400">*</span></label>
+                          <input type="text" value={shipStreet} onChange={e => setShipStreet(e.target.value)} placeholder="ex: 12 Rue des Miracles" data-testid="input-ship-street" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
                         </div>
                         <div className="grid grid-cols-2 divide-x divide-white/10">
                           <div className="px-4 py-3">
                             <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.cityLabel")} <span className="text-red-400">*</span></label>
-                            <input type="text" value={shipCity} onChange={e => setShipCity(e.target.value)} placeholder="ex: Pòtoprens" data-testid="input-ship-city" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
+                            <input type="text" value={shipCity} onChange={e => setShipCity(e.target.value)} data-testid="input-ship-city" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
                           </div>
                           <div className="px-4 py-3">
                             <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.regionLabel")} <span className="text-red-400">*</span></label>
-                            <input type="text" value={shipRegion} onChange={e => setShipRegion(e.target.value)} placeholder="ex: Ouest" data-testid="input-ship-region" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
+                            <input type="text" value={shipRegion} onChange={e => setShipRegion(e.target.value)} data-testid="input-ship-region" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
                           </div>
                         </div>
-                        {!isLocalDelivery && (
-                          <div className="px-4 py-3">
-                            <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.zipLabel")} <span className="text-[#8B9BB8] font-normal">{t("listing.optionalLabel")}</span></label>
-                            <input type="text" value={shipZip} onChange={e => setShipZip(e.target.value)} placeholder="ex: 10001" data-testid="input-ship-zip" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
-                          </div>
-                        )}
                       </GlassCard>
-
                       <CheckoutPrimaryButton
                         testId="button-shipping-continue"
                         onClick={() => {
@@ -3450,14 +3504,12 @@ export default function ListingDetail() {
                           if (shipStreet.trim().length < 3) { toast({ title: t("checkout.enterStreet") }); return; }
                           if (shipCity.trim().length < 2) { toast({ title: t("checkout.enterCity"), description: t("checkout.deliveryRequired") }); return; }
                           if (shipRegion.trim().length < 2) { toast({ title: t("checkout.enterRegion") }); return; }
-                          if (shipEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(shipEmail.trim())) { toast({ title: t("checkout.invalidEmail") }); return; }
                           setAddressEditMode(false);
                           setPayStep("delivery");
                         }}
                       >
                         {t("listing.continueBtn")}
                       </CheckoutPrimaryButton>
-                      <button type="button" onClick={() => setBuyNowOpen(false)} className="w-full text-center text-sm text-[#8B9BB8] hover:text-white py-1">{t("buttons.cancel")}</button>
                     </div>
                   )}
                 </div>

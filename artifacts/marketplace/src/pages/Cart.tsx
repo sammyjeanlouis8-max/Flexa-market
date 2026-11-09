@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/auth";
 import { useAuthRequired } from "@/components/auth/AuthRequiredModal";
 import { formatPrice } from "@/lib/currency";
 import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
+import { fetchUserAddresses, persistCheckoutAddress } from "@/lib/userAddressesApi";
 
 /* ── Group cart items by seller ── */
 function groupBySeller(items: CartItem[]): { sellerId: number; items: CartItem[] }[] {
@@ -87,6 +88,19 @@ function CheckoutModal({
   const [city, setCity] = useState(savedAddress.city ?? user?.location ?? "");
   const [street, setStreet] = useState(savedAddress.street ?? "");
   const [region, setRegion] = useState(savedAddress.region ?? "");
+  useEffect(() => {
+    if (!token) return;
+    void fetchUserAddresses(token, "delivery")
+      .then(({ defaultAddress }) => {
+        if (!defaultAddress) return;
+        setName((v) => v || defaultAddress.fullName);
+        setPhone((v) => v || defaultAddress.phone);
+        setCity((v) => v || defaultAddress.city);
+        setStreet((v) => v || defaultAddress.street);
+        setRegion((v) => v || defaultAddress.region);
+      })
+      .catch(() => {});
+  }, [token]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [requiresItemCheckout, setRequiresItemCheckout] = useState(false);
@@ -132,6 +146,14 @@ function CheckoutModal({
         street: street.trim(),
         city: city.trim(),
         region: region.trim(),
+      });
+      void persistCheckoutAddress(token, user?.id, {
+        name: name.trim(),
+        phone: phone.trim(),
+        street: street.trim(),
+        city: city.trim(),
+        region: region.trim() || "N/A",
+        country: user?.country || "Haiti",
       });
       onSuccess(data.orders ?? [], data.deliveryTotal ?? 0);
     } catch {

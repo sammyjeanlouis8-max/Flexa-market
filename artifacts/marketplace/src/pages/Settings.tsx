@@ -21,6 +21,7 @@ import {
   Pencil,
   Info,
   Layers,
+  MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -79,6 +80,16 @@ export default function Settings() {
       to: "/settings/security",
       testid: "row-security",
       tone: "violet",
+    },
+    {
+      icon: MapPin,
+      label: t("checkout.savedAddresses", { defaultValue: "Delivery addresses" }),
+      sub: t("checkout.savedAddressesHint", {
+        defaultValue: "Saved addresses reused automatically at checkout",
+      }),
+      to: "/settings/addresses",
+      testid: "row-addresses",
+      tone: "blue",
     },
     {
       icon: CreditCard,

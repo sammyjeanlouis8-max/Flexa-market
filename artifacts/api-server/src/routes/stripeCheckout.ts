@@ -186,6 +186,9 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
 
     if (!listing) return res.status(404).json({ error: "Listing not found" });
     if (listing.status !== "available") return res.status(400).json({ error: "Listing is not available" });
+    if ((listing as any).moderationStatus && (listing as any).moderationStatus !== "approved") {
+      return res.status(409).json({ error: "Listing is not available for purchase", code: "LISTING_NOT_APPROVED" });
+    }
     if (listing.sellerId === req.userId) return res.status(400).json({ error: "Cannot buy your own listing" });
 
     const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId));
@@ -438,16 +441,43 @@ router.get("/stripe/checkout/session", requireAuth, async (req: any, res) => {
       }
     }
 
+    const buyerUserId = Number(session.metadata?.buyerUserId || session.client_reference_id || 0);
+    const isOwner =
+      (buyerUserId > 0 && buyerUserId === req.userId)
+      || (session.metadata?.userId && Number(session.metadata.userId) === req.userId);
+    if (!isOwner && !req.user?.isAdmin && !req.user?.isSuperAdmin) {
+      // Avoid leaking whether the session exists to non-owners.
+      return res.status(404).json({ error: "Session not found" });
+    }
+
     const [tx] = await db
       .select()
       .from(transactionsTable)
       .where(eq(transactionsTable.stripeCheckoutSessionId, session_id));
 
+    if (tx && tx.userId !== req.userId && !req.user?.isAdmin && !req.user?.isSuperAdmin) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    // Owner-scoped summary only — do not dump full shipping street/phone/email here.
+    const safeTx = tx
+      ? {
+          id: tx.id,
+          paymentStatus: tx.paymentStatus,
+          orderStatus: tx.orderStatus,
+          amount: tx.amount,
+          currency: tx.currency,
+          listingId: tx.listingId,
+          buyerTotal: tx.buyerTotal,
+          shippingName: tx.shippingName,
+        }
+      : null;
+
     return res.json({
       status: session.payment_status,
       amount: (session.amount_total ?? 0) / 100,
       currency: session.currency,
-      transaction: tx ?? null,
+      transaction: safeTx,
     });
   } catch (err) {
     logger.error({ err }, "stripe/checkout/session error");

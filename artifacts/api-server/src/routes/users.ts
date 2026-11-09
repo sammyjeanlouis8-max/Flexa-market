@@ -27,15 +27,30 @@ function formatUser(user: typeof usersTable.$inferSelect) {
 }
 
 /**
- * Public-safe user shape: strips privileged role fields so that
- * viewers cannot discover who is an admin or super-admin via the
- * public profile endpoint. The viewer's own roles are served only
- * via /auth/me, never via /users/:id.
+ * Public-safe user shape: whitelist only fields safe for other users.
+ * Never expose email, phone, IP, Stripe IDs, debt, DOB, or admin roles.
+ * The viewer's own full profile is served only via /auth/me.
  */
 function formatPublicUser(user: typeof usersTable.$inferSelect) {
-  const { passwordHash: _, isAdmin: __, isSuperAdmin: ___, role: ____, ...rest } = user;
   return {
-    ...rest,
+    id: user.id,
+    name: user.name,
+    avatar: user.avatar,
+    bio: user.bio,
+    country: user.country,
+    location: user.location,
+    state: user.state,
+    neighborhood: user.neighborhood,
+    rating: user.rating,
+    reviewCount: user.reviewCount,
+    isVerified: user.isVerified,
+    isVerifiedEmployer: user.isVerifiedEmployer,
+    followerCount: user.followerCount,
+    followingCount: user.followingCount,
+    listingCount: user.listingCount,
+    subscriptionPlan: user.subscriptionPlan,
+    createdAt: user.createdAt,
+    lastSeenAt: user.lastSeenAt,
     isAdmin: false,
     isSuperAdmin: false,
     role: "user",

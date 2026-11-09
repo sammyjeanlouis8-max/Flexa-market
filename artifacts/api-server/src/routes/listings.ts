@@ -1969,12 +1969,27 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
   if (listing.sellerId === req.userId) { res.status(400).json({ error: "Cannot buy your own listing" }); return; }
   if (listing.status === "sold") { res.status(409).json({ error: "Listing already sold" }); return; }
+  if ((listing as any).moderationStatus && (listing as any).moderationStatus !== "approved") {
+    res.status(409).json({ error: "Listing is not available for purchase", code: "LISTING_NOT_APPROVED" });
+    return;
+  }
 
   const paymentMethod = String(req.body?.paymentMethod ?? "").trim();
   const paymentRef = String(req.body?.paymentRef ?? "").trim();
-  const ALLOWED_METHODS = ["card", "usdt", "moncash", "natcash", "sepa", "apple", "wallet"];
+  // Card/Apple/SEPA must go through Stripe Checkout — never trust a client paymentRef.
+  if (["card", "sepa", "apple", "stripe"].includes(paymentMethod)) {
+    res.status(400).json({
+      error: "Use Stripe Checkout for card payments",
+      code: "USE_STRIPE_CHECKOUT",
+    });
+    return;
+  }
+  const ALLOWED_METHODS = ["usdt", "moncash", "natcash", "wallet"];
   if (!ALLOWED_METHODS.includes(paymentMethod)) { res.status(400).json({ error: "Invalid payment method" }); return; }
   if (paymentRef.length < 6) { res.status(400).json({ error: "Invalid payment reference" }); return; }
+  // Off-platform rails require admin verification before funds are considered paid.
+  const requiresManualVerification = paymentMethod === "usdt" || paymentMethod === "moncash" || paymentMethod === "natcash";
+  const purchasePaymentStatus = paymentMethod === "wallet" ? "completed" : "pending_review";
 
   // Enforce the current seller geography for every new purchase, including older
   // listings. Existing orders retain their frozen settlement obligation.
@@ -2170,9 +2185,11 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
         amount: productPrice,
         currency: (listing.currency ?? (listing.country === "Haiti" ? "HTG" : "USD")) as string,
         paymentMethod,
-        paymentStatus: "completed",
+        paymentStatus: purchasePaymentStatus,
         paymentRef,
-        description: `Purchase of "${listing.title}"`,
+        description: requiresManualVerification
+          ? `Purchase of "${listing.title}" (awaiting payment verification)`
+          : `Purchase of "${listing.title}"`,
         shippingName,
         shippingPhone,
         shippingEmail: shippingEmail || null,
@@ -2265,15 +2282,18 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   ]).catch((e) => { req.log.error({ err: e }, "[purchase] notification insert failed"); });
 
   // Urgent push alert to seller + their store manager (direct wallet purchase)
+  const sellerPushBody = requiresManualVerification
+    ? `New ${paymentMethod.toUpperCase()} order for "${listing.title}" — wait for payment verification before shipping.`
+    : `You received a new order for "${listing.title}". Get the package ready!`;
   void sendPushToUser(listing.sellerId, {
-    title: "🛍️ New Order Received!",
-    body: `You received a new order for "${listing.title}". Get the package ready!`,
+    title: requiresManualVerification ? "Order pending payment verification" : "🛍️ New Order Received!",
+    body: sellerPushBody,
     url: insertedTxId ? `/orders/${insertedTxId}` : "/sales",
     tag: `new-order-${insertedTxId ?? Date.now()}`,
   });
   void sendNewOrderAlertsForSeller(listing.sellerId, {
-    title: "🛍️ New Order Received!",
-    body: `You received a new order for "${listing.title}". Get the package ready!`,
+    title: requiresManualVerification ? "Order pending payment verification" : "🛍️ New Order Received!",
+    body: sellerPushBody,
     data: { url: insertedTxId ? `/orders/${insertedTxId}` : "/sales" },
     sound: "default",
     channelId: "orders",
@@ -2282,15 +2302,18 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   });
 
   // Congratulatory push notification to buyer (best-effort).
+  const buyerPushBody = requiresManualVerification
+    ? "Nou resevwa demann ou. Peman w ap verifye anvan vandè a prepare kòmand lan."
+    : "Mèsi pou konfyans ou. Kòmand ou an konfime epi vandè ap prepare li pou ou.";
   void sendPushToUser(req.userId!, {
-    title: "Felisitasyon pou achte ou! 🎉",
-    body: "Mèsi pou konfyans ou. Kòmand ou an konfime epi vandè ap prepare li pou ou.",
+    title: requiresManualVerification ? "Peman ap verifye" : "Felisitasyon pou achte ou! 🎉",
+    body: buyerPushBody,
     url: insertedTxId ? `/orders/${insertedTxId}` : "/orders",
     tag: `purchase-congrats-${insertedTxId}`,
   });
   void sendExpoPushToUser(req.userId!, {
-    title: "Felisitasyon pou achte ou! 🎉",
-    body: "Mèsi pou konfyans ou. Kòmand ou an konfime epi vandè ap prepare li pou ou.",
+    title: requiresManualVerification ? "Peman ap verifye" : "Felisitasyon pou achte ou! 🎉",
+    body: buyerPushBody,
     data: { url: insertedTxId ? `/orders/${insertedTxId}` : "/orders" },
     sound: "default",
   });
@@ -2302,6 +2325,8 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
     discountAmount,
     promoCodeApplied: appliedPromoCode?.code ?? null,
     transactionId: insertedTxId ?? null,
+    paymentStatus: purchasePaymentStatus,
+    awaitingPaymentVerification: requiresManualVerification,
   });
 });
 

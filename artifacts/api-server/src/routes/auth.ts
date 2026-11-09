@@ -556,26 +556,17 @@ router.post("/auth/set-new-password", requireAuth, async (req, res): Promise<voi
   res.json({ message: "Modpas mete ajou avèk siksè", user: formatUser(updated), token });
 });
 
-// Password reset via email: user enters their email and new password.
-// Requires knowing the account's email — for stronger security, an
-// email-link or admin-assisted flow should be added in the future.
-router.post("/auth/forgot-password", async (req, res): Promise<void> => {
-  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : null;
-  const password = typeof req.body?.password === "string" ? req.body.password.trim() : null;
-  if (!email || !password) { res.status(400).json({ error: "email and password are required" }); return; }
-  if (password.length < 6) { res.status(400).json({ error: "Password must be at least 6 characters" }); return; }
-
-  const [user] = await db.select().from(usersTable).where(sql`lower(${usersTable.email}) = ${email}`);
-  if (!user) { res.status(404).json({ error: "No account found with this email address" }); return; }
-  if (user.isBanned) { res.status(403).json({ error: "Your account has been suspended. Contact support for help." }); return; }
-
-  const passwordHash = hashPassword(password);
-  await db.update(usersTable).set({ passwordHash }).where(eq(usersTable.id, user.id));
-  await logAction(user.id, getClientIp(req), req.headers["user-agent"], "password-reset");
-
-  const token = generateToken(user.id);
-  const [refreshed] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
-  res.json({ user: formatUser(refreshed), token });
+/**
+ * Legacy unauthenticated password-set endpoint — DISABLED.
+ * It allowed account takeover with only an email address (no OTP/link).
+ * Use `/api/recovery/*` (security questions + OTP) or `/auth/set-new-password`.
+ */
+router.post("/auth/forgot-password", async (_req, res): Promise<void> => {
+  res.status(410).json({
+    error: "This password reset method is no longer available. Use account recovery instead.",
+    code: "USE_ACCOUNT_RECOVERY",
+    recoveryPath: "/auth/forgot-password", // UI recovery entry; API is /api/recovery/*
+  });
 });
 
 /**

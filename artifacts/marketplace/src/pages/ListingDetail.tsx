@@ -1278,6 +1278,14 @@ export default function ListingDetail() {
         setPayStep("review");
         return;
       }
+      if (data?.awaitingPaymentVerification || data?.paymentStatus === "pending_review") {
+        toast({
+          title: t("checkout.paymentPendingReview", { defaultValue: "Payment submitted for verification" }),
+          description: t("checkout.paymentPendingReviewHint", {
+            defaultValue: "We will confirm after reviewing your payment reference. The seller should wait before shipping.",
+          }),
+        });
+      }
       const methodLabels: Record<string, string> = {
         wallet: "FM Card",
         card: "Stripe",

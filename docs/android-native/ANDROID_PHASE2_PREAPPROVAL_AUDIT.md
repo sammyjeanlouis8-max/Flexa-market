@@ -131,69 +131,188 @@ Phase 2 should keep the existing guard until a dedicated Billing workstream is a
 
 ---
 
-## 4. Native Android architecture — validation
+## 4. Native Android architecture — capability verification
 
-| Pillar | Assessment | Gate for Phase 2 |
-|---|---|---|
-| React Native + Expo | Expo ~54, RN 0.81.5, expo-router present — **compatible** with native screen migration | Start from `artifacts/mobile`, strip WebView-primary shell |
-| Native navigation | expo-router Stack/Tabs exist but tabs hidden; Back via WebView today | Rebuild visible tabs + RN Back / predictive back |
-| API reuse | `getBaseUrl()` → existing HTTPS API | Keep; SecureStore for JWT |
-| Media | Background upload module reusable; players must be native | Photo Picker first |
-| Push | expo-notifications + FCM file tied to old package | Retarget with new Firebase app when package approved |
-| Architecture docs | `ANDROID_ARCHITECTURE.md` waves W0–W10 | Approve before coding |
+**Legend:** SPEC = documented for Phase 2+ · CODE = exists in repo today · TESTED = device/emulator proof this audit  
+Nothing below is marked TESTED — **no Phase 2 implementation / device run this turn.**
 
-**Phase 2 first slice (recommended if approved):**
-1. Native auth + Home/Search/Listing using `/api`  
-2. No WebView as default home  
-3. Keep digital purchase guard  
-4. Defer package rename to an explicit cutover PR **or** do rename at scaffold start if Sammy approves both together  
+| Capability | Today (WebView shell) | Required native behavior | SPEC | CODE today | TESTED |
+|---|---|---|---|---|---|
+| **Primary UI** | WebView loads flexamarket.com | RN screens only; WebView not primary | Yes | WebView primary | No |
+| **Android Back** | WebView `goBack` / exit | expo-router stack pop; root → background; predictive back | Yes | Partial (WV) | No |
+| **System / gesture nav** | CSS hacks / hidden tabs | Visible tabs; CTAs above nav/gesture inset | Yes | Adaptive plugin only | No |
+| **Safe-area / edge-to-edge** | Injected CSS vars into WV | `SafeAreaProvider` + paddings; edge-to-edge aware | Yes | Partial | No |
+| **Photo Picker** | Web file input in WV | Android Photo Picker / Expo ImagePicker; no READ_MEDIA_* | Yes | blockedPermissions in app.json | No |
+| **Camera** | Web/`getUserMedia` in WV | Runtime CAMERA only on capture | Yes | Declared | No |
+| **Microphone** | Web mic for voice notes | RECORD_AUDIO only on record; never for music play; **no support-chat voice** | Yes | Declared; support API rejects voice | No |
+| **Location** | Web/GPS mixed | Smart Location priority; no startup GPS | Yes | Declared; web shoppingLocation logic | No |
+| **Video uploads** | WV + background upload bridge | Picker/record, ≤120s boost, progress/retry/drafts, Wasabi APIs | Yes | Upload module exists | No |
+| **Background music** | HTMLAudio + Media Session in WV | Native player + MediaSession/FGS mediaPlayback | Yes | Plan in FLEXA_MUSIC_NATIVE_PLAN | No |
+| **Push notifications** | FCM → inject into WV | FCM → native deep links (retarget Firebase for new package) | Yes | expo-notifications + google-services | No |
+| **Offline behavior** | Browser cache unreliable | Banner, cached reads, queued uploads where safe | Yes | Spec only | No |
+| **Screen state preservation** | WV session | Preserve forms/scroll/drafts across Back & process death | Yes | Spec only | No |
+| **Accessibility** | Web a11y | 48dp targets, labels, font scale | Yes | Spec only | No |
+| **Preserve all Flexa features** | Via website | Same APIs/business rules; UI rewritten in RN | Yes | Backend ready | No |
+
+Cross-refs: `ANDROID_PERMISSIONS_MATRIX.md`, `ANDROID_UX_BEHAVIOR_AUDIT.md`, `ANDROID_SCREEN_BEHAVIOR_MATRIX.md`, `ANDROID_NAVIGATION_TEST_PLAN.md`.
+
+### Stack fitness
+| Pillar | Assessment |
+|---|---|
+| Expo ~54 + RN 0.81.5 + expo-router | **Compatible** for native migration |
+| Existing `/api` + Wasabi | **Reuse** — do not rebuild |
+| Play Billing SDK | **Absent** — keep digital block until Billing project |
+| WebView as primary | **Must end** in Phase 2 |
+
+**Phase 2 first slice (if approved):**
+1. Native auth + Home/Search/Listing (`/api`) — **no WebView home**  
+2. Keep digital purchase guard  
+3. Photo Picker on sell draft when wave reaches seller  
+4. Package rename `com.flexamarket.app` only when Sammy authorizes cutover  
 
 ---
 
-## 5. Must verify inside Google Play Console (human)
+## 5. Protect existing systems (hard constraints)
+
+| System | Action in Phase 2+ |
+|---|---|
+| Production website | **DO NOT MODIFY** for Android migration |
+| DigitalOcean production deploy | **DO NOT MODIFY** as part of this program |
+| Existing backend business logic | **Reuse**; change only with explicit justification + approval |
+| PostgreSQL production data | **DO NOT MODIFY** / no destructive migrations for Android |
+| Wasabi storage | **Preserve**; keep signed URL / proxy patterns |
+| iOS app + `com.flexamarket.mobile` | **DO NOT MODIFY** |
+| User accounts / orders | **Preserve** |
+| Payment integrations | **Preserve**; Android digital initiation stays guarded |
+
+Android work stays on dedicated branch(es); website/API remain operational.
+
+---
+
+## 6. Must verify inside Google Play Console (human)
 
 1. Exact suspension / removal citations for `com.flexa.market`  
-2. That developer account remains Active and eligible to create a **new** app  
-3. Whether any account-level restrictions remain  
+2. Account remains Active and eligible to create a **new** app  
+3. Any account-level restrictions  
 4. Data Safety / UGC / Ads declarations for the new listing  
-5. App signing enrollment for the new package  
+5. App signing for the new package  
 6. Prior appeal status (if any)  
 
 ---
 
-## 6. Pre-approval decision block
+## 7. FINAL VERIFICATION REPORT (12 points)
 
-### Ready for Sammy to approve Phase 2 **if** all agree:
-- [ ] Exact Console suspension reason reviewed by Sammy (paste into docs when available)  
-- [ ] Phase 2 = **native** rewrite, not WebView shell under new package  
-- [ ] Package `com.flexamarket.app` approved (change still deferred until explicit cutover)  
-- [ ] Digital goods remain **blocked** until Play Billing project approved  
+### 1) Google Play account eligibility
+**Operator-stated: ACTIVE.** App-only suspension of `com.flexa.market`.  
+**Agent verification of Console UI: NOT DONE** (no Console access).  
+**Conclusion:** Eligible to pursue a **new compliant** listing — contingent on Sammy Console confirm.
+
+### 2) Previous suspension assessment
+**Exact reason: UNVERIFIED in Console.**  
+**Best-supported theme:** WebView / Affiliate Spam + mere-webview functionality risk.  
+**Partial mitigations already in repo:** Android digital purchase blocks; READ_MEDIA blocked.  
+**Insufficient alone:** New package without native remediation.
+
+### 3) New package name validation
+**`com.flexamarket.app` — VALID proposal** (no conflict with current Android/iOS IDs).  
+**Not applied in code.** Firebase still bound to `com.flexa.market`.
+
+### 4) Google Play Billing requirements
+- **Physical goods/services:** Stripe/MonCash/etc. permitted — preserve.  
+- **Digital (subs, boosts, music, digital wallet top-up):** Play Billing typically required — **keep blocked** until Billing workstream.  
+- **SDK today:** none in mobile.
+
+### 5) Android architecture validation
+Expo/RN/router **fit**. Must replace WebView-primary UI with native screens + Back/tabs/safe-area. Reuse API/Wasabi/push patterns.
+
+### 6) Permissions verification
+| Area | Plan status | Runtime proven? |
+|---|---|---|
+| Photo Picker | SPEC + blockedPermissions | **No** |
+| Camera / mic / location | SPEC + declared | **No** |
+| FGS upload | Declared for uploads | **No** this audit |
+| Music FGS mediaPlayback | Planned later | **No** |
+
+### 7) Remaining technical blockers
+1. Sammy explicit Phase 2 approval  
+2. Console suspension citation paste (recommended)  
+3. Package/Firebase cutover authorization  
+4. Play Billing decision (block vs implement)  
+5. Device/emulator test lab for navigation/permissions  
+
+### 8) Compliance risks
+| Risk | Level |
+|---|---|
+| Shipping WebView shell under new package | **Critical** |
+| External pay CTAs for digital goods | **High** |
+| Broad media permissions reintroduced by deps | **High** |
+| Missing in-app account deletion / UGC report | **High** if omitted |
+| Data Safety mismatch | **High** |
+| Related-account enforcement if repeat abuse | **High** |
+
+### 9) Recommended solutions
+1. Approve Phase 2 **native shell** (Home/Search/Listing/auth) — no WebView home.  
+2. Approve package `com.flexamarket.app` cutover with new Firebase Android app.  
+3. Keep digital purchase guard; website retains digital commerce.  
+4. Photo Picker-first media; preserve Smart Location; voice only in user messaging.  
+5. Attach Console notice; write remediation notes for Play review.  
+6. Do not merge/deploy/publish until Sammy orders it.
+
+### 10) Phase 2 implementation roadmap (post-approval only)
+
+| Step | Deliverable | Protect prod? |
+|---|---|---|
+| 2.1 | Native tabs + SecureStore auth + Home API feed | Yes |
+| 2.2 | Search + listing detail | Yes |
+| 2.3 | Package/Firebase cutover when authorized | Mobile-only config |
+| 2.4 | Cart + physical checkout (Custom Tabs) | Yes — no payment server rewrite |
+| 2.5 | Sell + Photo Picker uploads | Yes — existing upload APIs |
+| 2.6+ | Messages/voice, videos, music FGS, Billing project | Separate approvals |
+
+Full waves: `ANDROID_SCREEN_INVENTORY.md` W0–W10.
+
+### 11) Official documentation references
+- https://support.google.com/googleplay/android-developer/answer/9899234  
+- https://support.google.com/googleplay/android-developer/answer/9899142  
+- https://support.google.com/googleplay/android-developer/answer/9899034  
+- https://support.google.com/googleplay/android-developer/answer/9858738  
+- https://support.google.com/googleplay/android-developer/answer/10281818  
+- https://support.google.com/googleplay/android-developer/answer/15800983  
+- https://developer.android.com/training/data-storage/shared/photopicker  
+- https://developer.android.com/training/permissions/requesting  
+- https://developer.android.com/guide/navigation/custom-back/predictive-back-gesture  
+- https://developer.android.com/develop/ui/views/layout/edge-to-edge  
+- https://developer.android.com/guide/topics/media/media-controls  
+- https://developer.android.com/docs/quality-guidelines/core-app-quality  
+- https://docs.expo.dev/workflow/overview/  
+- In-repo: `docs/android-purchase-policy.md`, `docs/android-native/*`
+
+### 12) Final GO / NO-GO recommendation
+
+| Decision | Recommendation |
+|---|---|
+| **Approve Phase 2 native development (docs → code)** | **CONDITIONAL GO** |
+| **Publish / AAB / merge #171 / deploy / package rename now** | **NO-GO** until Sammy explicit order |
+| **Ship WebView app under new package** | **NO-GO** |
+
+**CONDITIONAL GO criteria:** native-only primary UI; preserve website/backend/iOS/DB; digital goods remain blocked initially; package cutover only when authorized; Console suspension reason reviewed by Sammy when available.
+
+**This audit does not claim Play approval, device test passes, or Console fields verified.**
+
+---
+
+## 8. Pre-approval checklist (Sammy)
+
+- [ ] Exact Console suspension reason reviewed (paste when available)  
+- [ ] Phase 2 = **native** rewrite, not WebView shell  
+- [ ] Package `com.flexamarket.app` approved (cutover deferred until you say)  
+- [ ] Digital goods stay blocked until Billing project approved  
 - [ ] Physical checkout preservation acknowledged  
 - [ ] iOS / website / backend / DB untouched  
 
-### Not ready to:
-- Generate production AAB for store  
-- Publish to Play  
-- Merge docs PR without Sammy OK  
-- Claim Play approval guaranteed  
-
 ---
 
-## 7. Official source references
+## 9. Files
 
-- Enforcement: https://support.google.com/googleplay/android-developer/answer/9899234  
-- Appeals: https://support.google.com/googleplay/android-developer/answer/9899142  
-- Spam / Webviews: https://support.google.com/googleplay/android-developer/answer/9899034  
-- Payments: https://support.google.com/googleplay/android-developer/answer/9858738  
-- Payments FAQ: https://support.google.com/googleplay/android-developer/answer/10281818  
-- Photo & Video permissions: https://support.google.com/googleplay/android-developer/answer/15800983  
-- Photo Picker: https://developer.android.com/training/data-storage/shared/photopicker  
-- Policy Center: https://play.google.com/about/developer-content-policy/  
-- In-repo: `docs/android-purchase-policy.md`, prior `docs/android-native/*`  
-
----
-
-## 8. Files
-
-Created: `docs/android-native/ANDROID_PHASE2_PREAPPROVAL_AUDIT.md`  
-Related updates: `ANDROID_PROGRESS.md` (this turn)
+- `ANDROID_PHASE2_PREAPPROVAL_AUDIT.md` (this document — final verification)  
+- Related: progress, architecture, permissions, UX, navigation plans under `docs/android-native/`

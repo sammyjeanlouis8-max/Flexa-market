@@ -3,8 +3,8 @@
 **Project:** Flexa Market — Native Android Migration  
 **Branch:** `cursor/native-android-migration-audit-b867`  
 **PR:** #171  
-**Updated:** 2026-11-09 10:25 America/New_York  
-**Scope:** Phase 0–1 + **final Phase 2 pre-approval audit**  
+**Updated:** 2026-11-09 10:28 America/New_York  
+**Scope:** Phase 0–1 + **final Phase 2 pre-approval / GO-NO-GO verification**  
 **Implementation:** **NOT STARTED** — awaiting Sammy approval  
 
 ---
@@ -73,7 +73,7 @@ Wait for **explicit approval** of:
 3. Billing strategy (keep digital blocked initially — recommended)  
 4. Optional: paste exact Play Console suspension citation into pre-approval doc  
 
-**Pre-approval verdict:** Phase 2 may be approved **conditionally** — see `ANDROID_PHASE2_PREAPPROVAL_AUDIT.md`.
+**Pre-approval verdict:** **CONDITIONAL GO** for Phase 2 native development; **NO-GO** for AAB/publish/merge/package rename/WebView republish — see `ANDROID_PHASE2_PREAPPROVAL_AUDIT.md` §7.
 
 ## 7. COMPLIANCE STATUS
 

@@ -1,5 +1,5 @@
 name: Deploy to DigitalOcean
-# fe-deploy: retry-force-build 20261110T154603Z
+# fe-deploy: seo-phase1-public-products-214 20261110T185356Z
 # fe-deploy: boost-message-cta-english e95fecc1
 # fe-deploy: interstitial-merchant-country 02e82ebf
 # fe-deploy: home-two-promo-cards 02683d71
@@ -229,3 +229,5 @@ jobs:
 # Owner requested fe deploy: Flexa Control Users redesign (#210) (2026-11-10).
 
 # force_build_20261110173707_users_redesign
+# Owner requested fe deploy: SEO Phase 1 public products + categories (#214) (2026-11-10).
+# force_build_20261110_seo_phase1

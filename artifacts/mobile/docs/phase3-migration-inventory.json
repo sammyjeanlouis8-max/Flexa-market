@@ -3,11 +3,11 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 199,
-  "branch": "cursor/native-phase3u-final-native-09ff",
-  "auditedAt": "2026-11-10T09:50:59.874Z",
-  "auditCommit": "ca01af7b",
-  "stackedOnPr": 198,
+  "pr": 200,
+  "branch": "cursor/native-phase3v-android-build-09ff",
+  "auditedAt": "2026-11-10T10:18:20.629Z",
+  "auditCommit": "8930a0ed",
+  "stackedOnPr": 199,
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
@@ -41,7 +41,8 @@
       "Phase 3R gap closure: seller ship + shipping label on /orders/[id]; inventory honesty for order-detail/seller-orders/search history/home promo.",
       "Phase 3S: website route \u2192 platform browser (FULLY for intentional external nav); product-variations presets; FCM local checklist; Android APK blocked without SDK/EAS login; physical device not run on agent.",
       "Phase 3T: EAS preview APK blocked \u2014 eas whoami Not logged in; EXPO_TOKEN missing. Config verified (com.flexa.market, preview buildType=apk, google-services match). No APK claimed.",
-      "Phase 3U: listing_variants schema+API+native seller/buyer/cart (PARTIAL until SQL approved); wallet-redeem FULLY; eSIM honest BLOCKED; payments audit; EXPO_TOKEN still missing for APK."
+      "Phase 3U: listing_variants schema+API+native seller/buyer/cart (PARTIAL until SQL approved); wallet-redeem FULLY; eSIM honest BLOCKED; payments audit; EXPO_TOKEN still missing for APK.",
+      "Phase 3V: EXPO_TOKEN still unset in agent VM 70ee1718-\u2026; eas whoami Not logged in; preview APK not started; listing_variants SQL audited (additive, unapplied); Play suspension warning for com.flexa.market; 84-screen physical matrix prepared."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -74,7 +75,8 @@
     "phase3rGapClosure": true,
     "phase3s": true,
     "phase3t": true,
-    "phase3u": true
+    "phase3u": true,
+    "phase3v": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -1653,5 +1655,7 @@
   "phase3kCompletedAt": "2026-11-10T04:30:00Z",
   "phase3kBranch": "cursor/native-admin-phase3k-09ff",
   "phase3lCompletedAt": "2026-11-10T05:30:00Z",
-  "phase3lBranch": "cursor/native-completion-phase3l-09ff"
+  "phase3lBranch": "cursor/native-completion-phase3l-09ff",
+  "phase3vBranch": "cursor/native-phase3v-android-build-09ff",
+  "phase3vCompletedAt": "2026-11-10T10:18:20.629Z"
 }

@@ -13,6 +13,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { listingsTable } from "./listings";
 
 export const listingVariantsTable = pgTable(
@@ -41,10 +42,9 @@ export const listingVariantsTable = pgTable(
   },
   (t) => ({
     listingIdx: index("listing_variants_listing_id_idx").on(t.listingId),
-    listingSkuUid: uniqueIndex("listing_variants_listing_sku_uidx").on(
-      t.listingId,
-      t.sku,
-    ),
+    listingSkuUid: uniqueIndex("listing_variants_listing_sku_uidx")
+      .on(t.listingId, t.sku)
+      .where(sql`${t.sku} IS NOT NULL`),
   }),
 );
 

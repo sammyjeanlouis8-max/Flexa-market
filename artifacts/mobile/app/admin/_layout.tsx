@@ -21,6 +21,16 @@ export default function AdminLayout() {
       <Stack.Screen name="team" />
       <Stack.Screen name="kyc" />
       <Stack.Screen name="settings" />
+      <Stack.Screen name="operations" />
+      <Stack.Screen name="appeals" />
+      <Stack.Screen name="drivers" />
+      <Stack.Screen name="agents" />
+      <Stack.Screen name="stripe" />
+      <Stack.Screen name="returns" />
+      <Stack.Screen name="fraud" />
+      <Stack.Screen name="commissions" />
+      <Stack.Screen name="flex-cards" />
+      <Stack.Screen name="loans-admin" />
     </Stack>
   );
 }

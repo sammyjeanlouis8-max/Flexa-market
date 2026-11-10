@@ -3,17 +3,17 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 182,
-  "branch": "cursor/native-admin-phase3k-09ff",
-  "auditedAt": "2026-11-10T04:30:00Z",
-  "auditCommit": "2ec17720",
+  "pr": null,
+  "branch": "cursor/native-completion-phase3l-09ff",
+  "auditedAt": "2026-11-10T05:30:00Z",
+  "auditCommit": "f017d186",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
-    "placeholderRouteCount": 5,
-    "fullyNativeRouteCount": 60,
-    "partiallyNativeRouteCount": 6,
+    "placeholderRouteCount": 1,
+    "fullyNativeRouteCount": 70,
+    "partiallyNativeRouteCount": 5,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
       "eSIM marked DEFERRED/BLOCKED — no fake catalog.",
@@ -28,7 +28,8 @@
       "Phase 3H: referrals, jobs, calculator, wallet-transfer, notification prefs, privacy blocks. Top-up still blocked.",
       "Phase 3I: Flexa TV (live/schedule/programs/series/movies + expo-av player) and Flexa Music (browse/detail/upload + persistent player). TV user upload admin-only BLOCKED; music purchases remain BLOCKED; user playlists admin-only.",
       "Phase 3J: Support Center/tickets/FlexaBot escalation, agent desk, admin support analytics/assign, chat block/report, knowledge FAQ. Full admin panel still PLACEHOLDER.",
-      "Phase 3K: Native Super Admin Control Center — hub, users/RBAC, moderation, reports, orders, deliveries, boosts, All Videos (allCountries), finance wallets/cashouts, audit, traffic, team, KYC queue, settings gap hub; support desks integrated. Web-only: appeals, driver/agent apps, Stripe/MonCash ledgers, broadcast/push composers, TV/Music CMS, fee editors."
+      "Phase 3K: Native Super Admin Control Center — hub, users/RBAC, moderation, reports, orders, deliveries, boosts, All Videos (allCountries), finance wallets/cashouts, audit, traffic, team, KYC queue, settings gap hub; support desks integrated. Web-only: appeals, driver/agent apps, Stripe/MonCash ledgers, broadcast/push composers, TV/Music CMS, fee editors.",
+      "Phase 3L: Completion/audit — implemented admin operations/appeals/drivers/agents/stripe/returns/fraud/commissions/flex-cards/loans; customer loans/subscription(plans)/driver-apply/dashboard/flex-card/bnpl/cash-agents/commission-promo/credit-score; phone login documented BLOCKED (no phoneToken issuer). Paid digital goods remain BLOCKED. Physical-device FCM still unverified."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -49,7 +50,9 @@
     "phase3j": true,
     "phase3jStartCommit": "e9b355d0",
     "phase3k": true,
-    "phase3kStartCommit": "623f638a"
+    "phase3kStartCommit": "623f638a",
+    "phase3l": true,
+    "phase3lStartCommit": "f017d186"
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -118,11 +121,11 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 60,
-    "PARTIALLY_NATIVE": 6,
-    "PLACEHOLDER": 5,
-    "MISSING": 7,
-    "BLOCKED": 5
+    "FULLY_NATIVE": 70,
+    "PARTIALLY_NATIVE": 5,
+    "PLACEHOLDER": 1,
+    "MISSING": 1,
+    "BLOCKED": 6
   },
   "features": [
     {
@@ -171,17 +174,18 @@
       "name": "Phone login",
       "domain": "auth",
       "webRoute": "/auth/login-phone",
-      "nativeRoute": null,
+      "nativeRoute": "/auth/login-phone",
       "role": "guest",
       "apis": [
-        "/api/auth/login-phone",
-        "/api/otp/*"
+        "/api/otp/send",
+        "/api/otp/verify",
+        "/api/auth/login-phone"
       ],
-      "status": "MISSING",
+      "status": "BLOCKED",
       "missing": [
-        "native phone OTP UI"
+        "OTP verify must return phoneToken via generatePhoneToken; current server returns email withdrawalToken only"
       ],
-      "work": "Add auth/login-phone screen + OTP flow"
+      "work": "Phase 3L honest deferred screen documenting API contract gap — no fake SMS login"
     },
     {
       "id": "auth-forgot-password",
@@ -506,32 +510,33 @@
       "name": "Flex Card repay",
       "domain": "customer",
       "webRoute": "/flex-card/repay",
-      "nativeRoute": null,
+      "nativeRoute": "/flex-card",
       "role": "buyer",
       "apis": [
-        "/api/flex-card/*"
+        "/api/flex-card/me",
+        "/api/flex-card/repay"
       ],
-      "status": "MISSING",
-      "missing": [
-        "repay UI"
-      ],
-      "work": "After Wallet"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3L debt view + wallet repay"
     },
     {
       "id": "bnpl",
       "name": "BNPL",
       "domain": "customer",
       "webRoute": "/bnpl",
-      "nativeRoute": null,
+      "nativeRoute": "/bnpl",
       "role": "buyer",
       "apis": [
-        "/api/bnpl/*"
+        "/api/bnpl/settings",
+        "/api/bnpl/eligibility",
+        "/api/bnpl/checkout"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "eligibility + checkout UI"
+        "inline BNPL checkout composer (uses existing Stripe BNPL during listing checkout)"
       ],
-      "work": "Later phase"
+      "work": "Phase 3L eligibility + settings; checkout remains via listing Stripe BNPL path"
     },
     {
       "id": "profile-account",
@@ -678,15 +683,15 @@
       "nativeRoute": "/subscription",
       "role": "buyer",
       "apis": [
-        "/api/subscription/*",
-        "/api/subscription/android/*"
+        "/api/subscription/plans",
+        "/api/subscription/my",
+        "/api/subscription/android/purchase-status"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "plans UI",
-        "Play Billing path"
+        "Play Billing / RevenueCat Android purchase initiation"
       ],
-      "work": "BLOCKED for web checkout; use /subscription/android/* later"
+      "work": "Phase 3L plans + status native; paid checkout remains BLOCKED companion subscription-billing"
     },
     {
       "id": "subscription-billing",
@@ -726,16 +731,15 @@
       "name": "Commission promo",
       "domain": "customer",
       "webRoute": "/commission-promo",
-      "nativeRoute": null,
+      "nativeRoute": "/commission-promo",
       "role": "buyer",
       "apis": [
-        "/api/promo-purchase-commissions/*"
+        "/api/promo-purchase-commissions/my",
+        "/api/promo-purchase-commissions/withdraw"
       ],
-      "status": "MISSING",
-      "missing": [
-        "promo UI"
-      ],
-      "work": "Later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3L native commissions dashboard"
     },
     {
       "id": "jobs",
@@ -1130,13 +1134,15 @@
       "nativeRoute": "/driver-apply",
       "role": "buyer→driver",
       "apis": [
+        "/api/driver/my-application",
+        "/api/delivery/application/draft",
         "/api/delivery/apply"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "application form + selfie"
+        "multi-photo vehicle document uploader parity with web"
       ],
-      "work": "Driver phase"
+      "work": "Phase 3L core apply + draft; photos optional via later media upload reuse"
     },
     {
       "id": "driver-dashboard",
@@ -1146,31 +1152,34 @@
       "nativeRoute": "/driver-dashboard",
       "role": "driver",
       "apis": [
-        "/api/delivery/*",
-        "/api/driver/*"
+        "/api/delivery/driver/stats",
+        "/api/delivery/available",
+        "/api/delivery/:id/accept",
+        "/api/delivery/driver/location",
+        "/api/driver/delivery-history"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "browse/accept/job detail"
+        "live GPS map panel"
       ],
-      "work": "Driver phase"
+      "work": "Phase 3L stats, online toggle, accept jobs, history"
     },
     {
       "id": "cash-agent",
       "name": "Cash Agent directory / dashboard",
       "domain": "agent",
       "webRoute": "/wallet/agents,/agent,/agents/apply",
-      "nativeRoute": null,
+      "nativeRoute": "/cash-agents",
       "role": "agent/buyer",
       "apis": [
-        "/api/agents/*",
-        "/api/cashout/*"
+        "/api/agents/public",
+        "/api/agents/apply"
       ],
-      "status": "MISSING",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "agent flows"
+        "approved-agent recharge card inventory tools if separate"
       ],
-      "work": "Later"
+      "work": "Phase 3L public directory + apply"
     },
     {
       "id": "loans",
@@ -1180,29 +1189,27 @@
       "nativeRoute": "/loans",
       "role": "buyer (HT/DR)",
       "apis": [
-        "/api/loans/*"
+        "/api/loans/eligibility",
+        "/api/loans/apply",
+        "/api/loans/my"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "intentionally redirects home today"
-      ],
-      "work": "Decide product policy for native"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3L native eligibility + apply + my loans"
     },
     {
       "id": "credit-score",
       "name": "Credit Score",
       "domain": "fintech",
       "webRoute": "/credit-score",
-      "nativeRoute": null,
+      "nativeRoute": "/credit-score",
       "role": "buyer (HT/DR)",
       "apis": [
-        "/api/credit-score/*"
+        "/api/credit-score/my"
       ],
-      "status": "MISSING",
-      "missing": [
-        "credit UI"
-      ],
-      "work": "With loans policy"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3L credit score view"
     },
     {
       "id": "flexa-tv",
@@ -1296,78 +1303,67 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [
-        "appeals UI",
-        "driver/agent application review UI",
-        "Stripe/MonCash admin ledgers UI",
         "broadcast email/SMS composer",
         "push campaign composer",
         "TV/Music CMS admin",
-        "platform fee editor"
+        "platform fee editor",
+        "MonCash dedicated ledger UI"
       ],
-      "work": "Phase 3K native Control Center hub + modules; gaps documented (not invented)"
+      "work": "Phase 3L Control Center expanded with operations/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans"
     },
     {
       "id": "admin-users",
       "name": "User / Seller / Driver Management",
       "domain": "admin",
       "webRoute": "/admin/users,/admin/driver-applications,/admin/agents",
-      "nativeRoute": "/admin/users,/admin/users/[id],/admin/team,/admin/kyc",
+      "nativeRoute": "/admin/users,/admin/users/[id],/admin/team,/admin/kyc,/admin/drivers,/admin/agents",
       "role": "admin+",
       "apis": [
         "/api/admin/users",
         "/api/admin/driver-applications",
         "/api/admin/agents"
       ],
-      "status": "PARTIALLY_NATIVE",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "driver-applications review UI",
-        "agent-applications review UI",
-        "flagged-users dedicated screen",
-        "security hash tools UI"
+        "security hash tools UI (superadmin-only destructive tools stay web)"
       ],
-      "work": "Phase 3K searchable users, activity, ban/restrict/verify, Super Admin set-role + team directory + KYC queue"
+      "work": "Phase 3L: driver + agent application review added; users/team/KYC from 3K"
     },
     {
       "id": "admin-moderation",
       "name": "Product Moderation / Reports / Disputes",
       "domain": "admin",
       "webRoute": "/admin/moderation,/admin/reports,/admin/appeals",
-      "nativeRoute": "/admin/moderation,/admin/reports,/admin/boosts",
+      "nativeRoute": "/admin/moderation,/admin/reports,/admin/boosts,/admin/appeals,/admin/operations",
       "role": "moderator+",
       "apis": [
         "/api/admin/moderation",
         "/api/admin/reports"
       ],
-      "status": "PARTIALLY_NATIVE",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "appeals UI",
-        "bulk operations queue UI",
-        "duplicate evidence deep viewer"
+        "bulk multi-select UX polish"
       ],
-      "work": "Phase 3K pending/approve/reject/suspend + reports decisions + boost approve/reject"
+      "work": "Phase 3L: appeals + operations queue added atop 3K moderation/reports/boosts"
     },
     {
       "id": "admin-finance",
       "name": "Financial Management / Payments / Wallet Ops / Refunds",
       "domain": "admin",
       "webRoute": "/admin/transactions,/admin/stripe-transactions,/admin?tab=wallet|payments|...",
-      "nativeRoute": "/admin/finance",
+      "nativeRoute": "/admin/finance,/admin/stripe,/admin/returns,/admin/flex-cards,/admin/loans-admin,/admin/commissions",
       "role": "financeAdmin/superadmin",
       "apis": [
         "/api/wallet/admin/*",
         "/api/admin/stripe-transactions",
         "/api/admin/returns"
       ],
-      "status": "PARTIALLY_NATIVE",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "Stripe transactions console",
-        "MonCash ledger UI",
-        "returns/refunds console",
-        "loans admin",
-        "flex-card admin",
-        "platform revenue drill-down charts"
+        "MonCash admin ledger dedicated UI",
+        "Stripe refund composer (read list only; refunds remain server Super Admin)"
       ],
-      "work": "Phase 3K wallets, cashout review, wallet txs, admin transactions — no secrets exposed"
+      "work": "Phase 3L: stripe read ledger, returns decide, flex-card debts, loans queue, commission/revenue summaries"
     },
     {
       "id": "admin-support",
@@ -1395,7 +1391,7 @@
       "name": "Admin Analytics / Announcements / Role Management",
       "domain": "admin",
       "webRoute": "/admin (revenue, broadcast, team, push)",
-      "nativeRoute": "/admin/traffic,/admin/audit,/admin/settings",
+      "nativeRoute": "/admin/traffic,/admin/audit,/admin/fraud,/admin/settings",
       "role": "admin/superadmin",
       "apis": [
         "/api/admin/broadcast",
@@ -1404,11 +1400,10 @@
       ],
       "status": "PARTIALLY_NATIVE",
       "missing": [
-        "broadcast tools",
-        "manual push campaigns",
-        "abandoned-cart dedicated API UI if separate"
+        "broadcast email/SMS composer",
+        "manual push campaign composer"
       ],
-      "work": "Phase 3K traffic series + audit logs/stats + settings gap hub; team via /admin/team"
+      "work": "Phase 3L: fraud dashboard/alerts; broadcast/push composers still MISSING (documented)"
     },
     {
       "id": "delete-account",
@@ -1481,7 +1476,7 @@
       "missing": [
         "No backend variation/SKU APIs — only optional itemSize text"
       ],
-      "work": "Size/color presets map to single itemSize; multi-SKU blocked until API exists"
+      "work": "Still no multi-SKU API"
     }
   ],
   "recommendedPhase3Order": [
@@ -1627,5 +1622,7 @@
     "/admin?tab=fees"
   ],
   "phase3kCompletedAt": "2026-11-10T04:30:00Z",
-  "phase3kBranch": "cursor/native-admin-phase3k-09ff"
+  "phase3kBranch": "cursor/native-admin-phase3k-09ff",
+  "phase3lCompletedAt": "2026-11-10T05:30:00Z",
+  "phase3lBranch": "cursor/native-completion-phase3l-09ff"
 }

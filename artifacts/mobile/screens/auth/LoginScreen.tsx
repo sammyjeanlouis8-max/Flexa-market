@@ -138,15 +138,22 @@ export default function LoginScreen({
       <View style={styles.field}>
         <View style={styles.labelRow}>
           <Text style={styles.label}>Password</Text>
-          <AuthLink
-            label="Forgot password?"
-            onPress={() =>
-              onForgotPassword
-                ? onForgotPassword()
-                : openPath("/auth/forgot-password")
-            }
-            testID="link-forgot-password"
-          />
+          <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+            <AuthLink
+              label="Phone"
+              onPress={() => openPath("/auth/login-phone")}
+              testID="link-login-phone"
+            />
+            <AuthLink
+              label="Forgot password?"
+              onPress={() =>
+                onForgotPassword
+                  ? onForgotPassword()
+                  : openPath("/auth/forgot-password")
+              }
+              testID="link-forgot-password"
+            />
+          </View>
         </View>
         <View style={styles.passwordWrap}>
           <TextInput

@@ -3,17 +3,17 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 196,
-  "branch": "cursor/native-phase3r-complete-09ff",
-  "auditedAt": "2026-11-10T09:07:26.807Z",
-  "auditCommit": "4be8c0cb",
-  "stackedOnPr": 194,
+  "pr": 197,
+  "branch": "cursor/native-phase3s-device-validate-09ff",
+  "auditedAt": "2026-11-10T09:12:42.333Z",
+  "auditCommit": "ee16e421",
+  "stackedOnPr": 196,
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
-    "placeholderRouteCount": 1,
-    "fullyNativeRouteCount": 75,
+    "placeholderRouteCount": 0,
+    "fullyNativeRouteCount": 76,
     "partiallyNativeRouteCount": 2,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
@@ -38,7 +38,8 @@
       "Phase 3Q: Home max-2 promo videos (web+native); VideoFeed hard-stop audio on scroll; NativeVideoPlayer active prop; read-only Advantage+ geo recovery preview + SQL scripts (no production mutate). Physical device + production audit count still pending. Counts remain 75/1/1/1/5.",
       "Phase 3Q release validation: Mobile preflight PASS; Vercel Account-blocked obsolete; public Haiti feed limit=2 returns 2 videos; affected campaign count blocked without read-only DB URL; overall NO-GO for production data changes / CONDITIONAL GO for code merge after approval.",
       "Phase 3R: Native completion push \u2014 product-variations PARTIAL (itemSize-only native screen; multi-SKU still no API); Admin TV multipart upload + Music provider connect; search recent history; profile public shop + promo/esim links; inventory honesty (promo-feed, delivery-confirm, image-upload routes). Counts 75/2/1/0/5. Still not 83/83: FCM PARTIAL, website PLACEHOLDER, 5 Play/eSIM BLOCKED.",
-      "Phase 3R gap closure: seller ship + shipping label on /orders/[id]; inventory honesty for order-detail/seller-orders/search history/home promo."
+      "Phase 3R gap closure: seller ship + shipping label on /orders/[id]; inventory honesty for order-detail/seller-orders/search history/home promo.",
+      "Phase 3S: website route \u2192 platform browser (FULLY for intentional external nav); product-variations presets; FCM local checklist; Android APK blocked without SDK/EAS login; physical device not run on agent."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -68,7 +69,8 @@
     "phase3p": true,
     "phase3q": true,
     "phase3r": true,
-    "phase3rGapClosure": true
+    "phase3rGapClosure": true,
+    "phase3s": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -137,9 +139,9 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 75,
+    "FULLY_NATIVE": 76,
     "PARTIALLY_NATIVE": 2,
-    "PLACEHOLDER": 1,
+    "PLACEHOLDER": 0,
     "MISSING": 0,
     "BLOCKED": 5
   },
@@ -638,7 +640,7 @@
         "Physical-device FCM end-to-end verification",
         "EAS FCM V1 credential confirmation in Expo dashboard"
       ],
-      "work": "Phase 3O: retry registration + FlexaMarketAndroid UA on token APIs. Physical-device FCM delivery still unverified."
+      "work": "Phase 3S: local device validation checklist (never auto-verifies). Physical FCM + EAS FCM V1 still required."
     },
     {
       "id": "kyc",
@@ -1433,11 +1435,9 @@
       "nativeRoute": "/website",
       "role": "any",
       "apis": [],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "intentionally not embedding website"
-      ],
-      "work": "Do not restore WebView marketplace wrapper"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3S: intentional external browser via expo-web-browser to flexamarket.com \u2014 not a marketplace WebView embed"
     },
     {
       "id": "esim",
@@ -1485,7 +1485,7 @@
       "missing": [
         "Multi-SKU / stock-per-variant / cart line SKU APIs still absent"
       ],
-      "work": "Phase 3R: native itemSize editor for seller listings; NOT claimed FULLY_NATIVE without SKU API"
+      "work": "Phase 3S: size/color presets compose into itemSize; still PARTIAL \u2014 no multi-SKU API"
     }
   ],
   "recommendedPhase3Order": [

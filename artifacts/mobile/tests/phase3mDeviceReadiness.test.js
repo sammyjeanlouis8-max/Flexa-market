@@ -91,7 +91,11 @@ test("Phase 3M inventory recount and key statuses", () => {
     byId["product-variations"].status === "MISSING" ||
       byId["product-variations"].status === "PARTIALLY_NATIVE",
   );
-  assert.equal(byId["website-embed"].status, "PLACEHOLDER");
+  assert.ok(
+    byId["website-embed"].status === "PLACEHOLDER" ||
+      byId["website-embed"].status === "FULLY_NATIVE",
+    "website-embed intentional; PLACEHOLDER or FULLY after 3S browser route",
+  );
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.equal(byId["push-fcm"].status, "PARTIALLY_NATIVE");
   assert.ok(inv.verification.phase3m === true || inv.verification.phase3n === true);

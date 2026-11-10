@@ -141,7 +141,9 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     : req.user?.country;
 
   // Custom / map targeting: honor wizard selections (department, cities, radius).
-  // Advantage+ (automatic): default to the seller's registered region when omitted.
+  // Advantage+ (automatic): country-wide — do NOT stamp the seller's department/commune.
+  // Stamping seller geo here previously excluded most viewers from GET /api/videos/feed
+  // while Admin free boosts (null state/city) appeared nationwide.
   const audienceType =
     req.body.audience?.audienceType === "custom" ? "custom" : "advantage_plus";
   const bodyState =
@@ -157,26 +159,26 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     ? (req.body.audience.cities as unknown[]).filter((c): c is string => typeof c === "string" && c.trim().length > 0)
     : [];
 
-  const resolvedState = isAdmin
-    ? (bodyState || bodyStates[0] || req.user?.state || null)
-    : audienceType === "custom"
-      ? (bodyState || bodyStates[0] || req.user?.state || null)
-      : (req.user?.state || bodyState || bodyStates[0] || null);
+  const resolvedState = audienceType === "advantage_plus"
+    ? null
+    : (bodyState || bodyStates[0] || req.user?.state || null);
 
-  const resolvedCity = isAdmin
-    ? (bodyCity || bodyCities[0] || req.user?.location || null)
-    : audienceType === "custom"
-      ? (bodyCity || bodyCities[0] || null)
-      : (req.user?.location || bodyCity || bodyCities[0] || null);
+  const resolvedCity = audienceType === "advantage_plus"
+    ? null
+    : (bodyCity || bodyCities[0] || null);
 
   const audienceBody = {
     ...req.body.audience,
     audienceType,
     country: audienceCountry,
     state: resolvedState,
-    states: bodyStates.length > 0 ? bodyStates : (bodyState ? undefined : req.body.audience?.states),
+    states: audienceType === "advantage_plus"
+      ? []
+      : (bodyStates.length > 0 ? bodyStates : (bodyState ? undefined : req.body.audience?.states)),
     city: resolvedCity,
-    cities: audienceType === "custom" && bodyCities.length > 0 ? bodyCities : req.body.audience?.cities,
+    cities: audienceType === "advantage_plus"
+      ? []
+      : (bodyCities.length > 0 ? bodyCities : req.body.audience?.cities),
   };
   const audienceCheck = validateAudience(audienceBody, audienceCountry);
   if (!audienceCheck.ok) { res.status(400).json({ error: audienceCheck.error }); return; }
@@ -654,10 +656,11 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
   // Super-admins may target ALL countries globally.
   const isAllCountries = !!(req.user?.isSuperAdmin) && rawCountry === "ALL";
   const country = rawCountry;
-  const state = (!isAllCountries && country === "Haiti") ? (req.user!.state ?? "Ouest") : null;
-  const city  = (!isAllCountries && typeof req.body.audienceCity === "string" && req.body.audienceCity.trim())
-    ? req.body.audienceCity.trim()
-    : (!isAllCountries ? (req.user!.location ?? null) : null);
+  // Video-only is Advantage+ automatic delivery: country-wide (null dept/city),
+  // matching admin free boosts. Do not force the seller's Haiti department —
+  // that silently excluded regular seller promos from most viewers' feeds.
+  const state: string | null = null;
+  const city: string | null = null;
   const gender = ["all", "male", "female"].includes(req.body.audienceGender) ? req.body.audienceGender : "all";
   const ageMin = Number.isFinite(Number(req.body.audienceAgeMin)) ? Math.max(13, Math.min(79, Number(req.body.audienceAgeMin))) : 18;
   const ageMax = Number.isFinite(Number(req.body.audienceAgeMax)) ? Math.max(ageMin + 1, Math.min(80, Number(req.body.audienceAgeMax))) : 65;

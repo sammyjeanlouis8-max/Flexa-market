@@ -177,9 +177,11 @@ router.get("/booster/campaigns", requireAuth, async (req, res): Promise<void> =>
 
   const campaigns = rows.map((r) => {
     const expired = r.expiresAt <= now || (!!r.boostExpiresAt && r.boostExpiresAt <= now);
+    const startGate = r.startsAt ?? r.boostStartAt;
     let status = r.campaignStatus || "pending";
     if (r.paymentStatus === "draft" || status === "draft") status = "draft";
     else if (status === "paused" && r.paymentStatus === "paid" && !expired) status = "paused";
+    else if (r.paymentStatus === "paid" && !expired && startGate && startGate > now) status = "scheduled";
     else if (r.paymentStatus === "paid" && !expired) status = "active";
     else if (r.paymentStatus === "paid" && expired) status = "expired";
     return {
@@ -348,6 +350,7 @@ router.post("/booster/campaigns", requireAuth, requireNotRestricted, requireCard
     req.user?.country,
   );
   if (!audienceCheck.ok) { res.status(400).json({ error: audienceCheck.error }); return; }
+  // validateAudience already applies Advantage+ country-wide geo clearing.
   const audience = audienceCheck.audience;
 
   const startsAt = startDate ? new Date(startDate) : new Date();

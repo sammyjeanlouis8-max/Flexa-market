@@ -209,26 +209,76 @@ export function validateAudience(
   const objective = VALID_OBJECTIVES.includes(a.objective as Objective) ? (a.objective as Objective) : "auto";
   const audienceName = typeof a.audienceName === "string" ? a.audienceName.trim().slice(0, 100) || null : null;
 
+  const audience: Audience = {
+    country,
+    state: encodeAudienceStates(states, state),
+    states,
+    city,
+    cities,
+    neighborhood,
+    radiusKm,
+    places,
+    interests,
+    audienceType,
+    ageMin,
+    ageMax,
+    gender,
+    objective,
+    audienceName,
+  };
+
   return {
     ok: true,
-    audience: {
-      country,
-      state: encodeAudienceStates(states, state),
-      states,
-      city,
-      cities,
-      neighborhood,
-      radiusKm,
-      places,
-      interests,
-      audienceType,
-      ageMin,
-      ageMax,
-      gender,
-      objective,
-      audienceName,
-    },
+    // Advantage+ must match admin free-boost delivery: country-wide (null dept/city).
+    audience: applyAdvantagePlusCountryWideDelivery(audience),
   };
+}
+
+/**
+ * Advantage+ = automatic country-wide delivery pool (null department / city).
+ * Custom targeting keeps explicit geo. Matches admin free-boost listing stamps
+ * (`boost_audience_state` / city left null) so regular sellers are not silently
+ * restricted to their own commune while Admin/Super Admin promos appear nationwide.
+ */
+export function applyAdvantagePlusCountryWideDelivery(audience: Audience): Audience {
+  if ((audience.audienceType ?? "advantage_plus") !== "advantage_plus") {
+    return audience;
+  }
+  return {
+    ...audience,
+    audienceType: "advantage_plus",
+    state: null,
+    states: null,
+    city: null,
+    cities: null,
+    neighborhood: null,
+    radiusKm: null,
+    places: null,
+    // Drop structured geo payloads; keep non-geo interest tags if any later.
+    interests: null,
+  };
+}
+
+/** True when Advantage+ row still has dept/city geo that would shrink the feed pool. */
+export function isAdvantagePlusGeoOverconstrained(row: {
+  audienceType?: string | null;
+  audienceState?: string | null;
+  audienceCity?: string | null;
+  audienceCities?: string[] | null;
+  boostAudienceState?: string | null;
+  boostAudienceCity?: string | null;
+  boostAudienceCities?: string[] | null;
+}): boolean {
+  const type = row.audienceType ?? "advantage_plus";
+  if (type !== "advantage_plus") return false;
+  const hasState = !!(row.audienceState?.trim() || row.boostAudienceState?.trim());
+  const hasCity = !!(
+    row.audienceCity?.trim()
+    || row.boostAudienceCity?.trim()
+    || (row.audienceCities && row.audienceCities.length > 0)
+    || (row.boostAudienceCities && row.boostAudienceCities.length > 0)
+  );
+  return hasState || hasCity;
 }
 
 export function estimateReach(budget: number, plan: Plan, audience: Audience): number {

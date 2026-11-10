@@ -71,6 +71,28 @@ export default function SettingsScreen() {
 
       <Pressable
         style={[styles.row, { marginTop: 10 }]}
+        onPress={() => router.push("/settings-notifications")}
+      >
+        <View>
+          <Text style={styles.label}>Notification preferences</Text>
+          <Text style={styles.value}>Push · email · SMS</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
+      <Pressable
+        style={[styles.row, { marginTop: 10 }]}
+        onPress={() => router.push("/settings-privacy")}
+      >
+        <View>
+          <Text style={styles.label}>Privacy</Text>
+          <Text style={styles.value}>Blocks · visibility</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
+      <Pressable
+        style={[styles.row, { marginTop: 10 }]}
         onPress={() => router.push("/security")}
       >
         <View>

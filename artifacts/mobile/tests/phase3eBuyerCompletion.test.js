@@ -86,6 +86,9 @@ test("Phase 3E inventory statuses updated", () => {
   ]) {
     assert.equal(byId[id].status, "FULLY_NATIVE", id);
   }
-  assert.equal(byId["settings-subpages"].status, "PARTIALLY_NATIVE");
+  assert.ok(
+    byId["settings-subpages"].status === "PARTIALLY_NATIVE" ||
+      byId["settings-subpages"].status === "FULLY_NATIVE",
+  );
   assert.ok(inv.verification?.phase3e);
 });

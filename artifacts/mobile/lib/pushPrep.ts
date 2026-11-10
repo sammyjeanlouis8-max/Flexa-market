@@ -147,6 +147,7 @@ async function postToken(
       "Content-Type": "application/json",
       Authorization: `Bearer ${jwt}`,
       Accept: "application/json",
+      "User-Agent": "FlexaMarketAndroid",
     },
     body: JSON.stringify({
       token,
@@ -176,6 +177,7 @@ async function deleteTokenOnServer(
       "Content-Type": "application/json",
       Authorization: `Bearer ${jwt}`,
       Accept: "application/json",
+      "User-Agent": "FlexaMarketAndroid",
     },
     body: JSON.stringify(body),
   });

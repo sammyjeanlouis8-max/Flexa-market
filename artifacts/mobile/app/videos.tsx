@@ -1,6 +1,6 @@
 /**
  * Promotional videos feed — GET /api/videos/feed (seller mine by default).
- * Creating/paying for promo videos remains blocked on Android.
+ * Native playback via NativeVideoPlayer. Paid boost purchase stays blocked.
  */
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NativeVideoPlayer } from "@/components/NativeVideoPlayer";
 import { useAuth } from "@/context/AuthContext";
 import { fetchVideosFeed, type VideoFeedItem } from "@/lib/sellerApi";
 
@@ -25,6 +26,7 @@ export default function VideosScreen() {
   const [rows, setRows] = useState<VideoFeedItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [playingId, setPlayingId] = useState<number | null>(null);
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -52,6 +54,7 @@ export default function VideosScreen() {
         return;
       }
       if (token) void load("initial");
+      return () => setPlayingId(null);
     }, [authLoading, token, router, load]),
   );
 
@@ -69,8 +72,8 @@ export default function VideosScreen() {
       </View>
 
       <Text style={styles.banner}>
-        Browse your promotional videos. Paid video upload / boost purchase stays
-        unavailable on Android.
+        Browse and preview your promotional videos. Paid boost purchase stays unavailable on
+        Android.
       </Text>
 
       {rows === null && !error ? (
@@ -89,24 +92,41 @@ export default function VideosScreen() {
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24 }}
           ListHeaderComponent={error ? <Text style={styles.error}>{error}</Text> : null}
           ListEmptyComponent={<Text style={styles.empty}>No promo videos yet.</Text>}
-          renderItem={({ item }) => (
-            <Pressable
-              style={styles.card}
-              onPress={() =>
-                item.listingId ? router.push(`/listing/${item.listingId}`) : undefined
-              }
-            >
-              <Feather name="video" size={20} color="#F97316" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle} numberOfLines={2}>
-                  {item.title || `Video #${item.id}`}
-                </Text>
-                <Text style={styles.meta}>
-                  {item.listingId ? `Listing ${item.listingId}` : "Campaign video"}
-                </Text>
+          renderItem={({ item }) => {
+            const uri = item.videoUrl ? String(item.videoUrl) : "";
+            const isPlaying = playingId === item.id && !!uri;
+            return (
+              <View style={styles.card}>
+                <Pressable
+                  style={styles.cardRow}
+                  onPress={() => {
+                    if (!uri) {
+                      if (item.listingId) router.push(`/listing/${item.listingId}`);
+                      return;
+                    }
+                    setPlayingId((prev) => (prev === item.id ? null : item.id));
+                  }}
+                >
+                  <Feather name={isPlaying ? "pause" : "video"} size={20} color="#F97316" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle} numberOfLines={2}>
+                      {item.title || `Video #${item.id}`}
+                    </Text>
+                    <Text style={styles.cardSub}>
+                      {uri ? (isPlaying ? "Playing · tap to close" : "Tap to preview") : "No URL"}
+                      {item.listingId ? ` · listing #${item.listingId}` : ""}
+                    </Text>
+                  </View>
+                  <Feather name="chevron-right" size={16} color="#94A3B8" />
+                </Pressable>
+                {isPlaying ? (
+                  <View style={styles.player}>
+                    <NativeVideoPlayer uri={uri} title={item.title || undefined} autoPlay />
+                  </View>
+                ) : null}
               </View>
-            </Pressable>
-          )}
+            );
+          }}
         />
       )}
     </View>
@@ -120,6 +140,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 12,
+    marginBottom: 8,
   },
   back: {
     width: 40,
@@ -134,27 +155,26 @@ const styles = StyleSheet.create({
   title: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
   banner: {
     marginHorizontal: 16,
-    marginVertical: 10,
+    marginBottom: 10,
     backgroundColor: "#FFF7ED",
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 10,
+    padding: 10,
     color: "#9A3412",
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
   },
-  error: { color: "#B91C1C", marginBottom: 8, fontWeight: "600" },
+  error: { color: "#DC2626", marginBottom: 8 },
   empty: { textAlign: "center", color: "#94A3B8", marginTop: 40 },
   card: {
-    flexDirection: "row",
-    gap: 12,
-    alignItems: "center",
     backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    marginBottom: 8,
+    marginBottom: 10,
+    overflow: "hidden",
   },
-  cardTitle: { fontWeight: "700", color: "#0F172A" },
-  meta: { color: "#64748B", fontSize: 12, marginTop: 2 },
+  cardRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12 },
+  cardTitle: { fontWeight: "800", color: "#0F172A", fontSize: 14 },
+  cardSub: { color: "#64748B", fontSize: 11, marginTop: 2 },
+  player: { paddingHorizontal: 8, paddingBottom: 10 },
 });

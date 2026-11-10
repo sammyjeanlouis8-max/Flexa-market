@@ -50,13 +50,14 @@ export function detectPerfTierSync(): PerfTier {
   let tier: PerfTier = "mid";
 
   if (Platform.OS === "android") {
-    if (ramGb > 0 && ramGb < 3) tier = "lite";
-    else if (ramGb > 0 && ramGb < 4.5) tier = "low";
-    else if (ramGb >= 6 && dpr >= 2.5 && api >= 31) tier = "high";
-    else if (ramGb >= 4.5) tier = "mid";
+    // Conservative defaults for low-end Android (Phase 3M device readiness).
+    if (ramGb > 0 && ramGb < 3.5) tier = "lite";
+    else if (ramGb > 0 && ramGb < 5) tier = "low";
+    else if (ramGb >= 7 && dpr >= 2.5 && api >= 31) tier = "high";
+    else if (ramGb >= 5) tier = "mid";
     else if (ramGb === 0) {
-      // Unknown RAM — prefer mid on modern API, low otherwise.
-      tier = api >= 30 ? "mid" : "low";
+      // Unknown RAM — prefer low on Android to avoid jank during auth.
+      tier = api >= 31 ? "mid" : "low";
     }
   } else {
     // iOS devices are generally capable; keep mid/high only.

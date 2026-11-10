@@ -2,10 +2,12 @@
  * Dynamic sitemaps for public catalog URLs.
  *
  * GET /api/sitemap-listings.xml  — approved, available products with usable images
- * GET /api/sitemap-categories.xml — categories that currently have public products
+ * GET /api/sitemap-categories.xml — every public parent category in the catalog
  *
  * Drafts, unapproved, suspended, and archived listings are excluded.
  * Admin / checkout / private routes are never listed here.
+ * Empty categories stay in the categories sitemap so newly published
+ * inventory is discoverable as soon as products appear.
  */
 
 import { Router } from "express";
@@ -73,23 +75,34 @@ ${urlEntries}
 
 router.get("/sitemap-categories.xml", async (_req, res): Promise<void> => {
   try {
+    // Public marketplace category pages are parent slugs (/categories/{slug}).
+    // Include every parent from the catalog — even with zero public products —
+    // so crawlers keep stable category URLs as inventory changes.
     const result = await db.execute(sql`
-      SELECT c.slug, MAX(l.updated_at) AS updated_at
+      SELECT
+        c.slug,
+        COALESCE(
+          (
+            SELECT MAX(l.updated_at)
+            FROM listings l
+            WHERE l.category_id = c.id
+              AND l.status = 'available'
+              AND l.moderation_status = 'approved'
+              AND COALESCE(l.lifecycle_status, 'published') NOT IN ('suspended', 'archived', 'draft', 'pending_review', 'rejected')
+              AND EXISTS (
+                SELECT 1
+                FROM unnest(l.images) AS listing_image
+                WHERE btrim(listing_image) <> ''
+                  AND listing_image NOT ILIKE '%placehold.co%'
+                  AND listing_image NOT ILIKE '%via.placeholder.com%'
+              )
+          ),
+          NOW()
+        ) AS updated_at
       FROM categories c
-      INNER JOIN listings l ON l.category_id = c.id
-      WHERE l.status = 'available'
-        AND l.moderation_status = 'approved'
-        AND COALESCE(l.lifecycle_status, 'published') NOT IN ('suspended', 'archived', 'draft', 'pending_review', 'rejected')
+      WHERE c.parent_id IS NULL
         AND c.slug IS NOT NULL
         AND btrim(c.slug) <> ''
-        AND EXISTS (
-          SELECT 1
-          FROM unnest(l.images) AS listing_image
-          WHERE btrim(listing_image) <> ''
-            AND listing_image NOT ILIKE '%placehold.co%'
-            AND listing_image NOT ILIKE '%via.placeholder.com%'
-        )
-      GROUP BY c.slug
       ORDER BY c.slug ASC
       LIMIT 5000
     `);

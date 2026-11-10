@@ -43,8 +43,18 @@ function readFromLocation(): SearchUrlState {
   };
 }
 
-function buildSearch(state: SearchUrlState): string {
-  const pathCategory = categorySlugFromPath();
+/**
+ * Build the query string for a Search URL.
+ * Pass the *target* pathname so category query params stay correct when leaving
+ * `/categories/:slug` for `/search` in the same replaceState write.
+ */
+export function buildSearch(
+  state: SearchUrlState,
+  targetPathname?: string,
+): string {
+  const pathCategory = categorySlugFromPath(
+    targetPathname ?? (typeof window !== "undefined" ? window.location.pathname : ""),
+  );
   const params = new URLSearchParams();
   if (state.q.trim()) params.set("q", state.q.trim());
   // On /categories/:slug the category lives in the path (canonical).
@@ -61,17 +71,31 @@ function buildSearch(state: SearchUrlState): string {
   return qs ? `?${qs}` : "";
 }
 
-function buildPathname(state: SearchUrlState): string {
-  const pathCategory = categorySlugFromPath();
+export function buildPathname(
+  state: Pick<SearchUrlState, "category">,
+  pathname?: string,
+): string {
+  const pathCategory = categorySlugFromPath(
+    pathname ?? (typeof window !== "undefined" ? window.location.pathname : ""),
+  );
   if (pathCategory) {
-    // Keep the public category URL when the selected category still matches.
-    if (!state.category || state.category === pathCategory) {
+    // Keep the public category URL only while that category stays selected.
+    if (state.category === pathCategory) {
       return `/categories/${pathCategory}`;
     }
-    // User switched category in filters → fall back to /search?category=
+    // Cleared filter or switched category → shareable /search URL.
     return "/search";
   }
+  if (pathname) return pathname;
   return typeof window !== "undefined" ? window.location.pathname : "/search";
+}
+
+export function buildSearchUrl(
+  state: SearchUrlState,
+  currentPathname?: string,
+): string {
+  const path = buildPathname(state, currentPathname);
+  return `${path}${buildSearch(state, path)}`;
 }
 
 /**
@@ -92,7 +116,7 @@ export function useSearchUrlSync(
       skipWrite.current = false;
       return;
     }
-    const next = `${buildPathname(state)}${buildSearch(state)}`;
+    const next = buildSearchUrl(state, window.location.pathname);
     const current = `${window.location.pathname}${window.location.search}`;
     if (next === current) return;
     window.history.replaceState(window.history.state, "", next);

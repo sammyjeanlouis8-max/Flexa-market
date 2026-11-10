@@ -383,10 +383,10 @@ export default function SearchPage() {
   const categorySeoName = selectedParent?.name || category;
   useSEO({
     title: pathCategory && categorySeoName
-      ? `${categorySeoName}`
+      ? `${categorySeoName} — Buy & sell on FLEXA MARKET`
       : "Search Listings",
     description: pathCategory && categorySeoName
-      ? `Shop ${categorySeoName} on FLEXA MARKET. Browse approved products with secure checkout.`
+      ? `Shop ${categorySeoName} on FLEXA MARKET. Browse approved products with secure checkout across Haiti and the Caribbean.`
       : "Search Flexa Market listings — electronics, fashion, vehicles, furniture and more across Haiti and the Caribbean.",
     path: pathCategory ? `/categories/${pathCategory}` : "/search",
   });

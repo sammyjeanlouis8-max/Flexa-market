@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  buildCategoryMetaDescription,
   buildProductJsonLd,
   buildProductMetaDescription,
   escapeHtml,
@@ -71,16 +72,37 @@ describe("seoPublicHtml helpers", () => {
         { id: 32, title: "tshot for man", price: 25, currency: "USD", image: "/a.jpg" },
         { id: 45, title: "Boucle d’oreille", price: 30, currency: "USD", image: null },
       ],
+      relatedCategories: [
+        { slug: "electronics", name: "Electronics" },
+        { slug: "shoes", name: "Shoes" },
+      ],
     });
     expect(html).toContain('href="https://flexamarket.com/listings/32"');
     expect(html).toContain('href="https://flexamarket.com/listings/45"');
     expect(html).toContain("tshot for man");
     expect(html).toContain('rel="canonical" href="https://flexamarket.com/categories/fashion"');
+    expect(html).toContain('href="https://flexamarket.com/categories/electronics"');
+    expect(html).toContain("2 public listings");
+  });
+
+  it("keeps empty category pages indexable with unique meta", () => {
+    const html = renderCategorySeoHtml({
+      slug: "real-estate",
+      name: "Real Estate",
+      products: [],
+    });
+    expect(html).toContain('rel="canonical" href="https://flexamarket.com/categories/real-estate"');
+    expect(html).toContain("No public products in this category right now.");
+    expect(buildCategoryMetaDescription({
+      slug: "real-estate",
+      name: "Real Estate",
+      products: [],
+    })).toContain("Real Estate");
   });
 });
 
-describe("SEO Phase 1 wiring contracts", () => {
-  it("exposes seo + fixed sitemap routes and bot nginx proxy", () => {
+describe("SEO catalog wiring contracts", () => {
+  it("exposes seo + full-catalog sitemap routes and bot nginx proxy", () => {
     const index = readFileSync(resolve(__dirname, "../routes/index.ts"), "utf8");
     const sitemap = readFileSync(resolve(__dirname, "../routes/sitemap.ts"), "utf8");
     const seo = readFileSync(resolve(__dirname, "../routes/seo.ts"), "utf8");
@@ -101,12 +123,16 @@ describe("SEO Phase 1 wiring contracts", () => {
     expect(seo).toMatch(/\/seo\/listings\/:id/);
     expect(seo).toMatch(/\/seo\/categories\/:slug/);
     expect(seo).toMatch(/isPubliclyDiscoverable/);
+    expect(seo).toMatch(/subcategoryId/);
     expect(sitemap).toMatch(/moderation_status = 'approved'/);
     expect(sitemap).not.toMatch(/is_removed/);
     expect(sitemap).toMatch(/sitemap-categories\.xml/);
+    expect(sitemap).toMatch(/parent_id IS NULL/);
+    expect(sitemap).not.toMatch(/INNER JOIN listings/);
     expect(nginx).toMatch(/flexa_is_seo_bot/);
     expect(nginx).toMatch(/\/api\/seo\/listings\/\$listing_id/);
     expect(nginx).toMatch(/\/api\/seo\/categories\/\$category_slug/);
+    expect(nginx).toMatch(/https:\/\/flexamarket\.com/);
     expect(robots).toMatch(/Allow: \/listings\//);
     expect(robots).toMatch(/Disallow: \/cart/);
     expect(robots).toMatch(/Disallow: \/checkout/);

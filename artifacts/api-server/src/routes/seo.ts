@@ -5,7 +5,7 @@
  */
 
 import { Router } from "express";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or } from "drizzle-orm";
 import { db, listingsTable, categoriesTable, usersTable } from "@workspace/db";
 import { isPubliclyDiscoverable } from "../lib/productEligibility";
 import { cleanListingImages, hasUsableListingImage, listingHasUsableImageSql } from "../lib/listingMedia";
@@ -123,6 +123,15 @@ router.get("/seo/categories/:slug", async (req, res): Promise<void> => {
       return;
     }
 
+    // Parent categories store inventory on category_id; child categories use
+    // subcategory_id (with rare legacy rows still on category_id).
+    const categoryMatch = category.parentId == null
+      ? eq(listingsTable.categoryId, category.id)
+      : or(
+          eq(listingsTable.subcategoryId, category.id),
+          eq(listingsTable.categoryId, category.id),
+        );
+
     const products = await db
       .select({
         id: listingsTable.id,
@@ -133,7 +142,7 @@ router.get("/seo/categories/:slug", async (req, res): Promise<void> => {
       })
       .from(listingsTable)
       .where(and(
-        eq(listingsTable.categoryId, category.id),
+        categoryMatch,
         eq(listingsTable.status, "available"),
         eq(listingsTable.moderationStatus, "approved"),
         ne(listingsTable.lifecycleStatus, "suspended"),
@@ -142,6 +151,36 @@ router.get("/seo/categories/:slug", async (req, res): Promise<void> => {
       ))
       .orderBy(desc(listingsTable.updatedAt))
       .limit(50);
+
+    const excludeId = category.parentId == null ? category.id : category.parentId;
+    const siblingCategories = await db
+      .select({
+        slug: categoriesTable.slug,
+        name: categoriesTable.name,
+      })
+      .from(categoriesTable)
+      .where(and(
+        isNull(categoriesTable.parentId),
+        ne(categoriesTable.id, excludeId),
+      ))
+      .orderBy(categoriesTable.name)
+      .limit(30);
+
+    // Always include the current parent in the nav for child pages.
+    let parentNav: { slug: string; name: string } | null = null;
+    if (category.parentId != null) {
+      const [parent] = await db
+        .select({ slug: categoriesTable.slug, name: categoriesTable.name })
+        .from(categoriesTable)
+        .where(eq(categoriesTable.id, category.parentId))
+        .limit(1);
+      parentNav = parent ?? null;
+    }
+
+    const relatedCategories = [
+      ...(parentNav && parentNav.slug !== category.slug ? [parentNav] : []),
+      ...siblingCategories.filter((c) => c.slug !== category.slug),
+    ].slice(0, 24);
 
     const html = renderCategorySeoHtml({
       slug: category.slug,
@@ -154,6 +193,7 @@ router.get("/seo/categories/:slug", async (req, res): Promise<void> => {
         currency: p.currency || "USD",
         image: cleanListingImages(p.images)[0] ?? null,
       })),
+      relatedCategories,
     });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");

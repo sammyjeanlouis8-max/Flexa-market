@@ -214,16 +214,31 @@ export type PublicCategorySeoInput = {
     currency: string;
     image?: string | null;
   }>;
+  /** Other public marketplace categories for crawlable navigation. */
+  relatedCategories?: Array<{ slug: string; name: string }>;
 };
+
+export function buildCategoryMetaDescription(category: PublicCategorySeoInput): string {
+  if (category.description?.trim()) {
+    return truncateMeta(category.description, 160);
+  }
+  const count = category.products.length;
+  if (count > 0) {
+    return truncateMeta(
+      `Shop ${category.name} on FLEXA MARKET — ${count} public listing${count === 1 ? "" : "s"} with secure checkout across Haiti and the Caribbean.`,
+      160,
+    );
+  }
+  return truncateMeta(
+    `Browse ${category.name} on FLEXA MARKET. New approved listings appear here as sellers publish them.`,
+    160,
+  );
+}
 
 export function renderCategorySeoHtml(category: PublicCategorySeoInput, baseUrl = SEO_BASE_URL): string {
   const url = `${baseUrl}/categories/${encodeURIComponent(category.slug)}`;
   const title = `${category.name} — Buy & sell on FLEXA MARKET`;
-  const description = truncateMeta(
-    category.description?.trim()
-      || `Shop ${category.name} on FLEXA MARKET. Browse approved products with secure checkout.`,
-    160,
-  );
+  const description = buildCategoryMetaDescription(category);
   const itemList = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
@@ -253,6 +268,14 @@ export function renderCategorySeoHtml(category: PublicCategorySeoInput, baseUrl 
 </li>`;
   }).join("\n");
 
+  const related = (category.relatedCategories ?? [])
+    .filter((c) => c.slug && c.slug !== category.slug)
+    .map((c) => {
+      const href = `${baseUrl}/categories/${encodeURIComponent(c.slug)}`;
+      return `<li style="display:inline;margin-right:0.75rem"><a href="${escapeHtml(href)}">${escapeHtml(c.name)}</a></li>`;
+    })
+    .join(" ");
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -275,12 +298,13 @@ export function renderCategorySeoHtml(category: PublicCategorySeoInput, baseUrl 
 </head>
 <body>
   <main>
-    <p><a href="${escapeHtml(baseUrl)}/">FLEXA MARKET</a></p>
+    <p><a href="${escapeHtml(baseUrl)}/">FLEXA MARKET</a> · <a href="${escapeHtml(baseUrl)}/search">Search</a></p>
     <h1>${escapeHtml(category.name)}</h1>
     <p>${escapeHtml(description)}</p>
     <ul style="padding:0;margin:1.5rem 0">
 ${links || "<li>No public products in this category right now.</li>"}
     </ul>
+    ${related ? `<nav aria-label="Categories"><p class="muted" style="color:#555">More categories</p><ul style="padding:0;margin:0.5rem 0 0;list-style:none">${related}</ul></nav>` : ""}
   </main>
 </body>
 </html>`;

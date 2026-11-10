@@ -2361,6 +2361,13 @@ router.post("/admin/moderation/:id/reject", requireRole("moderator"), async (req
     listingId: id,
     message: reason || listing.moderationReason || "Pwodwi a rejte pa yon administratè.",
   });
+  // Promo videos must leave automatic delivery immediately on reject.
+  if (listing.boostVideoUrl) {
+    try {
+      const { stopVideoPromotion } = await import("../lib/videoProfile");
+      await stopVideoPromotion(id);
+    } catch { /* non-fatal */ }
+  }
   await log(req.userId!, "moderation_reject", "listing", id, `Rejected listing: "${listing.title}"`);
   res.json({ message: "Listing rejected" });
 });

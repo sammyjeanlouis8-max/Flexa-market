@@ -207,7 +207,10 @@ export default function VideoFavorites() {
                   <div className="p-3 space-y-2.5">
                     <h3 className="line-clamp-2 text-[13px] font-bold leading-snug">{v.title}</h3>
 
-                    <Link href={`/profile/${v.sellerId}`} className="flex items-center gap-2 min-w-0">
+                    <Link
+                      href={v.sellerId ? `/videos/profile/${v.sellerId}` : "/videos"}
+                      className="flex items-center gap-2 min-w-0"
+                    >
                       <Avatar className="h-7 w-7 shrink-0 border border-white/20">
                         <AvatarImage src={v.sellerAvatar ?? undefined} />
                         <AvatarFallback className="text-[10px] bg-primary text-white">

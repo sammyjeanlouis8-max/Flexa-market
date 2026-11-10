@@ -491,6 +491,10 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     const sort = (["all", "trending", "new", "mine"].includes(sortRaw) ? sortRaw : "all") as
       "all" | "trending" | "new" | "mine";
     const searchQ = String(req.query.q ?? "").trim().slice(0, 80);
+    // Creator profile watch handoff: prefer that creator's publicly eligible videos
+    // (approved + not suspended/removed). Does not require an active paid boost so
+    // grid taps from /videos/profile/:id still play.
+    const creatorId = Math.max(0, parseInt(String(req.query.creator ?? "0"), 10) || 0);
 
     // ── Mandatory boost conditions (cannot be bypassed) ─────────────────────
     // Public Discover (all/trending/new): active paid boost only — expired
@@ -501,7 +505,13 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     // applies when an admin country filter is selected.
     const conditions: Parameters<typeof and>[0][] = [];
 
-    if (sort === "mine") {
+    if (creatorId > 0) {
+      const { publicVideoListingSql } = await import("../lib/videoProfile");
+      conditions.push(
+        eq(listingsTable.sellerId, creatorId) as ReturnType<typeof eq>,
+        publicVideoListingSql() as ReturnType<typeof eq>,
+      );
+    } else if (sort === "mine") {
       if (!req.userId) {
         res.json({
           noCountry: false,

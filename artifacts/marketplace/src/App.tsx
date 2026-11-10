@@ -98,6 +98,7 @@ const SubscriptionPage   = lazy(() => import("@/pages/Subscription"));
 const VideoPost          = lazy(() => import("@/pages/VideoPost"));
 const VideoFeed          = lazy(() => import("@/pages/VideoFeed"));
 const VideoDiscover      = lazy(() => import("@/pages/VideoDiscover"));
+const VideoProfile       = lazy(() => import("@/pages/VideoProfile"));
 const VideoFavorites     = lazy(() => import("@/pages/VideoFavorites"));
 const MyBoosts           = lazy(() => import("@/pages/MyBoosts"));
 const BoosterMyBoosts    = lazy(() => import("@/pages/booster/BoosterMyBoosts"));
@@ -252,6 +253,7 @@ function LayoutRoutes() {
           </Route>
           <Route path="/videos/watch" component={VideoFeed} />
           <Route path="/videos/favorites" component={VideoFavorites} />
+          <Route path="/videos/profile/:id" component={VideoProfile} />
           <Route path="/videos" component={VideoDiscover} />
           <Route path="/booster/create" component={BoosterCreate} />
           <Route path="/booster/analytics">

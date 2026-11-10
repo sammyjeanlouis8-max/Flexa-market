@@ -377,6 +377,7 @@ function getPageTitle(loc: string, t: (key: string, options?: Record<string, unk
   if (loc.startsWith("/search")) return t("page.search");
   if (loc.startsWith("/agent")) return t("page.agent");
   if (loc.startsWith("/chatbot")) return t("page.chatbot");
+  if (loc.startsWith("/videos/profile")) return t("videoProfile.title", { defaultValue: "Video profile" });
   if (loc === "/videos" || loc.startsWith("/videos/watch")) return t("videoFeed.title");
   return "";
 }
@@ -642,7 +643,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/settings(?:\/|$)/,
     /^\/order-label\//,
     /^\/orders(?:\/|$)/,
-    /^\/videos(?:\/(?:watch|favorites))?\/?$/,
+    /^\/videos(?:\/(?:watch|favorites|profile(?:\/[^/]+)?))?\/?$/,
     /^\/wallet/,
     /^\/subscription\/?$/,
     /^\/chatbot/,

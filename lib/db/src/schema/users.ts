@@ -19,6 +19,12 @@ export const usersTable = pgTable("users", {
   latitude: real("latitude"),
   longitude: real("longitude"),
   bio: text("bio"),
+  /** Unique @handle for Promotional Videos profile (shared identity, not a second account). */
+  username: text("username").unique(),
+  /** Video-profile-only biography — must not overwrite Marketplace `bio`. */
+  videoBio: text("video_bio"),
+  /** When false (default), Liked tab is owner-only. */
+  videoLikedPublic: boolean("video_liked_public").notNull().default(false),
   rating: real("rating").notNull().default(0),
   reviewCount: integer("review_count").notNull().default(0),
   isVerified: boolean("is_verified").notNull().default(false),

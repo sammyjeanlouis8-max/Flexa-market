@@ -897,6 +897,11 @@ function VideoCard({
   const [showHeartFlash, setShowHeartFlash] = useState(false);
   const [showReportSheet, setShowReportSheet] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [showAdminModSheet, setShowAdminModSheet] = useState(false);
+  const [adminRejectReason, setAdminRejectReason] = useState("");
+  const [adminModBusy, setAdminModBusy] = useState(false);
+  const isVideoAdmin =
+    !!(user as any)?.isAdmin || !!(user as any)?.isSuperAdmin || (user as any)?.role === "moderator";
   const [isLandscape, setIsLandscape] = useState(false);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapRef = useRef<number>(0);
@@ -1811,9 +1816,15 @@ function VideoCard({
         onTouchStart={e => e.stopPropagation()}
         onTouchEnd={e => e.stopPropagation()}
       >
-        {/* Seller avatar + follow / unfollow badge */}
+        {/* Seller avatar + follow / unfollow badge → video profile */}
         <div className="flex flex-col items-center mb-1">
-          <Link href={`/profile/${video.sellerId}`}>
+          <Link
+            href={`/videos/profile/${video.sellerId}`}
+            onClick={() => {
+              try { videoRef.current?.pause(); } catch { /* ok */ }
+              setPlaying(false);
+            }}
+          >
             <div className="relative">
               <Avatar className="h-12 w-12 border-2 border-white shadow-lg">
                 <AvatarImage src={video.sellerAvatar ?? undefined} />
@@ -1904,6 +1915,23 @@ function VideoCard({
           </span>
         </button>
 
+        {isVideoAdmin && (
+          <button
+            type="button"
+            onClick={() => {
+              setAdminRejectReason("");
+              setShowAdminModSheet(true);
+            }}
+            className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
+            data-testid={`button-admin-mod-video-${video.id}`}
+          >
+            <span className="flex h-11 w-11 items-center justify-center rounded-full border border-red-400/40 bg-red-600/40 backdrop-blur-md">
+              <MoreVertical className="h-[22px] w-[22px] text-white" />
+            </span>
+            <span className="text-[10px] font-semibold text-white drop-shadow-md">Admin</span>
+          </button>
+        )}
+
       </div>
 
       {/* ── Product CTA Card — slides up after 1.5s ── */}
@@ -1986,9 +2014,15 @@ function VideoCard({
         onTouchStart={e => e.stopPropagation()}
         onTouchEnd={e => e.stopPropagation()}
       >
-        {/* @username + verified */}
+        {/* @username + verified → video profile */}
         <div className="mb-1 flex items-center gap-2">
-          <Link href={`/profile/${video.sellerId}`}>
+          <Link
+            href={`/videos/profile/${video.sellerId}`}
+            onClick={() => {
+              try { videoRef.current?.pause(); } catch { /* ok */ }
+              setPlaying(false);
+            }}
+          >
             <p className="flex w-fit items-center gap-1.5 text-[15px] font-bold text-white drop-shadow-md">
               @{video.sellerName}
               {video.sellerIsVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-primary" />}
@@ -2095,6 +2129,98 @@ function VideoCard({
               type="button"
               onClick={() => setShowReportSheet(false)}
               className="mt-3 w-full rounded-xl py-3 text-[13px] font-bold text-white/60"
+            >
+              {t("common.cancel", { defaultValue: "Cancel" })}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Admin reject / delete ── */}
+      {showAdminModSheet && (
+        <div
+          className="absolute inset-0 z-40 flex items-end bg-black/55"
+          onClick={() => setShowAdminModSheet(false)}
+          onTouchStart={e => e.stopPropagation()}
+          onTouchEnd={e => e.stopPropagation()}
+        >
+          <div
+            className="w-full rounded-t-3xl border-t border-white/10 bg-zinc-950 px-4 pt-3 pb-6 space-y-3"
+            style={{ paddingBottom: `calc(16px + ${FEED_SAFE_BOTTOM})` }}
+            onClick={e => e.stopPropagation()}
+            data-testid={`admin-mod-sheet-${video.id}`}
+          >
+            <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-white/20" />
+            <h3 className="text-center text-[15px] font-black text-white">
+              {t("videoProfile.rejectTitle", { defaultValue: "Reject video" })} / {t("videoProfile.deleteTitle", { defaultValue: "Delete" })}
+            </h3>
+            <input
+              value={adminRejectReason}
+              onChange={e => setAdminRejectReason(e.target.value)}
+              placeholder={t("videoProfile.rejectReason", { defaultValue: "Reason (required)" })}
+              className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white outline-none"
+              data-testid={`admin-reject-reason-${video.id}`}
+            />
+            <button
+              type="button"
+              disabled={adminModBusy || adminRejectReason.trim().length < 3}
+              className="w-full rounded-xl bg-amber-600 py-3 text-[13px] font-bold text-white disabled:opacity-40"
+              onClick={async () => {
+                setAdminModBusy(true);
+                try {
+                  const res = await fetch(`/api/admin/videos/${video.id}/reject`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({ reason: adminRejectReason.trim() }),
+                  });
+                  if (!res.ok) throw new Error("fail");
+                  toast({ title: t("videoProfile.rejected", { defaultValue: "Video rejected" }) });
+                  setShowAdminModSheet(false);
+                  try { videoRef.current?.pause(); } catch { /* ok */ }
+                } catch {
+                  toast({ title: t("errors.serverError"), variant: "destructive" });
+                } finally {
+                  setAdminModBusy(false);
+                }
+              }}
+            >
+              {t("videoProfile.rejectConfirm", { defaultValue: "Reject" })}
+            </button>
+            <button
+              type="button"
+              disabled={adminModBusy}
+              className="w-full rounded-xl bg-red-700 py-3 text-[13px] font-bold text-white disabled:opacity-40"
+              onClick={async () => {
+                setAdminModBusy(true);
+                try {
+                  const res = await fetch(`/api/admin/videos/${video.id}/delete`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({ confirmTitle: video.title }),
+                  });
+                  if (!res.ok) throw new Error("fail");
+                  toast({ title: t("videoProfile.deleted", { defaultValue: "Video deleted" }) });
+                  setShowAdminModSheet(false);
+                  try { videoRef.current?.pause(); } catch { /* ok */ }
+                } catch {
+                  toast({ title: t("errors.serverError"), variant: "destructive" });
+                } finally {
+                  setAdminModBusy(false);
+                }
+              }}
+            >
+              {t("videoProfile.deleteConfirmBtn", { defaultValue: "Delete" })}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAdminModSheet(false)}
+              className="w-full rounded-xl py-3 text-[13px] font-bold text-white/60"
             >
               {t("common.cancel", { defaultValue: "Cancel" })}
             </button>
@@ -2228,6 +2354,14 @@ export default function VideoFeed() {
           return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
         })(),
   );
+  const creatorIdRef = useRef<number | null>(
+    typeof window === "undefined"
+      ? null
+      : (() => {
+          const parsed = parseInt(new URLSearchParams(window.location.search).get("creator") ?? "", 10);
+          return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        })(),
+  );
   const selectedCountryRef = useRef<string | null>(
     typeof window === "undefined"
       ? null
@@ -2324,6 +2458,10 @@ export default function VideoFeed() {
     if (excludeList) url += `&exclude=${encodeURIComponent(excludeList)}`;
     if (replaceAll && selectedVideoIdRef.current) {
       url += `&selected=${selectedVideoIdRef.current}`;
+    }
+    // Profile grid handoff: prefer this creator's eligible videos.
+    if (creatorIdRef.current) {
+      url += `&creator=${creatorIdRef.current}`;
     }
     return url;
   }, []);

@@ -672,18 +672,35 @@ export default function VideoDiscover() {
 
                   <div className="flex flex-1 flex-col gap-1.5 p-2.5">
                     <h3 className="line-clamp-2 text-[13px] font-bold leading-snug text-foreground">{v.title}</h3>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <Avatar className="h-5 w-5 shrink-0">
-                        <AvatarImage src={v.sellerAvatar ?? undefined} />
-                        <AvatarFallback className="text-[9px] bg-[hsl(152,65%,18%)] text-white">
-                          {(v.sellerName || "?")[0]?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="truncate text-[11px] font-semibold text-muted-foreground">{v.sellerName}</span>
-                      {v.sellerIsVerified && (
-                        <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                      )}
-                    </div>
+                    {v.sellerId ? (
+                      <Link
+                        href={`/videos/profile/${v.sellerId}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1.5 min-w-0"
+                        data-testid={`discover-seller-${v.sellerId}`}
+                      >
+                        <Avatar className="h-5 w-5 shrink-0">
+                          <AvatarImage src={v.sellerAvatar ?? undefined} />
+                          <AvatarFallback className="text-[9px] bg-[hsl(152,65%,18%)] text-white">
+                            {(v.sellerName || "?")[0]?.toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate text-[11px] font-semibold text-muted-foreground">{v.sellerName}</span>
+                        {v.sellerIsVerified && (
+                          <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                        )}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Avatar className="h-5 w-5 shrink-0">
+                          <AvatarImage src={v.sellerAvatar ?? undefined} />
+                          <AvatarFallback className="text-[9px] bg-[hsl(152,65%,18%)] text-white">
+                            {(v.sellerName || "?")[0]?.toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate text-[11px] font-semibold text-muted-foreground">{v.sellerName}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <Eye className="h-3 w-3" />
                       <span className="tabular-nums">{formatViews(v.viewCount, i18n.language)} {t("videoFeed.views")}</span>

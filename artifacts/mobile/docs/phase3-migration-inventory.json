@@ -6,7 +6,7 @@
   "pr": null,
   "branch": "cursor/native-phase3o-validate-09ff",
   "auditedAt": "2026-11-10T07:50:47Z",
-  "auditCommit": "pending-3o",
+  "auditCommit": "407a0fe9",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",

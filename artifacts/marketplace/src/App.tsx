@@ -246,6 +246,7 @@ function LayoutRoutes() {
           <Route path="/dev/flexa-control-preview" component={FlexaControlPreview} />
           <Route path="/dev/checkout-redesign-preview" component={CheckoutRedesignPreview} />
           <Route path="/search" component={Search} />
+          <Route path="/categories/:slug" component={Search} />
           <Route path="/listings/create">
             {() => { setLocation("/sell"); return null; }}
           </Route>

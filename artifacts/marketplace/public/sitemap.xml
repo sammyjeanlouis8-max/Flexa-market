@@ -3,11 +3,17 @@
 
   <sitemap>
     <loc>https://flexamarket.com/sitemap-static.xml</loc>
-    <lastmod>2026-05-28</lastmod>
+    <lastmod>2026-11-10</lastmod>
   </sitemap>
 
   <sitemap>
     <loc>https://flexamarket.com/api/sitemap-listings.xml</loc>
+    <lastmod>2026-11-10</lastmod>
+  </sitemap>
+
+  <sitemap>
+    <loc>https://flexamarket.com/api/sitemap-categories.xml</loc>
+    <lastmod>2026-11-10</lastmod>
   </sitemap>
 
 </sitemapindex>

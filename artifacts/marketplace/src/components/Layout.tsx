@@ -872,7 +872,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                 {(marketCategories as Array<{ id: number; name: string; slug: string }>).slice(0, 10).map((cat) => (
                   <Link
                     key={cat.id}
-                    href={`/search?category=${encodeURIComponent(cat.slug || cat.name)}`}
+                    href={`/categories/${encodeURIComponent(cat.slug || cat.name)}`}
                     className="shrink-0 px-2.5 h-8 inline-flex items-center rounded-md text-white/90 text-[13px] font-medium hover:bg-white/10 whitespace-nowrap"
                   >
                     {t(`categories.${cat.slug}`, { defaultValue: cat.name })}

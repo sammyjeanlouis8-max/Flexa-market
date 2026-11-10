@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useSEO } from "@/hooks/useSEO";
 import {
+  categorySlugFromPath,
   getInitialSearchUrlState,
   SEARCH_DEFAULT_MAX_PRICE,
   useSearchUrlSync,
@@ -231,13 +232,8 @@ type VisualSearchStatus = "idle" | "analyzing" | "done" | "error";
 export default function SearchPage() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  useSEO({
-    title: "Search Listings",
-    description:
-      "Search Flexa Market listings — electronics, fashion, vehicles, furniture and more across Haiti and the Caribbean.",
-    path: "/search",
-  });
   const initialUrl = getInitialSearchUrlState();
+  const pathCategory = categorySlugFromPath();
 
   const [q, setQ] = useState(initialUrl.q);
   const [category, setCategory] = useState(initialUrl.category);
@@ -383,6 +379,17 @@ export default function SearchPage() {
     () => categories?.find(c => c.slug === category),
     [categories, category],
   );
+
+  const categorySeoName = selectedParent?.name || category;
+  useSEO({
+    title: pathCategory && categorySeoName
+      ? `${categorySeoName}`
+      : "Search Listings",
+    description: pathCategory && categorySeoName
+      ? `Shop ${categorySeoName} on FLEXA MARKET. Browse approved products with secure checkout.`
+      : "Search Flexa Market listings — electronics, fashion, vehicles, furniture and more across Haiti and the Caribbean.",
+    path: pathCategory ? `/categories/${pathCategory}` : "/search",
+  });
 
   const { data, isLoading } = useGetListings(
     {

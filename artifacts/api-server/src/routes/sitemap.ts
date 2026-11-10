@@ -1,11 +1,11 @@
 /**
- * Dynamic sitemap for product listings.
+ * Dynamic sitemaps for public catalog URLs.
  *
- * GET /api/sitemap-listings.xml
- *   Returns a sitemap XML with up to 49 000 active listing URLs so Google
- *   can discover and index every product page on flexamarket.com.
+ * GET /api/sitemap-listings.xml  — approved, available products with usable images
+ * GET /api/sitemap-categories.xml — categories that currently have public products
  *
- * Cached for 4 hours (max-age) to avoid hitting the DB on every crawler visit.
+ * Drafts, unapproved, suspended, and archived listings are excluded.
+ * Admin / checkout / private routes are never listed here.
  */
 
 import { Router } from "express";
@@ -16,24 +16,43 @@ import { logger } from "../lib/logger";
 const router = Router();
 
 const BASE_URL = "https://flexamarket.com";
-const CACHE_TTL = 4 * 60 * 60; // 4 hours in seconds
+const CACHE_TTL = 4 * 60 * 60; // 4 hours
 
-router.get("/sitemap-listings.xml", async (req, res): Promise<void> => {
+function asRows<T>(result: unknown): T[] {
+  if (Array.isArray(result)) return result as T[];
+  const rows = (result as { rows?: T[] } | null)?.rows;
+  return Array.isArray(rows) ? rows : [];
+}
+
+function ymd(value: Date | string | null | undefined): string {
+  if (!value) return new Date().toISOString().slice(0, 10);
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+
+router.get("/sitemap-listings.xml", async (_req, res): Promise<void> => {
   try {
-    const rows = await db.execute(sql`
-      SELECT id, updated_at
-      FROM listings
-      WHERE status IN ('available', 'sold')
-        AND is_removed = false
-      ORDER BY updated_at DESC
+    const result = await db.execute(sql`
+      SELECT l.id, l.updated_at
+      FROM listings l
+      WHERE l.status = 'available'
+        AND l.moderation_status = 'approved'
+        AND COALESCE(l.lifecycle_status, 'published') NOT IN ('suspended', 'archived', 'draft', 'pending_review', 'rejected')
+        AND EXISTS (
+          SELECT 1
+          FROM unnest(l.images) AS listing_image
+          WHERE btrim(listing_image) <> ''
+            AND listing_image NOT ILIKE '%placehold.co%'
+            AND listing_image NOT ILIKE '%via.placeholder.com%'
+        )
+      ORDER BY l.updated_at DESC
       LIMIT 49000
-    `) as unknown as { id: number; updated_at: Date | string | null }[];
+    `);
 
-    const urlEntries = (rows as any[]).map((row: any) => {
-      const lastmod = row.updated_at
-        ? new Date(row.updated_at).toISOString().split("T")[0]
-        : new Date().toISOString().split("T")[0];
-      return `  <url>\n    <loc>${BASE_URL}/listings/${row.id}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`;
+    const rows = asRows<{ id: number; updated_at: Date | string | null }>(result);
+    const urlEntries = rows.map((row) => {
+      return `  <url>\n    <loc>${BASE_URL}/listings/${row.id}</loc>\n    <lastmod>${ymd(row.updated_at)}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>`;
     }).join("\n");
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -43,10 +62,57 @@ ${urlEntries}
 
     res.setHeader("Content-Type", "application/xml; charset=utf-8");
     res.setHeader("Cache-Control", `public, max-age=${CACHE_TTL}, s-maxage=${CACHE_TTL}`);
-    res.send(xml);
+    res.status(200).send(xml);
   } catch (err) {
     logger.error({ err }, "sitemap-listings generation failed");
-    res.status(500).send("<?xml version=\"1.0\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"/>");
+    res.status(500).type("application/xml").send(
+      `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>`,
+    );
+  }
+});
+
+router.get("/sitemap-categories.xml", async (_req, res): Promise<void> => {
+  try {
+    const result = await db.execute(sql`
+      SELECT c.slug, MAX(l.updated_at) AS updated_at
+      FROM categories c
+      INNER JOIN listings l ON l.category_id = c.id
+      WHERE l.status = 'available'
+        AND l.moderation_status = 'approved'
+        AND COALESCE(l.lifecycle_status, 'published') NOT IN ('suspended', 'archived', 'draft', 'pending_review', 'rejected')
+        AND c.slug IS NOT NULL
+        AND btrim(c.slug) <> ''
+        AND EXISTS (
+          SELECT 1
+          FROM unnest(l.images) AS listing_image
+          WHERE btrim(listing_image) <> ''
+            AND listing_image NOT ILIKE '%placehold.co%'
+            AND listing_image NOT ILIKE '%via.placeholder.com%'
+        )
+      GROUP BY c.slug
+      ORDER BY c.slug ASC
+      LIMIT 5000
+    `);
+
+    const rows = asRows<{ slug: string; updated_at: Date | string | null }>(result);
+    const urlEntries = rows.map((row) => {
+      const slug = encodeURIComponent(String(row.slug).trim());
+      return `  <url>\n    <loc>${BASE_URL}/categories/${slug}</loc>\n    <lastmod>${ymd(row.updated_at)}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.7</priority>\n  </url>`;
+    }).join("\n");
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urlEntries}
+</urlset>`;
+
+    res.setHeader("Content-Type", "application/xml; charset=utf-8");
+    res.setHeader("Cache-Control", `public, max-age=${CACHE_TTL}, s-maxage=${CACHE_TTL}`);
+    res.status(200).send(xml);
+  } catch (err) {
+    logger.error({ err }, "sitemap-categories generation failed");
+    res.status(500).type("application/xml").send(
+      `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>`,
+    );
   }
 });
 

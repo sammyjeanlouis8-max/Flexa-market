@@ -15,6 +15,13 @@ export type SearchUrlState = {
 
 const DEFAULT_MAX = 5000;
 
+/** Public category canonical path: /categories/{slug} */
+export function categorySlugFromPath(pathname?: string): string | null {
+  const path = pathname ?? (typeof window !== "undefined" ? window.location.pathname : "");
+  const m = path.match(/^\/categories\/([a-z0-9-]+)\/?$/i);
+  return m?.[1]?.toLowerCase() ?? null;
+}
+
 function readFromLocation(): SearchUrlState {
   const params = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : "",
@@ -22,9 +29,10 @@ function readFromLocation(): SearchUrlState {
   const min = Number(params.get("minPrice") ?? "0");
   const max = Number(params.get("maxPrice") ?? String(DEFAULT_MAX));
   const page = Number(params.get("page") ?? "1");
+  const pathCategory = categorySlugFromPath();
   return {
     q: params.get("q") ?? "",
-    category: params.get("category") ?? "",
+    category: pathCategory || (params.get("category") ?? ""),
     subcategory: params.get("subcategory") ?? "",
     condition: params.get("condition") ?? "",
     city: params.get("city") ?? "",
@@ -36,9 +44,12 @@ function readFromLocation(): SearchUrlState {
 }
 
 function buildSearch(state: SearchUrlState): string {
+  const pathCategory = categorySlugFromPath();
   const params = new URLSearchParams();
   if (state.q.trim()) params.set("q", state.q.trim());
-  if (state.category) params.set("category", state.category);
+  // On /categories/:slug the category lives in the path (canonical).
+  // On /search it stays a query param.
+  if (state.category && !pathCategory) params.set("category", state.category);
   if (state.subcategory) params.set("subcategory", state.subcategory);
   if (state.condition) params.set("condition", state.condition);
   if (state.city.trim()) params.set("city", state.city.trim());
@@ -48,6 +59,19 @@ function buildSearch(state: SearchUrlState): string {
   if (state.boosted) params.set("boosted", "true");
   const qs = params.toString();
   return qs ? `?${qs}` : "";
+}
+
+function buildPathname(state: SearchUrlState): string {
+  const pathCategory = categorySlugFromPath();
+  if (pathCategory) {
+    // Keep the public category URL when the selected category still matches.
+    if (!state.category || state.category === pathCategory) {
+      return `/categories/${pathCategory}`;
+    }
+    // User switched category in filters → fall back to /search?category=
+    return "/search";
+  }
+  return typeof window !== "undefined" ? window.location.pathname : "/search";
 }
 
 /**
@@ -68,7 +92,7 @@ export function useSearchUrlSync(
       skipWrite.current = false;
       return;
     }
-    const next = `${window.location.pathname}${buildSearch(state)}`;
+    const next = `${buildPathname(state)}${buildSearch(state)}`;
     const current = `${window.location.pathname}${window.location.search}`;
     if (next === current) return;
     window.history.replaceState(window.history.state, "", next);

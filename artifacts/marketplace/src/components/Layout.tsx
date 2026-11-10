@@ -15,6 +15,9 @@ import PasswordUpgradeBanner from "@/components/PasswordUpgradeBanner";
 import { FlexCardDebtBanner } from "@/components/FlexCardDebtBanner";
 import OfflineBar from "@/components/OfflineBar";
 import BoostVideoOverlay, { shouldShowBoostAd, markBoostAdShown } from "@/components/BoostVideoOverlay";
+import { useAdminCountry } from "@/contexts/admin-country";
+import { adminVideoFeedParamsKey } from "@/lib/adminCountryAccess";
+import { useShoppingLocation } from "@/contexts/shopping-location";
 import Footer from "@/components/Footer";
 import NotificationsDropdown from "@/components/NotificationsDropdown";
 import UserMenu from "@/components/UserMenu";
@@ -136,36 +139,63 @@ interface BoostAdListing {
 
 function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => void } {
   const [location] = useLocation();
+  const { user } = useAuth();
+  const { videoFeedParams, isAdminViewer, effectiveCountry } = useAdminCountry();
+  const { country: shoppingCountry } = useShoppingLocation();
   const [listing, setListing] = useState<BoostAdListing | null>(null);
   const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef  = useRef(false); // true while the timer is armed
+  const fetchGenRef = useRef(0);
+  const deliveryScopeKey = isAdminViewer
+    ? adminVideoFeedParamsKey(videoFeedParams)
+    : `user|${user?.country ?? shoppingCountry ?? ""}`;
 
   const cancelTimer = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     pendingRef.current = false;
   }, []);
 
+  const fetchRandomAd = useCallback(async (generation: number) => {
+    if (!shouldShowBoostAd()) return;
+    try {
+      const tk = localStorage.getItem("flexamarket_token");
+      const params = new URLSearchParams();
+      if (isAdminViewer) {
+        if (videoFeedParams.country) params.set("country", videoFeedParams.country);
+        if (videoFeedParams.allCountries) params.set("allCountries", videoFeedParams.allCountries);
+      } else if (!user && shoppingCountry) {
+        // Guest browsing country — server also falls back to CF-IPCountry.
+        params.set("country", shoppingCountry);
+      }
+      const qs = params.toString();
+      const res = await fetch(`/api/boost/random-video${qs ? `?${qs}` : ""}`, {
+        headers: {
+          ...(tk ? { Authorization: `Bearer ${tk}` } : {}),
+          "Cache-Control": "no-store",
+        },
+      });
+      if (!res.ok) return;
+      // Discard stale responses after admin country switch / remount.
+      if (generation !== fetchGenRef.current) return;
+      const data = await res.json();
+      if (generation !== fetchGenRef.current) return;
+      if (!data?.listing || !shouldShowBoostAd()) return;
+      markBoostAdShown();
+      setListing(data.listing as BoostAdListing);
+    } catch { /* non-critical */ }
+  }, [isAdminViewer, videoFeedParams, user, shoppingCountry]);
+
   const armTimer = useCallback(() => {
     if (pendingRef.current) return;           // already armed — keep existing countdown
     if (!shouldShowBoostAd()) return;         // still within cooldown window
     pendingRef.current = true;
-    timerRef.current = setTimeout(async () => {
+    const generation = fetchGenRef.current;
+    timerRef.current = setTimeout(() => {
       timerRef.current  = null;
       pendingRef.current = false;
-      if (!shouldShowBoostAd()) return;
-      try {
-        const tk = localStorage.getItem("flexamarket_token");
-        const res = await fetch("/api/boost/random-video", {
-          headers: tk ? { Authorization: `Bearer ${tk}` } : {},
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!data?.listing || !shouldShowBoostAd()) return;
-        markBoostAdShown();
-        setListing(data.listing as BoostAdListing);
-      } catch { /* non-critical */ }
+      void fetchRandomAd(generation);
     }, BOOST_AD_DELAY_MS);
-  }, []);
+  }, [fetchRandomAd]);
 
   // Unmount cleanup
   useEffect(() => () => cancelTimer(), [cancelTimer]);
@@ -180,6 +210,19 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
     // Entered (or moved between) browsing routes — arm once; do not reset if already armed
     armTimer();
   }, [location, armTimer, cancelTimer]);
+
+  // Admin country preview (or guest market) changed → drop old ad and re-query.
+  // Do not depend on `location` here — route changes are handled above without
+  // resetting an already-armed countdown.
+  useEffect(() => {
+    fetchGenRef.current += 1;
+    setListing(null);
+    cancelTimer();
+    // Force a fresh arm after scope change (bypass pendingRef latch).
+    pendingRef.current = false;
+    armTimer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when delivery scope changes
+  }, [deliveryScopeKey]);
 
   const dismiss = useCallback(() => {
     setListing(null);

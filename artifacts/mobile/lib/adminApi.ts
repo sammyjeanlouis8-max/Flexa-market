@@ -336,8 +336,214 @@ export async function decideKyc(
   await requireOk(res, "KYC decision failed");
 }
 
-export async function fetchAdminActionQueue(opts: AuthOpts): Promise<any[]> {
-  const res = await authedFetch("/admin/action-queue", opts);
+export async function fetchAdminActionQueue(
+  opts: AuthOpts & { type?: string; page?: number },
+): Promise<{ items: any[]; counts?: any; total?: number }> {
+  const q = new URLSearchParams();
+  if (opts.type) q.set("type", opts.type);
+  if (opts.page) q.set("page", String(opts.page));
+  q.set("limit", "50");
+  const res = await authedFetch(`/admin/action-queue?${q}`, opts);
   const data = await requireOk(res, "Action queue failed");
-  return Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : [];
+  if (Array.isArray(data)) return { items: data };
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    counts: data.counts,
+    total: data.total,
+  };
+}
+
+export async function fetchAdminAppeals(opts: AuthOpts): Promise<any[]> {
+  const res = await authedFetch("/admin/appeals", opts);
+  const data = await requireOk(res, "Appeals failed");
+  return Array.isArray(data) ? data : Array.isArray(data.appeals) ? data.appeals : [];
+}
+
+export async function decideAppeal(
+  appealId: number,
+  decision: "uphold" | "overturn",
+  decisionReason: string,
+  opts: AuthOpts,
+): Promise<void> {
+  const res = await authedFetch(`/admin/appeals/${appealId}/decision`, {
+    ...opts,
+    method: "POST",
+    body: { decision, decisionReason },
+  });
+  await requireOk(res, "Appeal decision failed");
+}
+
+export async function fetchAdminDriverApplications(
+  opts: AuthOpts & { status?: string },
+): Promise<any[]> {
+  const q = opts.status ? `?status=${encodeURIComponent(opts.status)}` : "";
+  const res = await authedFetch(`/admin/delivery/applications${q}`, opts);
+  const data = await requireOk(res, "Driver applications failed");
+  return Array.isArray(data) ? data : Array.isArray(data.applications) ? data.applications : [];
+}
+
+export async function decideDriverApplication(
+  id: number,
+  action: "approve" | "reject",
+  opts: AuthOpts & { adminNote?: string },
+): Promise<void> {
+  const res = await authedFetch(`/admin/delivery/applications/${id}/${action}`, {
+    ...opts,
+    method: "PATCH",
+    body: { adminNote: opts.adminNote },
+  });
+  await requireOk(res, `Driver ${action} failed`);
+}
+
+export async function fetchAdminAgents(
+  opts: AuthOpts & { status?: string },
+): Promise<any[]> {
+  const q = opts.status ? `?status=${encodeURIComponent(opts.status)}` : "";
+  const res = await authedFetch(`/admin/agents${q}`, opts);
+  const data = await requireOk(res, "Agent applications failed");
+  return Array.isArray(data) ? data : Array.isArray(data.agents) ? data.agents : Array.isArray(data.applications) ? data.applications : [];
+}
+
+export async function decideAdminAgent(
+  id: number,
+  action: "approve" | "reject",
+  opts: AuthOpts & { note?: string },
+): Promise<void> {
+  const res = await authedFetch(`/admin/agents/${id}/${action}`, {
+    ...opts,
+    method: "PATCH",
+    body: { note: opts.note, adminNote: opts.note },
+  });
+  await requireOk(res, `Agent ${action} failed`);
+}
+
+export async function fetchAdminStripeTransactions(opts: AuthOpts): Promise<any[]> {
+  const res = await authedFetch("/admin/stripe-transactions?limit=50", opts);
+  const data = await requireOk(res, "Stripe transactions failed");
+  return Array.isArray(data)
+    ? data
+    : Array.isArray(data.transactions)
+      ? data.transactions
+      : Array.isArray(data.items)
+        ? data.items
+        : [];
+}
+
+export async function fetchAdminReturns(opts: AuthOpts): Promise<any[]> {
+  const res = await authedFetch("/admin/returns", opts);
+  const data = await requireOk(res, "Returns failed");
+  return Array.isArray(data) ? data : Array.isArray(data.returns) ? data.returns : [];
+}
+
+export async function decideAdminReturn(
+  returnId: number,
+  decision: string,
+  opts: AuthOpts & { note?: string },
+): Promise<void> {
+  const res = await authedFetch(`/admin/returns/${returnId}/decide`, {
+    ...opts,
+    method: "POST",
+    body: { decision, note: opts.note },
+  });
+  await requireOk(res, "Return decision failed");
+}
+
+export async function fetchAdminFraudDashboard(opts: AuthOpts): Promise<any> {
+  const res = await authedFetch("/admin/fraud/dashboard", opts);
+  return await requireOk(res, "Fraud dashboard failed");
+}
+
+export async function fetchAdminFraudAlerts(opts: AuthOpts): Promise<any[]> {
+  const res = await authedFetch("/admin/fraud/alerts", opts);
+  const data = await requireOk(res, "Fraud alerts failed");
+  return Array.isArray(data) ? data : Array.isArray(data.alerts) ? data.alerts : [];
+}
+
+export async function fetchAdminCommissionSummary(opts: AuthOpts): Promise<any> {
+  const res = await authedFetch("/admin/commission/summary", opts);
+  return await requireOk(res, "Commission summary failed");
+}
+
+export async function fetchAdminPlatformRevenue(
+  opts: AuthOpts & { period?: string },
+): Promise<any> {
+  const q = opts.period ? `?period=${encodeURIComponent(opts.period)}` : "";
+  const res = await authedFetch(`/admin/platform-revenue${q}`, opts);
+  return await requireOk(res, "Platform revenue failed");
+}
+
+export async function fetchAdminFlexCards(opts: AuthOpts): Promise<any[]> {
+  const res = await authedFetch("/admin/flex-card", opts);
+  const data = await requireOk(res, "Flex card admin failed");
+  return Array.isArray(data) ? data : Array.isArray(data.items) ? data.items : Array.isArray(data.debts) ? data.debts : [];
+}
+
+export async function fetchAdminLoans(opts: AuthOpts): Promise<any[]> {
+  const res = await authedFetch("/admin/loans", opts);
+  const data = await requireOk(res, "Admin loans failed");
+  return Array.isArray(data) ? data : Array.isArray(data.loans) ? data.loans : Array.isArray(data.applications) ? data.applications : [];
+}
+
+export async function fetchAdminSubscriptions(opts: AuthOpts): Promise<any[]> {
+  const res = await authedFetch("/admin/subscriptions", opts);
+  const data = await requireOk(res, "Admin subscriptions failed");
+  return Array.isArray(data) ? data : Array.isArray(data.subscriptions) ? data.subscriptions : [];
+}
+
+export async function grantAdminSubscription(
+  body: { userId: number; plan: string; months?: number },
+  opts: AuthOpts,
+): Promise<void> {
+  const res = await authedFetch("/admin/subscriptions/grant", {
+    ...opts,
+    method: "POST",
+    body,
+  });
+  await requireOk(res, "Grant subscription failed");
+}
+
+export async function revokeAdminSubscription(
+  body: { userId: number },
+  opts: AuthOpts,
+): Promise<void> {
+  const res = await authedFetch("/admin/subscriptions/revoke", {
+    ...opts,
+    method: "POST",
+    body,
+  });
+  await requireOk(res, "Revoke subscription failed");
+}
+
+export async function fetchAdminPlatformFees(opts: AuthOpts): Promise<Record<string, number>> {
+  const res = await authedFetch("/admin/platform-fees", opts);
+  return await requireOk(res, "Platform fees failed");
+}
+
+export async function updateAdminPlatformFee(
+  body: { key: string; value: number },
+  opts: AuthOpts,
+): Promise<void> {
+  const res = await authedFetch("/admin/platform-fees", {
+    ...opts,
+    method: "PUT",
+    body,
+  });
+  await requireOk(res, "Update platform fee failed");
+}
+
+export async function fetchAdminHaitiTransactions(opts: AuthOpts): Promise<any[]> {
+  const res = await authedFetch("/wallet/haiti/admin/transactions?limit=100", opts);
+  const data = await requireOk(res, "Haiti ledger failed");
+  return Array.isArray(data)
+    ? data
+    : Array.isArray(data.transactions)
+      ? data.transactions
+      : Array.isArray(data.items)
+        ? data.items
+        : [];
+}
+
+export async function fetchAdminFlaggedUsers(opts: AuthOpts): Promise<any[]> {
+  const data = await fetchAdminActionQueue({ ...opts, type: "user" });
+  return data.items;
 }

@@ -53,10 +53,10 @@ export default function AdminSettingsScreen() {
       </View>
 
       {isSuperAdminUser(user) ? (
-        <View style={adminStyles.card}>
+        <Pressable style={adminStyles.card} onPress={() => router.push("/admin/fees")}>
           <Text style={adminStyles.cardTitle}>{t("adminFeeSettings")}</Text>
-          <Text style={adminStyles.cardSub}>{t("adminFeeSettingsMissing")}</Text>
-        </View>
+          <Text style={adminStyles.cardSub}>{t("adminFeesHint")}</Text>
+        </Pressable>
       ) : null}
     </AdminShell>
   );

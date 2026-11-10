@@ -35,6 +35,7 @@ export default function RootLayout() {
                     <Stack.Screen name="(tabs)" />
                     <Stack.Screen name="auth/login" />
                     <Stack.Screen name="auth/register" />
+                    <Stack.Screen name="auth/login-phone" />
                     <Stack.Screen name="listing/[id]" />
                     <Stack.Screen name="cart" />
                     <Stack.Screen name="checkout" />
@@ -66,6 +67,15 @@ export default function RootLayout() {
                     <Stack.Screen name="music" />
                     <Stack.Screen name="music/[id]" />
                     <Stack.Screen name="music/upload" />
+                    <Stack.Screen name="loans" />
+                    <Stack.Screen name="subscription" />
+                    <Stack.Screen name="driver-apply" />
+                    <Stack.Screen name="driver-dashboard" />
+                    <Stack.Screen name="flex-card" />
+                    <Stack.Screen name="bnpl" />
+                    <Stack.Screen name="cash-agents" />
+                    <Stack.Screen name="commission-promo" />
+                    <Stack.Screen name="credit-score" />
                     <Stack.Screen name="+not-found" />
                   </Stack>
                   <MusicMiniPlayer />

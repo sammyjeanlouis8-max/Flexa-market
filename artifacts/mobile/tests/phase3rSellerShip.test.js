@@ -26,7 +26,8 @@ test("order detail wires seller ship modes without WebView", () => {
   assert.match(screen, /fetchOrderLabel/);
   assert.match(screen, /btn-ship-order/);
   assert.match(screen, /btn-order-label/);
-  assert.match(screen, /chip-ship-fm/);
+  assert.match(screen, /chip-ship-\$\{mode\}/);
+  assert.match(screen, /\["fm", "FM"\]/);
   assert.match(screen, /resolveSellerShipKind/);
   assert.doesNotMatch(
     screen,

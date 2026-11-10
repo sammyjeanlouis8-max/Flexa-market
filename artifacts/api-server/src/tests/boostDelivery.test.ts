@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { SUPPORTED_COUNTRIES } from "../../../marketplace/src/lib/countries";
 import {
   audienceCityMatchesViewer,
+  BOOST_SUPPORTED_COUNTRIES,
+  canonicalizeBoostCountry,
   isInterstitialEligibleForBrowsingCountry,
   isInterstitialEligibleForRegionalGeo,
+  isSupportedBoostCountry,
   listingAudienceFieldsForActivation,
   resolveBoostInitiateGeo,
+  resolveCfBoostCountry,
   resolveInterstitialViewerScope,
   splitBoostAudienceCountries,
   usesRegionalBoostGeo,
@@ -138,6 +143,74 @@ describe("resolveInterstitialViewerScope", () => {
       user: { country: "Haiti", role: "user" },
     });
     expect(customer.visibleCountries).toEqual(["Haiti"]);
+  });
+
+  it("canonicalizes guest browsing countries against the central config", () => {
+    const kenya = resolveInterstitialViewerScope({
+      requestedCountry: "kenya",
+      cfIpCountry: "HT",
+      user: null,
+    });
+    expect(kenya.visibleCountries).toEqual(["Kenya"]);
+  });
+});
+
+describe("central country configuration (worldwide)", () => {
+  it("re-exports every marketplace supported country for delivery", () => {
+    expect(BOOST_SUPPORTED_COUNTRIES).toEqual([...SUPPORTED_COUNTRIES]);
+    expect(BOOST_SUPPORTED_COUNTRIES.length).toBeGreaterThan(10);
+  });
+
+  it.each([...SUPPORTED_COUNTRIES])(
+    "treats %s as a supported browsing market",
+    (country) => {
+      expect(isSupportedBoostCountry(country)).toBe(true);
+      expect(canonicalizeBoostCountry(country.toLowerCase())).toBe(country);
+      expect(
+        isInterstitialEligibleForBrowsingCountry({
+          listingCountry: country,
+          boostAudienceCountry: country,
+          browsingCountry: country,
+        }),
+      ).toBe(true);
+      expect(
+        isInterstitialEligibleForBrowsingCountry({
+          listingCountry: country,
+          boostAudienceCountry: "ALL",
+          browsingCountry: country,
+        }),
+      ).toBe(true);
+      // A different market must not receive this country-only campaign.
+      const other =
+        SUPPORTED_COUNTRIES.find((c) => c !== country) ?? "Haiti";
+      expect(
+        isInterstitialEligibleForBrowsingCountry({
+          listingCountry: country,
+          boostAudienceCountry: country,
+          browsingCountry: other,
+        }),
+      ).toBe(false);
+    },
+  );
+
+  it("lets guests resolve CF ISO codes into supported markets", () => {
+    expect(resolveCfBoostCountry("HT")).toBe("Haiti");
+    expect(resolveCfBoostCountry("DO")).toBe("Dominican Republic");
+    expect(resolveCfBoostCountry("KE")).toBe("Kenya");
+    expect(resolveCfBoostCountry("ZZ")).toBeNull();
+  });
+
+  it("applies the same Seller/Admin/Super Admin eligibility rule in every market", () => {
+    for (const country of SUPPORTED_COUNTRIES) {
+      // Creator role is irrelevant — eligibility is country/local-area only.
+      expect(
+        isInterstitialEligibleForBrowsingCountry({
+          listingCountry: country,
+          boostAudienceCountry: country,
+          browsingCountry: country,
+        }),
+      ).toBe(true);
+    }
   });
 });
 
@@ -282,10 +355,21 @@ describe("automatic promo delivery contract (source)", () => {
     expect(layoutSrc).toMatch(/videoFeedParams/);
     expect(layoutSrc).toMatch(/allCountries/);
     expect(layoutSrc).toMatch(/fetchGenRef/);
-    expect(layoutSrc).toMatch(/clearBoostAdCooldown/);
-    expect(layoutSrc).toMatch(/force:\s*true/);
+    expect(layoutSrc).toMatch(/canDeliverBoostAd/);
+    expect(layoutSrc).toMatch(/tickBoostBrowsing/);
+    expect(layoutSrc).toMatch(/markBoostAdPlacementConsumed/);
+    expect(layoutSrc).toMatch(/BOOST_AD_IDLE_MS/);
+    expect(layoutSrc).toMatch(/visibilitychange/);
+    // Country switch refreshes eligibility but must NOT wipe browsing time / cap.
+    expect(layoutSrc).not.toMatch(/clearBoostAdCooldown/);
+    // Manual promo feed (/videos) is not an automatic-delivery browsing route.
+    const browsingRoutesMatch = layoutSrc.match(
+      /const BROWSING_ROUTES: RegExp\[] = \[([\s\S]*?)\];/,
+    );
+    expect(browsingRoutesMatch?.[1]).toBeTruthy();
+    expect(browsingRoutesMatch![1]).not.toMatch(/videos/);
     expect(layoutSrc).toMatch(/Cache-Control": "no-store"/);
-    // Cooldown / rotation persist only when playback begins, not on fetch.
+    // Placement timing may mark on dismiss; rotation history only on playback.
     expect(layoutSrc).not.toMatch(/markBoostAdShown\(/);
     expect(overlaySrc).toMatch(/recordBoostPlaybackExposure/);
     expect(overlaySrc).toMatch(/recordOnScreenExposure/);
@@ -293,5 +377,9 @@ describe("automatic promo delivery contract (source)", () => {
     expect(rotationSrc).toMatch(/getBoostViewerScopeKey/);
     expect(rotationSrc).toMatch(/recordBoostPlaybackExposure/);
     expect(rotationSrc).toMatch(/normalizeBoostBrowsingCountry/);
+    expect(rotationSrc).toMatch(/BOOST_AD_FIRST_DELAY_MS = 30_000/);
+    expect(rotationSrc).toMatch(/BOOST_AD_INTERVAL_MS = 15 \* 60_000/);
+    expect(rotationSrc).toMatch(/BOOST_AD_ROLLING_CAP = 3/);
+    expect(rotationSrc).toMatch(/BOOST_AD_ROLLING_WINDOW_MS = 60 \* 60_000/);
   });
 });

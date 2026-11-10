@@ -199,6 +199,14 @@ export default function WalletScreen() {
                 </Pressable>
                 <Pressable
                   style={styles.action}
+                  onPress={() => router.push("/wallet-redeem")}
+                  testID="btn-wallet-redeem"
+                >
+                  <Feather name="gift" size={18} color="#0F172A" />
+                  <Text style={styles.actionText}>Redeem</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.action}
                   onPress={() => router.push("/wallet-transfer")}
                   testID="btn-wallet-transfer"
                 >
@@ -214,8 +222,8 @@ export default function WalletScreen() {
                 </Pressable>
               </View>
               <Text style={styles.policyNote}>
-                Top-ups and withdrawals are not offered in this Android build. Transfers use
-                verified wallet APIs. Use wallet balance for Haiti cart checkout where available.
+                Card/MonCash top-ups stay blocked on Android (Play digital goods). Prepaid
+                recharge-card redeem is allowed. Transfers use verified wallet APIs.
               </Text>
 
               <View style={styles.totals}>

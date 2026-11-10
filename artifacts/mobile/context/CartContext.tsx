@@ -22,16 +22,23 @@ export type CartItem = {
   city: string | null;
   sellerId: number;
   quantity: number;
+  /** Optional multi-SKU variant (ignored by server until schema migrated). */
+  variantId?: number | null;
+  variantLabel?: string | null;
 };
 
 type CartContextType = {
   items: CartItem[];
   ready: boolean;
   addItem: (item: Omit<CartItem, "quantity"> & { quantity?: number }) => void;
-  removeItem: (listingId: number) => void;
+  removeItem: (listingId: number, variantId?: number | null) => void;
   clearCart: () => void;
-  isInCart: (listingId: number) => boolean;
-  updateQuantity: (listingId: number, qty: number) => void;
+  isInCart: (listingId: number, variantId?: number | null) => boolean;
+  updateQuantity: (
+    listingId: number,
+    qty: number,
+    variantId?: number | null,
+  ) => void;
   /** Number of distinct line items */
   count: number;
   /** Sum of quantity across lines */
@@ -65,6 +72,10 @@ function normalize(raw: unknown): CartItem[] {
       const sellerId = Number(row?.sellerId);
       const price = Number(row?.price);
       if (!listingId || !sellerId || !Number.isFinite(price)) return null;
+      const variantId =
+        row?.variantId == null || row?.variantId === ""
+          ? null
+          : Number(row.variantId);
       return {
         listingId,
         title: String(row?.title ?? "Listing"),
@@ -75,6 +86,9 @@ function normalize(raw: unknown): CartItem[] {
         city: row?.city ?? null,
         sellerId,
         quantity: Math.max(1, Number(row?.quantity) || 1),
+        variantId: Number.isFinite(variantId as number) ? variantId : null,
+        variantLabel:
+          typeof row?.variantLabel === "string" ? row.variantLabel : null,
       } as CartItem;
     })
     .filter(Boolean) as CartItem[];
@@ -106,11 +120,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(items)).catch(() => {});
   }, [items, ready]);
 
+  const sameLine = (
+    a: { listingId: number; variantId?: number | null },
+    listingId: number,
+    variantId?: number | null,
+  ) =>
+    a.listingId === listingId &&
+    (a.variantId ?? null) === (variantId ?? null);
+
   const addItem = useCallback(
     (item: Omit<CartItem, "quantity"> & { quantity?: number }) => {
-      // Match website cart: adding an existing listing is a no-op (qty via updateQuantity).
+      const variantId = item.variantId ?? null;
       setItems((prev) => {
-        if (prev.some((i) => i.listingId === item.listingId)) return prev;
+        if (prev.some((i) => sameLine(i, item.listingId, variantId))) {
+          return prev;
+        }
         return [
           ...prev,
           {
@@ -123,6 +147,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             city: item.city,
             sellerId: item.sellerId,
             quantity: Math.max(1, Math.min(30, item.quantity ?? 1)),
+            variantId,
+            variantLabel: item.variantLabel ?? null,
           },
         ];
       });
@@ -130,28 +156,41 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const removeItem = useCallback((listingId: number) => {
-    setItems((prev) => prev.filter((i) => i.listingId !== listingId));
-  }, []);
+  const removeItem = useCallback(
+    (listingId: number, variantId?: number | null) => {
+      setItems((prev) =>
+        prev.filter((i) => !sameLine(i, listingId, variantId ?? null)),
+      );
+    },
+    [],
+  );
 
   const clearCart = useCallback(() => setItems([]), []);
 
   const isInCart = useCallback(
-    (listingId: number) => items.some((i) => i.listingId === listingId),
+    (listingId: number, variantId?: number | null) =>
+      items.some((i) => sameLine(i, listingId, variantId ?? null)),
     [items],
   );
 
-  const updateQuantity = useCallback((listingId: number, qty: number) => {
-    if (qty < 1) {
-      setItems((prev) => prev.filter((i) => i.listingId !== listingId));
-      return;
-    }
-    setItems((prev) =>
-      prev.map((i) =>
-        i.listingId === listingId ? { ...i, quantity: Math.min(30, qty) } : i,
-      ),
-    );
-  }, []);
+  const updateQuantity = useCallback(
+    (listingId: number, qty: number, variantId?: number | null) => {
+      if (qty < 1) {
+        setItems((prev) =>
+          prev.filter((i) => !sameLine(i, listingId, variantId ?? null)),
+        );
+        return;
+      }
+      setItems((prev) =>
+        prev.map((i) =>
+          sameLine(i, listingId, variantId ?? null)
+            ? { ...i, quantity: Math.min(30, qty) }
+            : i,
+        ),
+      );
+    },
+    [],
+  );
 
   const itemsForCountry = useCallback(
     (country: string) =>

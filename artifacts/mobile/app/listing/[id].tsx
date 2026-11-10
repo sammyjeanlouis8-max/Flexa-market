@@ -24,6 +24,10 @@ import {
   removeFavorite,
 } from "@/lib/favoritesApi";
 import {
+  fetchListingVariants,
+  type ListingVariant,
+} from "@/lib/listingVariantsApi";
+import {
   fetchSellerReviews,
   type SellerReview,
 } from "@/lib/publicShopApi";
@@ -45,6 +49,11 @@ export default function ListingDetailScreen() {
   const [favBusy, setFavBusy] = useState(false);
   const [msgBusy, setMsgBusy] = useState(false);
   const [reviews, setReviews] = useState<SellerReview[]>([]);
+  const [variants, setVariants] = useState<ListingVariant[]>([]);
+  const [variantsReady, setVariantsReady] = useState(false);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +78,21 @@ export default function ListingDetailScreen() {
             if (!cancelled) setReviews([]);
           }
         }
+        try {
+          const vr = await fetchListingVariants(id, { token });
+          if (!cancelled) {
+            setVariantsReady(vr.schemaReady);
+            setVariants(vr.schemaReady ? vr.variants : []);
+            const first = vr.variants.find((v) => (v.stockQuantity ?? 0) > 0) ?? vr.variants[0];
+            setSelectedVariantId(first?.id ?? null);
+          }
+        } catch {
+          if (!cancelled) {
+            setVariantsReady(false);
+            setVariants([]);
+            setSelectedVariantId(null);
+          }
+        }
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Could not load listing");
@@ -82,8 +106,19 @@ export default function ListingDetailScreen() {
     };
   }, [id, token]);
 
-  const images = listing?.images?.length ? listing.images : [];
-  const price = Number(listing?.price || 0);
+  const selectedVariant =
+    variants.find((v) => v.id === selectedVariantId) ?? null;
+  const images =
+    selectedVariant?.images?.length
+      ? selectedVariant.images
+      : listing?.images?.length
+        ? listing.images
+        : [];
+  const price = Number(
+    selectedVariant?.price != null && Number.isFinite(selectedVariant.price)
+      ? selectedVariant.price
+      : listing?.price || 0,
+  );
   const currency =
     listing?.currency === "HTG"
       ? "G"
@@ -91,7 +126,14 @@ export default function ListingDetailScreen() {
         ? "RD$"
         : "$";
   const listingId = Number(listing?.id || id);
-  const inCart = listingId ? isInCart(listingId) : false;
+  const inCart = listingId
+    ? isInCart(listingId, selectedVariantId)
+    : false;
+  const variantLabel = selectedVariant
+    ? [selectedVariant.size, selectedVariant.color, selectedVariant.sku]
+        .filter(Boolean)
+        .join(" / ")
+    : null;
   const isOwnListing =
     !!user?.id && !!listing?.sellerId && user.id === listing.sellerId;
   const dominican = isDominicanListingCountry(listing?.country);
@@ -163,6 +205,18 @@ export default function ListingDetailScreen() {
       Alert.alert("Your listing", "You cannot buy your own product.");
       return;
     }
+    if (variantsReady && variants.length > 0 && !selectedVariantId) {
+      Alert.alert("Choose a variation", "Select size/color before adding.");
+      return;
+    }
+    if (
+      selectedVariant &&
+      selectedVariant.stockQuantity != null &&
+      selectedVariant.stockQuantity <= 0
+    ) {
+      Alert.alert("Out of stock", "This variation has no stock.");
+      return;
+    }
     if (inCart) {
       router.push("/cart");
       return;
@@ -172,11 +226,13 @@ export default function ListingDetailScreen() {
       title: listing.title,
       price,
       currency: listing.currency ?? "USD",
-      image: listing.images?.[0] ?? null,
+      image: images[0] ?? listing.images?.[0] ?? null,
       country: listing.country ?? null,
       city: listing.city ?? listing.location ?? null,
       sellerId: listing.sellerId,
       quantity: 1,
+      variantId: selectedVariantId,
+      variantLabel,
     });
     setAddedFlash(true);
     setTimeout(() => setAddedFlash(false), 1600);
@@ -271,6 +327,48 @@ export default function ListingDetailScreen() {
                   .filter(Boolean)
                   .join(" · ")}
               </Text>
+              {variantsReady && variants.length > 0 ? (
+                <View style={{ gap: 8, marginTop: 8 }} testID="listing-variants">
+                  <Text style={styles.meta}>Choose variation</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {variants.map((v) => {
+                      const label =
+                        [v.size, v.color, v.sku].filter(Boolean).join(" / ") ||
+                        `Variant ${v.id}`;
+                      const on = selectedVariantId === v.id;
+                      const oos = (v.stockQuantity ?? 0) <= 0;
+                      return (
+                        <Pressable
+                          key={String(v.id)}
+                          disabled={oos}
+                          onPress={() => setSelectedVariantId(v.id ?? null)}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: on ? "#FDBA74" : "#E2E8F0",
+                            backgroundColor: on ? "#FFF7ED" : "#F8FAFC",
+                            opacity: oos ? 0.45 : 1,
+                          }}
+                          testID={`variant-chip-${v.id}`}
+                        >
+                          <Text
+                            style={{
+                              fontWeight: "700",
+                              color: on ? "#C2410C" : "#334155",
+                              fontSize: 12,
+                            }}
+                          >
+                            {label}
+                            {oos ? " · sold out" : ` · ${v.stockQuantity}`}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
               {listing.isBoosted ? (
                 <View style={styles.boost}>
                   <Text style={styles.boostText}>Boosted listing</Text>

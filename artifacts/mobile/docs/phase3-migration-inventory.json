@@ -3,17 +3,17 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 198,
-  "branch": "cursor/native-phase3t-eas-apk-09ff",
-  "auditedAt": "2026-11-10T09:28:30.811Z",
-  "auditCommit": "b32eb8e3",
-  "stackedOnPr": 197,
+  "pr": 199,
+  "branch": "cursor/native-phase3u-final-native-09ff",
+  "auditedAt": "2026-11-10T09:50:59.874Z",
+  "auditCommit": "ca01af7b",
+  "stackedOnPr": 198,
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
     "placeholderRouteCount": 0,
-    "fullyNativeRouteCount": 76,
+    "fullyNativeRouteCount": 77,
     "partiallyNativeRouteCount": 2,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
@@ -40,7 +40,8 @@
       "Phase 3R: Native completion push \u2014 product-variations PARTIAL (itemSize-only native screen; multi-SKU still no API); Admin TV multipart upload + Music provider connect; search recent history; profile public shop + promo/esim links; inventory honesty (promo-feed, delivery-confirm, image-upload routes). Counts 75/2/1/0/5. Still not 83/83: FCM PARTIAL, website PLACEHOLDER, 5 Play/eSIM BLOCKED.",
       "Phase 3R gap closure: seller ship + shipping label on /orders/[id]; inventory honesty for order-detail/seller-orders/search history/home promo.",
       "Phase 3S: website route \u2192 platform browser (FULLY for intentional external nav); product-variations presets; FCM local checklist; Android APK blocked without SDK/EAS login; physical device not run on agent.",
-      "Phase 3T: EAS preview APK blocked \u2014 eas whoami Not logged in; EXPO_TOKEN missing. Config verified (com.flexa.market, preview buildType=apk, google-services match). No APK claimed."
+      "Phase 3T: EAS preview APK blocked \u2014 eas whoami Not logged in; EXPO_TOKEN missing. Config verified (com.flexa.market, preview buildType=apk, google-services match). No APK claimed.",
+      "Phase 3U: listing_variants schema+API+native seller/buyer/cart (PARTIAL until SQL approved); wallet-redeem FULLY; eSIM honest BLOCKED; payments audit; EXPO_TOKEN still missing for APK."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -72,7 +73,8 @@
     "phase3r": true,
     "phase3rGapClosure": true,
     "phase3s": true,
-    "phase3t": true
+    "phase3t": true,
+    "phase3u": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -141,7 +143,7 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 76,
+    "FULLY_NATIVE": 77,
     "PARTIALLY_NATIVE": 2,
     "PLACEHOLDER": 0,
     "MISSING": 0,
@@ -487,7 +489,7 @@
       "missing": [
         "Play Billing or policy-compliant top-up"
       ],
-      "work": "Blocked by ANDROID_DIGITAL_PURCHASE_UNAVAILABLE; design alternate later | Confirmed BLOCKED in Phase 3N audit"
+      "work": "Phase 3U audit: card/MonCash top-up remains BLOCKED; prepaid redeem is separate FULLY path"
     },
     {
       "id": "wallet-transfer",
@@ -642,7 +644,7 @@
         "Physical-device FCM end-to-end verification",
         "EAS FCM V1 credential confirmation in Expo dashboard"
       ],
-      "work": "Phase 3S: local device validation checklist (never auto-verifies). Physical FCM + EAS FCM V1 still required."
+      "work": "Phase 3U: code-complete Expo/FCM path retained; physical delivery still unverified \u2014 PARTIAL"
     },
     {
       "id": "kyc",
@@ -1453,7 +1455,7 @@
       "missing": [
         "provider integration"
       ],
-      "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready | Confirmed BLOCKED in Phase 3N audit"
+      "work": "Phase 3U: honest BLOCKED shell \u2014 no provider API in-repo; no fake QR/plans"
     },
     {
       "id": "smart-notifications",
@@ -1480,14 +1482,30 @@
       "nativeRoute": "/product-variations",
       "role": "seller",
       "apis": [
-        "/api/users/:id/listings",
-        "/api/listings/:id (itemSize)"
+        "/api/listings/:id/variants",
+        "/api/listings/:id (itemSize fallback)",
+        "/api/cart/checkout (optional variantId)"
       ],
       "status": "PARTIALLY_NATIVE",
       "missing": [
-        "Multi-SKU / stock-per-variant / cart line SKU APIs still absent"
+        "Apply listing_variants SQL on DigitalOcean with explicit approval",
+        "Physical QA of multi-SKU cart after migration"
       ],
-      "work": "Phase 3S: size/color presets compose into itemSize; still PARTIAL \u2014 no multi-SKU API"
+      "work": "Phase 3U: GET/PUT /listings/:id/variants + native manager/buyer/cart; schemaReady gate; not FULLY until migration applied"
+    },
+    {
+      "id": "wallet-redeem",
+      "name": "Wallet prepaid card redeem",
+      "domain": "customer",
+      "webRoute": "/wallet (redeem)",
+      "nativeRoute": "/wallet-redeem",
+      "role": "buyer",
+      "apis": [
+        "/api/wallet/redeem-card"
+      ],
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3U: native redeem UI \u2014 allowed on Android (not Play digital goods)"
     }
   ],
   "recommendedPhase3Order": [

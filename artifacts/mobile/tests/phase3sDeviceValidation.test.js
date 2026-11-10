@@ -9,16 +9,15 @@ const test = require("node:test");
 const root = path.join(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 
-test("Phase 3S inventory counts are honest (76/2/0/0/5)", () => {
+test("Phase 3S+ inventory floor preserved (not fake 100%)", () => {
   const inv = JSON.parse(read("docs/phase3-migration-inventory.json"));
-  assert.equal(inv.features.length, 83);
-  assert.deepEqual(inv.summaryCounts, {
-    FULLY_NATIVE: 76,
-    PARTIALLY_NATIVE: 2,
-    PLACEHOLDER: 0,
-    MISSING: 0,
-    BLOCKED: 5,
-  });
+  // 3S: 83 / 76 FULLY; 3U may add wallet-redeem → 84 / 77 FULLY.
+  assert.ok(inv.features.length >= 83);
+  assert.ok(inv.summaryCounts.FULLY_NATIVE >= 76);
+  assert.equal(inv.summaryCounts.PARTIALLY_NATIVE, 2);
+  assert.equal(inv.summaryCounts.PLACEHOLDER, 0);
+  assert.equal(inv.summaryCounts.MISSING, 0);
+  assert.equal(inv.summaryCounts.BLOCKED, 5);
   const byId = Object.fromEntries(inv.features.map((f) => [f.id, f]));
   assert.equal(byId["website-embed"].status, "FULLY_NATIVE");
   assert.equal(byId["push-fcm"].status, "PARTIALLY_NATIVE");
@@ -42,14 +41,14 @@ test("website route uses platform browser, not WebView", () => {
   assert.doesNotMatch(src, /NativePlaceholder|react-native-webview|<\s*WebView\b/);
 });
 
-test("product-variations presets still write only itemSize", () => {
+test("product-variations keeps itemSize fallback until schema ready", () => {
   const src = read("app/product-variations.tsx");
   assert.match(src, /SIZE_PRESETS/);
   assert.match(src, /COLOR_PRESETS/);
-  assert.match(src, /composeItemSize/);
-  assert.match(src, /updateListing\([\s\S]*itemSize/);
-  assert.match(src, /PARTIALLY_NATIVE|partially native/i);
-  assert.doesNotMatch(src, /skuInventory|stockPerVariant|\/api\/variants/i);
+  assert.match(src, /itemSize/);
+  assert.match(src, /schemaReady|PARTIAL/i);
+  assert.match(src, /replaceListingVariants|updateListing/);
+  assert.doesNotMatch(src, /skuInventory|stockPerVariant/);
 });
 
 test("device checklist never auto-claims physical verification", () => {

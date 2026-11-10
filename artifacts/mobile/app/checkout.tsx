@@ -240,6 +240,7 @@ export default function CheckoutScreen() {
         {
           items: checkoutItems.map((i) => ({
             listingId: i.listingId,
+            variantId: i.variantId ?? undefined,
             quantity: i.quantity,
           })),
           shippingName: name.trim(),

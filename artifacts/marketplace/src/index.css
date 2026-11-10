@@ -156,16 +156,13 @@ html.video-feed-immersive #root {
 /*
  * Promotional Videos bottom nav (iPhone WebView).
  * Watch feed: transparent overlay so video stays edge-to-edge behind icons
- * (TikTok / mockup). Discover/Favorites keep a solid black bar.
- * Never force background-color #000 with !important on the watch path —
- * that recreates the thick "ba nwa" cutting the video.
+ * — never paint a solid "ba nwa" slab on /videos/watch.
+ * Discover/Favorites: solid black bar (no fullscreen video behind).
  */
 .promo-videos-bottom-nav {
   box-sizing: border-box;
   box-shadow: none !important;
   z-index: 70;
-  /* Paint through the home-indicator zone so a white page strip cannot show
-     under the tab row when padding-bottom uses the 34px safe-area floor. */
   background-clip: border-box;
 }
 .promo-videos-bottom-nav[data-watch-transparent="false"] {
@@ -174,6 +171,7 @@ html.video-feed-immersive #root {
 }
 .promo-videos-bottom-nav[data-watch-transparent="true"] {
   background-color: transparent !important;
+  background-image: none !important;
 }
 
 main {

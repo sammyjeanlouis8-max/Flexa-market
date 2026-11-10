@@ -3,18 +3,17 @@ import { useSEO } from "@/hooks/useSEO";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
-  Heart, MessageCircle, Share2, Eye,
+  Heart, MessageCircle, Eye,
   Play, BadgeCheck, Loader2, X, ArrowLeft,
   SendHorizontal, ChevronDown, Zap, ShoppingBag,
   MoreVertical, Pencil, Trash2, Check,
-  VolumeX, Volume2, Bookmark, Flag,
+  VolumeX, Volume2,
 } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth";
 import { useAdminCountry } from "@/contexts/admin-country";
 import { useShoppingLocation } from "@/contexts/shopping-location";
 import { useFavorites } from "@/contexts/favorites";
-import { useVideoSaves } from "@/contexts/videoSaves";
 import { useToast } from "@/hooks/use-toast";
 import { useRestriction } from "@/hooks/useRestriction";
 import { RestrictionBanner } from "@/components/RestrictionBanner";
@@ -28,7 +27,7 @@ import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import BoostWizard from "@/components/BoostWizard";
 import PromoVideosBottomNav, {
   PROMO_NAV_CONTENT_PX,
-  PROMO_NAV_SAFE_BOTTOM,
+  PROMO_NAV_SAFE_BOTTOM_WATCH,
 } from "@/components/PromoVideosBottomNav";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
@@ -47,16 +46,8 @@ import {
   storePromoChatDraft,
 } from "@/lib/promoVideoContact";
 
-/** Covers iOS home-indicator AND Android WebViews that report safe-area-inset-bottom as 0. */
-const FEED_SAFE_BOTTOM = PROMO_NAV_SAFE_BOTTOM;
-
-const REPORT_REASONS = [
-  "Inappropriate or abusive content",
-  "Spam or misleading advertisement",
-  "Scam or fraud",
-  "Copyright or intellectual property",
-  "Other policy violation",
-] as const;
+/** Watch feed: real safe-area only — no 34px floor (that recreates ba nwa). */
+const FEED_SAFE_BOTTOM = PROMO_NAV_SAFE_BOTTOM_WATCH;
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -855,14 +846,12 @@ function VideoCard({
   video,
   isActive,
   isNext,
-  onCommentOpen,
   onNext,
   showCountryFlag = false,
 }: {
   video: VideoItem;
   isActive: boolean;
   isNext: boolean;
-  onCommentOpen: (id: number) => void;
   onNext: () => void;
   showCountryFlag?: boolean;
 }) {
@@ -871,32 +860,14 @@ function VideoCard({
   const { toast } = useToast();
   const { t } = useTranslation();
   const { isRestricted, showRestrictionToast } = useRestriction();
-  const { isFavorited, markFavorited, markUnfavorited } = useFavorites();
-  const { isSaved, markSaved, markUnsaved } = useVideoSaves();
+  const { isFavorited, markFavorited } = useFavorites();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [pausedByUser, setPausedByUser] = useState(false);
   const liked = isFavorited(video.id);
-  const saved = isSaved(video.id);
-  const [likeCount, setLikeCount] = useState(video.likeCount);
-  const [saveCount, setSaveCount] = useState(video.saveCount ?? 0);
-
-  useEffect(() => {
-    if (video.isSaved) markSaved(video.id);
-    setFollowing(video.sellerIsFollowing ?? false);
-    setSaveCount(video.saveCount ?? 0);
-    setLikeCount(video.likeCount);
-    setShareCount(video.sharesCount);
-    // Hydrate once per video id from feed payload; do not re-apply after local unsave.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [video.id]);
-  const [shareCount, setShareCount] = useState(video.sharesCount);
-  const [showComments, setShowComments] = useState(false);
   const [showWhatsAppBtn, setShowWhatsAppBtn] = useState(false);
   const [whatsAppDismissed, setWhatsAppDismissed] = useState(false);
   const [showHeartFlash, setShowHeartFlash] = useState(false);
-  const [showReportSheet, setShowReportSheet] = useState(false);
-  const [reporting, setReporting] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapRef = useRef<number>(0);
@@ -917,7 +888,6 @@ function VideoCard({
   const visibleFrameRef = useRef(false);
   const stallAttemptsRef = useRef(0);
   const hardReloadTriedRef = useRef(false);
-  const [following, setFollowing] = useState(video.sellerIsFollowing ?? false);
   const [messagePending, setMessagePending] = useState(false);
   // Honor explicit user mute; otherwise prefer sound (native / prior unlock).
   const [muted, setMuted] = useState(() =>
@@ -1290,7 +1260,6 @@ function VideoCard({
       cancelVisualReadinessChecks();
       el.pause();
       setPlaying(false);
-      setShowComments(false);
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
       setShowWhatsAppBtn(false);
       setWhatsAppDismissed(false);
@@ -1325,7 +1294,6 @@ function VideoCard({
       lastTapRef.current = 0;
       if (!liked) {
         markFavorited(video.id);
-        setLikeCount(c => c + 1);
         fetch(`/api/favorites/${video.id}`, { method: "POST", headers: { Authorization: `Bearer ${token ?? ""}` } }).catch(() => {});
         fetch("/api/boost-analytics/events", {
           method: "POST",
@@ -1369,123 +1337,6 @@ function VideoCard({
       }
     }
   }, [liked, token, video.id, muted, soundLocked, showPlaybackFailure]);
-
-  const handleLike = async () => {
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
-    if (isRestricted) { showRestrictionToast(); return; }
-    const wasLiked = liked;
-    if (wasLiked) {
-      markUnfavorited(video.id);
-      setLikeCount(c => Math.max(0, c - 1));
-    } else {
-      markFavorited(video.id);
-      setLikeCount(c => c + 1);
-    }
-    try {
-      const response = await fetch(`/api/favorites/${video.id}`, {
-        method: wasLiked ? "DELETE" : "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Favorite request failed");
-    } catch {
-      // revert on error
-      if (wasLiked) { markFavorited(video.id); setLikeCount(c => c + 1); }
-      else { markUnfavorited(video.id); setLikeCount(c => Math.max(0, c - 1)); }
-    }
-  };
-
-  const handleSave = async () => {
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
-    if (isRestricted) { showRestrictionToast(); return; }
-    const wasSaved = saved;
-    if (wasSaved) {
-      markUnsaved(video.id);
-      setSaveCount(c => Math.max(0, c - 1));
-    } else {
-      markSaved(video.id);
-      setSaveCount(c => c + 1);
-    }
-    try {
-      const response = await fetch(`/api/video-saves/${video.id}`, {
-        method: wasSaved ? "DELETE" : "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Save request failed");
-      if (!wasSaved) {
-        fetch("/api/boost-analytics/events", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ listingId: video.id, type: "save", source: "promo_feed" }),
-        }).catch(() => {});
-      }
-    } catch {
-      if (wasSaved) { markSaved(video.id); setSaveCount(c => c + 1); }
-      else { markUnsaved(video.id); setSaveCount(c => Math.max(0, c - 1)); }
-    }
-  };
-
-  const handleFollowToggle = async (e?: React.MouseEvent | React.TouchEvent) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    if (!user) {
-      if (!isLoading) setLocation("/auth/login");
-      return;
-    }
-    if (!token || user.id === video.sellerId) return;
-    const wasFollowing = following;
-    setFollowing(!wasFollowing);
-    try {
-      const response = await fetch(`/api/users/${video.sellerId}/follow`, {
-        method: wasFollowing ? "DELETE" : "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Follow request failed");
-    } catch {
-      setFollowing(wasFollowing);
-      toast({
-        title: t("errors.serverError", { defaultValue: "Something went wrong" }),
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleReport = async (reason: string) => {
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
-    if (!token || reporting) return;
-    setReporting(true);
-    try {
-      const response = await fetch("/api/reports", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          targetType: "listing",
-          targetId: video.id,
-          reason,
-        }),
-      });
-      if (!response.ok) throw new Error("Report failed");
-      setShowReportSheet(false);
-      toast({
-        title: t("videoFeed.reportSubmitted", { defaultValue: "Report submitted" }),
-        description: t("videoFeed.reportThanks", {
-          defaultValue: "Thanks — our team will review this promotional video.",
-        }),
-      });
-    } catch {
-      toast({
-        title: t("errors.serverError", { defaultValue: "Something went wrong" }),
-        variant: "destructive",
-      });
-    } finally {
-      setReporting(false);
-    }
-  };
 
   const handleMessageSeller = async () => {
     if (!user) {
@@ -1535,51 +1386,6 @@ function VideoCard({
     }
   };
 
-  const handleShare = async () => {
-    if (isRestricted) { showRestrictionToast(); return; }
-    const url = getPublicPromoVideoUrl(video.id, window.location.origin);
-    let sharedOrCopied = false;
-    try {
-      if (typeof navigator.share === "function") {
-        await navigator.share({ title: video.title, text: video.title, url });
-        sharedOrCopied = true;
-      }
-    } catch (err) {
-      // AbortError = user cancelled native sheet — do not fall through to copy.
-      if ((err as DOMException)?.name === "AbortError") return;
-    }
-    if (!sharedOrCopied) {
-      try {
-        await navigator.clipboard.writeText(url);
-        toast({ title: t("videoFeed.shareLinkCopied") });
-        sharedOrCopied = true;
-      } catch {
-        toast({
-          title: t("videoFeed.shareLinkCopied"),
-          description: url,
-        });
-        sharedOrCopied = true;
-      }
-    }
-    if (!sharedOrCopied) return;
-    fetch(`/api/listings/${video.id}/share`, { method: "POST" }).catch(() => {});
-    fetch("/api/boost-analytics/events", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({ listingId: video.id, type: "share", source: "promo_feed" }),
-    }).catch(() => {});
-    setShareCount(c => c + 1);
-  };
-
-  const handleCommentOpen = () => {
-    if (isRestricted) { showRestrictionToast(); return; }
-    setShowComments(true);
-    onCommentOpen(video.id);
-  };
-
   const trackBuyClick = useCallback(() => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -1618,7 +1424,7 @@ function VideoCard({
   // For video-only ghost boosts, price is always 0 — hide price + cart in that case
   const hasPrice = video.price > 0;
   const hasCta = hasWhatsApp || hasPrice;
-  const showWhatsAppOverlay = hasCta && showWhatsAppBtn && !whatsAppDismissed && !showComments;
+  const showWhatsAppOverlay = hasCta && showWhatsAppBtn && !whatsAppDismissed;
   const posterUrl = video.thumbnailUrl ?? generatedThumbnail ?? null;
 
   return (
@@ -1774,13 +1580,12 @@ function VideoCard({
         </div>
       )}
 
-      {/* ── Bottom gradient — light only for caption legibility; video must
-          still read through behind the transparent tab icons. ── */}
+      {/* ── Light bottom gradient for caption legibility only (no ba nwa slab). ── */}
       <div
         className="absolute inset-x-0 bottom-0 pointer-events-none"
         style={{
-          height: "100px",
-          background: "linear-gradient(to top, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.06) 55%, transparent 100%)",
+          height: "72px",
+          background: "linear-gradient(to top, rgba(0,0,0,0.18) 0%, transparent 100%)",
         }}
       />
 
@@ -1803,112 +1608,11 @@ function VideoCard({
         </div>
       )}
 
-      {/* ── Right-side engagement column — pure TikTok style ── */}
-      <div
-        className="absolute right-2 z-10 flex flex-col items-center gap-3.5"
-        style={{ bottom: `calc(${PROMO_NAV_CONTENT_PX + 36}px + ${FEED_SAFE_BOTTOM})` }}
-        onClick={e => e.stopPropagation()}
-        onTouchStart={e => e.stopPropagation()}
-        onTouchEnd={e => e.stopPropagation()}
-      >
-        {/* Seller avatar + follow / unfollow badge */}
-        <div className="flex flex-col items-center mb-1">
-          <Link href={`/profile/${video.sellerId}`}>
-            <div className="relative">
-              <Avatar className="h-12 w-12 border-2 border-white shadow-lg">
-                <AvatarImage src={video.sellerAvatar ?? undefined} />
-                <AvatarFallback className="bg-primary text-primary-foreground font-bold text-sm">
-                  {video.sellerName?.[0] ?? "?"}
-                </AvatarFallback>
-              </Avatar>
-              {user?.id !== video.sellerId && (
-                <button
-                  type="button"
-                  onClick={handleFollowToggle}
-                  className={cn(
-                    "absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full flex items-center justify-center shadow border-[1.5px] border-black active:scale-90 transition-transform z-10",
-                    following ? "bg-white" : "bg-[#FE2C55]",
-                  )}
-                  aria-label={following
-                    ? t("videoFeed.unfollow", { defaultValue: "Unfollow" })
-                    : t("videoFeed.follow", { defaultValue: "Follow" })}
-                  data-testid={`button-follow-seller-${video.sellerId}`}
-                >
-                  {following
-                    ? <Check className="h-3 w-3 text-black" strokeWidth={3} />
-                    : <span className="text-white text-[11px] font-black leading-none">+</span>}
-                </button>
-              )}
-            </div>
-          </Link>
-        </div>
-
-        {/* Like */}
-        <button type="button" onClick={handleLike} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform" data-testid={`button-like-video-${video.id}`}>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
-            <Heart className={cn("h-[27px] w-[27px] drop-shadow-lg transition-colors", liked ? "fill-red-500 text-red-500" : "text-white")} />
-          </span>
-          <span className="text-white text-[12px] font-semibold drop-shadow-md tabular-nums">{formatCount(likeCount)}</span>
-        </button>
-
-        {/* Comment */}
-        <button
-          type="button"
-          onClick={event => {
-            event.stopPropagation();
-            handleCommentOpen();
-          }}
-          aria-expanded={showComments}
-          className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
-          data-testid={`button-comments-video-${video.id}`}
-        >
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
-            <MessageCircle className="h-[27px] w-[27px] text-white" />
-          </span>
-          <span className="text-white text-[12px] font-semibold drop-shadow-md tabular-nums">{formatCount(video.commentCount)}</span>
-        </button>
-
-        {/* Favorites / Save — persisted promo_video_saves (separate from likes) */}
-        <button type="button" onClick={() => void handleSave()} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform" data-testid={`button-save-video-${video.id}`}>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
-            <Bookmark className={cn("h-[25px] w-[25px] transition-colors", saved ? "fill-amber-400 text-amber-400" : "text-white")} />
-          </span>
-          <span className="text-white text-[12px] font-semibold drop-shadow-md tabular-nums">
-            {saveCount > 0 ? formatCount(saveCount) : t("videoFeed.save", { defaultValue: "Save" })}
-          </span>
-        </button>
-
-        {/* Share */}
-        <button type="button" onClick={handleShare} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform" data-testid={`button-share-video-${video.id}`}>
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
-            <Share2 className="h-[25px] w-[25px] text-white" />
-          </span>
-          <span className="text-white text-[12px] font-semibold drop-shadow-md tabular-nums">{formatCount(shareCount)}</span>
-        </button>
-
-        {/* Report */}
-        <button
-          type="button"
-          onClick={() => {
-            if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
-            setShowReportSheet(true);
-          }}
-          className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
-          data-testid={`button-report-video-${video.id}`}
-        >
-          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
-            <Flag className="h-[22px] w-[22px] text-white" />
-          </span>
-          <span className="text-[10px] font-semibold text-white drop-shadow-md">
-            {t("videoFeed.report", { defaultValue: "Report" })}
-          </span>
-        </button>
-
-      </div>
+      {/* Right-side engagement column removed — ba dwa gone on promo watch. */}
 
       {/* ── Product CTA Card — slides up after 1.5s ── */}
       <div
-        className="absolute left-3 right-16 z-20"
+        className="absolute left-3 right-3 z-20"
         style={{
           bottom: showWhatsAppOverlay
             ? `calc(${PROMO_NAV_CONTENT_PX + 52}px + ${FEED_SAFE_BOTTOM})`
@@ -1980,7 +1684,7 @@ function VideoCard({
 
       {/* ── Bottom info overlay — TikTok exact layout ── */}
       <div
-        className="absolute bottom-0 left-0 right-14 px-4 z-10"
+        className="absolute bottom-0 left-0 right-0 px-4 z-10"
         style={{ paddingBottom: `calc(${PROMO_NAV_CONTENT_PX + 24}px + ${FEED_SAFE_BOTTOM})` }}
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
@@ -2049,58 +1753,6 @@ function VideoCard({
         )}
       </div>
 
-      {/* ── Comment panel ── */}
-      {showComments && (
-        <CommentPanel
-          listingId={video.id}
-          sellerId={video.sellerId}
-          onClose={() => setShowComments(false)}
-        />
-      )}
-
-      {/* ── Report sheet ── */}
-      {showReportSheet && (
-        <div
-          className="absolute inset-0 z-40 flex items-end bg-black/55"
-          onClick={() => setShowReportSheet(false)}
-          onTouchStart={e => e.stopPropagation()}
-          onTouchEnd={e => e.stopPropagation()}
-        >
-          <div
-            className="w-full rounded-t-3xl border-t border-white/10 bg-zinc-950 px-4 pt-3 pb-6"
-            style={{ paddingBottom: `calc(16px + ${FEED_SAFE_BOTTOM})` }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
-            <h3 className="mb-1 text-center text-[15px] font-black text-white">
-              {t("videoFeed.reportTitle", { defaultValue: "Report promotional video" })}
-            </h3>
-            <p className="mb-4 text-center text-[12px] text-white/50">
-              {t("videoFeed.reportHint", { defaultValue: "Why are you reporting this video?" })}
-            </p>
-            <div className="space-y-2">
-              {REPORT_REASONS.map(reason => (
-                <button
-                  key={reason}
-                  type="button"
-                  disabled={reporting}
-                  onClick={() => void handleReport(reason)}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left text-[13px] font-semibold text-white/90 active:bg-white/10 disabled:opacity-50"
-                >
-                  {t(`videoFeed.reportReason.${reason}`, { defaultValue: reason })}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowReportSheet(false)}
-              className="mt-3 w-full rounded-xl py-3 text-[13px] font-bold text-white/60"
-            >
-              {t("common.cancel", { defaultValue: "Cancel" })}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -2570,7 +2222,7 @@ export default function VideoFeed() {
   //    fixed inset-0 paints edge-to-edge over the marketplace shell (TikTok-style).
   //    Do NOT extend past the viewport with negative bottom / box-shadow fills —
   //    that clipped the fixed promo nav inside overflow:hidden ancestors on iOS.
-  //    Watch nav is transparent — video paints through the home-indicator zone.
+  //    Watch nav stays transparent (no ba nwa); right engagement rail removed.
   return (
     <div
       className={cn(
@@ -2767,7 +2419,6 @@ export default function VideoFeed() {
                 video={video}
                 isActive={activeIdx === idx}
                 isNext={activeIdx + 1 === idx}
-                onCommentOpen={() => {}}
                 onNext={() => scrollTo(idx + 1)}
                 showCountryFlag={showCountryFlags || isAdminViewer}
               />

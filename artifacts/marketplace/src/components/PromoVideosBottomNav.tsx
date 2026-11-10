@@ -5,21 +5,25 @@ import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
 
 /**
- * Single bottom inset for the promo nav.
- * Prefer CSS env(); fall back to --sab (iOS FlexaMarket WKWebView) and
- * --flexa-android-bottom. Always max() — never sum. Cap at 48px.
+ * Discover / Favorites: 34px floor so a white home-indicator strip ("ba blan")
+ * cannot appear under the solid black bar when safe-area reports 0.
  *
- * 34px floor: iPhone Safari/WKWebView often reports safe-area-inset-bottom=0,
- * which left a white home-indicator strip ("ba blan") under the black Discover
- * nav and clipped the tab icons. Same floor as .sell-action-footer-row.
+ * Watch feed: NO 34px floor — a forced floor recreates the thick "ba nwa"
+ * under transparent icons. Prefer real env()/--sab/--flexa-android-bottom only.
  */
-export const PROMO_NAV_SAFE_BOTTOM =
+export const PROMO_NAV_SAFE_BOTTOM_DISCOVER =
   "min(48px, max(34px, env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px)))";
+
+export const PROMO_NAV_SAFE_BOTTOM_WATCH =
+  "min(48px, max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px)))";
+
+/** @deprecated Prefer PROMO_NAV_SAFE_BOTTOM_DISCOVER / _WATCH */
+export const PROMO_NAV_SAFE_BOTTOM = PROMO_NAV_SAFE_BOTTOM_DISCOVER;
 
 /** Compact content row (icons + labels). */
 export const PROMO_NAV_CONTENT_PX = 52;
 
-export const PROMO_NAV_HEIGHT_CSS = `calc(${PROMO_NAV_CONTENT_PX}px + ${PROMO_NAV_SAFE_BOTTOM})`;
+export const PROMO_NAV_HEIGHT_CSS = `calc(${PROMO_NAV_CONTENT_PX}px + ${PROMO_NAV_SAFE_BOTTOM_DISCOVER})`;
 
 type ActiveTab = "home" | "discover" | "add" | "favorites" | "profile";
 
@@ -112,15 +116,14 @@ export default function PromoVideosBottomNav({
         className,
       )}
       style={{
-        // Transparent padding lifts icons above the home indicator WITHOUT
-        // painting a black slab — video shows through that zone on watch.
-        paddingBottom: PROMO_NAV_SAFE_BOTTOM,
+        // Watch: transparent + real safe-area only (no 34px floor, no dark
+        // gradient) so the "ba nwa" slab cannot cut the promo video.
+        // Discover: solid black with 34px floor against "ba blan".
+        paddingBottom: isWatchFeed ? PROMO_NAV_SAFE_BOTTOM_WATCH : PROMO_NAV_SAFE_BOTTOM_DISCOVER,
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
         backgroundColor: isWatchFeed ? "transparent" : "#000",
-        backgroundImage: isWatchFeed
-          ? "linear-gradient(to top, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.18) 55%, transparent 100%)"
-          : "none",
+        backgroundImage: "none",
         boxShadow: "none",
         overflow: "visible",
       }}

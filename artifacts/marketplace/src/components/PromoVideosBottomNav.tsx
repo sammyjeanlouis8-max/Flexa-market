@@ -8,9 +8,13 @@ import { cn } from "@/lib/utils";
  * Single bottom inset for the promo nav.
  * Prefer CSS env(); fall back to --sab (iOS FlexaMarket WKWebView) and
  * --flexa-android-bottom. Always max() — never sum. Cap at 48px.
+ *
+ * 34px floor: iPhone Safari/WKWebView often reports safe-area-inset-bottom=0,
+ * which left a white home-indicator strip ("ba blan") under the black Discover
+ * nav and clipped the tab icons. Same floor as .sell-action-footer-row.
  */
 export const PROMO_NAV_SAFE_BOTTOM =
-  "min(48px, max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px)))";
+  "min(48px, max(34px, env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px)))";
 
 /** Compact content row (icons + labels). */
 export const PROMO_NAV_CONTENT_PX = 52;

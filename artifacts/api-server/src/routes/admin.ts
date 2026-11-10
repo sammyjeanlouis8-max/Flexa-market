@@ -24,6 +24,32 @@ function formatUser(user: typeof usersTable.$inferSelect) {
   return rest;
 }
 
+/** Safe Flexa Control user row — no passwords, tokens, or raw device/session ids. */
+function formatControlUserListRow(user: typeof usersTable.$inferSelect) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    avatar: user.avatar,
+    country: user.country,
+    location: user.location,
+    state: user.state,
+    neighborhood: user.neighborhood,
+    role: user.role,
+    isAdmin: user.isAdmin,
+    isSuperAdmin: user.isSuperAdmin,
+    isBanned: user.isBanned,
+    isRestricted: user.isRestricted,
+    restrictedUntil: user.restrictedUntil,
+    restrictionReason: user.restrictionReason,
+    flagReason: user.flagReason,
+    lastSeenAt: user.lastSeenAt,
+    createdAt: user.createdAt,
+    listingCount: user.listingCount,
+  };
+}
+
 export type RiskLevel = "low" | "medium" | "high";
 export interface RiskResult { score: number; level: RiskLevel; factors: string[] }
 
@@ -759,7 +785,9 @@ router.get("/admin/users", requireAdmin, async (req, res): Promise<void> => {
     conditions.push(
       or(
         ilike(usersTable.name, search.namePattern),
+        // Exact email (case-insensitive) OR partial email match.
         sql`lower(btrim(coalesce(${usersTable.email}, ''))) = ${search.emailExact}`,
+        ilike(usersTable.email, search.namePattern),
         phonePart,
       )!,
     );
@@ -786,7 +814,7 @@ router.get("/admin/users", requireAdmin, async (req, res): Promise<void> => {
   const users = await db.select().from(usersTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(usersTable.createdAt));
-  res.json(users.map(formatUser));
+  res.json(users.map(formatControlUserListRow));
 });
 
 /** Registered country is immutable via Control — reject all admin set/clear attempts. */
@@ -803,6 +831,7 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
   if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid user id" }); return; }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  // Country-scope + role gate — restricted admins cannot open out-of-scope accounts.
   const scopeErr = assertUserInScope(req.user!, user);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
 
@@ -813,7 +842,10 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
 
-  const [salesRows, listingCountRow, visitsTodayRow, latestLogin, restrictionHistory, auditRows] = await Promise.all([
+  // Root cause fix: user_restrictions uses `restricted_at`, not `created_at`.
+  // Selecting the missing column threw and Express returned HTTP 500
+  // ("Internal server error") for every User Details open.
+  const [salesRows, listingCountRow, visitsTodayRow, recentLogins, restrictionHistory, auditRows] = await Promise.all([
     db.select({
       id: transactionsTable.id,
       listingId: transactionsTable.listingId,
@@ -842,7 +874,7 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
     }).from(loginLogsTable)
       .where(eq(loginLogsTable.userId, id))
       .orderBy(desc(loginLogsTable.createdAt))
-      .limit(1),
+      .limit(40),
     db.select({
       id: userRestrictionsTable.id,
       reason: userRestrictionsTable.reason,
@@ -850,11 +882,11 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
       notes: userRestrictionsTable.notes,
       isActive: userRestrictionsTable.isActive,
       expiresAt: userRestrictionsTable.expiresAt,
-      createdAt: userRestrictionsTable.createdAt,
+      createdAt: userRestrictionsTable.restrictedAt,
       adminId: userRestrictionsTable.adminId,
     }).from(userRestrictionsTable)
       .where(eq(userRestrictionsTable.userId, id))
-      .orderBy(desc(userRestrictionsTable.createdAt))
+      .orderBy(desc(userRestrictionsTable.restrictedAt))
       .limit(40),
     db.select({
       id: adminAuditLogsTable.id,
@@ -863,7 +895,7 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
       description: adminAuditLogsTable.description,
       actorName: adminAuditLogsTable.actorName,
       actorRole: adminAuditLogsTable.actorRole,
-      metadata: adminAuditLogsTable.metadata,
+      // Intentionally omit metadata / sessionId / ip / userAgent — no raw session ids.
       riskLevel: adminAuditLogsTable.riskLevel,
       createdAt: adminAuditLogsTable.createdAt,
     }).from(adminAuditLogsTable)
@@ -889,6 +921,7 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
           ? "Seller"
           : "Buyer";
 
+  // Account status (Active/Inactive/Suspended/Blocked) is independent of online presence.
   const accountStatus = user.isBanned
     ? "blocked"
     : user.isRestricted
@@ -897,14 +930,63 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
         ? "active"
         : "inactive";
 
-  const deviceInfo = latestLogin[0]
-    ? parseUserAgent(latestLogin[0].userAgent)
+  const latestLogin = recentLogins[0] ?? null;
+  const deviceInfo = latestLogin
+    ? parseUserAgent(latestLogin.userAgent)
     : { device: "Unavailable", os: "Unavailable", browser: "Unavailable" };
+
+  const addressParts = [user.neighborhood, user.location, user.state, user.country]
+    .map((p) => (typeof p === "string" ? p.trim() : ""))
+    .filter(Boolean);
+  const savedAddress = addressParts.length > 0 ? addressParts.join(", ") : null;
+
+  // Derive session/device summaries from login history (no raw session tokens).
+  const deviceMap = new Map<string, {
+    device: string; os: string; browser: string;
+    lastSeenAt: string; count: number;
+  }>();
+  for (const log of recentLogins) {
+    const parsed = parseUserAgent(log.userAgent);
+    const key = `${parsed.device}|${parsed.os}|${parsed.browser}`;
+    const existing = deviceMap.get(key);
+    const ts = new Date(log.createdAt).toISOString();
+    if (existing) {
+      existing.count += 1;
+      if (new Date(ts) > new Date(existing.lastSeenAt)) existing.lastSeenAt = ts;
+    } else {
+      deviceMap.set(key, { ...parsed, lastSeenAt: ts, count: 1 });
+    }
+  }
+  const commonDevices = Array.from(deviceMap.values())
+    .sort((a, b) => new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime());
+
+  const sessions = recentLogins.slice(0, 12).map((log) => {
+    const parsed = parseUserAgent(log.userAgent);
+    return {
+      action: log.action,
+      at: log.createdAt,
+      device: parsed.device,
+      os: parsed.os,
+      browser: parsed.browser,
+      // IP is admin-visible activity context; never a session token.
+      ip: log.ip || null,
+    };
+  });
 
   res.json({
     user: {
-      ...formatUser(user),
+      ...formatControlUserListRow(user),
+      email: user.email,
+      phone: user.phone,
       countryDisplay: user.country?.trim() ? user.country : "Country not set",
+      savedAddress,
+      address: {
+        neighborhood: user.neighborhood ?? null,
+        city: user.location ?? null,
+        state: user.state ?? null,
+        country: user.country ?? null,
+        display: savedAddress,
+      },
       accountType,
       accountStatus,
       isOnline,
@@ -931,13 +1013,21 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
     },
     activity: {
       isOnline,
-      lastSeenAt: user.lastSeenAt ?? latestLogin[0]?.createdAt ?? null,
+      onlineStatus: isOnline ? "online" : (lastSeen > 0 ? "offline" : "Unavailable"),
+      lastSeenAt: user.lastSeenAt ?? latestLogin?.createdAt ?? null,
       visitsToday: visitsTodayRow[0]?.count ?? 0,
       device: deviceInfo.device || "Unavailable",
       os: deviceInfo.os || "Unavailable",
       browser: deviceInfo.browser || "Unavailable",
-      latestLogin: latestLogin[0]
-        ? { ...latestLogin[0], ...deviceInfo }
+      sessions,
+      commonDevices,
+      latestLogin: latestLogin
+        ? {
+            action: latestLogin.action,
+            at: latestLogin.createdAt,
+            ip: latestLogin.ip || null,
+            ...deviceInfo,
+          }
         : null,
     },
     audit: {
@@ -1059,12 +1149,15 @@ router.get("/admin/users/:id/activity", requireAdmin, async (req, res): Promise<
   });
 });
 
-// Parse a user-agent string into human-readable device/OS/browser info
+// Parse a user-agent string into human-readable device/OS/browser info.
+// Returns "Unavailable" when the UA cannot establish a device/OS/browser.
 function parseUserAgent(ua: string | null): { device: string; os: string; browser: string } {
-  if (!ua) return { device: "Enkoni", os: "—", browser: "—" };
-  let device = "Òdinatè";
-  let os = "—";
-  let browser = "—";
+  if (!ua || !ua.trim()) {
+    return { device: "Unavailable", os: "Unavailable", browser: "Unavailable" };
+  }
+  let device = "Unavailable";
+  let os = "Unavailable";
+  let browser = "Unavailable";
   // Device
   if (/iPhone/.test(ua)) device = "iPhone";
   else if (/iPad/.test(ua)) device = "iPad";
@@ -1086,7 +1179,7 @@ function parseUserAgent(ua: string | null): { device: string; os: string; browse
       else { const macM = ua.match(/Mac OS X ([\d_]+)/); if (macM) os = "macOS " + macM[1].replace(/_/g, "."); }
     }
   }
-  // Browser
+  // Browser / app shell
   if (/CriOS/.test(ua)) browser = "Chrome iOS";
   else if (/FxiOS/.test(ua)) browser = "Firefox iOS";
   else if (/SamsungBrowser/.test(ua)) browser = "Samsung Browser";

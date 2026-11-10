@@ -39,4 +39,24 @@ describe("admin users country read-only", () => {
     expect(adminRoutes).toMatch(/countryDisplay/);
     expect(adminRoutes).toMatch(/Country not set/);
   });
+
+  it("queries user_restrictions.restricted_at (not a missing created_at)", () => {
+    // Regression: selecting userRestrictionsTable.createdAt caused HTTP 500
+    // "Internal server error" on every User Details open.
+    expect(adminRoutes).toMatch(/createdAt:\s*userRestrictionsTable\.restrictedAt/);
+    expect(adminRoutes).toMatch(/orderBy\(desc\(userRestrictionsTable\.restrictedAt\)\)/);
+    expect(adminRoutes).not.toMatch(/userRestrictionsTable\.createdAt/);
+  });
+
+  it("sanitizes Control user payloads (no password / raw session ids)", () => {
+    expect(adminRoutes).toMatch(/formatControlUserListRow/);
+    const detailHandler = adminRoutes.match(
+      /router\.get\("\/admin\/users\/:id", requireAdmin[\s\S]*?res\.json\(\{/,
+    )?.[0] ?? "";
+    expect(detailHandler).toBeTruthy();
+    expect(adminRoutes).toMatch(/Intentionally omit metadata \/ sessionId/);
+    expect(adminRoutes).toMatch(/savedAddress/);
+    expect(adminRoutes).toMatch(/commonDevices/);
+    expect(adminRoutes).toMatch(/assertUserInScope/);
+  });
 });

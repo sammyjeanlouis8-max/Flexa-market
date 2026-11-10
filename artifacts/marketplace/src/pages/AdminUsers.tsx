@@ -40,7 +40,16 @@ type AdminUserRow = {
 
 type UserDetailPayload = {
   user: AdminUserRow & {
+    phone?: string | null;
     countryDisplay: string;
+    savedAddress?: string | null;
+    address?: {
+      neighborhood?: string | null;
+      city?: string | null;
+      state?: string | null;
+      country?: string | null;
+      display?: string | null;
+    };
     accountType: string;
     accountStatus: AccountStatus;
     isOnline: boolean;
@@ -71,11 +80,27 @@ type UserDetailPayload = {
   };
   activity: {
     isOnline: boolean;
+    onlineStatus?: string;
     lastSeenAt: string | null;
     visitsToday: number;
     device: string;
     os: string;
     browser: string;
+    sessions?: Array<{
+      action?: string;
+      at?: string;
+      device?: string;
+      os?: string;
+      browser?: string;
+      ip?: string | null;
+    }>;
+    commonDevices?: Array<{
+      device: string;
+      os: string;
+      browser: string;
+      lastSeenAt: string;
+      count: number;
+    }>;
   };
   audit: {
     restrictions: Array<{
@@ -99,6 +124,34 @@ type UserDetailPayload = {
     }>;
   };
 };
+
+function InlineError({
+  message,
+  onRetry,
+  testId,
+}: {
+  message: string;
+  onRetry: () => void;
+  testId: string;
+}) {
+  return (
+    <div
+      className="mx-4 mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[13px] text-red-800"
+      data-testid={testId}
+      role="alert"
+    >
+      <p className="font-semibold">{message}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-1.5 text-[12px] font-bold underline underline-offset-2"
+        data-testid={`${testId}-retry`}
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
 
 type DetailTab = "overview" | "sales" | "activity" | "audit";
 
@@ -215,7 +268,6 @@ export default function AdminUsers() {
 function UsersListScreen() {
   const { t } = useTranslation();
   const { user, token } = useAuth();
-  const { toast } = useToast();
   const [, navigate] = useLocation();
   const isAdmin = isAdminUser(user as any);
   const saved = useRef(loadListState()).current;
@@ -225,6 +277,7 @@ function UsersListScreen() {
   const [status, setStatus] = useState(saved?.status ?? "all");
   const [rows, setRows] = useState<AdminUserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -236,6 +289,7 @@ function UsersListScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setListError(null);
     try {
       const params = new URLSearchParams();
       if (q.trim()) params.set("q", q.trim());
@@ -245,11 +299,12 @@ function UsersListScreen() {
       const data = await adminFetch(token, `/api/admin/users?${params.toString()}`);
       setRows(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      toast({ title: e.message || "Failed to load users", variant: "destructive" });
+      // Keep previously loaded rows visible; show an inline Retry near the list.
+      setListError(e.message || "Failed to load users");
     } finally {
       setLoading(false);
     }
-  }, [token, q, country, status, toast]);
+  }, [token, q, country, status]);
 
   useEffect(() => {
     const tmr = setTimeout(() => { void load(); }, 180);
@@ -336,14 +391,26 @@ function UsersListScreen() {
         </div>
       </div>
 
+      {listError && (
+        <InlineError
+          message={listError}
+          onRetry={() => { void load(); }}
+          testId="admin-users-list-error"
+        />
+      )}
+
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto border-t border-border bg-card">
-        {loading ? (
+        {loading && rows.length === 0 ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && !listError ? (
           <p className="px-4 py-12 text-center text-sm text-muted-foreground">
             {t("adminUsers.empty", { defaultValue: "No users match these filters." })}
+          </p>
+        ) : rows.length === 0 ? (
+          <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+            {t("adminUsers.loadFailedHint", { defaultValue: "Could not refresh the user list." })}
           </p>
         ) : (
           rows.map((u) => {
@@ -391,6 +458,7 @@ function UserDetailsScreen({ userId }: { userId: number }) {
 
   const [detail, setDetail] = useState<UserDetailPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [tab, setTab] = useState<DetailTab>("overview");
   const [busy, setBusy] = useState(false);
 
@@ -405,16 +473,19 @@ function UserDetailsScreen({ userId }: { userId: number }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setDetailError(null);
     try {
+      // Open by numeric user id — never by display name.
       const data = await adminFetch(token, `/api/admin/users/${userId}`);
       setDetail(data);
     } catch (e: any) {
-      toast({ title: e.message || "Failed to load user", variant: "destructive" });
-      navigate("/admin/users");
+      // Keep any previously loaded profile visible; do not bounce to the list
+      // with a toast under the Dynamic Island.
+      setDetailError(e.message || "Failed to load user");
     } finally {
       setLoading(false);
     }
-  }, [token, userId, toast, navigate]);
+  }, [token, userId]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -452,16 +523,67 @@ function UserDetailsScreen({ userId }: { userId: number }) {
 
   if (!isAdmin) return null;
 
-  if (loading || !detail || !u) {
+  const countryLabel = u?.countryDisplay || t("adminUsers.countryNotSet", { defaultValue: "Country not set" });
+  const status = (u ? (u.accountStatus || resolveStatus(u)) : "inactive") as AccountStatus;
+  const onlineLabel = !detail
+    ? "Unavailable"
+    : detail.activity.onlineStatus === "Unavailable"
+      ? "Unavailable"
+      : detail.activity.isOnline
+        ? t("adminUsers.online", { defaultValue: "Online" })
+        : t("adminUsers.offline", { defaultValue: "Offline" });
+
+  if (loading && !detail) {
     return (
-      <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
+      <div className="mx-auto max-w-lg pb-10" data-testid="admin-user-details">
+        <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-3 py-2.5 backdrop-blur">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/admin/users")}
+              className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-sm font-semibold text-[hsl(152,65%,22%)]"
+              data-testid="admin-user-details-back"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {t("adminNav.users", { defaultValue: "Users" })}
+            </button>
+            <h1 className="flex-1 text-center text-[15px] font-bold">{t("adminUsers.detailsTitle", { defaultValue: "User details" })}</h1>
+            <span className="w-16" />
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
       </div>
     );
   }
 
-  const countryLabel = u.countryDisplay || t("adminUsers.countryNotSet", { defaultValue: "Country not set" });
-  const status = (u.accountStatus || resolveStatus(u)) as AccountStatus;
+  if (!detail || !u) {
+    return (
+      <div className="mx-auto max-w-lg pb-10" data-testid="admin-user-details">
+        <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-3 py-2.5 backdrop-blur">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/admin/users")}
+              className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-sm font-semibold text-[hsl(152,65%,22%)]"
+              data-testid="admin-user-details-back"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {t("adminNav.users", { defaultValue: "Users" })}
+            </button>
+            <h1 className="flex-1 text-center text-[15px] font-bold">{t("adminUsers.detailsTitle", { defaultValue: "User details" })}</h1>
+            <span className="w-16" />
+          </div>
+        </div>
+        <InlineError
+          message={detailError || t("adminUsers.detailUnavailable", { defaultValue: "This account could not be loaded." })}
+          onRetry={() => { void load(); }}
+          testId="admin-user-details-error"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-lg pb-10" data-testid="admin-user-details">
@@ -481,6 +603,14 @@ function UserDetailsScreen({ userId }: { userId: number }) {
         </div>
       </div>
 
+      {detailError && (
+        <InlineError
+          message={detailError}
+          onRetry={() => { void load(); }}
+          testId="admin-user-details-error"
+        />
+      )}
+
       <div className="px-4 pt-5 text-center">
         <Avatar className="mx-auto h-16 w-16">
           <AvatarImage src={u.avatar ?? undefined} />
@@ -497,10 +627,11 @@ function UserDetailsScreen({ userId }: { userId: number }) {
         <div className="mt-2 flex items-center justify-center gap-2">
           <StatusBadge status={status} />
           <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
-            <span className={cn("h-2 w-2 rounded-full", detail.activity.isOnline ? "bg-emerald-500" : "bg-slate-300")} />
-            {detail.activity.isOnline
-              ? t("adminUsers.online", { defaultValue: "Online" })
-              : t("adminUsers.offline", { defaultValue: "Offline" })}
+            <span className={cn(
+              "h-2 w-2 rounded-full",
+              onlineLabel === "Unavailable" ? "bg-slate-300" : detail.activity.isOnline ? "bg-emerald-500" : "bg-slate-300",
+            )} />
+            {onlineLabel}
           </span>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
@@ -611,12 +742,34 @@ function UserDetailsScreen({ userId }: { userId: number }) {
               <h3 className="text-[13px] font-bold">{t("adminUsers.accountInfo", { defaultValue: "Account information" })}</h3>
               <dl className="mt-2 space-y-2 text-[13px]">
                 <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Type</dt>
-                  <dd className="font-semibold">{u.accountType}</dd>
+                  <dt className="text-muted-foreground">Name</dt>
+                  <dd className="font-semibold text-right">{u.name}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Email</dt>
+                  <dd className="max-w-[60%] break-all text-right font-semibold">{u.email || "Unavailable"}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Phone</dt>
+                  <dd className="font-semibold text-right">{u.phone || "Unavailable"}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-muted-foreground">Country</dt>
                   <dd className="font-semibold text-right">{countryLabel}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Saved address</dt>
+                  <dd className="max-w-[60%] text-right font-semibold">
+                    {u.savedAddress || u.address?.display || "Unavailable"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Account status</dt>
+                  <dd><StatusBadge status={status} /></dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Type</dt>
+                  <dd className="font-semibold">{u.accountType}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-muted-foreground">Listings</dt>
@@ -651,9 +804,9 @@ function UserDetailsScreen({ userId }: { userId: number }) {
                 <div className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Smartphone className="h-3.5 w-3.5" /> Device</span>
                   <span className="font-semibold text-right">
-                    {detail.activity.device === "—" || !detail.activity.device
+                    {!detail.activity.device || detail.activity.device === "—" || detail.activity.device === "Unavailable"
                       ? "Unavailable"
-                      : `${detail.activity.device} · ${detail.activity.os}`}
+                      : `${detail.activity.device}${detail.activity.os && detail.activity.os !== "Unavailable" ? ` · ${detail.activity.os}` : ""}`}
                   </span>
                 </div>
               </div>
@@ -727,7 +880,7 @@ function UserDetailsScreen({ userId }: { userId: number }) {
             <div className="rounded-2xl border border-border bg-card p-3.5 space-y-3 text-[13px]">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Online status</span>
-                <span className="font-semibold">{detail.activity.isOnline ? "Online" : "Offline"}</span>
+                <span className="font-semibold">{onlineLabel}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Account status</span>
@@ -760,6 +913,56 @@ function UserDetailsScreen({ userId }: { userId: number }) {
                 </span>
               </div>
             </div>
+
+            <section className="rounded-2xl border border-border bg-card p-3.5">
+              <h3 className="text-[13px] font-bold">{t("adminUsers.commonDevices", { defaultValue: "Commonly used devices" })}</h3>
+              {(detail.activity.commonDevices?.length ?? 0) === 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">Unavailable</p>
+              ) : (
+                <ul className="mt-2 divide-y divide-border">
+                  {detail.activity.commonDevices!.map((d) => (
+                    <li key={`${d.device}-${d.os}-${d.browser}`} className="flex items-start justify-between gap-2 py-2.5 text-[13px]">
+                      <div className="min-w-0">
+                        <p className="font-semibold">
+                          {!d.device || d.device === "Unavailable" ? "Unavailable" : d.device}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {[d.os, d.browser].filter((x) => x && x !== "Unavailable").join(" · ") || "Unavailable"}
+                          {d.count > 1 ? ` · ${d.count} sessions` : ""}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">{formatWhen(d.lastSeenAt)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-3.5">
+              <h3 className="text-[13px] font-bold">{t("adminUsers.currentSessions", { defaultValue: "Recent sessions" })}</h3>
+              {(detail.activity.sessions?.length ?? 0) === 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">Unavailable</p>
+              ) : (
+                <ul className="mt-2 divide-y divide-border">
+                  {detail.activity.sessions!.map((s, idx) => (
+                    <li key={`${s.at}-${idx}`} className="py-2.5 text-[13px]">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold">
+                            {!s.device || s.device === "Unavailable" ? "Unavailable" : s.device}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {[s.os, s.browser].filter((x) => x && x !== "Unavailable").join(" · ") || "Unavailable"}
+                            {s.action ? ` · ${s.action}` : ""}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">{formatWhen(s.at)}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </div>
         )}
 

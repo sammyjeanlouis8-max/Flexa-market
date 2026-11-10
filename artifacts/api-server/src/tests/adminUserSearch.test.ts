@@ -56,16 +56,16 @@ describe("matchesAdminUserSearch", () => {
     expect(matchesAdminUserSearch(pool[0]!, "Nadia")).toBe(false);
   });
 
-  it("matches exact email regardless of capitalization", () => {
+  it("matches email regardless of capitalization (exact or partial)", () => {
     expect(
       matchesAdminUserSearch(pool[2]!, "nadia.pierre@flexa.market"),
     ).toBe(true);
     expect(
       matchesAdminUserSearch(pool[2]!, "NADIA.PIERRE@FLEXA.MARKET"),
     ).toBe(true);
-    // Partial email must not match — exact only.
-    expect(matchesAdminUserSearch(pool[2]!, "nadia.pierre")).toBe(false);
-    expect(matchesAdminUserSearch(pool[2]!, "@flexa.market")).toBe(false);
+    expect(matchesAdminUserSearch(pool[2]!, "nadia.pierre")).toBe(true);
+    expect(matchesAdminUserSearch(pool[2]!, "@flexa.market")).toBe(true);
+    expect(matchesAdminUserSearch(pool[2]!, "nobody@missing.test")).toBe(false);
   });
 
   it("matches a formatted international phone number", () => {
@@ -132,11 +132,12 @@ describe("parseAdminUserSearchQuery + Control Users route contract", () => {
     );
     // Must not truncate authorized results to a client page window.
     const usersHandler = adminRoutes.match(
-      /router\.get\("\/admin\/users", requireAdmin[\s\S]*?res\.json\(users\.map\(formatUser\)\);/,
+      /router\.get\("\/admin\/users", requireAdmin[\s\S]*?res\.json\(users\.map\(formatControlUserListRow\)\);/,
     )?.[0] ?? "";
     expect(usersHandler).toBeTruthy();
     expect(usersHandler).not.toMatch(/\.limit\(/);
     expect(usersHandler).toMatch(/country && country !== "all"/);
+    expect(usersHandler).toMatch(/formatControlUserListRow/);
   });
 
   it("keeps search above filters with the required placeholder in the UI", () => {
@@ -154,5 +155,9 @@ describe("parseAdminUserSearchQuery + Control Users route contract", () => {
     expect(ui).toMatch(/LIST_STATE_KEY/);
     expect(ui).toMatch(/saveListState/);
     expect(ui).toMatch(/loadListState/);
+    // Inline Retry errors — keep loaded data, clear of status-bar toasts for failures.
+    expect(ui).toMatch(/admin-users-list-error/);
+    expect(ui).toMatch(/admin-user-details-error/);
+    expect(ui).toMatch(/InlineError/);
   });
 });

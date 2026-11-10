@@ -39,7 +39,11 @@ export function matchesAdminUserSearch(
   if (name.includes(q.toLowerCase())) return true;
 
   const email = (user.email ?? "").trim().toLowerCase();
-  if (email && email === q.toLowerCase()) return true;
+  const qEmail = q.toLowerCase().replace(/\s+/g, "");
+  // Exact (preferred) or partial email; ignore capitalization and inner spaces in the query.
+  if (email && (email === q.toLowerCase().trim() || email.includes(qEmail) || email === qEmail)) {
+    return true;
+  }
 
   const queryDigits = phoneDigitsOnly(q);
   const phoneDigits = phoneDigitsOnly(user.phone);

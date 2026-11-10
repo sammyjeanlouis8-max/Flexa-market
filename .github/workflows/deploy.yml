@@ -213,3 +213,5 @@ jobs:
 # Owner requested fe deploy retry after calculator lockfile fix went live (2026-11-10).
 
 # Owner requested fe deploy: promo ad Message/Skip in-player + Home 2-card strip (#202) (2026-11-10).
+
+# Owner requested fe deploy: merchant ad delivery + admin country preview (#203) (2026-11-10).

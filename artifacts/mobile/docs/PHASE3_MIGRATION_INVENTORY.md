@@ -1,38 +1,32 @@
 # Flexa Market — Phase 3 Native Migration Inventory
 
-**PR chain (verified):** #174 → #175 → #176 → #177 → Phase 3G2  
-**Phase 3G2 branch:** `cursor/native-seller-phase3g2-09ff` (from push-harden `09f4acdf`)  
-**Backend:** `https://flexamarket.com/api`
+**PR chain:** #174 → #175 → #176 → #177 → #178 → Phase 3H  
+**Branch:** `cursor/native-marketplace-phase3h-09ff` (from `aa8ca704`)
 
-## Snapshot counts (after Phase 3G2)
+## Snapshot (after Phase 3H)
 
 | Status | Count |
 |---|---|
-| FULLY_NATIVE | 51 |
-| PARTIALLY_NATIVE | 3 |
+| FULLY_NATIVE | 56 |
+| PARTIALLY_NATIVE | 2 |
 | PLACEHOLDER | 6 |
-| MISSING | 18 |
+| MISSING | 14 |
 | BLOCKED | 5 |
 | **Total** | **83** |
 
-Machine-readable source of truth: `phase3-migration-inventory.json`.
+## Phase 3H completed
 
-## Phase 3G / 3G2 seller highlights
+- Referrals dashboard
+- Jobs (browse/detail/apply/post; API route order fix)
+- Calculator (marketplace fees + basic math)
+- Wallet transfer (top-up still blocked)
+- Notification preferences + privacy blocks
 
-- KYC, seller registration hub, store manager
-- Sell drafts + interrupted video recovery
-- Resumable chunked Wasabi video (cancel/retry)
-- Boost draft builder with Haiti multi-dept/commune
-- Campaign filters, pause/resume (paid only), analytics
-- Paid boost checkout still **BLOCKED**
-- Multi-SKU variations still **MISSING** (itemSize only)
+## Next (approval required)
 
-## Safe merge order later
-
-1. #174 → main  
-2. #175 → main  
-3. #176 → main  
-4. #177 → main  
-5. Phase 3G2 PR → main  
+- **3I** Flexa TV / Music
+- **3J** Support / FlexaBot / chat ops
+- **3K** Admin panel
+- **3L** Full audit + readiness
 
 Do not merge without authorization.

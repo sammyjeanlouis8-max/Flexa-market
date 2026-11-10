@@ -4,7 +4,7 @@
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
   "pr": null,
-  "branch": "cursor/native-seller-phase3g2-09ff",
+  "branch": "cursor/native-marketplace-phase3h-09ff",
   "auditedAt": "2026-11-09T22:10:00Z",
   "auditCommit": "deeda28a",
   "verification": {
@@ -24,7 +24,8 @@
       "Phase 3E: buyer recovery, categories, delivery tip/rate, help/legal/delete, public track/shop.",
       "Phase 3F: edit listing, inventory restock, seller analytics, earnings/payouts, boost library read-only.",
       "Phase 3G: KYC, store manager, sell drafts, chunked video, boost draft builder; multi-SKU variations blocked by API.",
-      "Phase 3G2: resumable video, seller registration hub, campaign filters/analytics, Haiti multi-dept, field validation; variations still API-blocked; paid boost blocked."
+      "Phase 3G2: resumable video, seller registration hub, campaign filters/analytics, Haiti multi-dept, field validation; variations still API-blocked; paid boost blocked.",
+      "Phase 3H: referrals, jobs, calculator, wallet-transfer, notification prefs, privacy blocks. Top-up still blocked."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -37,7 +38,9 @@
     "phase3gStartCommit": "f4e88fc6",
     "pushHardening": true,
     "phase3g2": true,
-    "phase3g2StartCommit": "09f4acdf"
+    "phase3g2StartCommit": "09f4acdf",
+    "phase3h": true,
+    "phase3hStartCommit": "aa8ca704"
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -106,10 +109,10 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 51,
-    "PARTIALLY_NATIVE": 3,
+    "FULLY_NATIVE": 56,
+    "PARTIALLY_NATIVE": 2,
     "PLACEHOLDER": 6,
-    "MISSING": 18,
+    "MISSING": 14,
     "BLOCKED": 5
   },
   "features": [
@@ -463,17 +466,16 @@
       "name": "Wallet P2P transfer",
       "domain": "customer",
       "webRoute": "/wallet/transfer",
-      "nativeRoute": null,
+      "nativeRoute": "/wallet-transfer",
       "role": "buyer",
       "apis": [
         "/api/wallet/transfer",
-        "/api/wallet/p2p/*"
+        "/api/wallet/lookup",
+        "/api/wallet/p2p/history"
       ],
-      "status": "MISSING",
-      "missing": [
-        "transfer UI"
-      ],
-      "work": "After Wallet native"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3H account transfer + history; top-up stays blocked"
     },
     {
       "id": "wallet-history",
@@ -574,17 +576,15 @@
       "name": "Settings subpages (identity, security, privacy, preferences, help, payments, notifications prefs)",
       "domain": "customer",
       "webRoute": "/settings/*",
-      "nativeRoute": "/settings,/security,/help,/legal/[doc]",
+      "nativeRoute": "/settings,/settings-notifications,/settings-privacy,/security,/help,/legal/[doc]",
       "role": "buyer",
       "apis": [
-        "various /api/auth /api/users"
+        "/api/users/me/preferences",
+        "/api/users/me/blocks"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "notification preference toggles",
-        "privacy blocks UI"
-      ],
-      "work": "Phase 3E security + help + legal linked; prefs/blocks later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3H notification prefs + privacy blocks; language/country/security preserved"
     },
     {
       "id": "notifications",
@@ -701,16 +701,16 @@
       "name": "Referral System / Leaderboard",
       "domain": "customer",
       "webRoute": "/leaderboard",
-      "nativeRoute": null,
+      "nativeRoute": "/referrals",
       "role": "buyer",
       "apis": [
-        "/api/referrals/*"
+        "/api/referrals/my-stats",
+        "/api/referrals/leaderboard",
+        "/api/wallet/referral"
       ],
-      "status": "MISSING",
-      "missing": [
-        "leaderboard UI"
-      ],
-      "work": "Later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3H referral dashboard, share, history, verified earnings"
     },
     {
       "id": "commission-promo",
@@ -733,32 +733,26 @@
       "name": "Jobs board",
       "domain": "customer",
       "webRoute": "/jobs",
-      "nativeRoute": null,
+      "nativeRoute": "/jobs,/jobs/[id],/jobs/post",
       "role": "buyer",
       "apis": [
-        "/api/jobs/*"
+        "/api/jobs*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "jobs UI"
-      ],
-      "work": "Later / geo-specific"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3H browse/mine/applications/apply/claim/post; route order fixed; fee via fm_wallet"
     },
     {
       "id": "calculator",
       "name": "CalcAI calculator",
       "domain": "customer",
       "webRoute": "/calculator",
-      "nativeRoute": null,
+      "nativeRoute": "/calculator",
       "role": "buyer",
-      "apis": [
-        "/api/calculator/ask"
-      ],
-      "status": "MISSING",
-      "missing": [
-        "calculator UI"
-      ],
-      "work": "Low priority"
+      "apis": [],
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3H marketplace fee helpers (7%/5%) + basic arithmetic; no fake finances"
     },
     {
       "id": "help-center",

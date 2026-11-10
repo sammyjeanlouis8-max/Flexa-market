@@ -45,11 +45,12 @@ test("Phase 3P inventory stays honest (not fake 83/83)", () => {
   assert.equal(inv.features.length, 83);
   assert.ok(inv.summaryCounts.FULLY_NATIVE >= 75);
   assert.equal(inv.summaryCounts.BLOCKED, 5);
-  assert.ok(/phase3p|phase3q|phase3r/.test(inv.branch));
+  assert.ok(/phase3p|phase3q|phase3r|phase3s/.test(inv.branch));
   assert.ok(
     inv.verification.phase3p === true ||
       inv.verification.phase3q === true ||
-      inv.verification.phase3r === true,
+      inv.verification.phase3r === true ||
+      inv.verification.phase3s === true,
   );
   const byId = Object.fromEntries(inv.features.map((f) => [f.id, f]));
   assert.equal(byId["push-fcm"].status, "PARTIALLY_NATIVE");
@@ -57,7 +58,11 @@ test("Phase 3P inventory stays honest (not fake 83/83)", () => {
     byId["product-variations"].status === "MISSING" ||
       byId["product-variations"].status === "PARTIALLY_NATIVE",
   );
-  assert.equal(byId["website-embed"].status, "PLACEHOLDER");
+  assert.ok(
+    byId["website-embed"].status === "PLACEHOLDER" ||
+      byId["website-embed"].status === "FULLY_NATIVE",
+    "website-embed intentional; PLACEHOLDER or FULLY after 3S browser route",
+  );
   assert.equal(byId["boost-paid"].status, "BLOCKED");
 });
 

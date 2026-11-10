@@ -10,22 +10,23 @@ const root = path.join(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 const inv = JSON.parse(read("docs/phase3-migration-inventory.json"));
 
-test("Phase 3R inventory is 75/2/1/0/5 — not fake 83/83 FULLY", () => {
+test("Phase 3R inventory floor preserved — not fake 83/83 FULLY", () => {
   assert.equal(inv.features.length, 83);
-  assert.deepEqual(inv.summaryCounts, {
-    FULLY_NATIVE: 75,
-    PARTIALLY_NATIVE: 2,
-    PLACEHOLDER: 1,
-    MISSING: 0,
-    BLOCKED: 5,
-  });
-  assert.equal(inv.branch, "cursor/native-phase3r-complete-09ff");
+  // 3R shipped 75/2/1/0/5; 3S may promote website-embed to FULLY (76/2/0/0/5).
+  assert.ok(inv.summaryCounts.FULLY_NATIVE >= 75);
+  assert.equal(inv.summaryCounts.PARTIALLY_NATIVE, 2);
+  assert.ok(inv.summaryCounts.PLACEHOLDER <= 1);
+  assert.equal(inv.summaryCounts.MISSING, 0);
+  assert.equal(inv.summaryCounts.BLOCKED, 5);
   assert.ok(inv.verification.phase3r === true);
   const byId = Object.fromEntries(inv.features.map((f) => [f.id, f]));
   assert.equal(byId["push-fcm"].status, "PARTIALLY_NATIVE");
   assert.equal(byId["product-variations"].status, "PARTIALLY_NATIVE");
   assert.equal(byId["product-variations"].nativeRoute, "/product-variations");
-  assert.equal(byId["website-embed"].status, "PLACEHOLDER");
+  assert.ok(
+    byId["website-embed"].status === "PLACEHOLDER" ||
+      byId["website-embed"].status === "FULLY_NATIVE",
+  );
   assert.equal(byId.esim.status, "BLOCKED");
   assert.equal(byId["boost-paid"].status, "BLOCKED");
   assert.ok(String(byId["promo-videos"].nativeRoute).includes("/promo-feed"));

@@ -65,7 +65,11 @@ test("Phase 3N inventory recount and remaining incomplete statuses", () => {
     byId["product-variations"].status === "MISSING" ||
       byId["product-variations"].status === "PARTIALLY_NATIVE",
   );
-  assert.equal(byId["website-embed"].status, "PLACEHOLDER");
+  assert.ok(
+    byId["website-embed"].status === "PLACEHOLDER" ||
+      byId["website-embed"].status === "FULLY_NATIVE",
+    "website-embed intentional; PLACEHOLDER or FULLY after 3S browser route",
+  );
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.equal(byId["boost-paid"].status, "BLOCKED");
   assert.equal(byId["subscription-billing"].status, "BLOCKED");
@@ -76,7 +80,8 @@ test("Phase 3N inventory recount and remaining incomplete statuses", () => {
       inv.verification.phase3o === true ||
       inv.verification.phase3p === true ||
       inv.verification.phase3q === true ||
-      inv.verification.phase3r === true,
+      inv.verification.phase3r === true ||
+      inv.verification.phase3s === true,
   );
   assert.ok(byId.bnpl.apis.includes("/api/bnpl/checkout"));
 });

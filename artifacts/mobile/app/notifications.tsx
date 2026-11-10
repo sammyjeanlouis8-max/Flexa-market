@@ -26,6 +26,12 @@ import {
   type AppNotification,
 } from "@/lib/notificationsApi";
 import { formatDate } from "@/lib/orderUi";
+import {
+  DEVICE_VALIDATION_ITEMS,
+  loadDeviceValidationState,
+  saveDeviceValidationState,
+  type DeviceValidationState,
+} from "@/lib/deviceValidationChecklist";
 import { getPushPrepStatus, registerExpoPushToken } from "@/lib/pushPrep";
 
 export default function NotificationsScreen() {
@@ -37,6 +43,9 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushTick, setPushTick] = useState(0);
+  const [deviceChecklist, setDeviceChecklist] =
+    useState<DeviceValidationState | null>(null);
+  const [showChecklist, setShowChecklist] = useState(false);
   const pushStatus = getPushPrepStatus();
   void pushTick;
 
@@ -66,8 +75,32 @@ export default function NotificationsScreen() {
         return;
       }
       if (token) void load("initial");
+      void loadDeviceValidationState().then(setDeviceChecklist);
     }, [authLoading, token, router, load]),
   );
+
+  const toggleChecklistItem = async (
+    id: (typeof DEVICE_VALIDATION_ITEMS)[number]["id"],
+  ) => {
+    const base =
+      deviceChecklist ??
+      ({
+        checked: {},
+        notes: "",
+        updatedAt: null,
+        physicalDeviceVerified: false as const,
+      } satisfies DeviceValidationState);
+    const nextChecked = {
+      ...base.checked,
+      [id]: !base.checked[id],
+    };
+    const saved = await saveDeviceValidationState({
+      checked: nextChecked,
+      notes: base.notes,
+      updatedAt: base.updatedAt,
+    });
+    setDeviceChecklist(saved);
+  };
 
   const onOpen = async (n: AppNotification) => {
     if (token && !n.isRead) {
@@ -178,6 +211,43 @@ export default function NotificationsScreen() {
             </Text>
           </Pressable>
         ) : null}
+        <Pressable
+          style={styles.checklistToggle}
+          onPress={() => setShowChecklist((v) => !v)}
+          testID="btn-toggle-device-checklist"
+        >
+          <Text style={styles.checklistToggleText}>
+            {showChecklist
+              ? "Hide device validation checklist"
+              : "Show device validation checklist (local only)"}
+          </Text>
+        </Pressable>
+        {showChecklist ? (
+          <View style={styles.checklistBox} testID="device-validation-checklist">
+            <Text style={styles.pushNote}>
+              Toggles are local notes only. physicalDeviceVerified stays false
+              until a human records evidence on a real Android device.
+            </Text>
+            {DEVICE_VALIDATION_ITEMS.map((item) => {
+              const on = !!deviceChecklist?.checked[item.id];
+              return (
+                <Pressable
+                  key={item.id}
+                  style={styles.checkRow}
+                  onPress={() => void toggleChecklistItem(item.id)}
+                  testID={`check-${item.id}`}
+                >
+                  <Feather
+                    name={on ? "check-square" : "square"}
+                    size={18}
+                    color={on ? "#F97316" : "#94A3B8"}
+                  />
+                  <Text style={styles.checkLabel}>{item.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
 
       {authLoading || (token && items === null && !error) ? (
@@ -284,6 +354,17 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   pushRetryText: { color: "#C2410C", fontWeight: "800", fontSize: 11 },
+  checklistToggle: { marginTop: 8, paddingVertical: 6 },
+  checklistToggleText: { color: "#0369A1", fontWeight: "700", fontSize: 12 },
+  checklistBox: {
+    marginTop: 8,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#FED7AA",
+    paddingTop: 8,
+  },
+  checkRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  checkLabel: { flex: 1, color: "#9A3412", fontSize: 12, fontWeight: "600" },
   card: {
     flexDirection: "row",
     alignItems: "center",

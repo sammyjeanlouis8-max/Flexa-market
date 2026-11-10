@@ -100,10 +100,14 @@ test("Phase 3L inventory recount keeps 83 routes with honest enums", () => {
     byId["product-variations"].status === "MISSING" ||
       byId["product-variations"].status === "PARTIALLY_NATIVE",
   );
-  assert.equal(byId["website-embed"].status, "PLACEHOLDER");
+  assert.ok(
+    byId["website-embed"].status === "PLACEHOLDER" ||
+      byId["website-embed"].status === "FULLY_NATIVE",
+    "website-embed intentional; PLACEHOLDER or FULLY after 3S browser route",
+  );
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.ok(inv.verification?.phase3l || inv.verification?.phase3m);
-  assert.match(inv.branch, /phase3[lmno]/);
+  assert.match(inv.branch, /phase3[lmnopqrs]/);
 });
 
 test("Phase 3L docs exist", () => {

@@ -374,7 +374,9 @@ export default function ListingCard({
               "absolute bottom-2 left-2 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-md",
               listing.stockQuantity <= 2 ? "bg-red-500" : "bg-orange-500"
             )}>
-              {listing.stockQuantity <= 2 ? `⚠️ ${listing.stockQuantity} rete` : `📦 ${listing.stockQuantity} rete`}
+              {listing.stockQuantity <= 2
+                ? `⚠️ ${t("listing.stockLeft", { count: listing.stockQuantity, defaultValue: "{{count}} left" })}`
+                : `📦 ${t("listing.stockLeft", { count: listing.stockQuantity, defaultValue: "{{count}} left" })}`}
             </div>
           )}
 

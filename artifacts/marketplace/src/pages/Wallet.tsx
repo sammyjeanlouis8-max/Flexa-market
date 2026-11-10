@@ -144,8 +144,8 @@ function typeLabel(type: string, amountUsd: number, t: TFunc) {
   if (type === "promo_boost_debit") return { label: t("wallet.txPromoBoost"), color: "text-purple-400", sign: "-", Icon: Zap, iconColor: "bg-purple-900/30 text-purple-400" };
   if (type === "promo_unlock") return { label: t("wallet.txPromoUnlock"), color: "text-amber-400", sign: "+", Icon: ArrowRightLeft, iconColor: "bg-amber-900/30 text-amber-400" };
   if (type === "promo_convert") return { label: t("wallet.txPromoConvert"), color: "text-green-400", sign: "+", Icon: ArrowRightLeft, iconColor: "bg-green-900/30 text-green-400" };
-  if (type === "recharge_fee") return { label: "Frè Rechaj (ansyen)", color: "text-orange-400", sign: "-", Icon: AlertCircle, iconColor: "bg-orange-900/30 text-orange-400" };
-  if (type === "security_lock") return { label: "Balans sekirite (ansyen)", color: "text-slate-400", sign: "", Icon: ShieldCheck, iconColor: "bg-slate-900/30 text-slate-400" };
+  if (type === "recharge_fee") return { label: t("wallet.txRechargeFeeLegacy", { defaultValue: "Recharge fee (legacy)" }), color: "text-orange-400", sign: "-", Icon: AlertCircle, iconColor: "bg-orange-900/30 text-orange-400" };
+  if (type === "security_lock") return { label: t("wallet.txSecurityLockLegacy", { defaultValue: "Security balance (legacy)" }), color: "text-slate-400", sign: "", Icon: ShieldCheck, iconColor: "bg-slate-900/30 text-slate-400" };
   return { label: type, color: "text-foreground", sign: amountUsd > 0 ? "+" : "", Icon: ArrowRightLeft, iconColor: "bg-muted text-muted-foreground" };
 }
 
@@ -648,7 +648,7 @@ export default function WalletPage() {
       qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
       qc.invalidateQueries({ queryKey: ["/wallet/history"] });
     },
-    onError: (e: Error) => toast({ title: "Erè", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t("wallet.error", { defaultValue: "Error" }), description: e.message, variant: "destructive" }),
   });
 
   const promoUnlockMut = useMutation({
@@ -769,7 +769,7 @@ export default function WalletPage() {
       if (!r.ok) throw new Error(data.error ?? "Upload echoue");
       setCashoutAgentScreenshotUrl(data.url);
     } catch (err: any) {
-      toast({ title: "Erè upload", description: err.message, variant: "destructive" });
+      toast({ title: t("wallet.uploadError", { defaultValue: "Upload error" }), description: err.message, variant: "destructive" });
       setCashoutAgentScreenshotFile(null);
       setCashoutAgentScreenshotPreview(null);
     } finally {
@@ -1585,7 +1585,7 @@ export default function WalletPage() {
             <div className="flex items-center gap-2 bg-muted/40 rounded-xl p-3">
               <code className="text-xs break-all flex-1 font-mono text-foreground">{usdtTrc20}</code>
               <button
-                onClick={() => { navigator.clipboard.writeText(usdtTrc20); toast({ title: "Kopi!" }); }}
+                onClick={() => { navigator.clipboard.writeText(usdtTrc20); toast({ title: t("wallet.shareCopied", { defaultValue: "Copied!" }) }); }}
                 className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0"
               >
                 <Copy className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1597,7 +1597,7 @@ export default function WalletPage() {
             <div className="flex items-center gap-2 bg-muted/40 rounded-xl p-3">
               <code className="text-xs break-all flex-1 font-mono text-foreground">{usdtErc20}</code>
               <button
-                onClick={() => { navigator.clipboard.writeText(usdtErc20); toast({ title: "Kopi!" }); }}
+                onClick={() => { navigator.clipboard.writeText(usdtErc20); toast({ title: t("wallet.shareCopied", { defaultValue: "Copied!" }) }); }}
                 className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0"
               >
                 <Copy className="h-3.5 w-3.5 text-muted-foreground" />
@@ -2595,9 +2595,9 @@ export default function WalletPage() {
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
         <BackButton onClick={() => goBack()} />
         <div>
-          <h1 className="text-2xl font-black">Kat FM ou</h1>
+          <h1 className="text-2xl font-black">{t("wallet.myCardTitle", { defaultValue: "Your FM Card" })}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Pataje nimewo kont ou pou resevwa lajan Flexa — klike sou kat la pou vire l.
+            {t("wallet.myCardDesc", { defaultValue: "Share your account number to receive Flexa money — tap the card to flip it." })}
           </p>
         </div>
 
@@ -2619,7 +2619,7 @@ export default function WalletPage() {
           <div className="rounded-2xl border border-primary/30 bg-primary/5 px-5 py-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest mb-1">
-                Nimewo Kont FM
+                {t("wallet.fmAccountNumber", { defaultValue: "FM Account Number" })}
               </p>
               <p className="font-mono font-black text-xl text-primary tracking-widest">
                 {balance.accountNumber}
@@ -2632,13 +2632,13 @@ export default function WalletPage() {
               }}
               className="flex items-center gap-1.5 text-xs text-primary font-bold hover:underline shrink-0"
             >
-              <Copy className="h-3.5 w-3.5" /> Kopye
+              <Copy className="h-3.5 w-3.5" /> {t("wallet.copyBtn", { defaultValue: "Copy" })}
             </button>
           </div>
         )}
 
         <p className="text-center text-xs text-muted-foreground">
-          Bay moun yo nimewo kont ou pou yo voye lajan nan wallet FM ou dirèkteman.
+          {t("wallet.shareAccountHint", { defaultValue: "Give people your account number so they can send money directly to your FM wallet." })}
         </p>
 
         {showQR && balance?.accountNumber && (
@@ -2811,7 +2811,7 @@ export default function WalletPage() {
           <button
             onClick={() => stepStack.length > 0 ? goBack() : window.history.back()}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            aria-label="Retounen"
+            aria-label={t("wallet.back", { defaultValue: "Back" })}
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -2852,7 +2852,7 @@ export default function WalletPage() {
       <div
         className="flex items-center gap-1 rounded-full p-1 bg-white border border-emerald-100 shadow-sm"
         role="tablist"
-        aria-label="Wallet sections"
+        aria-label={t("wallet.title", { defaultValue: "Wallet" })}
       >
         {([
           { id: "overview" as const, label: t("wallet.tabOverview", { defaultValue: "Overview" }), Icon: LayoutGrid },
@@ -2922,7 +2922,7 @@ export default function WalletPage() {
                 <span className="text-white font-black text-sm leading-none italic">F</span>
               </div>
               <div className="min-w-0">
-                <p className="text-white font-black text-xs sm:text-sm tracking-wider leading-tight truncate">FLEXA WALLET</p>
+                <p className="text-white font-black text-xs sm:text-sm tracking-wider leading-tight truncate">{t("wallet.flexaWallet", { defaultValue: "FLEXA WALLET" })}</p>
                 <p className="font-mono text-[10px] mt-0.5 truncate" style={{ color: "rgba(167,243,208,0.75)" }}>
                   {balance?.accountNumber ?? "FM-······"}
                 </p>
@@ -2937,7 +2937,7 @@ export default function WalletPage() {
                   background: "rgba(255,255,255,0.08)",
                   border: "1px solid rgba(252,211,77,0.35)",
                 }}
-                aria-label={balanceVisible ? "Hide balance" : "Show balance"}
+                aria-label={balanceVisible ? t("wallet.hideBalance", { defaultValue: "Hide balance" }) : t("wallet.showBalance", { defaultValue: "Show balance" })}
               >
                 {balanceVisible
                   ? <Eye style={{ width: 14, height: 14, color: "rgba(255,255,255,0.85)" }} />
@@ -3004,7 +3004,7 @@ export default function WalletPage() {
             <div>
               {(balance?.bonusPct ?? 0) > 0 && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-100 border border-amber-300/40">
-                  +{balance?.bonusPct}% bonus
+                  {t("wallet.bonusPctLabel", { pct: balance?.bonusPct, defaultValue: `+${balance?.bonusPct}% bonus` })}
                 </span>
               )}
             </div>
@@ -3061,7 +3061,7 @@ export default function WalletPage() {
                   <Wallet style={{ width: 16, height: 16, color: "#fff" }} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-emerald-950 font-black text-xs sm:text-sm tracking-wider leading-tight truncate">KAT FM FLEXAMARKET</p>
+                  <p className="text-emerald-950 font-black text-xs sm:text-sm tracking-wider leading-tight truncate">{t("wallet.platformCardTitle", { defaultValue: "FM FLEXAMARKET CARD" })}</p>
                   <p className="font-mono text-[10px] mt-0.5 text-emerald-700/70 truncate">FM-FLEXA-MARKET</p>
                 </div>
               </div>
@@ -3073,7 +3073,7 @@ export default function WalletPage() {
                   background: "rgba(16,185,129,0.10)",
                   border: "1px solid rgba(16,185,129,0.30)",
                 }}
-                aria-label={t("wallet.refresh")}
+                aria-label={t("wallet.refresh", { defaultValue: "Refresh" })}
               >
                 <RefreshCw style={{ width: 13, height: 13, color: "#047857" }}
                   className={platformRevLoading ? "animate-spin" : ""} />
@@ -3082,7 +3082,7 @@ export default function WalletPage() {
 
             <div className="mb-2.5 flex-1">
               <p className="font-semibold mb-0.5 text-emerald-700" style={{ fontSize: 11, letterSpacing: "0.03em" }}>
-                Kont Platfòm Ofisyèl
+                {t("wallet.platformOfficial", { defaultValue: "Official Platform Account" })}
               </p>
               {platformRevLoading || !platformRev ? (
                 <div className="h-8 w-32 rounded-lg animate-pulse bg-emerald-50" />
@@ -3096,32 +3096,32 @@ export default function WalletPage() {
                 <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-2">
                   {platformRev.merchantCommission > 0 && (
                     <p className="text-[11px] font-semibold text-emerald-800/70">
-                      Komisyon <span className="text-emerald-950">${platformRev.merchantCommission.toFixed(2)}</span>
+                      {t("wallet.platformCommission", { defaultValue: "Commission" })} <span className="text-emerald-950">${platformRev.merchantCommission.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.boostRevenue > 0 && (
                     <p className="text-[11px] font-semibold text-emerald-800/70">
-                      Boost <span className="text-emerald-950">${platformRev.boostRevenue.toFixed(2)}</span>
+                      {t("wallet.platformBoost", { defaultValue: "Boost" })} <span className="text-emerald-950">${platformRev.boostRevenue.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.p2pTransferFees > 0 && (
                     <p className="text-[11px] font-semibold text-emerald-800/70">
-                      Frè Transfè <span className="text-emerald-950">${platformRev.p2pTransferFees.toFixed(2)}</span>
+                      {t("wallet.platformTransferFee", { defaultValue: "Transfer Fee" })} <span className="text-emerald-950">${platformRev.p2pTransferFees.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.deliveryFees > 0 && (
                     <p className="text-[11px] font-semibold text-emerald-800/70">
-                      Livrezon 15% <span className="text-emerald-950">${platformRev.deliveryFees.toFixed(2)}</span>
+                      {t("wallet.platformDelivery", { defaultValue: "Delivery 15%" })} <span className="text-emerald-950">${platformRev.deliveryFees.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.subscriptionRevenue > 0 && (
                     <p className="text-[11px] font-semibold text-emerald-800/70">
-                      Abònman <span className="text-emerald-950">${platformRev.subscriptionRevenue.toFixed(2)}</span>
+                      {t("wallet.platformSubscription", { defaultValue: "Subscription" })} <span className="text-emerald-950">${platformRev.subscriptionRevenue.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.rechargeFees > 0 && (
                     <p className="text-[11px] font-semibold text-emerald-800/70">
-                      Rechaj <span className="text-emerald-950">${platformRev.rechargeFees.toFixed(2)}</span>
+                      {t("wallet.platformRecharge", { defaultValue: "Recharge" })} <span className="text-emerald-950">${platformRev.rechargeFees.toFixed(2)}</span>
                     </p>
                   )}
                 </div>
@@ -3130,7 +3130,7 @@ export default function WalletPage() {
 
             <div className="flex items-center gap-1.5 flex-wrap mt-auto">
               <button
-                onClick={() => { navigator.clipboard?.writeText("FM-FLEXA-MARKET"); toast({ title: "ID kopye" }); }}
+                onClick={() => { navigator.clipboard?.writeText("FM-FLEXA-MARKET"); toast({ title: t("wallet.idCopied", { defaultValue: "ID copied" }) }); }}
                 className="flex items-center gap-1 transition-all active:scale-95"
                 style={{ padding: "5px 10px", borderRadius: 10, fontSize: 11, fontWeight: 600, color: "#065f46", background: "#fff", border: "1px solid rgba(16,185,129,0.35)" }}
               >
@@ -3143,10 +3143,20 @@ export default function WalletPage() {
                 style={{ padding: "5px 10px", borderRadius: 10, fontSize: 11, fontWeight: 700, color: "#fff", background: "#065f46", border: "1px solid #047857" }}
               >
                 <BarChart3 style={{ width: 12, height: 12, color: "#fbbf24" }} />
-                {statementsLoading ? "..." : "Relevé Mwa"}
+                {statementsLoading ? "..." : t("wallet.monthlyStatement", { defaultValue: "Monthly Statement" })}
               </button>
               <button
-                onClick={() => { const url = window.location.origin; navigator.share?.({ title: "FlexaMarket Platform", text: `Kont Platfòm: FM-FLEXA-MARKET\nRevni: $${platformRev?.totalRevenue?.toFixed(2) ?? "0.00"}`, url }); }}
+                onClick={() => {
+                  const url = window.location.origin;
+                  navigator.share?.({
+                    title: t("wallet.platformShareTitle", { defaultValue: "FlexaMarket Platform" }),
+                    text: t("wallet.platformShareText", {
+                      amount: platformRev?.totalRevenue?.toFixed(2) ?? "0.00",
+                      defaultValue: `Platform Account: FM-FLEXA-MARKET\nRevenue: $${platformRev?.totalRevenue?.toFixed(2) ?? "0.00"}`,
+                    }),
+                    url,
+                  });
+                }}
                 className="flex items-center gap-1 transition-all active:scale-95"
                 style={{ padding: "5px 10px", borderRadius: 10, fontSize: 11, fontWeight: 600, color: "#065f46", background: "#fff", border: "1px solid rgba(16,185,129,0.35)" }}
               >
@@ -3157,14 +3167,26 @@ export default function WalletPage() {
             {showStatements && statements && (
               <div className="mt-3 rounded-xl overflow-hidden border border-emerald-200 bg-emerald-50/60">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-emerald-200">
-                  <span className="text-emerald-800 text-[11px] font-bold tracking-wider">RELEVÉ MANSYÈL {new Date().getFullYear()}</span>
+                  <span className="text-emerald-800 text-[11px] font-bold tracking-wider">
+                    {t("wallet.monthlyStatementTitle", { year: new Date().getFullYear(), defaultValue: `MONTHLY STATEMENT ${new Date().getFullYear()}` })}
+                  </span>
                   <button type="button" onClick={() => setShowStatements(false)} className="text-emerald-700/60 text-sm leading-none">✕</button>
                 </div>
                 <div className="overflow-x-auto">
                   <table style={{ width: "100%", fontSize: 10.5, borderCollapse: "collapse" }}>
                     <thead>
                       <tr className="text-emerald-800/60 border-b border-emerald-100">
-                        {["Mwa","Total","Komisyon","Boost","Transfè","Livrezon","Abònman","Rechaj","Lòd"].map(h => (
+                        {[
+                          t("wallet.stmtMonth", { defaultValue: "Month" }),
+                          t("wallet.stmtTotal", { defaultValue: "Total" }),
+                          t("wallet.stmtCommission", { defaultValue: "Commission" }),
+                          t("wallet.stmtBoost", { defaultValue: "Boost" }),
+                          t("wallet.stmtTransfer", { defaultValue: "Transfer" }),
+                          t("wallet.stmtDelivery", { defaultValue: "Delivery" }),
+                          t("wallet.stmtSubscription", { defaultValue: "Subscription" }),
+                          t("wallet.stmtRecharge", { defaultValue: "Recharge" }),
+                          t("wallet.stmtOrders", { defaultValue: "Orders" }),
+                        ].map(h => (
                           <th key={h} style={{ padding: "5px 8px", textAlign: "right", fontWeight: 600 }}>{h}</th>
                         ))}
                       </tr>
@@ -3184,7 +3206,7 @@ export default function WalletPage() {
                         </tr>
                       ))}
                       {statements.every(m => m.totalRevenue === 0) && (
-                        <tr><td colSpan={9} style={{ padding: "12px 8px", textAlign: "center", color: "rgba(6,95,70,0.45)", fontStyle: "italic" }}>Pa gen done pou ane sa a</td></tr>
+                        <tr><td colSpan={9} style={{ padding: "12px 8px", textAlign: "center", color: "rgba(6,95,70,0.45)", fontStyle: "italic" }}>{t("wallet.stmtNoData", { defaultValue: "No data for this year" })}</td></tr>
                       )}
                     </tbody>
                   </table>

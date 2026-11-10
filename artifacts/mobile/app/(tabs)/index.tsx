@@ -22,9 +22,11 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
 import {
+  fetchHomePromoVideos,
   fetchHomeStats,
   fetchListings,
   type Listing,
+  type PromoVideoHomeItem,
 } from "@/lib/api";
 
 type Section = "featured" | "recent" | "all";
@@ -45,6 +47,7 @@ export default function HomeTab() {
   const [featured, setFeatured] = useState<Listing[]>([]);
   const [recent, setRecent] = useState<Listing[]>([]);
   const [listings, setListings] = useState<Listing[]>([]);
+  const [promoVideos, setPromoVideos] = useState<PromoVideoHomeItem[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -59,14 +62,16 @@ export default function HomeTab() {
       else setLoading(true);
       setError(null);
       try {
-        const [stats, page1] = await Promise.all([
+        const [stats, page1, promos] = await Promise.all([
           fetchHomeStats(country, { token }),
           fetchListings({ country, page: 1, limit: 20 }, { token }),
+          fetchHomePromoVideos(country, { token }).catch(() => []),
         ]);
         setFeatured(stats.featuredListings ?? []);
         setRecent(stats.recentListings ?? []);
         setCategoryCounts(stats.categoryCounts ?? []);
         setListings(page1.listings ?? []);
+        setPromoVideos((promos ?? []).slice(0, 2));
         setPage(page1.page ?? 1);
         setTotalPages(page1.totalPages ?? 1);
       } catch (e) {
@@ -295,6 +300,36 @@ export default function HomeTab() {
           }
           onEndReached={loadMore}
           onEndReachedThreshold={0.4}
+          ListHeaderComponent={
+            promoVideos.length > 0 ? (
+              <View style={styles.promoWrap} testID="home-promo-videos">
+                <Text style={styles.promoHeading}>Video Promo</Text>
+                <View style={styles.promoRow}>
+                  {promoVideos.slice(0, 2).map((v) => (
+                    <Pressable
+                      key={v.id}
+                      style={styles.promoCard}
+                      onPress={() => router.push(`/promo-feed?video=${v.id}`)}
+                      accessibilityRole="button"
+                      testID={`home-promo-video-${v.id}`}
+                    >
+                      <View style={styles.promoThumb}>
+                        <Feather name="play" size={22} color="#fff" />
+                      </View>
+                      <Text style={styles.promoTitle} numberOfLines={2}>
+                        {v.title || `Promo #${v.id}`}
+                      </Text>
+                      {v.sellerName ? (
+                        <Text style={styles.promoSeller} numberOfLines={1}>
+                          @{v.sellerName}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.centered}>
               <Text style={styles.emptyTitle}>No listings yet</Text>
@@ -403,4 +438,38 @@ const styles = StyleSheet.create({
   retryText: { color: "#fff", fontWeight: "800" },
   emptyTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
   emptyBody: { fontSize: 14, color: "#64748B", textAlign: "center" },
+  promoWrap: { marginBottom: 14 },
+  promoHeading: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 8,
+  },
+  promoRow: { flexDirection: "row", gap: 10 },
+  promoCard: {
+    flex: 1,
+    backgroundColor: "#0F172A",
+    borderRadius: 14,
+    overflow: "hidden",
+    paddingBottom: 10,
+  },
+  promoThumb: {
+    height: 120,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1E293B",
+  },
+  promoTitle: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 12,
+    paddingHorizontal: 10,
+    marginTop: 8,
+  },
+  promoSeller: {
+    color: "#94A3B8",
+    fontSize: 11,
+    paddingHorizontal: 10,
+    marginTop: 2,
+  },
 });

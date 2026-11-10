@@ -24,6 +24,22 @@ describe("promo video scroll + TikTok player contracts", () => {
     expect(src).not.toMatch(/scrollBehavior:\s*["']smooth["']/);
   });
 
+  it("Watch feed hard-stops inactive media to prevent overlapping audio (Phase 3Q)", () => {
+    const src = readFileSync(join(marketplace, "pages/VideoFeed.tsx"), "utf8");
+    expect(src).toContain("function hardStopVideoElement");
+    expect(src).toContain("useLayoutEffect");
+    expect(src).toContain("keepMediaWarm");
+    expect(src).toContain("impressionAbort.abort()");
+    expect(src).toContain("isPrev");
+  });
+
+  it("Home promo section requests at most two eligible videos (Phase 3Q)", () => {
+    const src = readFileSync(join(marketplace, "pages/Home.tsx"), "utf8");
+    expect(src).toContain('limit: "2"');
+    expect(src).toContain("slice(0, 2)");
+    expect(src).not.toMatch(/limit:\s*["']6["']/);
+  });
+
   it("country banners distinguish Super Admin All Countries vs regular user country", () => {
     const src = readFileSync(join(marketplace, "pages/VideoDiscover.tsx"), "utf8");
     expect(src).toContain("promo-admin-country-picker");

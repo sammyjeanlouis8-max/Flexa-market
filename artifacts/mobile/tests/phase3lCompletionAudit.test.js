@@ -96,7 +96,10 @@ test("Phase 3L inventory recount keeps 83 routes with honest enums", () => {
       byId["auth-phone-login"].status === "FULLY_NATIVE" ||
       byId["auth-phone-login"].status === "PARTIALLY_NATIVE",
   );
-  assert.equal(byId["product-variations"].status, "MISSING");
+  assert.ok(
+    byId["product-variations"].status === "MISSING" ||
+      byId["product-variations"].status === "PARTIALLY_NATIVE",
+  );
   assert.equal(byId["website-embed"].status, "PLACEHOLDER");
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.ok(inv.verification?.phase3l || inv.verification?.phase3m);

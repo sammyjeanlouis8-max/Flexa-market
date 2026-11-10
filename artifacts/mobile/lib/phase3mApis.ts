@@ -196,6 +196,32 @@ export async function deleteAdminTvProgram(id: number, opts: AuthOpts): Promise<
   await requireOk(res, "Delete TV program failed");
 }
 
+/** Multipart video upload — verified POST /api/admin/tv/upload-video */
+export async function uploadAdminTvVideo(
+  localUri: string,
+  opts: AuthOpts & { fileName?: string; mimeType?: string },
+): Promise<{ videoUrl: string }> {
+  const form = new FormData();
+  form.append("video", {
+    uri: localUri,
+    name: opts.fileName || "tv-upload.mp4",
+    type: opts.mimeType || "video/mp4",
+  } as unknown as Blob);
+  const res = await fetch(`${getApiBase()}/admin/tv/upload-video`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${opts.token}`,
+    },
+    body: form,
+    signal: opts.signal,
+  });
+  const data = await requireOk(res, "TV video upload failed");
+  const videoUrl = String(data.videoUrl || "").trim();
+  if (!videoUrl) throw new Error("Upload returned no videoUrl");
+  return { videoUrl };
+}
+
 // ── Flexa Music CMS (admin) ──────────────────────────────────────────────────
 
 export async function fetchAdminMusicArtists(opts: AuthOpts): Promise<any[]> {
@@ -245,6 +271,51 @@ export async function fetchPublicMusicTracks(opts?: { q?: string; signal?: Abort
   });
   const data = await requireOk(res, "Music catalog failed");
   return Array.isArray(data) ? data : Array.isArray(data.tracks) ? data.tracks : Array.isArray(data.items) ? data.items : [];
+}
+
+export async function fetchAdminMusicProviders(opts: AuthOpts): Promise<Record<string, boolean>> {
+  const res = await authedFetch("/admin/music/providers", opts);
+  const data = await requireOk(res, "Music providers failed");
+  return (data.connected && typeof data.connected === "object" ? data.connected : {}) as Record<
+    string,
+    boolean
+  >;
+}
+
+export async function connectAdminMusicProvider(
+  body: { provider: string; apiKey: string },
+  opts: AuthOpts,
+): Promise<void> {
+  const res = await authedFetch("/admin/music/providers/connect", {
+    ...opts,
+    method: "POST",
+    body,
+  });
+  await requireOk(res, "Connect music provider failed");
+}
+
+export async function disconnectAdminMusicProvider(
+  body: { provider: string },
+  opts: AuthOpts,
+): Promise<void> {
+  const res = await authedFetch("/admin/music/providers/disconnect", {
+    ...opts,
+    method: "POST",
+    body,
+  });
+  await requireOk(res, "Disconnect music provider failed");
+}
+
+export async function testAdminMusicProvider(
+  body: { provider: string; apiKey?: string },
+  opts: AuthOpts,
+): Promise<{ ok?: boolean; message?: string }> {
+  const res = await authedFetch("/admin/music/providers/test", {
+    ...opts,
+    method: "POST",
+    body,
+  });
+  return requireOk(res, "Test music provider failed");
 }
 
 // ── Password-hash security tools ─────────────────────────────────────────────

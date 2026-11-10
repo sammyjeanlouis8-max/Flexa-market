@@ -10,13 +10,19 @@ import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { isSuperAdminUser } from "@/lib/adminRoles";
 import {
+  connectAdminMusicProvider,
+  disconnectAdminMusicProvider,
   fetchAdminMusicArtists,
   fetchAdminMusicPlaylists,
+  fetchAdminMusicProviders,
   fetchAdminMusicStorageStats,
   fetchPublicMusicTracks,
   postAdminMusicBulkAction,
+  testAdminMusicProvider,
   verifyAdminMusicArtist,
 } from "@/lib/phase3mApis";
+
+const MUSIC_PROVIDERS = ["pixabay", "jamendo", "audiomack"] as const;
 
 export default function AdminMusicCmsScreen() {
   const router = useRouter();
@@ -26,6 +32,9 @@ export default function AdminMusicCmsScreen() {
   const [playlists, setPlaylists] = useState<any[]>([]);
   const [tracks, setTracks] = useState<any[]>([]);
   const [stats, setStats] = useState<any | null>(null);
+  const [providers, setProviders] = useState<Record<string, boolean>>({});
+  const [providerKey, setProviderKey] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState<string>("pixabay");
   const [q, setQ] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -33,16 +42,18 @@ export default function AdminMusicCmsScreen() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [a, p, s, tr] = await Promise.all([
+      const [a, p, s, tr, pr] = await Promise.all([
         fetchAdminMusicArtists({ token }),
         fetchAdminMusicPlaylists({ token }).catch(() => []),
         fetchAdminMusicStorageStats({ token }).catch(() => null),
         fetchPublicMusicTracks({ q: q.trim() || undefined }).catch(() => []),
+        fetchAdminMusicProviders({ token }).catch(() => ({})),
       ]);
       setArtists(a);
       setPlaylists(p);
       setStats(s);
       setTracks(tr);
+      setProviders(pr);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("adminLoadErr"));
@@ -84,6 +95,89 @@ export default function AdminMusicCmsScreen() {
           <Text style={adminStyles.cardSub}>{JSON.stringify(stats).slice(0, 220)}</Text>
         </View>
       ) : null}
+
+      <Text style={adminStyles.section}>Providers</Text>
+      <View style={adminStyles.card}>
+        <Text style={adminStyles.cardSub}>
+          Connected:{" "}
+          {MUSIC_PROVIDERS.map((p) => `${p}=${providers[p] ? "yes" : "no"}`).join(" · ")}
+        </Text>
+        <View style={[adminStyles.row, { marginTop: 8, flexWrap: "wrap" }]}>
+          {MUSIC_PROVIDERS.map((p) => (
+            <Pressable
+              key={p}
+              style={[adminStyles.btnGhost, selectedProvider === p && adminStyles.btn]}
+              onPress={() => setSelectedProvider(p)}
+            >
+              <Text
+                style={
+                  selectedProvider === p ? adminStyles.btnText : adminStyles.btnGhostText
+                }
+              >
+                {p}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <TextInput
+          style={adminStyles.input}
+          value={providerKey}
+          onChangeText={setProviderKey}
+          placeholder={`${selectedProvider} API key`}
+          placeholderTextColor="#94A3B8"
+          autoCapitalize="none"
+          secureTextEntry
+        />
+        <View style={[adminStyles.row, { marginTop: 8, flexWrap: "wrap" }]}>
+          <Pressable
+            style={adminStyles.btn}
+            onPress={() => {
+              if (!token || !providerKey.trim()) return;
+              void connectAdminMusicProvider(
+                { provider: selectedProvider, apiKey: providerKey.trim() },
+                { token },
+              )
+                .then(() => {
+                  setProviderKey("");
+                  return load();
+                })
+                .catch((e) => Alert.alert(t("adminMusicCms"), e.message));
+            }}
+          >
+            <Text style={adminStyles.btnText}>Connect</Text>
+          </Pressable>
+          <Pressable
+            style={adminStyles.btnGhost}
+            onPress={() => {
+              if (!token) return;
+              void testAdminMusicProvider(
+                { provider: selectedProvider, apiKey: providerKey.trim() || undefined },
+                { token },
+              )
+                .then((r) =>
+                  Alert.alert(
+                    t("adminMusicCms"),
+                    r.message || (r.ok ? "Provider OK" : JSON.stringify(r)),
+                  ),
+                )
+                .catch((e) => Alert.alert(t("adminMusicCms"), e.message));
+            }}
+          >
+            <Text style={adminStyles.btnGhostText}>Test</Text>
+          </Pressable>
+          <Pressable
+            style={[adminStyles.btn, adminStyles.danger]}
+            onPress={() => {
+              if (!token) return;
+              void disconnectAdminMusicProvider({ provider: selectedProvider }, { token })
+                .then(load)
+                .catch((e) => Alert.alert(t("adminMusicCms"), e.message));
+            }}
+          >
+            <Text style={adminStyles.btnText}>Disconnect</Text>
+          </Pressable>
+        </View>
+      </View>
 
       <Text style={adminStyles.section}>{t("adminMusicArtists")}</Text>
       {(artists ?? []).slice(0, 40).map((a, idx) => (

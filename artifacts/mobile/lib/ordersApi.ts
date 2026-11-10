@@ -195,3 +195,94 @@ export async function confirmDelivery(
   if (!res.ok) return { ok: false, error: data.error || `Confirm failed (${res.status})` };
   return { ok: true };
 }
+
+/** Body mirrors marketplace OrderDetail → POST /api/orders/:id/ship (existing API only). */
+export type ShipOrderPayload = {
+  trackingNumber?: string;
+  carrier?: string;
+  deliveryDescription?: string;
+  driverPhone?: string;
+  driverName?: string;
+  deliveryNote?: string;
+  useFmDriver?: boolean;
+  fmVehicleType?: "motorcycle" | "car";
+  useBus?: boolean;
+  busDestCity?: string;
+  busTrackingLink?: string;
+};
+
+export async function shipOrder(
+  orderId: number | string,
+  payload: ShipOrderPayload,
+  opts: AuthOpts,
+): Promise<{ ok: boolean; orderStatus?: string; error?: string }> {
+  const res = await authed(`/orders/${orderId}/ship`, {
+    ...opts,
+    method: "POST",
+    body: payload,
+  });
+  const data = await readJson(res);
+  if (!res.ok) {
+    return { ok: false, error: data.error || `Ship failed (${res.status})` };
+  }
+  return { ok: true, orderStatus: data.orderStatus };
+}
+
+export type OrderLabel = {
+  orderId: number;
+  orderRef: string;
+  createdAt: string;
+  amount: number;
+  currency: string | null;
+  paymentMethod: string | null;
+  listing: { id: number; title: string };
+  merchant: { id: number; name: string; phone: string | null };
+  buyer: { id: number; name: string | null };
+  shipFrom: {
+    name?: string | null;
+    phone?: string | null;
+    street?: string | null;
+    city?: string | null;
+    region?: string | null;
+    zip?: string | null;
+    country?: string | null;
+  };
+  shipTo: {
+    name?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    street?: string | null;
+    city?: string | null;
+    region?: string | null;
+    zip?: string | null;
+    country?: string | null;
+  };
+  delivery?: unknown;
+};
+
+export async function fetchOrderLabel(
+  orderId: number | string,
+  opts: AuthOpts,
+): Promise<OrderLabel> {
+  const res = await authed(`/orders/${orderId}/label`, opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Label failed (${res.status})`);
+  return data as OrderLabel;
+}
+
+export async function fetchOrderCarriers(
+  opts: { signal?: AbortSignal } = {},
+): Promise<string[]> {
+  const res = await fetch(`${getApiBase()}/orders/carriers`, {
+    headers: { Accept: "application/json" },
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) return [];
+  const list = data.carriers ?? data;
+  return Array.isArray(list)
+    ? list.map((c: unknown) =>
+        typeof c === "string" ? c : String((c as { name?: string })?.name ?? c),
+      )
+    : [];
+}

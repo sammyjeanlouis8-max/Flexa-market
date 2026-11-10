@@ -3,18 +3,18 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 194,
-  "branch": "cursor/native-phase3q-boost-recovery-09ff",
-  "auditedAt": "2026-11-10T08:20:00Z",
-  "auditCommit": "6f393f5e",
-  "stackedOnPr": 191,
+  "pr": 196,
+  "branch": "cursor/native-phase3r-complete-09ff",
+  "auditedAt": "2026-11-10T09:07:26.807Z",
+  "auditCommit": "4be8c0cb",
+  "stackedOnPr": 194,
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
     "placeholderRouteCount": 1,
     "fullyNativeRouteCount": 75,
-    "partiallyNativeRouteCount": 1,
+    "partiallyNativeRouteCount": 2,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
       "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
@@ -36,7 +36,9 @@
       "Phase 3O: Boost unpaid polish (form draft persistence, video preview, age/gender, /videos player); FCM retry + UA; honest non-FULLY inventory (push PARTIAL, variations MISSING, 5 BLOCKED, website PLACEHOLDER). No invented APIs. Vercel still legacy. Globe preserved. Counts remain 75/1/1/1/5.",
       "Phase 3P: CRITICAL \u2014 seller Advantage+/video-only no longer stamps seller department/commune; country-wide auto feed parity with Admin free boosts. Super Admin feed-eligibility + feed-delivery-audit (read-only). Scheduled campaign status. FCM/OTP still need physical device. Counts remain 75/1/1/1/5.",
       "Phase 3Q: Home max-2 promo videos (web+native); VideoFeed hard-stop audio on scroll; NativeVideoPlayer active prop; read-only Advantage+ geo recovery preview + SQL scripts (no production mutate). Physical device + production audit count still pending. Counts remain 75/1/1/1/5.",
-      "Phase 3Q release validation: Mobile preflight PASS; Vercel Account-blocked obsolete; public Haiti feed limit=2 returns 2 videos; affected campaign count blocked without read-only DB URL; overall NO-GO for production data changes / CONDITIONAL GO for code merge after approval."
+      "Phase 3Q release validation: Mobile preflight PASS; Vercel Account-blocked obsolete; public Haiti feed limit=2 returns 2 videos; affected campaign count blocked without read-only DB URL; overall NO-GO for production data changes / CONDITIONAL GO for code merge after approval.",
+      "Phase 3R: Native completion push \u2014 product-variations PARTIAL (itemSize-only native screen; multi-SKU still no API); Admin TV multipart upload + Music provider connect; search recent history; profile public shop + promo/esim links; inventory honesty (promo-feed, delivery-confirm, image-upload routes). Counts 75/2/1/0/5. Still not 83/83: FCM PARTIAL, website PLACEHOLDER, 5 Play/eSIM BLOCKED.",
+      "Phase 3R gap closure: seller ship + shipping label on /orders/[id]; inventory honesty for order-detail/seller-orders/search history/home promo."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -64,7 +66,9 @@
     "phase3n": true,
     "phase3o": true,
     "phase3p": true,
-    "phase3q": true
+    "phase3q": true,
+    "phase3r": true,
+    "phase3rGapClosure": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -134,9 +138,9 @@
   ],
   "summaryCounts": {
     "FULLY_NATIVE": 75,
-    "PARTIALLY_NATIVE": 1,
+    "PARTIALLY_NATIVE": 2,
     "PLACEHOLDER": 1,
-    "MISSING": 1,
+    "MISSING": 0,
     "BLOCKED": 5
   },
   "features": [
@@ -231,8 +235,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [
-        "personalized feed parity",
-        "home video strip"
+        "personalized feed parity"
       ],
       "work": "Optional feed enrichment later"
     },
@@ -249,7 +252,6 @@
       "status": "FULLY_NATIVE",
       "missing": [
         "visual search",
-        "search history",
         "category chips parity"
       ],
       "work": "Extend filters/categories"
@@ -385,10 +387,8 @@
         "/api/orders/:id/return"
       ],
       "status": "FULLY_NATIVE",
-      "missing": [
-        "seller ship/label actions deferred to 3D"
-      ],
-      "work": "Phase 3A buyer detail + PIN + tracking"
+      "missing": [],
+      "work": "Phase 3R+: buyer detail + PIN/tracking/confirm; seller ship (Haiti/DR/carrier) + label via existing APIs"
     },
     {
       "id": "delivery-tracking",
@@ -425,7 +425,7 @@
       "name": "Delivery Confirmation",
       "domain": "customer",
       "webRoute": "/orders/:id/delivered",
-      "nativeRoute": null,
+      "nativeRoute": "/orders/[id]",
       "role": "buyer",
       "apis": [
         "/api/orders/:id/confirm",
@@ -434,7 +434,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3E tip + rate-driver after confirm (POST /api/delivery/:id/tip|rate-driver)"
+      "work": "Phase 3E tip + rate-driver after confirm (POST /api/delivery/:id/tip|rate-driver); Phase 3R inventory route reconciled"
     },
     {
       "id": "addresses",
@@ -464,7 +464,6 @@
       "status": "FULLY_NATIVE",
       "missing": [
         "top-up (BLOCKED)",
-        "P2P transfer (deferred)",
         "virtual card panel"
       ],
       "work": "Phase 3B: balance + history + detail modal; top-up CTA explains Android block"
@@ -928,7 +927,7 @@
       "name": "Image Upload",
       "domain": "seller",
       "webRoute": "(Sell)",
-      "nativeRoute": null,
+      "nativeRoute": "/(tabs)/sell",
       "role": "seller",
       "apis": [
         "/api/storage/uploads*",
@@ -936,7 +935,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Reconciled: Sell Wasabi multi-image already native in Phase 3D"
+      "work": "Reconciled: Sell Wasabi multi-image already native in Phase 3D; Phase 3R inventory route set"
     },
     {
       "id": "video-upload",
@@ -1010,7 +1009,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Reconciled: /sales covers seller orders from Phase 3D"
+      "work": "Sales list + order detail ship/label wired to /api/orders/:id/ship|label"
     },
     {
       "id": "earnings-payouts",
@@ -1081,14 +1080,14 @@
       "name": "Promotional Videos / Video Discover",
       "domain": "seller",
       "webRoute": "/videos,/videos/watch",
-      "nativeRoute": "/videos",
+      "nativeRoute": "/videos,/promo-feed",
       "role": "guest+",
       "apis": [
         "/api/videos/feed"
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3F promo video feed (mine); paid create still blocked"
+      "work": "Phase 3F mine feed + Phase 3Q/3R public /promo-feed pagination; paid create still blocked"
     },
     {
       "id": "drafts",
@@ -1312,13 +1311,8 @@
         "/api/admin/kyc"
       ],
       "status": "FULLY_NATIVE",
-      "missing": [
-        "broadcast email/SMS composer",
-        "push campaign composer",
-        "TV/Music CMS admin",
-        "password-hash security tools UI"
-      ],
-      "work": "Phase 3L Control Center expanded with operations/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans"
+      "missing": [],
+      "work": "Phase 3L\u20133R Control Center: ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans + broadcast/push/TV/Music CMS/security; Phase 3R TV upload + music providers"
     },
     {
       "id": "admin-users",
@@ -1481,14 +1475,17 @@
       "name": "Product variations (multi-SKU)",
       "domain": "seller",
       "webRoute": null,
-      "nativeRoute": null,
+      "nativeRoute": "/product-variations",
       "role": "seller",
-      "apis": [],
-      "status": "MISSING",
-      "missing": [
-        "No backend variation/SKU APIs \u2014 only optional itemSize text"
+      "apis": [
+        "/api/users/:id/listings",
+        "/api/listings/:id (itemSize)"
       ],
-      "work": "Phase 3O: reconfirmed no SKU/variant API \u2014 only itemSize text. See PHASE3O_VALIDATION.md."
+      "status": "PARTIALLY_NATIVE",
+      "missing": [
+        "Multi-SKU / stock-per-variant / cart line SKU APIs still absent"
+      ],
+      "work": "Phase 3R: native itemSize editor for seller listings; NOT claimed FULLY_NATIVE without SKU API"
     }
   ],
   "recommendedPhase3Order": [

@@ -2,10 +2,12 @@ import { useCallback, useState } from "react";
 import { Delete } from "lucide-react";
 import { evaluateExpression } from "../engine/evaluate";
 import type { AngleMode, HistoryEntry } from "../types";
+import { ScientificProMode } from "./ScientificProMode";
 
 /**
- * Phone-style scientific calculator matching the Flexa Market reference:
- * SHIFT · memory · trig/log · powers · number pad · orange AC/=
+ * Scientific mode with two layouts:
+ * - Classic — phone-style SHIFT/memory pad (default)
+ * - Pro — TI-84 natural-notation pad (2nd / ALPHA / paper display)
  */
 
 type BtnKind =
@@ -108,7 +110,53 @@ interface Props {
   onOpenGraph?: (expr: string) => void;
 }
 
-export function ScientificMode({ onHistory }: Props) {
+export function ScientificMode({ onHistory, onOpenGraph }: Props) {
+  const [layout, setLayout] = useState<"classic" | "pro">("classic");
+
+  return (
+    <div className="w-full flex flex-col gap-3">
+      <div
+        className="flex gap-1.5 justify-center"
+        role="tablist"
+        aria-label="Scientific layout"
+      >
+        {(
+          [
+            { id: "classic", label: "Classic" },
+            { id: "pro", label: "Pro" },
+          ] as const
+        ).map((tab) => {
+          const active = layout === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setLayout(tab.id)}
+              className="px-4 py-1.5 rounded-full text-xs font-semibold"
+              style={{
+                background: active ? "#39ff14" : "#1a1a1a",
+                color: active ? "#0a0a0a" : "#bbb",
+                border: active ? "1px solid #39ff14" : "1px solid #2a2a2a",
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {layout === "pro" ? (
+        <ScientificProMode onHistory={onHistory} onOpenGraph={onOpenGraph} />
+      ) : (
+        <ScientificClassicPad onHistory={onHistory} />
+      )}
+    </div>
+  );
+}
+
+function ScientificClassicPad({ onHistory }: { onHistory: (entry: HistoryEntry) => void }) {
   const [expr, setExpr] = useState("");
   const [memory, setMemory] = useState(0);
   const [hasMemory, setHasMemory] = useState(false);

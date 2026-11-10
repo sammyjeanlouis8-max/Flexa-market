@@ -4,7 +4,7 @@
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
   "pr": null,
-  "branch": "cursor/native-seller-phase3f-09ff",
+  "branch": "cursor/native-seller-phase3g-09ff",
   "auditedAt": "2026-11-09T22:10:00Z",
   "auditCommit": "deeda28a",
   "verification": {
@@ -22,7 +22,8 @@
       "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
       "Realtime via socket.io /api/socket.io with HTTP polling fallback.",
       "Phase 3E: buyer recovery, categories, delivery tip/rate, help/legal/delete, public track/shop.",
-      "Phase 3F: edit listing, inventory restock, seller analytics, earnings/payouts, boost library read-only."
+      "Phase 3F: edit listing, inventory restock, seller analytics, earnings/payouts, boost library read-only.",
+      "Phase 3G: KYC, store manager, sell drafts, chunked video, boost draft builder; multi-SKU variations blocked by API."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -30,7 +31,9 @@
     "phase3e": true,
     "phase3eStartCommit": "65df21a5",
     "phase3f": true,
-    "phase3fStartCommit": "04986815"
+    "phase3fStartCommit": "04986815",
+    "phase3g": true,
+    "phase3gStartCommit": "f4e88fc6"
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -99,10 +102,10 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 46,
-    "PARTIALLY_NATIVE": 4,
-    "PLACEHOLDER": 7,
-    "MISSING": 20,
+    "FULLY_NATIVE": 51,
+    "PARTIALLY_NATIVE": 3,
+    "PLACEHOLDER": 6,
+    "MISSING": 18,
     "BLOCKED": 5
   },
   "features": [
@@ -623,11 +626,9 @@
         "/api/kyc/status",
         "/api/kyc/submit"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "document upload flow"
-      ],
-      "work": "After Sell/Wallet needs"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3G native KYC multipart submit; admin approval required"
     },
     {
       "id": "language-picker",
@@ -916,17 +917,14 @@
       "name": "Video Upload",
       "domain": "seller",
       "webRoute": "/videos, drafts",
-      "nativeRoute": "/videos,/edit-listing/[id]",
+      "nativeRoute": "/(tabs)/sell,/boost-create",
       "role": "seller",
       "apis": [
-        "/api/videos/*",
-        "/api/storage/uploads"
+        "/api/storage/uploads/chunk-*"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "chunked listing/boost video composer UI"
-      ],
-      "work": "Images FULLY via Wasabi; chunked video composer deferred"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3G chunked Wasabi video for listing + boost draft"
     },
     {
       "id": "inventory",
@@ -1009,7 +1007,7 @@
       "name": "Boost Campaigns",
       "domain": "seller",
       "webRoute": "/boost/:listingId,/booster/*",
-      "nativeRoute": "/boost",
+      "nativeRoute": "/boost,/boost-create,/my-boosts",
       "role": "seller",
       "apis": [
         "/api/boost/*",
@@ -1017,9 +1015,9 @@
       ],
       "status": "PARTIALLY_NATIVE",
       "missing": [
-        "paid boost checkout (Play blocked)"
+        "paid launch (Play blocked)"
       ],
-      "work": "Phase 3F entry explains block; routes to campaign library"
+      "work": "Phase 3G draft campaign builder + geo audience; paid launch blocked"
     },
     {
       "id": "boost-paid",
@@ -1071,49 +1069,46 @@
       "name": "My Drafts / Bouillon",
       "domain": "seller",
       "webRoute": "/my-drafts",
-      "nativeRoute": null,
+      "nativeRoute": "/drafts",
       "role": "seller",
       "apis": [
-        "/api/videos",
-        "/api/listings"
+        "client AsyncStorage",
+        "/api/booster/campaigns"
       ],
-      "status": "MISSING",
-      "missing": [
-        "drafts UI"
-      ],
-      "work": "With Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3G sell draft AsyncStorage + booster draft list (no server listing drafts)"
     },
     {
       "id": "store-manager",
       "name": "Store Manager Dashboard",
       "domain": "seller",
       "webRoute": "/manager",
-      "nativeRoute": null,
+      "nativeRoute": "/store-manager,/manager",
       "role": "store_manager",
       "apis": [
+        "/api/seller/manager",
         "/api/manager/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "manager UI"
-      ],
-      "work": "Role-specific later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3G invite/remove manager + manager order ready"
     },
     {
       "id": "seller-registration",
       "name": "Seller Registration / Stripe Connect",
       "domain": "seller",
       "webRoute": "/sell + /settings/stripe-return",
-      "nativeRoute": null,
+      "nativeRoute": "/kyc,/seller-earnings,/sell",
       "role": "seller",
       "apis": [
-        "/api/stripe/connect/*"
+        "/api/kyc/*",
+        "/api/seller/payout-account",
+        "/api/listings"
       ],
-      "status": "MISSING",
-      "missing": [
-        "onboarding + return handling"
-      ],
-      "work": "With Sell for payout-required countries"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3G: become seller via listing + KYC + payout setup"
     },
     {
       "id": "driver-apply",
@@ -1408,6 +1403,20 @@
         "physical-device FCM delivery verification"
       ],
       "work": "Phase 3D: expanded deep-link map (chat/support/orders/offers/sales/listing/wallet)"
+    },
+    {
+      "id": "product-variations",
+      "name": "Product variations (multi-SKU)",
+      "domain": "seller",
+      "webRoute": null,
+      "nativeRoute": null,
+      "role": "seller",
+      "apis": [],
+      "status": "MISSING",
+      "missing": [
+        "No backend variation/SKU APIs \u2014 only optional itemSize text"
+      ],
+      "work": "Blocked until listing variants API exists; itemSize field shipped on Sell"
     }
   ],
   "recommendedPhase3Order": [

@@ -19,7 +19,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { uploadChunkedVideo } from "@/lib/chunkedVideoUpload";
 import { uploadLocalFile } from "@/lib/mediaUpload";
+import {
+  clearSellDraft,
+  loadSellDraft,
+  saveSellDraft,
+} from "@/lib/sellDrafts";
 import {
   createListing,
   fetchCategories,
@@ -61,8 +67,12 @@ export default function SellTab() {
   const [location, setLocation] = useState(user?.city || user?.location || "");
   const [city, setCity] = useState(user?.city || "");
   const [stock, setStock] = useState("1");
+  const [itemSize, setItemSize] = useState("");
   const [images, setImages] = useState<LocalImage[]>([]);
+  const [listingVideoUrl, setListingVideoUrl] = useState<string | null>(null);
+  const [videoPct, setVideoPct] = useState<number | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -84,8 +94,77 @@ export default function SellTab() {
           if (mounted.current) setCategories(cats);
         })
         .catch(() => {});
-    }, [authLoading, token, router]),
+      if (!draftRestored) {
+        void loadSellDraft().then((draft) => {
+          if (!mounted.current || !draft) {
+            setDraftRestored(true);
+            return;
+          }
+          if (draft.title) setTitle(draft.title);
+          if (draft.description) setDescription(draft.description);
+          if (draft.price) setPrice(draft.price);
+          if (draft.currency) setCurrency(draft.currency);
+          if (draft.condition) setCondition(draft.condition as any);
+          if (draft.categoryId) setCategoryId(draft.categoryId);
+          if (draft.location) setLocation(draft.location);
+          if (draft.city) setCity(draft.city);
+          if (draft.stock) setStock(draft.stock);
+          if (draft.itemSize) setItemSize(draft.itemSize);
+          if (draft.listingVideoUrl) setListingVideoUrl(draft.listingVideoUrl);
+          if (draft.imageUrls?.length) {
+            setImages(
+              draft.imageUrls.map((uri, idx) => ({
+                key: `draft-${idx}`,
+                uri,
+                remoteUrl: uri,
+                progress: 100,
+                status: "done" as const,
+              })),
+            );
+          }
+          setDraftRestored(true);
+        });
+      }
+    }, [authLoading, token, router, draftRestored]),
   );
+
+  // Autosave draft (images that finished uploading + form fields).
+  useEffect(() => {
+    if (!draftRestored) return;
+    const timer = setTimeout(() => {
+      void saveSellDraft({
+        title,
+        description,
+        price,
+        currency,
+        condition,
+        categoryId,
+        location,
+        city,
+        stock,
+        itemSize,
+        listingVideoUrl,
+        imageUrls: images
+          .filter((i) => i.status === "done" && i.remoteUrl)
+          .map((i) => i.remoteUrl!),
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [
+    draftRestored,
+    title,
+    description,
+    price,
+    currency,
+    condition,
+    categoryId,
+    location,
+    city,
+    stock,
+    itemSize,
+    listingVideoUrl,
+    images,
+  ]);
 
   const doneUrls = useMemo(
     () => images.filter((i) => i.status === "done" && i.remoteUrl).map((i) => i.remoteUrl!),
@@ -197,20 +276,23 @@ export default function SellTab() {
       city: city.trim() || undefined,
       country: user.country || undefined,
       stockQuantity: stock.trim() ? Number(stock) : 1,
+      itemSize: itemSize.trim() || null,
       images: doneUrls,
+      listingVideoUrl: listingVideoUrl || null,
     };
     const err = validateListingDraft(draft);
     if (err) {
       Alert.alert("Check listing", err);
       return;
     }
-    if (images.some((i) => i.status === "uploading")) {
-      Alert.alert("Uploading", "Wait for image uploads to finish.");
+    if (images.some((i) => i.status === "uploading") || videoPct != null) {
+      Alert.alert("Uploading", "Wait for media uploads to finish.");
       return;
     }
     setPublishing(true);
     try {
-      const listing = await createListing(draft, { token });
+      await createListing(draft, { token });
+      await clearSellDraft();
       Alert.alert("Published", "Your listing was submitted for moderation.", [
         {
           text: "View my listings",
@@ -221,14 +303,45 @@ export default function SellTab() {
       setTitle("");
       setDescription("");
       setPrice("");
+      setItemSize("");
+      setListingVideoUrl(null);
       setImages([]);
-      if (listing?.id) {
-        /* keep form clear */
-      }
     } catch (e) {
       Alert.alert("Publish failed", e instanceof Error ? e.message : "Could not publish");
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const pickListingVideo = async () => {
+    if (!token) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Allow media access to upload a product video.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["videos"],
+      quality: 0.7,
+      videoMaxDuration: 300,
+    });
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+    const asset = result.assets[0];
+    setVideoPct(0);
+    try {
+      const { url } = await uploadChunkedVideo(asset.uri, {
+        token,
+        contentType: asset.mimeType || "video/mp4",
+        purpose: "listing",
+        onProgress: (p) => {
+          if (mounted.current) setVideoPct(p.percent);
+        },
+      });
+      if (mounted.current) setListingVideoUrl(url);
+    } catch (e) {
+      Alert.alert("Video upload failed", e instanceof Error ? e.message : "Error");
+    } finally {
+      if (mounted.current) setVideoPct(null);
     }
   };
 
@@ -240,11 +353,11 @@ export default function SellTab() {
           <Pressable style={styles.linkBtn} onPress={() => router.push("/my-listings")}>
             <Text style={styles.linkText}>My listings</Text>
           </Pressable>
+          <Pressable style={styles.linkBtn} onPress={() => router.push("/drafts")}>
+            <Text style={styles.linkText}>Drafts</Text>
+          </Pressable>
           <Pressable style={styles.linkBtn} onPress={() => router.push("/sales")}>
             <Text style={styles.linkText}>Sales</Text>
-          </Pressable>
-          <Pressable style={styles.linkBtn} onPress={() => router.push("/seller-earnings")}>
-            <Text style={styles.linkText}>Earnings</Text>
           </Pressable>
         </View>
       </View>
@@ -359,6 +472,23 @@ export default function SellTab() {
           keyboardType="number-pad"
           placeholder="1"
         />
+        <Field
+          label="Size / variant (single field — multi-SKU not in API)"
+          value={itemSize}
+          onChangeText={setItemSize}
+          placeholder="e.g. Large / Red"
+        />
+
+        <Text style={styles.section}>Product video (optional · ≤5 min)</Text>
+        <Pressable style={styles.videoBtn} onPress={() => void pickListingVideo()}>
+          <Text style={styles.videoBtnText}>
+            {videoPct != null
+              ? `Uploading video… ${videoPct}%`
+              : listingVideoUrl
+                ? "Video attached · tap to replace"
+                : "Upload product video (chunked)"}
+          </Text>
+        </Pressable>
 
         <Pressable
           style={[styles.publish, publishing && { opacity: 0.7 }]}
@@ -495,4 +625,14 @@ const styles = StyleSheet.create({
   },
   publishText: { color: "#fff", fontWeight: "800", fontSize: 16 },
   hint: { marginTop: 12, fontSize: 12, lineHeight: 17, color: "#64748B" },
+  videoBtn: {
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    backgroundColor: "#FFF7ED",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  videoBtnText: { color: "#C2410C", fontWeight: "700" },
 });

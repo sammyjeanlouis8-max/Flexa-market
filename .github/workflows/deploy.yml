@@ -1,5 +1,5 @@
 name: Deploy to DigitalOcean
-# fe-deploy: fix-boost-random-video-500 20261110T213432Z
+# fe-deploy: i18n-wallet-boost-message-cta-220 20261110T225431Z
 # fe-deploy: boost-message-cta-english e95fecc1
 # fe-deploy: interstitial-merchant-country 02e82ebf
 # fe-deploy: home-two-promo-cards 02683d71
@@ -239,3 +239,6 @@ jobs:
 # force_build_20261110_seo_noindex_empty_cats
 # Owner requested fe deploy: fix automatic boost 500 (#217) (2026-11-10).
 # force_build_20261110_boost_random_video_500
+
+# Owner requested fe deploy: i18n wallet + boost Message CTA (#220) (2026-11-10).
+# force_build_20261110T225431Z_i18n_wallet_boost_message

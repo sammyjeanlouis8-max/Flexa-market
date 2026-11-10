@@ -19,26 +19,22 @@ export type TranslateFn = (
   options?: Record<string, unknown>,
 ) => string;
 
-/** Always-English label for the interstitial Message CTA (left of Skip). */
-export const BOOST_AD_MESSAGE_CTA_EN = "Message on Flexa";
-
 /** Resolve the short in-player CTA pill label (no product title banner). */
 export function resolveBoostAdCtaLabel(opts: {
   ctaType: BoostCtaType;
   customText?: string | null;
   t: TranslateFn;
 }): string {
-  // Auto-play boost ads always show the Message CTA in English, even when the
-  // rest of the UI is ht/fr/es/pt. Merchant custom text still wins when set.
-  if (opts.ctaType === "message") {
-    const custom = opts.customText?.trim();
-    return custom || BOOST_AD_MESSAGE_CTA_EN;
-  }
-
   const custom = opts.customText?.trim();
   if (custom) return custom;
 
   switch (opts.ctaType) {
+    case "message":
+      return opts.t("boostAd.messageOnFlexa", {
+        defaultValue: opts.t("booster.cta.message", {
+          defaultValue: "Message on Flexa",
+        }),
+      });
     case "whatsapp":
       return opts.t("boostAd.chatWhatsApp", { defaultValue: "Chat on WhatsApp" });
     case "link":

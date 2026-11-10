@@ -218,7 +218,6 @@ function UsersListScreen() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const isAdmin = isAdminUser(user as any);
-  const isSuperAdmin = isSuperAdminUser(user as any);
   const saved = useRef(loadListState()).current;
 
   const [q, setQ] = useState(saved?.q ?? "");
@@ -240,8 +239,9 @@ function UsersListScreen() {
     try {
       const params = new URLSearchParams();
       if (q.trim()) params.set("q", q.trim());
-      if (country !== "all" && isSuperAdmin) params.set("country", country);
+      if (country !== "all") params.set("country", country);
       if (status !== "all") params.set("status", status);
+      // Server searches the full authorized account set (not a client page slice).
       const data = await adminFetch(token, `/api/admin/users?${params.toString()}`);
       setRows(Array.isArray(data) ? data : []);
     } catch (e: any) {
@@ -249,7 +249,7 @@ function UsersListScreen() {
     } finally {
       setLoading(false);
     }
-  }, [token, q, country, status, isSuperAdmin, toast]);
+  }, [token, q, country, status, toast]);
 
   useEffect(() => {
     const tmr = setTimeout(() => { void load(); }, 180);
@@ -287,15 +287,19 @@ function UsersListScreen() {
           {t("adminNav.users", { defaultValue: "Users" })}
         </h1>
 
+        {/* Search above country + status filters (Flexa Control Users). */}
         <div className="relative mt-3">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={t("adminUsers.searchPlaceholder", { defaultValue: "Search users" })}
+            placeholder={t("adminUsers.searchPlaceholder", {
+              defaultValue: "Search by name, email, or phone",
+            })}
             className="h-10 w-full rounded-xl border border-border bg-card pl-9 pr-3 text-sm outline-none ring-[hsl(152,65%,22%)]/30 focus:ring-2"
             data-testid="admin-users-search"
+            aria-label="Search by name, email, or phone"
           />
         </div>
 
@@ -304,8 +308,7 @@ function UsersListScreen() {
             <select
               value={country}
               onChange={(e) => setCountry(e.target.value)}
-              disabled={!isSuperAdmin}
-              className="h-9 w-full appearance-none rounded-xl border border-border bg-card px-3 pr-8 text-xs font-semibold outline-none disabled:opacity-70"
+              className="h-9 w-full appearance-none rounded-xl border border-border bg-card px-3 pr-8 text-xs font-semibold outline-none"
               data-testid="admin-users-country-filter"
             >
               <option value="all">{t("adminUsers.allCountries", { defaultValue: "All countries" })}</option>

@@ -13,6 +13,7 @@ import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
 import { listingAudienceFieldsForActivation } from "../lib/boostDelivery";
 import { SCOPE_OPTIONS, userInAdminScope } from "../lib/adminScope";
 import { hasUsableListingImage } from "../lib/listingMedia";
+import { parseAdminUserSearchQuery } from "../lib/adminUserSearch";
 
 const router = Router();
 
@@ -740,14 +741,29 @@ router.post("/admin/nudge-cooldown-settings", requireSuperAdmin, async (req, res
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-router.get("/admin/users", requireRole("moderator"), async (req, res): Promise<void> => {
+router.get("/admin/users", requireAdmin, async (req, res): Promise<void> => {
   const { country, q, status } = req.query as Record<string, string>;
   const admin = req.user!;
   const scopeConds = getUserScopeConditions(admin);
   const conditions: any[] = [...scopeConds];
-  // Scoped admins can only filter within their scope; super admin can filter by any country
-  if (country && admin.isSuperAdmin) conditions.push(eq(usersTable.country, country));
-  if (q) conditions.push(or(ilike(usersTable.name, `%${q}%`), ilike(usersTable.email, `%${q}%`))!);
+  // Country filter applies on top of scope so search spans every account the
+  // admin may view (no client-page limit) while respecting the selected market.
+  if (country && country !== "all") {
+    conditions.push(eq(usersTable.country, country));
+  }
+  const search = parseAdminUserSearchQuery(typeof q === "string" ? q : "");
+  if (search) {
+    const phonePart = search.phoneDigits
+      ? sql`regexp_replace(coalesce(${usersTable.phone}, ''), '[^0-9]', '', 'g') = ${search.phoneDigits}`
+      : sql`false`;
+    conditions.push(
+      or(
+        ilike(usersTable.name, search.namePattern),
+        sql`lower(btrim(coalesce(${usersTable.email}, ''))) = ${search.emailExact}`,
+        phonePart,
+      )!,
+    );
+  }
   if (status === "banned" || status === "blocked") conditions.push(eq(usersTable.isBanned, true));
   else if (status === "suspended" || status === "restricted") {
     conditions.push(eq(usersTable.isRestricted, true));
@@ -766,6 +782,7 @@ router.get("/admin/users", requireRole("moderator"), async (req, res): Promise<v
       )!,
     );
   }
+  // Server-side search across the full authorized set — no LIMIT / page window.
   const users = await db.select().from(usersTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(usersTable.createdAt));

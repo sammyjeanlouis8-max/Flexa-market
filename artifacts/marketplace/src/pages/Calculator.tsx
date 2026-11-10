@@ -67,13 +67,19 @@ export default function CalculatorPage() {
           <h1 className="text-xl font-bold text-white tracking-tight">Calculator</h1>
         </header>
 
-        <div className="mb-4">
+        <div
+          className="mb-4 sticky top-0 z-20 py-2 -mx-1 px-1"
+          style={{ background: "rgba(5,5,5,0.92)", backdropFilter: "blur(8px)" }}
+        >
           <ModeTabs
             mode={mode}
             onChange={(m) => {
               setMode(m);
             }}
           />
+          <p className="mt-1.5 text-[11px]" style={{ color: "#777" }}>
+            Normal · Scientific · Graph · Formulas — chwazi yon mòd anwo a
+          </p>
         </div>
 
         <div

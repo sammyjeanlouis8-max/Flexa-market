@@ -116,35 +116,49 @@ export function ScientificMode({ onHistory, onOpenGraph }: Props) {
   return (
     <div className="w-full flex flex-col gap-3">
       <div
-        className="flex gap-1.5 justify-center"
-        role="tablist"
-        aria-label="Scientific layout"
+        className="rounded-xl p-2 flex flex-col gap-1.5"
+        style={{ background: "#141414", border: "1px solid #2a2a2a" }}
       >
-        {(
-          [
-            { id: "classic", label: "Classic" },
-            { id: "pro", label: "Pro" },
-          ] as const
-        ).map((tab) => {
-          const active = layout === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setLayout(tab.id)}
-              className="px-4 py-1.5 rounded-full text-xs font-semibold"
-              style={{
-                background: active ? "#39ff14" : "#1a1a1a",
-                color: active ? "#0a0a0a" : "#bbb",
-                border: active ? "1px solid #39ff14" : "1px solid #2a2a2a",
-              }}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
+        <div className="text-[11px] text-center" style={{ color: "#888" }}>
+          Chanje layout Scientific
+        </div>
+        <div
+          className="grid grid-cols-2 gap-1.5"
+          role="tablist"
+          aria-label="Scientific layout"
+        >
+          {(
+            [
+              { id: "classic", label: "Classic", hint: "SHIFT · memwa · sin/cos" },
+              { id: "pro", label: "Pro (TI-84)", hint: "2nd · ALPHA · notasyon natirèl" },
+            ] as const
+          ).map((tab) => {
+            const active = layout === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setLayout(tab.id)}
+                className="px-3 py-2.5 rounded-xl text-left active:scale-[0.98] transition-transform"
+                style={{
+                  background: active ? "#39ff14" : "#1a1a1a",
+                  color: active ? "#0a0a0a" : "#ddd",
+                  border: active ? "1px solid #39ff14" : "1px solid #333",
+                }}
+              >
+                <div className="text-sm font-bold">{tab.label}</div>
+                <div
+                  className="text-[10px] mt-0.5 leading-snug"
+                  style={{ color: active ? "#1a3d1a" : "#777" }}
+                >
+                  {tab.hint}
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {layout === "pro" ? (

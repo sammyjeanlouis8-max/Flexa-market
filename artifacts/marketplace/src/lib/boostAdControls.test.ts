@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  HOME_PROMO_VIDEO_CARD_LIMIT,
+  HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT,
   resolveBoostAdCtaLabel,
   resolveBoostAdSkipInLabel,
   resolveBoostAdSkipLabel,
@@ -57,6 +59,11 @@ describe("boostAdControls labels", () => {
 });
 
 describe("selectHomePromoVideos", () => {
+  it("exports a hard Home card limit of exactly two", () => {
+    expect(HOME_PROMO_VIDEO_CARD_LIMIT).toBe(2);
+    expect(HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT).toBe(2);
+  });
+
   it("keeps one row of up to two most recent live videos", () => {
     const now = Date.parse("2026-11-10T12:00:00.000Z");
     const picked = selectHomePromoVideos(
@@ -66,9 +73,32 @@ describe("selectHomePromoVideos", () => {
         { id: 3, boostStartAt: "2026-11-08T00:00:00.000Z", boostEndAt: "2026-11-09T00:00:00.000Z" },
         { id: 4, boostStartAt: "2026-11-10T00:00:00.000Z", boostEndAt: null },
       ],
-      2,
+      HOME_PROMO_VIDEO_CARD_LIMIT,
       now,
     );
     expect(picked.map((v) => v.id)).toEqual([4, 2]);
+  });
+
+  it.each([
+    { eligible: 0, expected: 0 },
+    { eligible: 1, expected: 1 },
+    { eligible: 2, expected: 2 },
+    { eligible: 4, expected: 2 },
+    { eligible: 10_000, expected: 2 },
+  ])("caps Home cards at 2 for $eligible eligible videos → $expected", ({ eligible, expected }) => {
+    const now = Date.parse("2026-11-10T12:00:00.000Z");
+    const pool = Array.from({ length: eligible }, (_, i) => ({
+      id: i + 1,
+      boostStartAt: new Date(now - (eligible - i) * 60_000).toISOString(),
+      boostEndAt: "2026-12-01T00:00:00.000Z",
+    }));
+    const picked = selectHomePromoVideos(pool, HOME_PROMO_VIDEO_CARD_LIMIT, now);
+    expect(picked).toHaveLength(expected);
+    if (expected === 2) {
+      // Newest first: last ids in the pool are the most recent.
+      expect(picked.map((v) => v.id)).toEqual([eligible, eligible - 1]);
+    } else if (expected === 1) {
+      expect(picked.map((v) => v.id)).toEqual([1]);
+    }
   });
 });

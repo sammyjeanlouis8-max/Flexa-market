@@ -19,10 +19,18 @@ type Props = {
   uri: string;
   title?: string;
   autoPlay?: boolean;
+  /** When false, immediately stop/unload so scrolling Video A→B cannot overlap audio. */
+  active?: boolean;
   onFullscreen?: () => void;
 };
 
-export function NativeVideoPlayer({ uri, title, autoPlay = true, onFullscreen }: Props) {
+export function NativeVideoPlayer({
+  uri,
+  title,
+  autoPlay = true,
+  active = true,
+  onFullscreen,
+}: Props) {
   const videoRef = useRef<Video>(null);
   const { pauseForVideo } = useMusicPlayer();
   const { width } = useWindowDimensions();
@@ -35,6 +43,17 @@ export function NativeVideoPlayer({ uri, title, autoPlay = true, onFullscreen }:
   useEffect(() => {
     void pauseForVideo();
   }, [uri, pauseForVideo]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (active) {
+      if (autoPlay) void v.playAsync().catch(() => {});
+      return;
+    }
+    void v.stopAsync().catch(() => {});
+    void v.setStatusAsync({ shouldPlay: false, isMuted: true }).catch(() => {});
+  }, [active, autoPlay, uri]);
 
   useEffect(() => {
     return () => {
@@ -66,8 +85,8 @@ export function NativeVideoPlayer({ uri, title, autoPlay = true, onFullscreen }:
           source={{ uri }}
           resizeMode={ResizeMode.CONTAIN}
           useNativeControls={false}
-          shouldPlay={autoPlay}
-          isMuted={muted}
+          shouldPlay={autoPlay && active}
+          isMuted={muted || !active}
           onLoad={() => setReady(true)}
           onReadyForDisplay={(e) => {
             const w = e?.naturalSize?.width;

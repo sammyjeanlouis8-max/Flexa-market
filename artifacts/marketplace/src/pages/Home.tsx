@@ -113,7 +113,8 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
     try {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const params = new URLSearchParams({ page: "1", limit: "6" });
+      // Home shows at most TWO latest eligible promo videos (never the full catalog).
+      const params = new URLSearchParams({ page: "1", limit: "2" });
       if (countryFilter) params.set("country", countryFilter);
       const res = await fetch(`/api/videos/feed?${params}`, { headers });
       if (!res.ok) return;
@@ -122,7 +123,7 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
         if (!v.boostEndAt) return true;
         return new Date(v.boostEndAt).getTime() > Date.now();
       });
-      setVideos(live);
+      setVideos(live.slice(0, 2));
     } catch { /* non-critical */ } finally {
       setLoading(false);
     }

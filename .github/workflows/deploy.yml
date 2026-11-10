@@ -207,3 +207,5 @@ jobs:
 # Owner requested fe deploy retry: Advanced Calculator four modes (#184) (2026-11-10).
 
 # Owner requested fe deploy: Scientific Classic + Pro (#186) (2026-11-10).
+
+# Owner requested fe deploy after lockfile fix so calculator Classic/Pro goes live (2026-11-10).

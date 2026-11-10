@@ -27,6 +27,12 @@ describe("BoostVideoOverlay in-frame controls contract", () => {
     expect(overlaySrc).toMatch(/sellerId: listing\.sellerId/);
     expect(overlaySrc).toMatch(/source: "boost_ad"/);
   });
+
+  it("records rotation exposure when playback begins, not on fetch alone", () => {
+    expect(overlaySrc).toMatch(/recordBoostPlaybackExposure/);
+    expect(overlaySrc).toMatch(/recordOnScreenExposureRef\.current\(\)/);
+    expect(overlaySrc).toMatch(/viewerUserId/);
+  });
 });
 
 describe("Home promo strip contract", () => {

@@ -520,8 +520,11 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     .filter((n) => Number.isFinite(n) && n > 0)
     .slice(0, 20);
 
+  // Hard-exclude is only for dead-creative retries (extraExclude). Client
+  // `exclude` is a soft preference: never-seen first, then least-recently shown.
+  // Creator role (Seller / Admin / Super Admin) must not affect ranking.
   const buildConds = (extraExclude: number[] = []) => {
-    const excluded = [...excludeIds, ...extraExclude];
+    const excluded = [...extraExclude];
     return [
       eq(listingsTable.isBoosted, true),
       or(eq(listingsTable.status, "available"), eq(listingsTable.status, "hidden")),
@@ -594,10 +597,21 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     ];
   };
 
+  const rotationPreferSql =
+    excludeIds.length > 0
+      ? sql`CASE ${sql.join(
+          excludeIds.map(
+            (id, i) =>
+              // excludeIds are most-recent-first: newest gets the worst rank.
+              sql`WHEN ${listingsTable.id} = ${id} THEN ${excludeIds.length - i}`,
+          ),
+          sql` `,
+        )} ELSE 0 END`
+      : sql`0`;
+
   const pickRow = async (extraExclude: number[] = []) => {
-    // Prefer normal merchant campaigns over admin/super-admin platform ads so
-    // changing country surfaces the market's merchant inventory first. Fall
-    // back to admin creatives only when no merchant row is eligible.
+    // One eligibility pool for Sellers, Admins, and Super Admins. Soft-rank by
+    // viewer rotation history (unseen → least recently shown), then random.
     const [row] = await db
       .select({
         id: listingsTable.id,
@@ -619,14 +633,7 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       .from(listingsTable)
       .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
       .where(and(...buildConds(extraExclude)))
-      .orderBy(
-        sql`CASE
-          WHEN coalesce(${usersTable.isSuperAdmin}, false)
-            OR coalesce(${usersTable.isAdmin}, false)
-            OR lower(coalesce(${usersTable.role}, '')) IN ('admin', 'superadmin')
-          THEN 1 ELSE 0 END`,
-        sql`random()`,
-      )
+      .orderBy(rotationPreferSql, sql`random()`)
       .limit(1);
     return row ?? null;
   };

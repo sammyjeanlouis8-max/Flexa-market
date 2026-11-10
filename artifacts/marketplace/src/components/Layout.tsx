@@ -16,9 +16,9 @@ import { FlexCardDebtBanner } from "@/components/FlexCardDebtBanner";
 import OfflineBar from "@/components/OfflineBar";
 import BoostVideoOverlay, {
   shouldShowBoostAd,
-  markBoostAdShown,
   clearBoostAdCooldown,
 } from "@/components/BoostVideoOverlay";
+import { getBoostExcludeIds, getBoostViewerScopeKey } from "@/lib/boostAdRotation";
 import { useAdminCountry } from "@/contexts/admin-country";
 import { adminVideoFeedParamsKey } from "@/lib/adminCountryAccess";
 import { useShoppingLocation } from "@/contexts/shopping-location";
@@ -141,7 +141,11 @@ interface BoostAdListing {
   isVideoOnly?: boolean;
 }
 
-function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => void } {
+function useBoostAdTrigger(): {
+  listing: BoostAdListing | null;
+  dismiss: () => void;
+  viewerUserId: number | null;
+} {
   const [location] = useLocation();
   const { user } = useAuth();
   const { videoFeedParams, isAdminViewer, effectiveCountry } = useAdminCountry();
@@ -150,7 +154,9 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
   const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef  = useRef(false); // true while the timer is armed
   const fetchGenRef = useRef(0);
+  const listingRef = useRef<BoostAdListing | null>(null);
   const prevDeliveryScopeKeyRef = useRef<string | null>(null);
+  const viewerUserId = user?.id ?? null;
   const deliveryScopeKey = isAdminViewer
     ? adminVideoFeedParamsKey(videoFeedParams)
     : `user|${user?.country ?? shoppingCountry ?? ""}`;
@@ -162,6 +168,7 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
 
   const fetchRandomAd = useCallback(async (generation: number, opts?: { force?: boolean }) => {
     if (!opts?.force && !shouldShowBoostAd()) return;
+    if (listingRef.current) return; // already displaying an interstitial
     try {
       const tk = localStorage.getItem("flexamarket_token");
       const params = new URLSearchParams();
@@ -172,6 +179,10 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
         // Guest browsing country — server also falls back to CF-IPCountry.
         params.set("country", shoppingCountry);
       }
+      // Soft rotation hint: most-recent exposures first. Fetch/preload does not
+      // mutate history — playback start on the overlay does.
+      const excludeIds = getBoostExcludeIds(getBoostViewerScopeKey(viewerUserId));
+      if (excludeIds.length > 0) params.set("exclude", excludeIds.join(","));
       const qs = params.toString();
       const res = await fetch(`/api/boost/random-video${qs ? `?${qs}` : ""}`, {
         headers: {
@@ -186,13 +197,16 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
       if (generation !== fetchGenRef.current) return;
       if (!data?.listing) return;
       if (!opts?.force && !shouldShowBoostAd()) return;
-      markBoostAdShown();
+      if (listingRef.current) return;
+      // Do NOT mark cooldown / rotation here — only when playback begins.
+      listingRef.current = data.listing as BoostAdListing;
       setListing(data.listing as BoostAdListing);
     } catch { /* non-critical */ }
-  }, [isAdminViewer, videoFeedParams, user, shoppingCountry]);
+  }, [isAdminViewer, videoFeedParams, user, shoppingCountry, viewerUserId]);
 
   const armTimer = useCallback(() => {
     if (pendingRef.current) return;           // already armed — keep existing countdown
+    if (listingRef.current) return;           // interstitial already on screen
     if (!shouldShowBoostAd()) return;         // still within cooldown window
     pendingRef.current = true;
     const generation = fetchGenRef.current;
@@ -218,7 +232,7 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
   }, [location, armTimer, cancelTimer]);
 
   // Admin country preview (or guest market) changed → drop old ad and force a
-  // fresh fetch for the new country (bypass the 5-minute cooldown so merchant
+  // fresh fetch for the new country (bypass the 5-minute cooldown so eligible
   // ads in the newly selected market can auto-play immediately).
   // Skip the initial mount — the normal 10s browsing arm handles first paint.
   useEffect(() => {
@@ -228,6 +242,7 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
 
     fetchGenRef.current += 1;
     const generation = fetchGenRef.current;
+    listingRef.current = null;
     setListing(null);
     cancelTimer();
     pendingRef.current = false;
@@ -244,13 +259,14 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
   }, [deliveryScopeKey]);
 
   const dismiss = useCallback(() => {
+    listingRef.current = null;
     setListing(null);
     // Re-arm for next session after cooldown clears (armTimer will no-op if
     // shouldShowBoostAd is still false, which is correct)
     armTimer();
   }, [armTimer]);
 
-  return { listing, dismiss };
+  return { listing, dismiss, viewerUserId };
 }
 
 // ─── Top search bar ───────────────────────────────────────────────────────────
@@ -1127,7 +1143,11 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* Sponsored video overlay */}
       {boostAd.listing && (
-        <BoostVideoOverlay listing={boostAd.listing} onClose={boostAd.dismiss} />
+        <BoostVideoOverlay
+          listing={boostAd.listing}
+          onClose={boostAd.dismiss}
+          viewerUserId={boostAd.viewerUserId}
+        />
       )}
 
       {/* First-login language picker modal */}

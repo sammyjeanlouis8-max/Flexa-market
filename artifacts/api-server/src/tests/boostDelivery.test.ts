@@ -129,7 +129,7 @@ describe("resolveInterstitialViewerScope", () => {
   });
 });
 
-describe("merchant vs admin delivery contract (source)", () => {
+describe("automatic promo delivery contract (source)", () => {
   it("random-video uses interstitial scope and Advantage+ country-wide SQL", async () => {
     const { readFileSync } = await import("node:fs");
     const { dirname, join } = await import("node:path");
@@ -144,19 +144,32 @@ describe("merchant vs admin delivery contract (source)", () => {
       join(here, "../../../marketplace/src/components/BoostVideoOverlay.tsx"),
       "utf8",
     );
+    const rotationSrc = readFileSync(
+      join(here, "../../../marketplace/src/lib/boostAdRotation.ts"),
+      "utf8",
+    );
     expect(boostSrc).toMatch(/resolveInterstitialViewerScope/);
     expect(boostSrc).toMatch(/coalesce\(\$\{listingsTable\.boostAudienceType\}, 'advantage_plus'\) <> 'custom'/);
     expect(boostSrc).toMatch(/resolveBoostInitiateGeo/);
     expect(boostSrc).not.toMatch(/req\.user\?\.state \|\| bodyState/);
-    // Merchant campaigns win over admin/platform ads in the interstitial.
-    expect(boostSrc).toMatch(/isSuperAdmin/);
-    expect(boostSrc).toMatch(/THEN 1 ELSE 0 END/);
+    // Seller / Admin / Super Admin creatives share one rotation — no role demotion.
+    expect(boostSrc).not.toMatch(/THEN 1 ELSE 0 END/);
+    expect(boostSrc).not.toMatch(/Prefer normal merchant campaigns/);
+    expect(boostSrc).toMatch(/rotationPreferSql/);
+    expect(boostSrc).toMatch(/excludeIds\.length - i/);
     expect(layoutSrc).toMatch(/\/api\/boost\/random-video/);
+    expect(layoutSrc).toMatch(/getBoostExcludeIds/);
+    expect(layoutSrc).toMatch(/params\.set\("exclude"/);
     expect(layoutSrc).toMatch(/videoFeedParams/);
     expect(layoutSrc).toMatch(/allCountries/);
     expect(layoutSrc).toMatch(/fetchGenRef/);
     expect(layoutSrc).toMatch(/clearBoostAdCooldown/);
     expect(layoutSrc).toMatch(/force:\s*true/);
-    expect(overlaySrc).toMatch(/export function clearBoostAdCooldown/);
+    // Cooldown / rotation persist only when playback begins, not on fetch.
+    expect(layoutSrc).not.toMatch(/markBoostAdShown\(\)/);
+    expect(overlaySrc).toMatch(/recordBoostPlaybackExposure/);
+    expect(overlaySrc).toMatch(/recordOnScreenExposure/);
+    expect(rotationSrc).toMatch(/getBoostViewerScopeKey/);
+    expect(rotationSrc).toMatch(/recordBoostPlaybackExposure/);
   });
 });

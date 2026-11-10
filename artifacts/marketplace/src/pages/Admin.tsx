@@ -1949,9 +1949,14 @@ export default function Admin() {
 
   const handleBan = (id: number) => {
     if (!confirm(t("admin.confirmBan"))) return;
+    const reason = window.prompt("Reason for blocking this account:")?.trim();
+    if (!reason) {
+      toast({ title: "A reason is required to block a user", variant: "destructive" });
+      return;
+    }
     act(`ban-${id}`, async () => {
-      await adminFetch(`/api/admin/users/${id}/ban`);
-      toast({ title: "🚫 Itilizatè a sipande avèk siksè." });
+      await adminFetch(`/api/admin/users/${id}/ban`, "POST", { reason });
+      toast({ title: "User blocked" });
     });
   };
 
@@ -2068,18 +2073,23 @@ export default function Admin() {
     });
   };
 
-  const handleResetCountryLock = (id: number) => {
-    if (!confirm(t("admin.confirmResetCountryLock"))) return;
-    act(`reset-country-${id}`, async () => {
-      await adminFetch(`/api/admin/users/${id}/reset-country-lock`, "POST");
-      toast({ title: t("admin.countryLockReset") });
+  const handleResetCountryLock = (_id: number) => {
+    toast({
+      title: t("adminUsers.countryReadOnly", {
+        defaultValue: "Registered country is read-only and cannot be changed.",
+      }),
+      variant: "destructive",
     });
   };
 
-  const handleSetCountry = (id: number, country: string) => act(`set-country-${id}`, async () => {
-    await adminFetch(`/api/admin/users/${id}/set-country`, "POST", { country });
-    toast({ title: t("admin.countrySet", { country }) });
-  });
+  const handleSetCountry = (_id: number, _country: string) => {
+    toast({
+      title: t("adminUsers.countryReadOnly", {
+        defaultValue: "Registered country is read-only and cannot be changed.",
+      }),
+      variant: "destructive",
+    });
+  };
 
   const getUserRiskLevel = (u: any) => {
     if (u.isTrusted) return "trusted";
@@ -3683,19 +3693,14 @@ export default function Admin() {
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-muted-foreground">{u.country ?? "—"}</span>
+                        <span className="text-xs text-muted-foreground">{u.country?.trim() ? u.country : "Country not set"}</span>
                         {isLocked && (
                           <span title={`Country locked — ${countryLocked} day${countryLocked === 1 ? "" : "s"} remaining`} className="inline-flex items-center gap-0.5 text-[9px] bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 px-1 py-0.5 rounded font-semibold">
                             <Lock className="h-2 w-2" /> {countryLocked}d
                           </span>
                         )}
                       </div>
-                      {!isModerator && <div className="relative mt-1">
-                        <select className="h-6 rounded border border-dashed border-input bg-background pl-1.5 pr-5 appearance-none cursor-pointer text-[10px] focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed" style={{ fontSize: "16px", transform: "scale(0.65)", transformOrigin: "left center", width: "calc(8rem / 0.65)", marginLeft: 0 }} disabled={!!actioning} value="" onChange={e => { if (e.target.value) handleSetCountry(u.id, e.target.value); e.target.value = ""; }}>
-                          <option value="">Set country…</option>
-                          {SUPPORTED_COUNTRIES.map(c => <option key={c} value={c}>{COUNTRY_FLAGS[c]} {c}</option>)}
-                        </select>
-                      </div>}
+                      {/* Registered country is read-only — no Set country control */}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-col gap-1">
@@ -3719,11 +3724,6 @@ export default function Admin() {
                         )}
                         {can("resetPasswords") && u.id !== user?.id && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-purple-600 border-purple-300" onClick={() => handleResetPassword(u)} disabled={actioning === `resetpw-${u.id}`} data-testid={`button-reset-password-${u.id}`} title="Reset password"><KeyRound className="h-3 w-3" /></Button>
-                        )}
-                        {!isModerator && isLocked && (
-                          <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-orange-600 border-orange-300" onClick={() => handleResetCountryLock(u.id)} disabled={actioning === `reset-country-${u.id}`} title="Unlock country change">
-                            <Unlock className="h-3 w-3" />
-                          </Button>
                         )}
                         {!u.isAdmin && !u.isSuperAdmin && !u.isBanned && !u.isRestricted && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-amber-600 border-amber-300 dark:border-amber-700" onClick={() => setRestrictTarget({ id: u.id, name: u.name })} disabled={!!actioning} title="Restrict user"><ShieldAlert className="h-3 w-3" /></Button>

@@ -14,7 +14,6 @@ import {
   Moon,
   Package,
   Sun,
-  Users,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useTheme } from "@/components/theme-provider";
@@ -296,6 +295,7 @@ function AdminMobileBottomNav() {
   const search = useSearch();
   const path = (location || "/").split("?")[0];
 
+  // Users is under More (not a primary tab) for Admin / Super Admin.
   const items = [
     {
       id: "dashboard",
@@ -319,13 +319,6 @@ function AdminMobileBottomNav() {
       active: path.includes("stripe") || path.includes("transactions") || search.includes("tab=payments"),
     },
     {
-      id: "users",
-      href: "/admin/users",
-      label: t("adminNav.users", { defaultValue: "Users" }),
-      icon: Users,
-      active: path === "/admin/users" || path.startsWith("/admin/users/"),
-    },
-    {
       id: "analytics",
       href: "/admin?tab=views",
       label: t("adminNav.analytics", { defaultValue: "Analytics" }),
@@ -334,10 +327,17 @@ function AdminMobileBottomNav() {
     },
     {
       id: "more",
-      href: "/admin/operations",
+      href: "/admin/more",
       label: t("adminNav.more", { defaultValue: "More" }),
       icon: Grid2X2,
-      active: path === "/admin/operations" || path === "/admin/team",
+      active:
+        path === "/admin/more"
+        || path === "/admin/operations"
+        || path === "/admin/team"
+        || path === "/admin/users"
+        || path.startsWith("/admin/users/")
+        || path === "/admin/flagged"
+        || path === "/admin/security",
     },
   ] as const;
 

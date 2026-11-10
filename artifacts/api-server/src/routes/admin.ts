@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "node:crypto";
-import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable, flexCardDebtsTable, siteDailyVisitsTable, adminAppealsTable } from "@workspace/db";
+import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, adminAuditLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable, flexCardDebtsTable, siteDailyVisitsTable, adminAppealsTable } from "@workspace/db";
 import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte, like, isNotNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole, getOnlineUserCount } from "../middlewares/auth";
@@ -741,17 +741,193 @@ router.post("/admin/nudge-cooldown-settings", requireSuperAdmin, async (req, res
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 router.get("/admin/users", requireRole("moderator"), async (req, res): Promise<void> => {
-  const { country, q } = req.query as Record<string, string>;
+  const { country, q, status } = req.query as Record<string, string>;
   const admin = req.user!;
   const scopeConds = getUserScopeConditions(admin);
   const conditions: any[] = [...scopeConds];
   // Scoped admins can only filter within their scope; super admin can filter by any country
   if (country && admin.isSuperAdmin) conditions.push(eq(usersTable.country, country));
   if (q) conditions.push(or(ilike(usersTable.name, `%${q}%`), ilike(usersTable.email, `%${q}%`))!);
+  if (status === "banned" || status === "blocked") conditions.push(eq(usersTable.isBanned, true));
+  else if (status === "suspended" || status === "restricted") {
+    conditions.push(eq(usersTable.isRestricted, true));
+    conditions.push(eq(usersTable.isBanned, false));
+  } else if (status === "active") {
+    conditions.push(eq(usersTable.isBanned, false));
+    conditions.push(eq(usersTable.isRestricted, false));
+  } else if (status === "inactive") {
+    // No recent session in 30 days and not banned/suspended
+    conditions.push(eq(usersTable.isBanned, false));
+    conditions.push(eq(usersTable.isRestricted, false));
+    conditions.push(
+      or(
+        sql`${usersTable.lastSeenAt} IS NULL`,
+        sql`${usersTable.lastSeenAt} < NOW() - INTERVAL '30 days'`,
+      )!,
+    );
+  }
   const users = await db.select().from(usersTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(usersTable.createdAt));
   res.json(users.map(formatUser));
+});
+
+/** Registered country is immutable via Control — reject all admin set/clear attempts. */
+function rejectAdminCountryMutation(res: import("express").Response): void {
+  res.status(403).json({
+    error: "Registered country is read-only. Administrators cannot change or clear a user’s country.",
+    code: "COUNTRY_READ_ONLY",
+  });
+}
+
+/** Flexa Control user detail — Overview / Sales / Activity / Audit payload. */
+router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid user id" }); return; }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  const scopeErr = assertUserInScope(req.user!, user);
+  if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
+
+  const ONLINE_MS = 5 * 60 * 1000;
+  const lastSeen = user.lastSeenAt ? new Date(user.lastSeenAt).getTime() : 0;
+  const isOnline = lastSeen > 0 && Date.now() - lastSeen < ONLINE_MS;
+
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+
+  const [salesRows, listingCountRow, visitsTodayRow, latestLogin, restrictionHistory, auditRows] = await Promise.all([
+    db.select({
+      id: transactionsTable.id,
+      listingId: transactionsTable.listingId,
+      amount: transactionsTable.amount,
+      currency: transactionsTable.currency,
+      paymentStatus: transactionsTable.paymentStatus,
+      description: transactionsTable.description,
+      sellerEarnings: transactionsTable.sellerEarnings,
+      commissionAmount: transactionsTable.commissionAmount,
+      createdAt: transactionsTable.createdAt,
+    }).from(transactionsTable)
+      .where(eq(transactionsTable.sellerUserId, id))
+      .orderBy(desc(transactionsTable.createdAt))
+      .limit(50),
+    db.select({ count: count() }).from(listingsTable).where(eq(listingsTable.sellerId, id)),
+    db.select({ count: count() }).from(loginLogsTable).where(and(
+      eq(loginLogsTable.userId, id),
+      gte(loginLogsTable.createdAt, dayStart),
+    )),
+    db.select({
+      id: loginLogsTable.id,
+      action: loginLogsTable.action,
+      ip: loginLogsTable.ip,
+      userAgent: loginLogsTable.userAgent,
+      createdAt: loginLogsTable.createdAt,
+    }).from(loginLogsTable)
+      .where(eq(loginLogsTable.userId, id))
+      .orderBy(desc(loginLogsTable.createdAt))
+      .limit(1),
+    db.select({
+      id: userRestrictionsTable.id,
+      reason: userRestrictionsTable.reason,
+      durationDays: userRestrictionsTable.durationDays,
+      notes: userRestrictionsTable.notes,
+      isActive: userRestrictionsTable.isActive,
+      expiresAt: userRestrictionsTable.expiresAt,
+      createdAt: userRestrictionsTable.createdAt,
+      adminId: userRestrictionsTable.adminId,
+    }).from(userRestrictionsTable)
+      .where(eq(userRestrictionsTable.userId, id))
+      .orderBy(desc(userRestrictionsTable.createdAt))
+      .limit(40),
+    db.select({
+      id: adminAuditLogsTable.id,
+      auditId: adminAuditLogsTable.auditId,
+      actionType: adminAuditLogsTable.actionType,
+      description: adminAuditLogsTable.description,
+      actorName: adminAuditLogsTable.actorName,
+      actorRole: adminAuditLogsTable.actorRole,
+      metadata: adminAuditLogsTable.metadata,
+      riskLevel: adminAuditLogsTable.riskLevel,
+      createdAt: adminAuditLogsTable.createdAt,
+    }).from(adminAuditLogsTable)
+      .where(and(
+        eq(adminAuditLogsTable.targetType, "user"),
+        eq(adminAuditLogsTable.targetId, id),
+      ))
+      .orderBy(desc(adminAuditLogsTable.createdAt))
+      .limit(50),
+  ]);
+
+  const completedSales = salesRows.filter(s => s.paymentStatus === "completed" || s.paymentStatus === "paid" || s.paymentStatus === "released");
+  const netSales = completedSales.reduce((sum, s) => sum + (Number(s.sellerEarnings ?? s.amount) || 0), 0);
+  const currency = completedSales[0]?.currency ?? salesRows[0]?.currency ?? "USD";
+
+  const accountType = user.isSuperAdmin
+    ? "Super Admin"
+    : user.isAdmin
+      ? "Admin"
+      : user.role === "moderator"
+        ? "Moderator"
+        : user.listingCount > 0 || (listingCountRow[0]?.count ?? 0) > 0
+          ? "Seller"
+          : "Buyer";
+
+  const accountStatus = user.isBanned
+    ? "blocked"
+    : user.isRestricted
+      ? "suspended"
+      : (lastSeen > 0 && Date.now() - lastSeen < 30 * 86_400_000)
+        ? "active"
+        : "inactive";
+
+  const deviceInfo = latestLogin[0]
+    ? parseUserAgent(latestLogin[0].userAgent)
+    : { device: "Unavailable", os: "Unavailable", browser: "Unavailable" };
+
+  res.json({
+    user: {
+      ...formatUser(user),
+      countryDisplay: user.country?.trim() ? user.country : "Country not set",
+      accountType,
+      accountStatus,
+      isOnline,
+      signupDate: user.createdAt,
+    },
+    overview: {
+      ordersSold: completedSales.length,
+      netSales,
+      currency,
+      visitsToday: visitsTodayRow[0]?.count ?? 0,
+      listingCount: listingCountRow[0]?.count ?? 0,
+      restriction: user.isRestricted
+        ? {
+            reason: user.restrictionReason,
+            until: user.restrictedUntil,
+          }
+        : null,
+      blockReason: user.isBanned ? (user.flagReason ?? null) : null,
+    },
+    sales: {
+      periodLabel: "All time (completed sales)",
+      items: salesRows,
+      totals: { ordersSold: completedSales.length, netSales, currency },
+    },
+    activity: {
+      isOnline,
+      lastSeenAt: user.lastSeenAt ?? latestLogin[0]?.createdAt ?? null,
+      visitsToday: visitsTodayRow[0]?.count ?? 0,
+      device: deviceInfo.device || "Unavailable",
+      os: deviceInfo.os || "Unavailable",
+      browser: deviceInfo.browser || "Unavailable",
+      latestLogin: latestLogin[0]
+        ? { ...latestLogin[0], ...deviceInfo }
+        : null,
+    },
+    audit: {
+      restrictions: restrictionHistory,
+      actions: auditRows,
+    },
+  });
 });
 
 router.get("/admin/users/:id/activity", requireAdmin, async (req, res): Promise<void> => {
@@ -1029,93 +1205,141 @@ router.post("/admin/users/:id/ban", requireAdmin, async (req, res): Promise<void
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
   if (target.isSuperAdmin) { res.status(403).json({ error: "Cannot ban a Super Admin" }); return; }
   if (target.isAdmin && !req.user?.isSuperAdmin) { res.status(403).json({ error: "Only Super Admins can ban admins" }); return; }
+  if (target.isBanned) { res.status(409).json({ error: "User is already blocked" }); return; }
   const scopeErr = assertUserInScope(req.user!, target);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
-  await db.update(usersTable).set({ isBanned: true, isFlagged: false }).where(eq(usersTable.id, id));
+  const reasonRaw = req.body?.reason != null ? String(req.body.reason).trim() : "";
+  if (!reasonRaw) { res.status(400).json({ error: "A reason is required to block a user" }); return; }
+  const reason = reasonRaw.slice(0, 500);
+  const now = new Date();
+  // Block keeps isRestricted untouched so suspension expiry never lifts a block.
+  await db.update(usersTable).set({
+    isBanned: true,
+    isFlagged: false,
+    flagReason: reason,
+    tokenInvalidatedAt: now,
+  }).where(eq(usersTable.id, id));
   await db.update(listingsTable).set({ status: "removed" }).where(and(eq(listingsTable.sellerId, id), eq(listingsTable.status, "available")));
-  await log(req.userId!, "ban_user", "user", id, `Banned user: ${target.name} (${target.email})`);
-  await logAdminAction(req, { actionType: "user_ban", actionCategory: "user", description: `Bann itilizatè: ${target.name} (${target.email})`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "critical" });
-  res.json({ message: "User banned" });
+  await log(req.userId!, "ban_user", "user", id, `Blocked user: ${target.name} (${target.email}) — reason: ${reason}`);
+  await logAdminAction(req, {
+    actionType: "user_ban",
+    actionCategory: "user",
+    description: `Block ${target.name}: ${reason}`,
+    targetType: "user",
+    targetId: id,
+    targetName: target.name,
+    riskLevel: "critical",
+    metadata: { reason },
+  });
+  res.json({ message: "User blocked", reason });
 });
 
 router.post("/admin/users/:id/unban", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
+  if (!target.isBanned) { res.status(409).json({ error: "User is not blocked" }); return; }
   const scopeErr = assertUserInScope(req.user!, target);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
-  await db.update(usersTable).set({ isBanned: false }).where(eq(usersTable.id, id));
-  await log(req.userId!, "unban_user", "user", id, `Unbanned user: ${target.name}`);
-  await logAdminAction(req, { actionType: "user_unban", actionCategory: "user", description: `Leve bann sou itilizatè: ${target.name}`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "high" });
-  res.json({ message: "User unbanned" });
+  await db.update(usersTable).set({ isBanned: false, flagReason: null, tokenInvalidatedAt: null }).where(eq(usersTable.id, id));
+  await log(req.userId!, "unban_user", "user", id, `Unblocked user: ${target.name}`);
+  await logAdminAction(req, { actionType: "user_unban", actionCategory: "user", description: `Unblock ${target.name}`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "high" });
+  res.json({ message: "User unblocked" });
 });
 
 router.post("/admin/users/:id/restrict", requireRole("moderator"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
-  if (target.isSuperAdmin) { res.status(403).json({ error: "Cannot restrict a Super Admin" }); return; }
-  if (target.isAdmin && !req.user?.isSuperAdmin) { res.status(403).json({ error: "Only Super Admins can restrict admins" }); return; }
+  if (target.isSuperAdmin) { res.status(403).json({ error: "Cannot suspend a Super Admin" }); return; }
+  if (target.isAdmin && !req.user?.isSuperAdmin) { res.status(403).json({ error: "Only Super Admins can suspend admins" }); return; }
+  if (target.isBanned) { res.status(409).json({ error: "User is blocked; lift the block before suspending" }); return; }
   const scopeErr = assertUserInScope(req.user!, target);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
 
-  const VALID_REASONS = ["spam", "abuse", "suspicious_activity"];
-  const reason = req.body?.reason ?? "spam";
-  if (!VALID_REASONS.includes(reason)) { res.status(400).json({ error: "Invalid reason" }); return; }
+  const VALID_REASONS = ["spam", "abuse", "suspicious_activity", "other", "policy_violation", "fraud"];
+  const reasonRaw = req.body?.reason != null ? String(req.body.reason).trim() : "";
+  if (!reasonRaw) { res.status(400).json({ error: "A reason is required to suspend a user" }); return; }
+  const reason = VALID_REASONS.includes(reasonRaw) ? reasonRaw : "other";
+  const notes = req.body?.notes
+    ? String(req.body.notes).slice(0, 500)
+    : (reason === "other" ? reasonRaw.slice(0, 500) : null);
 
-  const durationDays = req.body?.durationDays != null ? parseInt(req.body.durationDays, 10) : null;
-  const notes = req.body?.notes ? String(req.body.notes).slice(0, 500) : null;
+  const durationDays = req.body?.durationDays != null ? parseInt(req.body.durationDays, 10) : NaN;
+  if (!Number.isFinite(durationDays) || durationDays <= 0) {
+    res.status(400).json({ error: "Suspension requires a positive number of days" });
+    return;
+  }
 
-  const expiresAt = durationDays && durationDays > 0
-    ? new Date(Date.now() + durationDays * 86_400_000)
-    : null;
+  const expiresAt = new Date(Date.now() + durationDays * 86_400_000);
+  const now = new Date();
 
   await db.update(usersTable).set({
     isRestricted: true,
     restrictedUntil: expiresAt,
     restrictionReason: reason,
+    // Invalidate active sessions for the suspension window
+    tokenInvalidatedAt: now,
   }).where(eq(usersTable.id, id));
 
-  // Mark any previous active restriction logs inactive
   await db.update(userRestrictionsTable).set({ isActive: false })
     .where(and(eq(userRestrictionsTable.userId, id), eq(userRestrictionsTable.isActive, true)));
 
-  // Insert audit log entry
   await db.insert(userRestrictionsTable).values({
     userId: id,
     adminId: req.userId!,
     reason,
-    durationDays: durationDays ?? null,
+    durationDays,
     notes,
     isActive: true,
     expiresAt,
   });
 
-  const durLabel = durationDays ? `${durationDays} days` : "permanent";
-  await log(req.userId!, "restrict_user", "user", id, `Restricted ${target.name} — reason: ${reason}, duration: ${durLabel}`);
-  await logAdminAction(req, { actionType: "user_suspend", actionCategory: "user", description: `Restriksyon sou ${target.name} — rezon: ${reason}, dire: ${durLabel}`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "high" });
+  const durLabel = `${durationDays} days`;
+  await log(req.userId!, "restrict_user", "user", id, `Suspended ${target.name} — reason: ${reason}, until: ${expiresAt.toISOString()}`);
+  await logAdminAction(req, {
+    actionType: "user_suspend",
+    actionCategory: "user",
+    description: `Suspend ${target.name} — ${reason}, ${durLabel}, ends ${expiresAt.toISOString()}`,
+    targetType: "user",
+    targetId: id,
+    targetName: target.name,
+    riskLevel: "high",
+    metadata: { reason, durationDays, expiresAt: expiresAt.toISOString(), notes },
+  });
 
-  // Fire-and-forget email to restricted user
   void (async () => {
     const tpl = accountRestrictedEmail({ name: target.name, reason, durationLabel: durLabel });
     await sendEmail({ to: target.email, ...tpl });
   })();
 
-  res.json({ message: "User restricted" });
+  res.json({
+    message: "User suspended",
+    restrictedUntil: expiresAt.toISOString(),
+    durationDays,
+    reason,
+  });
 });
 
 router.post("/admin/users/:id/unrestrict", requireRole("moderator"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
+  if (!target.isRestricted) { res.status(409).json({ error: "User is not suspended" }); return; }
   const scopeErr = assertUserInScope(req.user!, target);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
-  await db.update(usersTable).set({ isRestricted: false, restrictedUntil: null, restrictionReason: null }).where(eq(usersTable.id, id));
+  // Never clear isBanned when lifting a suspension.
+  await db.update(usersTable).set({
+    isRestricted: false,
+    restrictedUntil: null,
+    restrictionReason: null,
+    tokenInvalidatedAt: null,
+  }).where(eq(usersTable.id, id));
   await db.update(userRestrictionsTable).set({ isActive: false })
     .where(and(eq(userRestrictionsTable.userId, id), eq(userRestrictionsTable.isActive, true)));
-  await log(req.userId!, "unrestrict_user", "user", id, `Lifted restriction on ${target.name}`);
-  await logAdminAction(req, { actionType: "user_unrestrict", actionCategory: "user", description: `Leve restriksyon sou ${target.name}`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "medium" });
-  res.json({ message: "User unrestricted" });
+  await log(req.userId!, "unrestrict_user", "user", id, `Lifted suspension on ${target.name}`);
+  await logAdminAction(req, { actionType: "user_unrestrict", actionCategory: "user", description: `Lift suspension on ${target.name}`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "medium" });
+  res.json({ message: "Suspension lifted" });
 });
 
 // ── Admin / Moderator Suspension (Super Admin only) ────────────────────────
@@ -1168,22 +1392,12 @@ router.post("/admin/users/:id/reset-country-lock", requireSuperAdmin, async (req
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
   const scopeErr = assertUserInScope(req.user!, target);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
-  await db.update(usersTable).set({ countryChangedAt: null }).where(eq(usersTable.id, id));
-  await log(req.userId!, "reset_country_lock", "user", id, `Reset country lock for: ${target.name}`);
-  res.json({ message: "Country lock reset" });
+  // Country lock reset is a legacy path that enabled country changes — reject.
+  rejectAdminCountryMutation(res);
 });
 
-router.post("/admin/users/:id/set-country", requireSuperAdmin, async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
-  const { country } = req.body as { country: string };
-  if (!country) { res.status(400).json({ error: "Country required" }); return; }
-  const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
-  if (!target) { res.status(404).json({ error: "User not found" }); return; }
-  const scopeErr = assertUserInScope(req.user!, target);
-  if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
-  await db.update(usersTable).set({ country, countryChangedAt: new Date() }).where(eq(usersTable.id, id));
-  await log(req.userId!, "set_country", "user", id, `Set country of ${target.name} to "${country}"`);
-  res.json({ message: "Country updated", country });
+router.post("/admin/users/:id/set-country", requireAdmin, async (_req, res): Promise<void> => {
+  rejectAdminCountryMutation(res);
 });
 
 router.post("/admin/users/:id/unflag", requireRole("moderator"), async (req, res): Promise<void> => {

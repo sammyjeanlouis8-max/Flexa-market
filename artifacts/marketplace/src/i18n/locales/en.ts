@@ -695,6 +695,8 @@ export default {
     electronicsTitle: "Electronics & phones — Buy & sell on Flexa Market",
     electronicsDescription:
       "Shop electronics and phones on Flexa Market. Browse approved listings in Haiti and other supported markets with secure checkout.",
+    electronicsHeading: "Electronics & phones",
+    searchHeading: "Search listings",
   },
   home: {
 

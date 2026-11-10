@@ -695,6 +695,8 @@ export default {
     electronicsTitle: "Elektwonik ak telefòn — Achte ak vann sou Flexa Market",
     electronicsDescription:
       "Telefòn pou vann ann Ayiti ak lòt elektwonik sou Flexa Market. Anons apwouve, peman sekirize.",
+    electronicsHeading: "Elektwonik ak telefòn",
+    searchHeading: "Chèche anons",
   },
   home: {
 

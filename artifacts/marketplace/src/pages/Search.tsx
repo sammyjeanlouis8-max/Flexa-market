@@ -382,6 +382,11 @@ export default function SearchPage() {
 
   const categorySeoName = selectedParent?.name || category;
   const isElectronics = pathCategory === "electronics" || category === "electronics";
+  const pageHeading = pathCategory
+    ? isElectronics
+      ? t("seo.electronicsHeading", { defaultValue: "Electronics & phones" })
+      : categorySeoName
+    : t("seo.searchHeading", { defaultValue: "Search listings" });
   useSEO({
     title: pathCategory
       ? isElectronics
@@ -395,6 +400,8 @@ export default function SearchPage() {
       : t("seo.searchDescription"),
     path: pathCategory ? `/categories/${pathCategory}` : "/search",
     absoluteTitle: true,
+    // Faceted /search URLs should not compete with canonical category pages.
+    noindex: !pathCategory,
   });
 
   const { data, isLoading } = useGetListings(
@@ -696,8 +703,11 @@ export default function SearchPage() {
 
         {/* Results */}
         <div className="flex-1">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-muted-foreground">
+          <div className="mb-4">
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
+              {pageHeading}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
               {isLoading
                 ? t("search.searching")
                 : summaryCountry

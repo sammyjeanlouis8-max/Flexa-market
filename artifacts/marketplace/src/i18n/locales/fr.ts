@@ -695,6 +695,8 @@ export default {
     electronicsTitle: "Électronique et téléphones — Acheter et vendre sur Flexa Market",
     electronicsDescription:
       "Téléphone à vendre en Haïti et électronique sur Flexa Market. Annonces approuvées, paiement sécurisé.",
+    electronicsHeading: "Électronique et téléphones",
+    searchHeading: "Rechercher des annonces",
   },
   home: {
     todaysDeals: "Offres du jour",

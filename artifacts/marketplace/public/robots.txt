@@ -2,6 +2,8 @@ User-agent: *
 Allow: /
 Allow: /listings/
 Allow: /categories/
+
+# Faceted search stays crawlable for UX but is noindex in the app; prefer /categories/
 Allow: /search
 
 # Private / transactional areas — keep out of the public catalog

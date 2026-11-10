@@ -324,7 +324,7 @@ export function renderCategorySeoHtml(category: PublicCategorySeoInput, baseUrl 
         ? ` · <a href="${escapeHtml(baseUrl)}/categories/electronics">Electronics &amp; phones</a>`
         : ""
     }</p>
-    <h1>${escapeHtml(category.name)}</h1>
+    <h1>${escapeHtml(category.slug === "electronics" ? "Electronics & phones" : category.name)}</h1>
     <p>${escapeHtml(description)}</p>
     <ul style="padding:0;margin:1.5rem 0">
 ${links || "<li>No public products in this category right now.</li>"}

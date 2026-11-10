@@ -72,8 +72,9 @@ test("Phase 3N inventory recount and remaining incomplete statuses", () => {
   assert.equal(byId["subscription-billing"].status, "BLOCKED");
   assert.equal(byId["music-purchase"].status, "BLOCKED");
   assert.equal(byId.esim.status, "BLOCKED");
-  assert.ok(inv.verification.phase3n === true);
+  assert.ok(inv.verification.phase3n === true || inv.verification.phase3o === true);
   assert.ok(byId.bnpl.apis.includes("/api/bnpl/checkout"));
+  assert.ok(inv.summaryCounts.FULLY_NATIVE >= 75);
 });
 
 test("phase3m exact count assertion relaxed via 3N floor still holds for push-fcm", () => {

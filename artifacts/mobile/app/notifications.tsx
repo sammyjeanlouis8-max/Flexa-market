@@ -26,7 +26,7 @@ import {
   type AppNotification,
 } from "@/lib/notificationsApi";
 import { formatDate } from "@/lib/orderUi";
-import { getPushPrepStatus } from "@/lib/pushPrep";
+import { getPushPrepStatus, registerExpoPushToken } from "@/lib/pushPrep";
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
@@ -35,7 +35,10 @@ export default function NotificationsScreen() {
   const [items, setItems] = useState<AppNotification[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushTick, setPushTick] = useState(0);
   const pushStatus = getPushPrepStatus();
+  void pushTick;
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -156,6 +159,25 @@ export default function NotificationsScreen() {
         {pushStatus.lastError ? (
           <Text style={styles.pushErr}>{pushStatus.lastError}</Text>
         ) : null}
+        {token ? (
+          <Pressable
+            style={styles.pushRetry}
+            disabled={pushBusy}
+            onPress={() => {
+              setPushBusy(true);
+              void registerExpoPushToken(token)
+                .finally(() => {
+                  setPushBusy(false);
+                  setPushTick((n) => n + 1);
+                });
+            }}
+            testID="btn-retry-push-register"
+          >
+            <Text style={styles.pushRetryText}>
+              {pushBusy ? "Registering…" : "Retry push registration"}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {authLoading || (token && items === null && !error) ? (
@@ -253,6 +275,15 @@ const styles = StyleSheet.create({
     color: "#B91C1C",
     fontWeight: "700",
   },
+  pushRetry: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "#FFEDD5",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  pushRetryText: { color: "#C2410C", fontWeight: "800", fontSize: 11 },
   card: {
     flexDirection: "row",
     alignItems: "center",

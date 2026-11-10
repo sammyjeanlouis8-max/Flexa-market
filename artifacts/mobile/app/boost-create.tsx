@@ -1,11 +1,12 @@
 /**
  * Native booster campaign DRAFT builder.
  * mode:"draft" only — paid launch remains blocked on Android.
+ * Persists form fields locally; resumable chunked video upload; local preview.
  */
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +18,13 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NativeVideoPlayer } from "@/components/NativeVideoPlayer";
 import { useAuth } from "@/context/AuthContext";
+import {
+  clearBoostFormDraft,
+  loadBoostFormDraft,
+  saveBoostFormDraft,
+} from "@/lib/boostDrafts";
 import { createBoosterDraft, fetchBoosterMeta, type BoosterMeta } from "@/lib/boosterApi";
 import {
   loadVideoUploadSession,
@@ -42,10 +49,15 @@ export default function BoostCreateScreen() {
   const [depts, setDepts] = useState<string[]>([]);
   const [cities, setCities] = useState<string[]>([]);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [localPreviewUri, setLocalPreviewUri] = useState<string | null>(null);
+  const [ageMin, setAgeMin] = useState(18);
+  const [ageMax, setAgeMax] = useState(65);
+  const [gender, setGender] = useState<"all" | "male" | "female">("all");
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadAbort, setUploadAbort] = useState<AbortController | null>(null);
+  const draftHydrated = useRef(false);
 
   const departments = meta?.haitiDepartments ?? [];
   const communes = useMemo(() => {
@@ -62,13 +74,45 @@ export default function BoostCreateScreen() {
     void Promise.all([
       fetchBoosterMeta({ token }),
       fetchUserListings(user.id, { token }),
+      loadBoostFormDraft(),
     ])
-      .then(([m, ls]) => {
+      .then(([m, ls, draft]) => {
         setMeta(m);
         setListings(ls);
+        if (!draftHydrated.current && draft) {
+          draftHydrated.current = true;
+          if (draft.title) setTitle(draft.title);
+          if (draft.description) setDescription(draft.description);
+          if (draft.listingId !== undefined) setListingId(draft.listingId);
+          if (draft.depts) setDepts(draft.depts);
+          if (draft.cities) setCities(draft.cities);
+          if (draft.videoUrl) setVideoUrl(draft.videoUrl);
+          if (draft.ageMin) setAgeMin(draft.ageMin);
+          if (draft.ageMax) setAgeMax(draft.ageMax);
+          if (draft.gender) setGender(draft.gender);
+        } else {
+          draftHydrated.current = true;
+        }
       })
-      .catch(() => {});
+      .catch(() => {
+        draftHydrated.current = true;
+      });
   }, [token, user?.id]);
+
+  useEffect(() => {
+    if (!draftHydrated.current) return;
+    void saveBoostFormDraft({
+      title,
+      description,
+      listingId,
+      depts,
+      cities,
+      videoUrl,
+      ageMin,
+      ageMax,
+      gender,
+    });
+  }, [title, description, listingId, depts, cities, videoUrl, ageMin, ageMax, gender]);
 
   const runVideoUpload = async (
     uri: string,
@@ -76,6 +120,7 @@ export default function BoostCreateScreen() {
     resumeUploadId?: string | null,
   ) => {
     if (!token) return;
+    setLocalPreviewUri(uri);
     const ac = new AbortController();
     setUploadAbort(ac);
     setUploading(true);
@@ -164,18 +209,30 @@ export default function BoostCreateScreen() {
           listingId,
           startDate: isoDate(start),
           endDate: isoDate(end),
+          ctaType: listingId ? "buy_now" : "none",
           audience: {
             country: user.country,
             audienceType: "custom",
             state: depts[0] ?? null,
             states: depts,
             cities,
+            ageMin,
+            ageMax,
+            gender,
           },
         },
         { token },
       );
+      await clearBoostFormDraft();
+      setTitle("");
+      setDescription("");
+      setListingId(null);
+      setDepts([]);
+      setCities([]);
+      setVideoUrl(null);
+      setLocalPreviewUri(null);
       Alert.alert("Draft saved", `Campaign #${created.boostId} saved (not paid).`, [
-        { text: "View drafts", onPress: () => router.replace("/drafts") },
+        { text: "View campaigns", onPress: () => router.replace("/my-boosts") },
         { text: "OK" },
       ]);
     } catch (e) {
@@ -184,6 +241,8 @@ export default function BoostCreateScreen() {
       setSaving(false);
     }
   };
+
+  const previewUri = videoUrl || localPreviewUri;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
@@ -203,7 +262,8 @@ export default function BoostCreateScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.banner}>
-          Draft only. Paid boost checkout remains unavailable on Android (Play policy).
+          Draft only. Form fields auto-save locally. Paid boost checkout remains unavailable on
+          Android (Play policy).
         </Text>
 
         <Text style={styles.label}>Title</Text>
@@ -223,7 +283,7 @@ export default function BoostCreateScreen() {
           multiline
         />
 
-        <Text style={styles.label}>Product (optional)</Text>
+        <Text style={styles.label}>Product (optional · video-only if None)</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <Pressable
             style={[styles.chip, listingId == null && styles.chipOn]}
@@ -237,7 +297,10 @@ export default function BoostCreateScreen() {
               style={[styles.chip, listingId === l.id && styles.chipOn]}
               onPress={() => setListingId(l.id)}
             >
-              <Text style={[styles.chipText, listingId === l.id && styles.chipTextOn]} numberOfLines={1}>
+              <Text
+                style={[styles.chipText, listingId === l.id && styles.chipTextOn]}
+                numberOfLines={1}
+              >
                 {l.title}
               </Text>
             </Pressable>
@@ -255,9 +318,7 @@ export default function BoostCreateScreen() {
                     key={d}
                     style={[styles.chip, on && styles.chipOn]}
                     onPress={() => {
-                      setDepts((prev) =>
-                        on ? prev.filter((x) => x !== d) : [...prev, d],
-                      );
+                      setDepts((prev) => (on ? prev.filter((x) => x !== d) : [...prev, d]));
                       setCities([]);
                     }}
                   >
@@ -277,9 +338,7 @@ export default function BoostCreateScreen() {
                         key={c}
                         style={[styles.chip, on && styles.chipOn]}
                         onPress={() =>
-                          setCities((prev) =>
-                            on ? prev.filter((x) => x !== c) : [...prev, c],
-                          )
+                          setCities((prev) => (on ? prev.filter((x) => x !== c) : [...prev, c]))
                         }
                       >
                         <Text style={[styles.chipText, on && styles.chipTextOn]}>{c}</Text>
@@ -295,6 +354,43 @@ export default function BoostCreateScreen() {
             Audience country locked to your account country: {user?.country || "—"}
           </Text>
         )}
+
+        <Text style={styles.label}>Age range</Text>
+        <View style={styles.wrap}>
+          {[18, 25, 35, 45].map((n) => (
+            <Pressable
+              key={`min-${n}`}
+              style={[styles.chip, ageMin === n && styles.chipOn]}
+              onPress={() => setAgeMin(n)}
+            >
+              <Text style={[styles.chipText, ageMin === n && styles.chipTextOn]}>Min {n}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.wrap}>
+          {[35, 45, 55, 65].map((n) => (
+            <Pressable
+              key={`max-${n}`}
+              style={[styles.chip, ageMax === n && styles.chipOn]}
+              onPress={() => setAgeMax(Math.max(n, ageMin))}
+            >
+              <Text style={[styles.chipText, ageMax === n && styles.chipTextOn]}>Max {n}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Text style={styles.label}>Gender</Text>
+        <View style={styles.wrap}>
+          {(["all", "male", "female"] as const).map((g) => (
+            <Pressable
+              key={g}
+              style={[styles.chip, gender === g && styles.chipOn]}
+              onPress={() => setGender(g)}
+            >
+              <Text style={[styles.chipText, gender === g && styles.chipTextOn]}>{g}</Text>
+            </Pressable>
+          ))}
+        </View>
 
         <Text style={styles.label}>Promo video (≤120s for boost)</Text>
         <Pressable
@@ -319,6 +415,12 @@ export default function BoostCreateScreen() {
           >
             <Text style={styles.cancelUploadText}>Cancel upload</Text>
           </Pressable>
+        ) : null}
+
+        {previewUri ? (
+          <View style={styles.preview} testID="boost-video-preview">
+            <NativeVideoPlayer uri={previewUri} title="Preview" autoPlay={false} />
+          </View>
         ) : null}
 
         <Pressable
@@ -401,6 +503,7 @@ const styles = StyleSheet.create({
   videoText: { color: "#C2410C", fontWeight: "700" },
   cancelUpload: { alignItems: "center", paddingVertical: 10 },
   cancelUploadText: { color: "#DC2626", fontWeight: "700" },
+  preview: { marginTop: 12 },
   saveBtn: {
     marginTop: 20,
     backgroundColor: "#F97316",

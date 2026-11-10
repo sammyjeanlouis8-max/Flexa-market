@@ -3,10 +3,10 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 188,
-  "branch": "cursor/native-phase3n-gaps-09ff",
-  "auditedAt": "2026-11-10T07:39:53Z",
-  "auditCommit": "d8c43c47",
+  "pr": 189,
+  "branch": "cursor/native-phase3o-validate-09ff",
+  "auditedAt": "2026-11-10T07:50:47Z",
+  "auditCommit": "fcbc7537",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
@@ -31,7 +31,8 @@
       "Phase 3K: Native Super Admin Control Center \u2014 hub, users/RBAC, moderation, reports, orders, deliveries, boosts, All Videos (allCountries), finance wallets/cashouts, audit, traffic, team, KYC queue, settings gap hub; support desks integrated. Web-only: appeals, driver/agent apps, Stripe/MonCash ledgers, broadcast/push composers, TV/Music CMS, fee editors.",
       "Phase 3L: Completion/audit \u2014 admin ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans/flagged/VIP/fees/Haiti ledger; customer loans/subscription plans/driver/flex-card/bnpl/cash-agents/commission-promo/credit-score; phone login BLOCKED (no phoneToken). Broadcast/push composers + TV/Music CMS + hash-security tools deferred. Play digital goods BLOCKED. FCM device unverified.",
       "Phase 3M: Phone OTP restored (phone+country \u2192 phoneToken via generatePhoneToken; email withdrawalToken preserved). Native login-phone. Admin broadcast email/SMS, push campaigns, TV CMS, Music CMS, password-hash security. Globe low-end Android tuning. Product variations still MISSING (no SKU API). Play digital goods still BLOCKED. FCM physical-device delivery still unverified (PARTIALLY_NATIVE).",
-      "Phase 3N: BNPL physical checkout wired (POST /bnpl/checkout + stripe-checkout Pay later); subscription cancel-at-period-end; boost unpaid path marked complete (launch blocked server-side on Android UA); FCM diagnostics on notifications (still PARTIAL \u2014 device unverified); Vercel CI documented as legacy account-blocked (DigitalOcean is production). product-variations still MISSING; digital goods BLOCKED."
+      "Phase 3N: BNPL physical checkout wired (POST /bnpl/checkout + stripe-checkout Pay later); subscription cancel-at-period-end; boost unpaid path marked complete (launch blocked server-side on Android UA); FCM diagnostics on notifications (still PARTIAL \u2014 device unverified); Vercel CI documented as legacy account-blocked (DigitalOcean is production). product-variations still MISSING; digital goods BLOCKED.",
+      "Phase 3O: Boost unpaid polish (form draft persistence, video preview, age/gender, /videos player); FCM retry + UA; honest non-FULLY inventory (push PARTIAL, variations MISSING, 5 BLOCKED, website PLACEHOLDER). No invented APIs. Vercel still legacy. Globe preserved. Counts remain 75/1/1/1/5."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -56,7 +57,8 @@
     "phase3l": true,
     "phase3lStartCommit": "f017d186",
     "phase3m": true,
-    "phase3n": true
+    "phase3n": true,
+    "phase3o": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -631,7 +633,7 @@
         "Physical-device FCM end-to-end verification",
         "EAS FCM V1 credential confirmation in Expo dashboard"
       ],
-      "work": "Phase 3N: notifications diagnostics (token/perm/package/EAS). Physical-device FCM delivery still unverified \u2014 do not claim verified."
+      "work": "Phase 3O: retry registration + FlexaMarketAndroid UA on token APIs. Physical-device FCM delivery still unverified."
     },
     {
       "id": "kyc",
@@ -1035,7 +1037,7 @@
       "missing": [
         "Paid launch remains companion boost-paid BLOCKED"
       ],
-      "work": "Phase 3N: drafts/analytics/pause-resume complete; Android mode:launch rejected server-side"
+      "work": "Phase 3O: local form drafts, NativeVideoPlayer preview, age/gender targeting, promo /videos playback; paid launch remains companion boost-paid BLOCKED"
     },
     {
       "id": "boost-paid",
@@ -1480,7 +1482,7 @@
       "missing": [
         "No backend variation/SKU APIs \u2014 only optional itemSize text"
       ],
-      "work": "Phase 3N: still no multi-SKU API. Required: listings/:id/variants CRUD + cart variantId. See PHASE3N_GAP_CLOSURE.md."
+      "work": "Phase 3O: reconfirmed no SKU/variant API \u2014 only itemSize text. See PHASE3O_VALIDATION.md."
     }
   ],
   "recommendedPhase3Order": [

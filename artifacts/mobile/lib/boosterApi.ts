@@ -12,6 +12,8 @@ async function authed(
   const headers: Record<string, string> = {
     Accept: "application/json",
     Authorization: `Bearer ${opts.token}`,
+    // Ensures Android digital-purchase launch rejection on mode:launch.
+    "User-Agent": "FlexaMarketAndroid",
   };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   return fetch(`${getApiBase()}${path}`, {

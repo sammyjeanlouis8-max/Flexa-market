@@ -10,8 +10,8 @@ import { cn } from "@/lib/utils";
  * --flexa-android-bottom. Always max() — never sum. Cap at 48px.
  *
  * 34px floor: iPhone Safari/WKWebView often reports safe-area-inset-bottom=0,
- * which left a white home-indicator strip ("ba blan") under the black Discover
- * nav and clipped the tab icons. Same floor as .sell-action-footer-row.
+ * which left a white home-indicator strip ("ba blan") under the black nav
+ * and clipped the tab icons. Same floor as .sell-action-footer-row.
  */
 export const PROMO_NAV_SAFE_BOTTOM =
   "min(48px, max(34px, env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px)))";
@@ -37,33 +37,26 @@ function resolveActive(pathname: string): ActiveTab {
 /**
  * Promotional Videos bottom nav.
  *
- * Watch feed (/videos/watch): TRANSPARENT overlay — video stays edge-to-edge
- * behind the icons and through the home-indicator zone (TikTok / mockup).
- * A solid black bar here is exactly the "ba nwa" cutting the video.
- *
- * Discover / Favorites: solid black bar (no fullscreen video behind).
+ * Always a solid black bar (watch + Discover + Favorites), including the
+ * home-indicator zone — keep the "ba nwa" fully painted as in the approved
+ * promo watch mock/screenshot.
  */
 export default function PromoVideosBottomNav({
   active,
   onAdd,
   className,
-  immersive,
+  immersive: _immersive,
 }: {
   active?: ActiveTab;
   onAdd?: () => void;
   className?: string;
-  /** Force watch-feed transparent mode (VideoFeed should pass true). */
+  /** Kept for callers; watch feed uses the same solid black bar. */
   immersive?: boolean;
 }) {
   const { t } = useTranslation();
   const [location, navigate] = useLocation();
   const { user } = useAuth();
   const current = active ?? resolveActive(location);
-  const path = (location.split("?")[0] || location).replace(/\/$/, "") || "/";
-  const isWatchFeed =
-    immersive === true
-    || path === "/videos/watch"
-    || path.startsWith("/videos/watch/");
 
   const goLogin = (next: string) => {
     navigate(`/auth/login?next=${encodeURIComponent(next)}`);
@@ -100,33 +93,27 @@ export default function PromoVideosBottomNav({
   const itemClass = (isActive: boolean) =>
     cn(
       "flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 transition-colors",
-      isWatchFeed && "drop-shadow-[0_1px_4px_rgba(0,0,0,0.95)]",
-      isActive ? "text-white" : isWatchFeed ? "text-white/92" : "text-white/55",
+      isActive ? "text-white" : "text-white/55",
     );
 
   return (
     <nav
       className={cn(
-        "promo-videos-bottom-nav pointer-events-auto fixed inset-x-0 bottom-0 z-[70] lg:hidden",
-        isWatchFeed ? "border-t-0" : "border-t border-white/10 bg-black",
+        "promo-videos-bottom-nav pointer-events-auto fixed inset-x-0 bottom-0 z-[70] lg:hidden border-t border-white/10 bg-black",
         className,
       )}
       style={{
-        // Transparent padding lifts icons above the home indicator WITHOUT
-        // painting a black slab — video shows through that zone on watch.
         paddingBottom: PROMO_NAV_SAFE_BOTTOM,
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
-        backgroundColor: isWatchFeed ? "transparent" : "#000",
-        backgroundImage: isWatchFeed
-          ? "linear-gradient(to top, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.18) 55%, transparent 100%)"
-          : "none",
+        backgroundColor: "#000",
+        backgroundImage: "none",
         boxShadow: "none",
         overflow: "visible",
       }}
       aria-label={t("nav.main", { defaultValue: "Main navigation" })}
       data-testid="promo-videos-bottom-nav"
-      data-watch-transparent={isWatchFeed ? "true" : "false"}
+      data-watch-transparent="false"
     >
       <div
         className="grid w-full grid-cols-5 items-center px-1"

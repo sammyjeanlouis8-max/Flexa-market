@@ -59,4 +59,14 @@ describe("admin users country read-only", () => {
     expect(adminRoutes).toMatch(/commonDevices/);
     expect(adminRoutes).toMatch(/assertUserInScope/);
   });
+
+  it("exposes Devices & Sessions plus sign-out-all and internal-note", () => {
+    expect(adminRoutes).toMatch(/router\.get\("\/admin\/users\/:id\/devices"/);
+    expect(adminRoutes).toMatch(/buildDevicesFromLoginLogs/);
+    expect(adminRoutes).toMatch(/getActiveSocketCount/);
+    expect(adminRoutes).toMatch(/router\.post\("\/admin\/users\/:id\/sign-out-all"/);
+    expect(adminRoutes).toMatch(/router\.post\("\/admin\/users\/:id\/internal-note"/);
+    expect(adminRoutes).toMatch(/user_sign_out_all/);
+    expect(adminRoutes).toMatch(/user_internal_note/);
+  });
 });

@@ -26,6 +26,58 @@ export type ControlPresenceBadge = {
   label: string;
 };
 
+/** Shared UA parser for Control presence + Devices & Sessions. */
+export function parseUserAgentLoose(
+  ua: string | null | undefined,
+): { device: string; os: string; browser: string } {
+  if (!ua || !String(ua).trim()) {
+    return { device: "Unavailable", os: "Unavailable", browser: "Unavailable" };
+  }
+  const s = String(ua);
+  let device = "Unavailable";
+  let os = "Unavailable";
+  let browser = "Unavailable";
+  if (/iPhone/.test(s)) {
+    // Prefer an explicit model token when present (e.g. "iPhone 15", "iPhone15,2").
+    const named = s.match(/\b(iPhone\s?\d{1,2}(?:\s?(?:Pro(?:\s?Max)?|Plus|mini))?)\b/i);
+    const ident = s.match(/\b(iPhone\d{1,2},\d)\b/i);
+    if (named) device = named[1]!.replace(/\s+/g, " ").trim();
+    else if (ident) device = ident[1]!;
+    else device = "iPhone";
+  } else if (/iPad/.test(s)) device = "iPad";
+  else if (/Android/.test(s)) {
+    const m = s.match(/Android [^;]+; ([^)]+)\)/);
+    device = m ? m[1]!.trim() : "Android";
+  } else if (/Macintosh/.test(s)) device = "Mac";
+  else if (/Windows/.test(s)) device = "Windows PC";
+  else if (/Linux/.test(s)) device = "Linux";
+  const iosM = s.match(/OS ([\d_]+) like/);
+  if (iosM) os = "iOS " + iosM[1]!.replace(/_/g, ".");
+  else {
+    const andM = s.match(/Android ([\d.]+)/);
+    if (andM) os = "Android " + andM[1];
+    else {
+      const winM = s.match(/Windows NT ([\d.]+)/);
+      if (winM) {
+        const nm: Record<string, string> = { "10.0": "10/11", "6.3": "8.1", "6.2": "8", "6.1": "7" };
+        os = "Windows " + (nm[winM[1]!] || winM[1]);
+      } else {
+        const macM = s.match(/Mac OS X ([\d_]+)/);
+        if (macM) os = "macOS " + macM[1]!.replace(/_/g, ".");
+      }
+    }
+  }
+  if (/CriOS/.test(s)) browser = "Chrome iOS";
+  else if (/FxiOS/.test(s)) browser = "Firefox iOS";
+  else if (/SamsungBrowser/.test(s)) browser = "Samsung Browser";
+  else if (/EdgA?\//.test(s)) browser = "Edge";
+  else if (/OPR\//.test(s)) browser = "Opera";
+  else if (/Chrome\//.test(s)) browser = "Chrome";
+  else if (/Firefox\//.test(s)) browser = "Firefox";
+  else if (/Safari\//.test(s) && /Version\//.test(s)) browser = "Safari";
+  return { device, os, browser };
+}
+
 export function isMessageSystemAccount(user: {
   email?: string | null;
   role?: string | null;

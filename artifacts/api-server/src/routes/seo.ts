@@ -182,7 +182,7 @@ router.get("/seo/categories/:slug", async (req, res): Promise<void> => {
       ...siblingCategories.filter((c) => c.slug !== category.slug),
     ].slice(0, 24);
 
-    const html = renderCategorySeoHtml({
+    const seoInput = {
       slug: category.slug,
       name: category.name,
       description: (category as any).description ?? null,
@@ -194,11 +194,15 @@ router.get("/seo/categories/:slug", async (req, res): Promise<void> => {
         image: cleanListingImages(p.images)[0] ?? null,
       })),
       relatedCategories,
-    });
+    };
+    const html = renderCategorySeoHtml(seoInput);
+    // Empty categories remain guest-browsable but stay out of the index
+    // until at least one eligible public product exists.
+    const robots = seoInput.products.length > 0 ? "index, follow" : "noindex, follow";
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=300, s-maxage=600, stale-while-revalidate=86400");
-    res.setHeader("X-Robots-Tag", "index, follow");
+    res.setHeader("X-Robots-Tag", robots);
     res.status(200).send(html);
   } catch (err) {
     logger.error({ err, slug }, "seo category html failed");

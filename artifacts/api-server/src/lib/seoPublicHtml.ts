@@ -256,10 +256,17 @@ export function buildCategorySeoTitle(category: PublicCategorySeoInput): string 
   return `${category.name} — Buy & sell on ${SEO_BRAND_NAME}`;
 }
 
+/** Empty categories stay reachable for guests but are not indexed until inventory exists. */
+export function categoryIsIndexable(category: PublicCategorySeoInput): boolean {
+  return category.products.length > 0;
+}
+
 export function renderCategorySeoHtml(category: PublicCategorySeoInput, baseUrl = SEO_BASE_URL): string {
   const url = `${baseUrl}/categories/${encodeURIComponent(category.slug)}`;
   const title = buildCategorySeoTitle(category);
   const description = buildCategoryMetaDescription(category);
+  const indexable = categoryIsIndexable(category);
+  const robots = indexable ? "index, follow" : "noindex, follow";
   const itemList = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
@@ -304,7 +311,7 @@ export function renderCategorySeoHtml(category: PublicCategorySeoInput, baseUrl 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(description)}" />
-  <meta name="robots" content="index, follow" />
+  <meta name="robots" content="${robots}" />
   <link rel="canonical" href="${escapeHtml(url)}" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="${escapeHtml(title)}" />

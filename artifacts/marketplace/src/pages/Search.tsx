@@ -387,22 +387,6 @@ export default function SearchPage() {
       ? t("seo.electronicsHeading", { defaultValue: "Electronics & phones" })
       : categorySeoName
     : t("seo.searchHeading", { defaultValue: "Search listings" });
-  useSEO({
-    title: pathCategory
-      ? isElectronics
-        ? t("seo.electronicsTitle")
-        : t("seo.categoryTitle", { name: categorySeoName })
-      : t("seo.searchTitle"),
-    description: pathCategory
-      ? isElectronics
-        ? t("seo.electronicsDescription")
-        : t("seo.categoryDescription", { name: categorySeoName })
-      : t("seo.searchDescription"),
-    path: pathCategory ? `/categories/${pathCategory}` : "/search",
-    absoluteTitle: true,
-    // Faceted /search URLs should not compete with canonical category pages.
-    noindex: !pathCategory,
-  });
 
   const { data, isLoading } = useGetListings(
     {
@@ -433,6 +417,24 @@ export default function SearchPage() {
       },
     },
   );
+
+  // Faceted /search is always noindex. Canonical category indexing is decided
+  // by bot SEO HTML + sitemap (empty categories → noindex / omitted).
+  useSEO({
+    title: pathCategory
+      ? isElectronics
+        ? t("seo.electronicsTitle")
+        : t("seo.categoryTitle", { name: categorySeoName })
+      : t("seo.searchTitle"),
+    description: pathCategory
+      ? isElectronics
+        ? t("seo.electronicsDescription")
+        : t("seo.categoryDescription", { name: categorySeoName })
+      : t("seo.searchDescription"),
+    path: pathCategory ? `/categories/${pathCategory}` : "/search",
+    absoluteTitle: true,
+    noindex: !pathCategory,
+  });
 
   const clearFilters = useCallback(() => {
     setQ(""); setCategory(""); setSubcategory(""); setCondition("");

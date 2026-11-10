@@ -87,7 +87,7 @@ describe("seoPublicHtml helpers", () => {
     expect(html).toContain("Flexa Market");
   });
 
-  it("keeps empty category pages indexable with unique meta", () => {
+  it("keeps empty category pages reachable but noindex", () => {
     const html = renderCategorySeoHtml({
       slug: "real-estate",
       name: "Real Estate",
@@ -95,11 +95,21 @@ describe("seoPublicHtml helpers", () => {
     });
     expect(html).toContain('rel="canonical" href="https://flexamarket.com/categories/real-estate"');
     expect(html).toContain("No public products in this category right now.");
+    expect(html).toContain('name="robots" content="noindex, follow"');
     expect(buildCategoryMetaDescription({
       slug: "real-estate",
       name: "Real Estate",
       products: [],
     })).toContain("Real Estate");
+  });
+
+  it("indexes category pages that have public products", () => {
+    const html = renderCategorySeoHtml({
+      slug: "fashion",
+      name: "Fashion",
+      products: [{ id: 1, title: "Shirt", price: 10, currency: "USD" }],
+    });
+    expect(html).toContain('name="robots" content="index, follow"');
   });
 
   it("targets phone intents on the electronics category page", () => {
@@ -143,7 +153,8 @@ describe("SEO catalog wiring contracts", () => {
     expect(sitemap).not.toMatch(/is_removed/);
     expect(sitemap).toMatch(/sitemap-categories\.xml/);
     expect(sitemap).toMatch(/parent_id IS NULL/);
-    expect(sitemap).not.toMatch(/INNER JOIN listings/);
+    expect(sitemap).toMatch(/INNER JOIN listings/);
+    expect(seo).toMatch(/noindex, follow/);
     expect(nginx).toMatch(/flexa_is_seo_bot/);
     expect(nginx).toMatch(/\/api\/seo\/listings\/\$listing_id/);
     expect(nginx).toMatch(/\/api\/seo\/categories\/\$category_slug/);

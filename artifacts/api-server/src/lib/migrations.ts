@@ -3326,6 +3326,26 @@ export async function runStartupMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS guest_visitors INTEGER NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS registered_visitors INTEGER NOT NULL DEFAULT 0`,
   });
+  migrations.push({
+    name: "users.username",
+    sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS username text`,
+  });
+  migrations.push({
+    name: "users.username_unique",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx ON users (lower(username)) WHERE username IS NOT NULL`,
+  });
+  migrations.push({
+    name: "users.video_bio",
+    sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS video_bio text`,
+  });
+  migrations.push({
+    name: "users.video_liked_public",
+    sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS video_liked_public boolean NOT NULL DEFAULT false`,
+  });
+  migrations.push({
+    name: "listings.video_pinned_at",
+    sql: `ALTER TABLE listings ADD COLUMN IF NOT EXISTS video_pinned_at timestamptz`,
+  });
 
   for (const m of migrations) {
     try {
@@ -3409,6 +3429,46 @@ export async function runStartupMigrations(): Promise<void> {
     }
   } catch (err: any) {
     logger.warn({ err: err?.message }, "Migration: name-based referral code backfill failed (non-fatal)");
+  }
+
+  // One-time-ish: seed unique video-profile usernames from display names for users
+  // that still lack a handle. Idempotent — only touches username IS NULL rows.
+  try {
+    const { rows: missing } = await db.execute(sql.raw(
+      `SELECT id, name FROM users WHERE username IS NULL ORDER BY id LIMIT 5000`,
+    ));
+    if (missing.length > 0) {
+      const { rows: existing } = await db.execute(sql.raw(
+        `SELECT lower(username) AS u FROM users WHERE username IS NOT NULL`,
+      ));
+      const used = new Set(existing.map((r: any) => String(r.u)));
+      const slug = (name: string, id: number): string => {
+        const base = String(name ?? "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 20);
+        const root = base.length >= 3 ? base : `user${id}`;
+        let candidate = root.slice(0, 30);
+        if (!used.has(candidate) && candidate.length >= 3) return candidate;
+        for (let i = 0; i < 40; i++) {
+          const suffix = String(10 + Math.floor(Math.random() * 90));
+          candidate = `${root.slice(0, 28)}${suffix}`.slice(0, 30);
+          if (!used.has(candidate)) return candidate;
+        }
+        return `user${id}`;
+      };
+      let seeded = 0;
+      for (const row of missing as any[]) {
+        const candidate = slug(row.name ?? "", row.id);
+        used.add(candidate);
+        await db.execute(sql.raw(
+          `UPDATE users SET username = '${candidate.replace(/'/g, "''")}' WHERE id = ${row.id} AND username IS NULL`,
+        ));
+        seeded++;
+      }
+      logger.info({ seeded }, "Migration: video username backfill complete");
+    }
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: video username backfill failed (non-fatal)");
   }
 
   logger.info({ applied, failed }, "Startup migrations complete");

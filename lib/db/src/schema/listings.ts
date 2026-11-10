@@ -93,6 +93,8 @@ export const listingsTable = pgTable("listings", {
   viewCount: integer("view_count").notNull().default(0),
   favoriteCount: integer("favorite_count").notNull().default(0),
   sharesCount: integer("shares_count").notNull().default(0),
+  /** When set, this promo video is pinned at the top of the creator's Videos grid. */
+  videoPinnedAt: timestamp("video_pinned_at", { withTimezone: true }),
   sellerId: integer("seller_id").notNull().references(() => usersTable.id),
   /**
    * Client-supplied publish key. Retries with the same key return the original

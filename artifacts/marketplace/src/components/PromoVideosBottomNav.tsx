@@ -25,6 +25,7 @@ type ActiveTab = "home" | "discover" | "add" | "favorites" | "profile";
 
 function resolveActive(pathname: string): ActiveTab {
   if (pathname.startsWith("/videos/favorites")) return "favorites";
+  if (pathname.startsWith("/videos/profile")) return "profile";
   if (pathname.startsWith("/videos/watch")) return "discover";
   if (pathname === "/videos" || pathname.startsWith("/videos?")) return "discover";
   if (pathname.startsWith("/profile") || pathname.startsWith("/settings") || pathname.startsWith("/account")) {
@@ -91,10 +92,12 @@ export default function PromoVideosBottomNav({
 
   const handleProfile = () => {
     if (!user) {
-      goLogin("/settings");
+      // After login, Profile tab lands on the signed-in user's video profile.
+      goLogin("/videos");
       return;
     }
-    navigate(`/profile/${user.id}`);
+    // Promotional Videos Profile tab → video profile (not Marketplace /profile/:id).
+    navigate(`/videos/profile/${user.id}`);
   };
 
   const itemClass = (isActive: boolean) =>

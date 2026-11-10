@@ -44,9 +44,22 @@ test("NativeVideoPlayer stops when inactive", () => {
 test("Recovery scripts are approval-gated and default to ROLLBACK", () => {
   const apply = readRepo("scripts/boost-recovery/02_apply.sql");
   const preview = readRepo("scripts/boost-recovery/01_preview.sql");
+  const runner = readRepo("scripts/boost-recovery/run-preview.mjs");
   assert.match(preview, /BEGIN READ ONLY/);
   assert.match(apply, /REQUIRES EXPLICIT WRITTEN APPROVAL/);
   assert.ok(apply.trim().endsWith("ROLLBACK;"));
+  assert.match(runner, /BEGIN READ ONLY/);
+  assert.match(runner, /NO_DATABASE_URL|FLEXA_READONLY_DATABASE_URL/);
+  assert.match(runner, /affectedCampaignCount/);
+});
+
+test("Phase 3Q release validation doc states NO-GO for production data changes", () => {
+  const doc = read("docs/PHASE3Q_RELEASE_VALIDATION.md");
+  assert.match(doc, /NO-GO/);
+  assert.match(doc, /CONDITIONAL GO/);
+  assert.match(doc, /affectedCampaignCount|Exact affected campaign count/i);
+  assert.match(doc, /Account is blocked|Obsolete/i);
+  assert.match(doc, /DigitalOcean/);
 });
 
 test("Phase 3Q inventory honesty floor", () => {

@@ -606,6 +606,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isHomePage = location === "/";
   // Messages page needs full-height layout (no bottom padding, overflow clipped)
   const isMessages = location.startsWith("/messages");
+  // Calculator owns its viewport height so the scientific pad fits without page scroll.
+  const isCalculatorPage = /^\/calculator(?:\/|$)/.test(location);
   // Video feed also needs full-height, immersive layout
   const isVideoFeed = location === "/videos/watch" || location.startsWith("/videos/watch?");
   // Entire Promotional Videos section owns its TikTok-style chrome (header + bottom nav).
@@ -901,7 +903,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       {/* pb-safe-nav = calc(56px + env(safe-area-inset-bottom)) so content
           never hides under the fixed bottom nav on any iPhone model. */}
       <main className={
-        isMessages || isPromoVideosSection
+        isMessages || isPromoVideosSection || isCalculatorPage
           ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isMessageThread ? " message-thread-main" : ""}${isPromoVideosSection ? "" : " md:pl-56"}`
           : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage ? "" : "pb-safe-nav"} md:pl-56`
       }

@@ -58,7 +58,7 @@ const BUTTONS: BtnDef[] = [
   { label: "7", kind: { t: "digit", v: "7" }, color: "num" },
   { label: "8", kind: { t: "digit", v: "8" }, color: "num" },
   { label: "9", kind: { t: "digit", v: "9" }, color: "num" },
-  { label: <Delete className="w-4 h-4" />, kind: { t: "special", v: "DEL" }, color: "dark" },
+  { label: <Delete className="w-3.5 h-3.5" />, kind: { t: "special", v: "DEL" }, color: "dark" },
   { label: "AC", kind: { t: "special", v: "AC" }, color: "orange" },
 
   // Row 6: 4 5 6 × ÷
@@ -114,23 +114,27 @@ export function ScientificMode({ onHistory, onOpenGraph }: Props) {
   const [layout, setLayout] = useState<"classic" | "pro">("classic");
 
   return (
-    <div className="w-full flex flex-col gap-3">
+    <div
+      className="w-full h-full min-h-0 flex flex-col gap-1.5"
+      data-testid="scientific-mode"
+    >
+      {/* Compact layout switcher — keeps the pad visible on short phones */}
       <div
-        className="rounded-xl p-2 flex flex-col gap-1.5"
+        className="rounded-lg px-2 py-1 flex items-center gap-2 flex-shrink-0"
         style={{ background: "#141414", border: "1px solid #2a2a2a" }}
       >
-        <div className="text-[11px] text-center" style={{ color: "#888" }}>
-          Chanje layout Scientific
-        </div>
+        <span className="text-[10px] whitespace-nowrap flex-shrink-0" style={{ color: "#888" }}>
+          Layout
+        </span>
         <div
-          className="grid grid-cols-2 gap-1.5"
+          className="grid grid-cols-2 gap-1 flex-1 min-w-0"
           role="tablist"
           aria-label="Scientific layout"
         >
           {(
             [
-              { id: "classic", label: "Classic", hint: "SHIFT · memwa · sin/cos" },
-              { id: "pro", label: "Pro (TI-84)", hint: "2nd · ALPHA · notasyon natirèl" },
+              { id: "classic", label: "Classic" },
+              { id: "pro", label: "Pro (TI-84)" },
             ] as const
           ).map((tab) => {
             const active = layout === tab.id;
@@ -141,31 +145,29 @@ export function ScientificMode({ onHistory, onOpenGraph }: Props) {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setLayout(tab.id)}
-                className="px-3 py-2.5 rounded-xl text-left active:scale-[0.98] transition-transform"
+                className="px-2 py-1 rounded-md text-center active:scale-[0.98] transition-transform text-xs font-bold"
                 style={{
                   background: active ? "#39ff14" : "#1a1a1a",
                   color: active ? "#0a0a0a" : "#ddd",
                   border: active ? "1px solid #39ff14" : "1px solid #333",
                 }}
               >
-                <div className="text-sm font-bold">{tab.label}</div>
-                <div
-                  className="text-[10px] mt-0.5 leading-snug"
-                  style={{ color: active ? "#1a3d1a" : "#777" }}
-                >
-                  {tab.hint}
-                </div>
+                {tab.label}
               </button>
             );
           })}
         </div>
       </div>
 
-      {layout === "pro" ? (
-        <ScientificProMode onHistory={onHistory} onOpenGraph={onOpenGraph} />
-      ) : (
-        <ScientificClassicPad onHistory={onHistory} />
-      )}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {layout === "pro" ? (
+          <div className="h-full min-h-0 overflow-y-auto overscroll-contain">
+            <ScientificProMode onHistory={onHistory} onOpenGraph={onOpenGraph} />
+          </div>
+        ) : (
+          <ScientificClassicPad onHistory={onHistory} />
+        )}
+      </div>
     </div>
   );
 }
@@ -368,27 +370,27 @@ function ScientificClassicPad({ onHistory }: { onHistory: (entry: HistoryEntry) 
 
   const resultColor =
     !expr || preview.ok ? "#c8e6c0" : "#e07070";
-  const resultSize =
+  const resultSizeFit =
     String(displayResult).length > 11
-      ? 22
+      ? 18
       : String(displayResult).length > 8
-        ? 28
-        : 36;
+        ? 24
+        : 30;
 
   return (
-    <div className="flex items-start justify-center w-full">
+    <div className="flex items-stretch justify-center w-full h-full min-h-0">
       <div
-        className="w-full flex flex-col rounded-2xl overflow-hidden"
+        className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden"
         style={{
           background: "#111",
           maxWidth: 360,
-          height: "min(600px, calc(100dvh - 160px))",
           boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
         }}
+        data-testid="scientific-classic-pad"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-shrink-0">
-          <span className="text-white font-bold text-base tracking-wide">Scientific</span>
+        <div className="flex items-center justify-between px-2.5 pt-1.5 pb-0.5 flex-shrink-0">
+          <span className="text-white font-bold text-sm tracking-wide">Scientific</span>
           <div className="flex items-center gap-2">
             {hasMemory && (
               <span className="text-[#7ec87e] text-xs font-bold" aria-label="Memory set">
@@ -398,7 +400,7 @@ function ScientificClassicPad({ onHistory }: { onHistory: (entry: HistoryEntry) 
             <button
               type="button"
               onClick={() => setAngle((a) => (a === "DEG" ? "RAD" : "DEG"))}
-              className="px-2 py-0.5 rounded text-xs font-bold border"
+              className="px-2 py-0.5 rounded text-[11px] font-bold border"
               style={{
                 color: angle === "DEG" ? "#f97316" : "#7ec8e3",
                 borderColor: angle === "DEG" ? "#f97316" : "#7ec8e3",
@@ -411,12 +413,12 @@ function ScientificClassicPad({ onHistory }: { onHistory: (entry: HistoryEntry) 
           </div>
         </div>
 
-        {/* Display */}
+        {/* Display — compact so the 8-row pad fits above the bottom nav */}
         <div
-          className="mx-2 rounded-xl px-3 pt-2 pb-2 mb-2 flex flex-col items-end justify-end flex-shrink-0"
+          className="mx-1.5 rounded-lg px-2.5 pt-1.5 pb-1.5 mb-1 flex flex-col items-end justify-end flex-shrink-0"
           style={{
             background: "#1a2318",
-            minHeight: 68,
+            minHeight: 48,
             boxShadow: "inset 0 2px 8px rgba(0,0,0,0.6)",
           }}
         >
@@ -425,8 +427,8 @@ function ScientificClassicPad({ onHistory }: { onHistory: (entry: HistoryEntry) 
             style={{
               color: "#6a9a6a",
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              fontSize: 12,
-              minHeight: 16,
+              fontSize: 11,
+              minHeight: 14,
             }}
           >
             {displayExpr.length > 30 ? "…" + displayExpr.slice(-29) : displayExpr}
@@ -436,20 +438,20 @@ function ScientificClassicPad({ onHistory }: { onHistory: (entry: HistoryEntry) 
             style={{
               color: resultColor,
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              fontSize: resultSize,
+              fontSize: resultSizeFit,
             }}
           >
             {displayResult}
           </div>
         </div>
 
-        {/* Button grid */}
+        {/* Button grid — minmax(0,1fr) lets rows shrink inside the viewport */}
         <div
-          className="px-2 pb-2 grid grid-cols-5"
+          className="px-1.5 pb-1.5 grid grid-cols-5"
           style={{
             flex: 1,
-            gap: 4,
-            gridTemplateRows: "repeat(8, 1fr)",
+            gap: 3,
+            gridTemplateRows: "repeat(8, minmax(0, 1fr))",
             minHeight: 0,
           }}
         >
@@ -483,16 +485,16 @@ function ScientificClassicPad({ onHistory }: { onHistory: (entry: HistoryEntry) 
                 }}
                 className={`
                   relative flex flex-col items-center justify-center
-                  rounded-lg select-none active:scale-95
-                  transition-transform duration-75 w-full h-full
+                  rounded-md select-none active:scale-95
+                  transition-transform duration-75 w-full h-full min-h-0
                   ${colorClass}
                 `}
               >
                 {btn.sub && (
                   <span
-                    className="absolute top-0.5 left-0 right-0 text-center leading-none"
+                    className="absolute top-0 left-0 right-0 text-center leading-none pointer-events-none"
                     style={{
-                      fontSize: 7,
+                      fontSize: 6,
                       color: shiftOn ? "#f97316" : "rgba(255,255,255,0.3)",
                     }}
                   >
@@ -503,7 +505,7 @@ function ScientificClassicPad({ onHistory }: { onHistory: (entry: HistoryEntry) 
                   className="font-semibold leading-none"
                   style={{
                     fontSize:
-                      typeof mainLabel === "string" && mainLabel.length > 3 ? 11 : 15,
+                      typeof mainLabel === "string" && mainLabel.length > 3 ? 10 : 13,
                   }}
                 >
                   {mainLabel}

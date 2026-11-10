@@ -54,8 +54,8 @@ export function PushBootstrap() {
 
     const subRecv = Notifications.addNotificationReceivedListener(() => {
       /* Foreground display: setNotificationHandler in pushPrep.
-         Inbox rows are not duplicated here — Notifications screen
-         refreshes from GET /api/notifications on focus. */
+         Do not insert local inbox rows — Notifications screen refreshes
+         from GET /api/notifications on focus / pull-to-refresh. */
     });
 
     const subResp = Notifications.addNotificationResponseReceivedListener((response) => {

@@ -165,6 +165,191 @@ export async function fetchSellerOrders(opts: AuthOpts): Promise<SellerSaleOrder
   return [];
 }
 
+export async function restockListing(
+  id: number,
+  add: number,
+  opts: AuthOpts,
+): Promise<{ ok: boolean; stockQuantity?: number; status?: string }> {
+  const res = await authedFetch(`/listings/${id}/restock`, {
+    ...opts,
+    method: "PATCH",
+    body: { add },
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Restock failed (${res.status})`);
+  return data;
+}
+
+export type SalesSummary = {
+  orderCount: number;
+  totalSales: number;
+  totalCommission: number;
+  netEarnings: number;
+};
+
+export async function fetchSalesSummary(opts: AuthOpts): Promise<SalesSummary> {
+  const res = await authedFetch("/sales/summary", opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Sales summary failed (${res.status})`);
+  return {
+    orderCount: Number(data.orderCount ?? 0),
+    totalSales: Number(data.totalSales ?? 0),
+    totalCommission: Number(data.totalCommission ?? 0),
+    netEarnings: Number(data.netEarnings ?? 0),
+  };
+}
+
+export type SellerAnalytics = {
+  overview?: {
+    views?: number;
+    organicViews?: number;
+    sponsoredViews?: number;
+    clicks?: number;
+    sales?: number;
+    revenue?: number;
+    ctr?: number;
+    favorites?: number;
+  };
+  listings?: Array<{
+    id: number;
+    title?: string;
+    viewCount?: number;
+    status?: string;
+    price?: number;
+  }>;
+  boosts?: unknown[];
+  range?: string;
+  [key: string]: unknown;
+};
+
+export async function fetchSellerAnalytics(
+  range: "today" | "7d" | "30d" | "90d" = "30d",
+  opts: AuthOpts,
+): Promise<SellerAnalytics> {
+  const res = await authedFetch(`/seller/analytics?range=${range}`, opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Analytics failed (${res.status})`);
+  return data as SellerAnalytics;
+}
+
+export type PayoutAccount = {
+  moncashNumber?: string | null;
+  moncashVerified?: boolean;
+  bankName?: string | null;
+  bankAccountName?: string | null;
+  bankAccountNumber?: string | null;
+  bankVerified?: boolean;
+  cardPayoutMethod?: "fm_wallet" | "stripe" | string | null;
+  [key: string]: unknown;
+} | null;
+
+export async function fetchPayoutAccount(opts: AuthOpts): Promise<PayoutAccount> {
+  const res = await authedFetch("/seller/payout-account", opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Payout account failed (${res.status})`);
+  return data ?? null;
+}
+
+export async function saveMoncashPayout(
+  moncashNumber: string,
+  opts: AuthOpts,
+): Promise<PayoutAccount> {
+  const res = await authedFetch("/seller/payout-account/moncash", {
+    ...opts,
+    method: "PUT",
+    body: { moncashNumber },
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `MonCash save failed (${res.status})`);
+  return data;
+}
+
+export async function saveBankPayout(
+  input: { bankName: string; bankAccountName: string; bankAccountNumber: string },
+  opts: AuthOpts,
+): Promise<PayoutAccount> {
+  const res = await authedFetch("/seller/payout-account/bank", {
+    ...opts,
+    method: "PUT",
+    body: input,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Bank save failed (${res.status})`);
+  return data;
+}
+
+export async function setCardPayoutMethod(
+  method: "fm_wallet" | "stripe",
+  opts: AuthOpts,
+): Promise<PayoutAccount> {
+  const res = await authedFetch("/seller/payout-account/card-method", {
+    ...opts,
+    method: "PATCH",
+    body: { method },
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Card method failed (${res.status})`);
+  return data;
+}
+
+export type BoostCampaign = {
+  id: number;
+  listingId?: number;
+  plan?: string;
+  status?: string;
+  paymentStatus?: string;
+  budget?: number;
+  impressions?: number;
+  clicks?: number;
+  expiresAt?: string | null;
+  createdAt?: string;
+  title?: string;
+  [key: string]: unknown;
+};
+
+export async function fetchMyBoosts(opts: AuthOpts): Promise<BoostCampaign[]> {
+  const res = await authedFetch("/boost/my-active", opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Boosts failed (${res.status})`);
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.boosts)) return data.boosts;
+  return [];
+}
+
+export async function fetchBoosterCampaigns(opts: AuthOpts): Promise<BoostCampaign[]> {
+  const res = await authedFetch("/booster/campaigns", opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Campaigns failed (${res.status})`);
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.campaigns)) return data.campaigns;
+  return [];
+}
+
+export type VideoFeedItem = {
+  id: number;
+  videoUrl?: string | null;
+  title?: string | null;
+  listingId?: number | null;
+  [key: string]: unknown;
+};
+
+export async function fetchVideosFeed(
+  opts: AuthOpts & { sort?: string; page?: number } = { token: "" },
+): Promise<VideoFeedItem[]> {
+  const q = new URLSearchParams({
+    page: String(opts.page ?? 1),
+    limit: "20",
+    sort: opts.sort ?? "mine",
+  });
+  const res = await authedFetch(`/videos/feed?${q}`, opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Videos failed (${res.status})`);
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.videos)) return data.videos;
+  if (Array.isArray(data.items)) return data.items;
+  return [];
+}
+
 export function validateListingDraft(input: Partial<CreateListingInput>): string | null {
   if (!input.title?.trim() || input.title.trim().length < 3) return "Title must be at least 3 characters";
   if (!input.description?.trim() || input.description.trim().length < 10) {

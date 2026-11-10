@@ -243,6 +243,9 @@ export default function SellTab() {
           <Pressable style={styles.linkBtn} onPress={() => router.push("/sales")}>
             <Text style={styles.linkText}>Sales</Text>
           </Pressable>
+          <Pressable style={styles.linkBtn} onPress={() => router.push("/seller-earnings")}>
+            <Text style={styles.linkText}>Earnings</Text>
+          </Pressable>
         </View>
       </View>
 

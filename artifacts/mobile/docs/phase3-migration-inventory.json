@@ -4,7 +4,7 @@
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
   "pr": null,
-  "branch": "cursor/native-buyer-phase3e-09ff",
+  "branch": "cursor/native-seller-phase3f-09ff",
   "auditedAt": "2026-11-09T22:10:00Z",
   "auditCommit": "deeda28a",
   "verification": {
@@ -21,13 +21,16 @@
       "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell).",
       "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
       "Realtime via socket.io /api/socket.io with HTTP polling fallback.",
-      "Phase 3E: buyer recovery, categories, delivery tip/rate, help/legal/delete, public track/shop."
+      "Phase 3E: buyer recovery, categories, delivery tip/rate, help/legal/delete, public track/shop.",
+      "Phase 3F: edit listing, inventory restock, seller analytics, earnings/payouts, boost library read-only."
     ],
     "phase3b": true,
     "phase3c": true,
     "phase3d": true,
     "phase3e": true,
-    "phase3eStartCommit": "65df21a5"
+    "phase3eStartCommit": "65df21a5",
+    "phase3f": true,
+    "phase3fStartCommit": "04986815"
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -96,10 +99,10 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 40,
-    "PARTIALLY_NATIVE": 2,
-    "PLACEHOLDER": 11,
-    "MISSING": 24,
+    "FULLY_NATIVE": 46,
+    "PARTIALLY_NATIVE": 4,
+    "PLACEHOLDER": 7,
+    "MISSING": 20,
     "BLOCKED": 5
   },
   "features": [
@@ -884,16 +887,14 @@
       "name": "Edit Product",
       "domain": "seller",
       "webRoute": "/sell?edit= / listing edit",
-      "nativeRoute": null,
+      "nativeRoute": "/edit-listing/[id]",
       "role": "seller",
       "apis": [
-        "PATCH /api/listings/:id"
+        "/api/listings/:id"
       ],
-      "status": "MISSING",
-      "missing": [
-        "edit screen"
-      ],
-      "work": "With Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3F native edit + Wasabi images via PUT /listings/:id"
     },
     {
       "id": "image-upload",
@@ -915,33 +916,32 @@
       "name": "Video Upload",
       "domain": "seller",
       "webRoute": "/videos, drafts",
-      "nativeRoute": "/videos",
+      "nativeRoute": "/videos,/edit-listing/[id]",
       "role": "seller",
       "apis": [
         "/api/videos/*",
         "/api/storage/uploads"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "upload + discover UI"
+        "chunked listing/boost video composer UI"
       ],
-      "work": "After image upload"
+      "work": "Images FULLY via Wasabi; chunked video composer deferred"
     },
     {
       "id": "inventory",
       "name": "Inventory / Restock",
       "domain": "seller",
       "webRoute": "(listing management)",
-      "nativeRoute": null,
+      "nativeRoute": "/my-listings",
       "role": "seller",
       "apis": [
-        "/api/listings/:id/restock"
+        "/api/listings/:id/restock",
+        "/api/listings/:id"
       ],
-      "status": "MISSING",
-      "missing": [
-        "stock controls"
-      ],
-      "work": "With my-listings"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3F restock + stock field on edit"
     },
     {
       "id": "sales-dashboard",
@@ -956,23 +956,21 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3D: /sales dashboard + seller orders"
+      "work": "Phase 3F enriched with /sales/summary + analytics/earnings links"
     },
     {
       "id": "seller-analytics",
       "name": "Sales Analytics",
       "domain": "seller",
       "webRoute": "/settings/analytics",
-      "nativeRoute": null,
+      "nativeRoute": "/seller-analytics",
       "role": "seller",
       "apis": [
         "/api/seller/analytics"
       ],
-      "status": "MISSING",
-      "missing": [
-        "analytics charts"
-      ],
-      "work": "Later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3F analytics ranges from verified views/sales"
     },
     {
       "id": "seller-orders",
@@ -995,18 +993,16 @@
       "name": "Earnings / Commissions / Payouts",
       "domain": "seller",
       "webRoute": "/settings/payments, wallet",
-      "nativeRoute": null,
+      "nativeRoute": "/seller-earnings",
       "role": "seller",
       "apis": [
-        "/api/seller/payout-account*",
-        "/api/commission/quote"
+        "/api/sales/summary",
+        "/api/seller/payout-account",
+        "/api/wallet/balance"
       ],
-      "status": "MISSING",
-      "missing": [
-        "payout onboarding UI",
-        "Stripe Connect return"
-      ],
-      "work": "After Wallet/Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3F summary + MonCash/bank/card method; no invented balances"
     },
     {
       "id": "boost",
@@ -1019,11 +1015,11 @@
         "/api/boost/*",
         "/api/booster/*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "campaign create UI"
+        "paid boost checkout (Play blocked)"
       ],
-      "work": "Paid boost BLOCKED on Android; free/admin modes may work"
+      "work": "Phase 3F entry explains block; routes to campaign library"
     },
     {
       "id": "boost-paid",
@@ -1049,13 +1045,12 @@
       "nativeRoute": "/my-boosts",
       "role": "seller",
       "apis": [
-        "/api/boost-analytics*"
+        "/api/boost/my-active",
+        "/api/booster/campaigns"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "analytics UI"
-      ],
-      "work": "After Boost"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3F read-only campaign library"
     },
     {
       "id": "promo-videos",
@@ -1067,11 +1062,9 @@
       "apis": [
         "/api/videos/feed"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "TikTok-style feed"
-      ],
-      "work": "Medium priority"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3F promo video feed (mine); paid create still blocked"
     },
     {
       "id": "drafts",

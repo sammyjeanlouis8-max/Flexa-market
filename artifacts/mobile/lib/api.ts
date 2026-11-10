@@ -30,6 +30,8 @@ export type Listing = {
   sellerIsVerified?: boolean;
   createdAt?: string;
   stockQuantity?: number | null;
+  categorySlug?: string | null;
+  moderationStatus?: string | null;
 };
 
 export type HomeStats = {

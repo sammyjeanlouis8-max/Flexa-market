@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 
 export type SearchUrlState = {
   q: string;
@@ -22,14 +23,14 @@ export function categorySlugFromPath(pathname?: string): string | null {
   return m?.[1]?.toLowerCase() ?? null;
 }
 
-function readFromLocation(): SearchUrlState {
+function readFromLocation(pathname?: string): SearchUrlState {
   const params = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : "",
   );
   const min = Number(params.get("minPrice") ?? "0");
   const max = Number(params.get("maxPrice") ?? String(DEFAULT_MAX));
   const page = Number(params.get("page") ?? "1");
-  const pathCategory = categorySlugFromPath();
+  const pathCategory = categorySlugFromPath(pathname);
   return {
     q: params.get("q") ?? "",
     category: pathCategory || (params.get("category") ?? ""),
@@ -86,7 +87,7 @@ export function buildPathname(
     // Cleared filter or switched category → shareable /search URL.
     return "/search";
   }
-  if (pathname) return pathname;
+  if (pathname) return pathname.startsWith("/search") ? "/search" : pathname;
   return typeof window !== "undefined" ? window.location.pathname : "/search";
 }
 
@@ -100,12 +101,14 @@ export function buildSearchUrl(
 
 /**
  * Keep Search filters shareable and back-button friendly without full reloads.
- * Uses history.replaceState so typing does not spam browser history.
+ * Path changes go through wouter so /categories/:slug ↔ /search rematch correctly.
+ * Query-only edits use history.replaceState to avoid history spam while typing.
  */
 export function useSearchUrlSync(
   state: SearchUrlState,
   onPopState: (next: SearchUrlState) => void,
 ) {
+  const [location, setLocation] = useLocation();
   const onPopRef = useRef(onPopState);
   onPopRef.current = onPopState;
   const skipWrite = useRef(false);
@@ -116,17 +119,25 @@ export function useSearchUrlSync(
       skipWrite.current = false;
       return;
     }
-    const next = buildSearchUrl(state, window.location.pathname);
+    const currentPath = location.split("?")[0] || window.location.pathname;
+    const next = buildSearchUrl(state, currentPath);
     const current = `${window.location.pathname}${window.location.search}`;
     if (next === current) return;
+
+    const nextPath = next.split("?")[0];
+    if (nextPath !== currentPath) {
+      // Leaving or entering a canonical category path — update the router.
+      setLocation(next);
+      return;
+    }
     window.history.replaceState(window.history.state, "", next);
-  }, [state]);
+  }, [state, location, setLocation]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = () => {
       skipWrite.current = true;
-      onPopRef.current(readFromLocation());
+      onPopRef.current(readFromLocation(window.location.pathname));
     };
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);

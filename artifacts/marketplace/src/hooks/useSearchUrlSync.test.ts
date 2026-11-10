@@ -81,3 +81,10 @@ test("switching category from a category page uses /search?category=", () => {
     "/search?category=electronics",
   );
 });
+
+test("search path keeps category as a query param", () => {
+  assert.equal(
+    buildSearchUrl({ ...base, category: "shoes", q: "nike" }, "/search"),
+    "/search?q=nike&category=shoes",
+  );
+});

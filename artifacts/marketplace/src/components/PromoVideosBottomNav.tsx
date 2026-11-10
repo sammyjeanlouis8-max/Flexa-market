@@ -5,25 +5,21 @@ import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
 
 /**
- * Discover / Favorites: 34px floor so a white home-indicator strip ("ba blan")
- * cannot appear under the solid black bar when safe-area reports 0.
+ * Single bottom inset for the promo nav.
+ * Prefer CSS env(); fall back to --sab (iOS FlexaMarket WKWebView) and
+ * --flexa-android-bottom. Always max() — never sum. Cap at 48px.
  *
- * Watch feed: NO 34px floor — a forced floor recreates the thick "ba nwa"
- * under transparent icons. Prefer real env()/--sab/--flexa-android-bottom only.
+ * 34px floor: iPhone Safari/WKWebView often reports safe-area-inset-bottom=0,
+ * which left a white home-indicator strip ("ba blan") under the black nav
+ * and clipped the tab icons. Same floor as .sell-action-footer-row.
  */
-export const PROMO_NAV_SAFE_BOTTOM_DISCOVER =
+export const PROMO_NAV_SAFE_BOTTOM =
   "min(48px, max(34px, env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px)))";
-
-export const PROMO_NAV_SAFE_BOTTOM_WATCH =
-  "min(48px, max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), var(--flexa-android-bottom, 0px)))";
-
-/** @deprecated Prefer PROMO_NAV_SAFE_BOTTOM_DISCOVER / _WATCH */
-export const PROMO_NAV_SAFE_BOTTOM = PROMO_NAV_SAFE_BOTTOM_DISCOVER;
 
 /** Compact content row (icons + labels). */
 export const PROMO_NAV_CONTENT_PX = 52;
 
-export const PROMO_NAV_HEIGHT_CSS = `calc(${PROMO_NAV_CONTENT_PX}px + ${PROMO_NAV_SAFE_BOTTOM_DISCOVER})`;
+export const PROMO_NAV_HEIGHT_CSS = `calc(${PROMO_NAV_CONTENT_PX}px + ${PROMO_NAV_SAFE_BOTTOM})`;
 
 type ActiveTab = "home" | "discover" | "add" | "favorites" | "profile";
 
@@ -41,33 +37,26 @@ function resolveActive(pathname: string): ActiveTab {
 /**
  * Promotional Videos bottom nav.
  *
- * Watch feed (/videos/watch): TRANSPARENT overlay — video stays edge-to-edge
- * behind the icons and through the home-indicator zone (TikTok / mockup).
- * A solid black bar here is exactly the "ba nwa" cutting the video.
- *
- * Discover / Favorites: solid black bar (no fullscreen video behind).
+ * Always a solid black bar (watch + Discover + Favorites), including the
+ * home-indicator zone — keep the "ba nwa" fully painted as in the approved
+ * promo watch mock/screenshot.
  */
 export default function PromoVideosBottomNav({
   active,
   onAdd,
   className,
-  immersive,
+  immersive: _immersive,
 }: {
   active?: ActiveTab;
   onAdd?: () => void;
   className?: string;
-  /** Force watch-feed transparent mode (VideoFeed should pass true). */
+  /** Kept for callers; watch feed uses the same solid black bar. */
   immersive?: boolean;
 }) {
   const { t } = useTranslation();
   const [location, navigate] = useLocation();
   const { user } = useAuth();
   const current = active ?? resolveActive(location);
-  const path = (location.split("?")[0] || location).replace(/\/$/, "") || "/";
-  const isWatchFeed =
-    immersive === true
-    || path === "/videos/watch"
-    || path.startsWith("/videos/watch/");
 
   const goLogin = (next: string) => {
     navigate(`/auth/login?next=${encodeURIComponent(next)}`);
@@ -104,32 +93,27 @@ export default function PromoVideosBottomNav({
   const itemClass = (isActive: boolean) =>
     cn(
       "flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-0.5 transition-colors",
-      isWatchFeed && "drop-shadow-[0_1px_4px_rgba(0,0,0,0.95)]",
-      isActive ? "text-white" : isWatchFeed ? "text-white/92" : "text-white/55",
+      isActive ? "text-white" : "text-white/55",
     );
 
   return (
     <nav
       className={cn(
-        "promo-videos-bottom-nav pointer-events-auto fixed inset-x-0 bottom-0 z-[70] lg:hidden",
-        isWatchFeed ? "border-t-0" : "border-t border-white/10 bg-black",
+        "promo-videos-bottom-nav pointer-events-auto fixed inset-x-0 bottom-0 z-[70] lg:hidden border-t border-white/10 bg-black",
         className,
       )}
       style={{
-        // Watch: transparent + real safe-area only (no 34px floor, no dark
-        // gradient) so the "ba nwa" slab cannot cut the promo video.
-        // Discover: solid black with 34px floor against "ba blan".
-        paddingBottom: isWatchFeed ? PROMO_NAV_SAFE_BOTTOM_WATCH : PROMO_NAV_SAFE_BOTTOM_DISCOVER,
+        paddingBottom: PROMO_NAV_SAFE_BOTTOM,
         paddingLeft: "env(safe-area-inset-left, 0px)",
         paddingRight: "env(safe-area-inset-right, 0px)",
-        backgroundColor: isWatchFeed ? "transparent" : "#000",
+        backgroundColor: "#000",
         backgroundImage: "none",
         boxShadow: "none",
         overflow: "visible",
       }}
       aria-label={t("nav.main", { defaultValue: "Main navigation" })}
       data-testid="promo-videos-bottom-nav"
-      data-watch-transparent={isWatchFeed ? "true" : "false"}
+      data-watch-transparent="false"
     >
       <div
         className="grid w-full grid-cols-5 items-center px-1"

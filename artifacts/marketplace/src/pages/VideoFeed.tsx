@@ -27,7 +27,7 @@ import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import BoostWizard from "@/components/BoostWizard";
 import PromoVideosBottomNav, {
   PROMO_NAV_CONTENT_PX,
-  PROMO_NAV_SAFE_BOTTOM_WATCH,
+  PROMO_NAV_SAFE_BOTTOM,
 } from "@/components/PromoVideosBottomNav";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
@@ -46,8 +46,8 @@ import {
   storePromoChatDraft,
 } from "@/lib/promoVideoContact";
 
-/** Watch feed: real safe-area only — no 34px floor (that recreates ba nwa). */
-const FEED_SAFE_BOTTOM = PROMO_NAV_SAFE_BOTTOM_WATCH;
+/** Same safe-area inset as the solid black promo bottom nav. */
+const FEED_SAFE_BOTTOM = PROMO_NAV_SAFE_BOTTOM;
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -1580,12 +1580,12 @@ function VideoCard({
         </div>
       )}
 
-      {/* ── Light bottom gradient for caption legibility only (no ba nwa slab). ── */}
+      {/* ── Bottom gradient above the solid black nav for caption legibility. ── */}
       <div
         className="absolute inset-x-0 bottom-0 pointer-events-none"
         style={{
-          height: "72px",
-          background: "linear-gradient(to top, rgba(0,0,0,0.18) 0%, transparent 100%)",
+          height: "100px",
+          background: "linear-gradient(to top, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.06) 55%, transparent 100%)",
         }}
       />
 
@@ -1608,7 +1608,7 @@ function VideoCard({
         </div>
       )}
 
-      {/* Right-side engagement column removed — ba dwa gone on promo watch. */}
+      {/* Right-side engagement column removed — ba dwa eliminated on promo watch. */}
 
       {/* ── Product CTA Card — slides up after 1.5s ── */}
       <div
@@ -2222,7 +2222,7 @@ export default function VideoFeed() {
   //    fixed inset-0 paints edge-to-edge over the marketplace shell (TikTok-style).
   //    Do NOT extend past the viewport with negative bottom / box-shadow fills —
   //    that clipped the fixed promo nav inside overflow:hidden ancestors on iOS.
-  //    Watch nav stays transparent (no ba nwa); right engagement rail removed.
+  //    Bottom promo nav stays solid black (ba nwa); right engagement rail removed.
   return (
     <div
       className={cn(

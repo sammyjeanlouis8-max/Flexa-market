@@ -63,6 +63,7 @@
     "expo-build-properties": "~1.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-device": "~8.0.10",
+    "expo-document-picker": "~14.0.8",
     "expo-gl": "~16.0.10",
     "expo-notifications": "~0.32.17",
     "expo-updates": "~29.0.20",

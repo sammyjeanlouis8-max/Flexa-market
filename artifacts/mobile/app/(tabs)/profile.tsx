@@ -23,6 +23,8 @@ const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap 
   { label: "Referrals", href: "/referrals", icon: "gift" },
   { label: "Jobs", href: "/jobs", icon: "briefcase" },
   { label: "Calculator", href: "/calculator", icon: "percent" },
+  { label: "Flexa TV", href: "/tv", icon: "tv" },
+  { label: "Flexa Music", href: "/music", icon: "music" },
   { label: "Addresses", href: "/addresses", icon: "map-pin" },
   { label: "Support", href: "/support", icon: "life-buoy" },
   { label: "Notifications", href: "/notifications", icon: "bell" },

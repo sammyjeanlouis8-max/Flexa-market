@@ -4,9 +4,9 @@
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
   "pr": null,
-  "branch": "cursor/native-marketplace-phase3h-09ff",
-  "auditedAt": "2026-11-09T22:10:00Z",
-  "auditCommit": "deeda28a",
+  "branch": "cursor/native-tv-music-phase3i-09ff",
+  "auditedAt": "2026-11-10T02:40:00Z",
+  "auditCommit": "1fccecfa",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
@@ -25,7 +25,8 @@
       "Phase 3F: edit listing, inventory restock, seller analytics, earnings/payouts, boost library read-only.",
       "Phase 3G: KYC, store manager, sell drafts, chunked video, boost draft builder; multi-SKU variations blocked by API.",
       "Phase 3G2: resumable video, seller registration hub, campaign filters/analytics, Haiti multi-dept, field validation; variations still API-blocked; paid boost blocked.",
-      "Phase 3H: referrals, jobs, calculator, wallet-transfer, notification prefs, privacy blocks. Top-up still blocked."
+      "Phase 3H: referrals, jobs, calculator, wallet-transfer, notification prefs, privacy blocks. Top-up still blocked.",
+      "Phase 3I: Flexa TV (live/schedule/programs/series/movies + expo-av player) and Flexa Music (browse/detail/upload + persistent player). TV user upload admin-only BLOCKED; music purchases remain BLOCKED; user playlists admin-only."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -40,7 +41,9 @@
     "phase3g2": true,
     "phase3g2StartCommit": "09f4acdf",
     "phase3h": true,
-    "phase3hStartCommit": "aa8ca704"
+    "phase3hStartCommit": "aa8ca704",
+    "phase3i": true,
+    "phase3iStartCommit": "1fccecfa"
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -109,10 +112,10 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 56,
+    "FULLY_NATIVE": 58,
     "PARTIALLY_NATIVE": 2,
     "PLACEHOLDER": 6,
-    "MISSING": 14,
+    "MISSING": 12,
     "BLOCKED": 5
   },
   "features": [
@@ -1193,32 +1196,51 @@
       "name": "Flexa TV",
       "domain": "media",
       "webRoute": "/tv",
-      "nativeRoute": null,
+      "nativeRoute": "/tv",
       "role": "guest+",
       "apis": [
-        "/api/tv/*"
+        "/api/tv/broadcast",
+        "/api/tv/now-playing",
+        "/api/tv/broadcast/heartbeat",
+        "/api/tv/schedule",
+        "/api/tv/programs",
+        "/api/tv/series",
+        "/api/tv/movies",
+        "/api/tv/programs/:id/view"
       ],
-      "status": "MISSING",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "TV player UI"
+        "user video upload (admin-only /api/admin/tv/upload-video)",
+        "TV likes/comments (no public social APIs)"
       ],
-      "work": "Later / media phase"
+      "work": "Phase 3I expo-av player; deep links /tv preserved"
     },
     {
       "id": "flexa-music",
       "name": "Flexa Music",
       "domain": "media",
       "webRoute": "/music,/music/upload,/music/earnings,/music/play/:id",
-      "nativeRoute": null,
+      "nativeRoute": "/music,/music/[id],/music/upload",
       "role": "guest+/artist",
       "apis": [
-        "/api/music/*"
+        "/api/music",
+        "/api/music/:id",
+        "/api/music/stream-url/:id",
+        "/api/music/:id/likes",
+        "/api/music/:id/like",
+        "/api/music/:id/comments",
+        "/api/music/upload-signature",
+        "/api/music/register",
+        "/api/music/artist/plan",
+        "/api/users/:id/follow"
       ],
-      "status": "MISSING",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "player + upload"
+        "user playlists (admin-only APIs)",
+        "music earnings dashboard (optional later)",
+        "paid artist plan checkout (Android BLOCKED)"
       ],
-      "work": "Music buys BLOCKED on Android digital guard"
+      "work": "Phase 3I free listen + social + upload; purchases remain BLOCKED"
     },
     {
       "id": "music-purchase",

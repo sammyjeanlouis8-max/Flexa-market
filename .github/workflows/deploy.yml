@@ -225,3 +225,7 @@ jobs:
 # Owner requested fe deploy ALL: promo auto-rotation + country scope (#208) (2026-11-10).
 
 # force_build_20261110172234_promo_rotation
+
+# Owner requested fe deploy: Flexa Control Users redesign (#210) (2026-11-10).
+
+# force_build_20261110173707_users_redesign

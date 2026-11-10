@@ -12,7 +12,11 @@ import { useShoppingLocation } from "@/contexts/shopping-location";
 import ListingCard from "@/components/ListingCard";
 import TodaysDealCard from "@/components/TodaysDealCard";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
-import { selectHomePromoVideos } from "@/lib/boostAdControls";
+import {
+  HOME_PROMO_VIDEO_CARD_LIMIT,
+  HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT,
+  selectHomePromoVideos,
+} from "@/lib/boostAdControls";
 import { selectTodaysDealSlots } from "@/lib/todaysDeals";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -116,13 +120,22 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
     try {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      // Prefer newest boosts for the Home strip; keep a small pool then take 2.
-      const params = new URLSearchParams({ page: "1", limit: "6", sort: "new" });
+      // Bound preview query + hard-cap selection so Home never paints >2 cards.
+      const params = new URLSearchParams({
+        page: "1",
+        limit: String(HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT),
+        sort: "new",
+      });
       if (countryFilter) params.set("country", countryFilter);
       const res = await fetch(`/api/videos/feed?${params}`, { headers });
       if (!res.ok) return;
       const data = await res.json();
-      setVideos(selectHomePromoVideos((data.videos ?? []) as PromoVideoItem[], 2));
+      setVideos(
+        selectHomePromoVideos(
+          (data.videos ?? []) as PromoVideoItem[],
+          HOME_PROMO_VIDEO_CARD_LIMIT,
+        ),
+      );
     } catch { /* non-critical */ } finally {
       setLoading(false);
     }
@@ -134,25 +147,51 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
     return () => clearInterval(poll);
   }, [load]);
 
+  // Belt-and-suspenders: never render more than the Home hard cap, even if
+  // state somehow holds a larger array (stale cache, race, etc.).
+  const cards = videos.slice(0, HOME_PROMO_VIDEO_CARD_LIMIT);
+
   if (loading) {
     return (
-      <Skeleton className="h-full min-h-[360px] w-full rounded-2xl md:min-h-[420px]" />
+      <section
+        data-testid="home-promo-video-strip"
+        data-promo-card-limit={HOME_PROMO_VIDEO_CARD_LIMIT}
+        aria-busy="true"
+        aria-label={t("home.videoPromo", { defaultValue: "Video Promo" })}
+      >
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+          {Array.from({ length: HOME_PROMO_VIDEO_CARD_LIMIT }).map((_, i) => (
+            <Skeleton
+              key={`promo-skel-${i}`}
+              className="min-h-[360px] w-full rounded-2xl md:min-h-[420px]"
+              data-testid="home-promo-video-skeleton"
+            />
+          ))}
+        </div>
+      </section>
     );
   }
 
-  if (videos.length === 0) return null;
+  if (cards.length === 0) return null;
 
   return (
-    <>
-      {videos.map(v => (
-        <Link
-          key={`promo-video-${v.id}`}
-          href={`/videos?video=${v.id}`}
-          className="group relative block h-full min-h-[360px] w-full overflow-hidden rounded-2xl bg-black shadow-lg transition-transform duration-300 hover:scale-[1.015] active:scale-[0.98] md:min-h-[420px]"
-          style={{ textDecoration: "none" }}
-          data-testid={`button-promo-video-${v.id}`}
-          data-promax-group="video_promo"
-        >
+    <section
+      data-testid="home-promo-video-strip"
+      data-promo-card-count={cards.length}
+      data-promo-card-limit={HOME_PROMO_VIDEO_CARD_LIMIT}
+      aria-label={t("home.videoPromo", { defaultValue: "Video Promo" })}
+    >
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+        {cards.map((v) => (
+          <Link
+            key={`promo-video-${v.id}`}
+            href={`/videos?video=${v.id}`}
+            className="group relative block h-full min-h-[360px] w-full overflow-hidden rounded-2xl bg-black shadow-lg transition-transform duration-300 hover:scale-[1.015] active:scale-[0.98] md:min-h-[420px]"
+            style={{ textDecoration: "none" }}
+            data-testid={`button-promo-video-${v.id}`}
+            data-home-promo-video-card="true"
+            data-promax-group="video_promo"
+          >
             <PromoVideoPoster
               videoUrl={v.videoUrl}
               thumbnailUrl={v.thumbnailUrl}
@@ -188,9 +227,10 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
               )}
               <p className="line-clamp-2 text-sm font-black leading-tight text-white">{v.title}</p>
             </div>
-        </Link>
-      ))}
-    </>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -1128,6 +1168,9 @@ export default function Home() {
           </section>
         )}
 
+        {/* === HOME PROMO STRIP — exactly ≤2 cards; full feed opens on tap === */}
+        <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : (activeCountry ?? null)} />
+
         {/* === FEATURED PRODUCTS (2-col mobile) — shared PROMAX order === */}
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold text-foreground">
@@ -1150,7 +1193,7 @@ export default function Home() {
             >
               {(() => {
                 let aboveFoldIndex = 0;
-                return promaxGroups.slice(0, 2).flatMap(({ key, listings }) =>
+                return promaxGroups.flatMap(({ key, listings }) =>
                   listings
                     .filter((listing) => !personalizedIds.has(listing.id))
                     .map((listing) => {
@@ -1164,16 +1207,6 @@ export default function Home() {
                     }),
                 );
               })()}
-              <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : (activeCountry ?? null)} />
-              {promaxGroups.slice(2).flatMap(({ key, listings }) =>
-                listings
-                  .filter((listing) => !personalizedIds.has(listing.id))
-                  .map((listing) => (
-                    <div key={listing.id} data-promax-group={key} className="min-w-0">
-                      <ListingCard listing={listing} showAddToCart />
-                    </div>
-                  )),
-              )}
             </div>
           )
         )}

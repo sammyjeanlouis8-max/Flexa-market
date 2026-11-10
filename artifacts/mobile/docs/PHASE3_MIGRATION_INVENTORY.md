@@ -1,41 +1,36 @@
 # Flexa Market — Phase 3 Native Migration Inventory
 
-**main:** Phases 1–3D integrated (`65df21a5`)  
-**Phase 3E branch:** `cursor/native-buyer-phase3e-09ff`  
+**Phase 3E PR:** [#174](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/174) (OPEN)  
+**Phase 3F branch:** `cursor/native-seller-phase3f-09ff` (stacked on 3E tip `04986815`)  
 **Backend:** `https://flexamarket.com/api`  
-**Machine-readable:** [`phase3-migration-inventory.json`](./phase3-migration-inventory.json)  
-**Admin audit:** [`PHASE3D_ADMIN_PANEL_INVENTORY.md`](./PHASE3D_ADMIN_PANEL_INVENTORY.md)
+**Machine-readable:** [`phase3-migration-inventory.json`](./phase3-migration-inventory.json)
 
-## Snapshot counts (after Phase 3E)
+## Snapshot counts (after Phase 3F)
 
 | Status | Count |
 |---|---|
-| FULLY_NATIVE | 40 |
-| PARTIALLY_NATIVE | 2 |
-| PLACEHOLDER | 11 |
-| MISSING | 24 |
+| FULLY_NATIVE | 46 |
+| PARTIALLY_NATIVE | 4 |
+| PLACEHOLDER | 7 |
+| MISSING | 20 |
 | BLOCKED | 5 |
 
-## Phase 3E completed (this branch)
+## Phase 3F completed
 
-- Forgot password / account recovery (`/api/recovery/*`) via AuthShell + AuthGlobe
-- Categories on Search + Home filters
-- Delivery tip + driver rating after confirm
-- Help Center, Legal (Privacy/Terms/EULA), Security, Delete account
-- Public FM- tracking + public seller shop (`/profile/[id]`)
-- Listing detail: seller shop link + reviews
-- Inventory reconciles image-upload + seller-orders as native (Phase 3D)
+- Edit Product (`/edit-listing/[id]`) + Wasabi images + validation
+- Inventory restock on My Listings
+- Seller analytics (`/seller/analytics`)
+- Earnings & payouts (`/sales/summary` + payout account config)
+- Boost entry explains Android digital purchase block
+- Campaign library + promo videos feed (read-only)
+- Sales dashboard enriched with verified summary totals
+
+## Still open (seller)
+
+- Chunked listing/boost **video composer**
+- Paid boost checkout (**BLOCKED**)
+- Drafts / store-manager / seller-registration+KYC native
 
 ## Preserved
 
-Phases 1–3D on `main` — AuthGlobe design unchanged; no WebViews; no APK/deploy.
-
-## Deferred / blocked
-
-- eSIM DEFERRED · Wallet top-up BLOCKED · Admin native DEFERRED  
-- Phone login (OTP handlers incomplete in-repo) · push physical-device verification  
-- Seller edit-listing, earnings/payouts, listing video, BNPL
-
-## Recommended next (do not auto-start)
-
-Phase 3F: seller edit/inventory/payouts, remaining settings prefs, selective admin tools if authorized.
+Phases 1–3E · AuthGlobe · no WebViews · no APK/deploy · eSIM deferred

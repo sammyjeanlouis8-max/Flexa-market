@@ -28,6 +28,7 @@ Claiming **83/83 FULLY_NATIVE** would be false.
 4. Search — local AsyncStorage recent queries
 5. Profile — public shop link; Size/color, promo-feed, eSIM entries
 6. Inventory honesty — delivery-confirm, image-upload, promo-feed routes; cleared stale admin-panel missing
+7. **Gap closure:** seller ship + shipping label on `/orders/[id]` via `POST /api/orders/:id/ship` + `GET /api/orders/:id/label` (Haiti personal/FM/bus, DR seller/company, international carrier) — closes prior overclaim on seller fulfillment
 
 ## Genuine external blockers (cannot finish without outside work)
 

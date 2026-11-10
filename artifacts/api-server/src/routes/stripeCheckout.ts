@@ -1197,7 +1197,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
 
     await db.transaction(async (tx) => {
       await tx.update(boostsTable)
-        .set({ paymentStatus: "paid", paymentRef })
+        .set({ paymentStatus: "paid", paymentRef, campaignStatus: "active" })
         .where(eq(boostsTable.id, boostId));
 
       await tx.update(listingsTable)

@@ -1724,8 +1724,11 @@ export default function Admin() {
   };
 
   const loadBoostRecords = async () => {
-    try { const data = await adminFetch("/api/admin/boosts", "GET"); setBoostRecords(data); }
-    catch {
+    try {
+      const qs = isSuperAdmin ? "?delivery=1" : "";
+      const data = await adminFetch(`/api/admin/boosts${qs}`, "GET");
+      setBoostRecords(data);
+    } catch {
       setBoostRecords([]);
       toast({ title: t("admin.loadError"), variant: "destructive" });
     }
@@ -4293,13 +4296,14 @@ export default function Admin() {
                       <th className="text-left px-4 py-2.5 font-medium">Plan</th>
                       <th className="text-left px-4 py-2.5 font-medium">Payment</th>
                       <th className="text-left px-4 py-2.5 font-medium">Status</th>
+                      {isSuperAdmin && <th className="text-left px-4 py-2.5 font-medium">Delivery</th>}
                       <th className="text-left px-4 py-2.5 font-medium">Expires</th>
                       <th className="text-right px-4 py-2.5 font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredBoostRecords.map((r: any) => {
-                      const payIcon: Record<string, string> = { card: "💳", usdt: "₮", moncash: "📱", natcash: "💚", admin: "🛡" };
+                      const payIcon: Record<string, string> = { card: "💳", usdt: "₮", moncash: "📱", natcash: "💚", admin: "🛡", wallet: "👛" };
                       const statusColor: Record<string, string> = {
                         paid:           "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
                         pending:        "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
@@ -4307,6 +4311,14 @@ export default function Admin() {
                         rejected:       "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
                         failed:         "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
                       };
+                      const delivery = r.delivery;
+                      const audienceLabel = delivery?.targetAudience
+                        ? [delivery.targetAudience.country, delivery.targetAudience.state, delivery.targetAudience.city]
+                            .filter(Boolean)
+                            .join(" · ")
+                        : [r.audienceCountry, r.boostAudienceState || r.audienceState, r.boostAudienceCity || r.audienceCity]
+                            .filter(Boolean)
+                            .join(" · ");
                       return (
                         <tr key={r.id} className="border-t border-border hover:bg-accent/30" data-testid={`admin-boost-record-${r.id}`}>
                           <td className="px-4 py-2.5">
@@ -4337,6 +4349,9 @@ export default function Admin() {
                                r.paymentStatus === "failed" ? "❌ Failed" :
                                r.paymentStatus}
                             </span>
+                            {r.campaignStatus && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">campaign: {r.campaignStatus}</p>
+                            )}
                             {r.isExpired && r.paymentStatus === "paid" && (
                               <p className="text-[10px] text-muted-foreground mt-0.5">expired</p>
                             )}
@@ -4346,6 +4361,23 @@ export default function Admin() {
                               </p>
                             )}
                           </td>
+                          {isSuperAdmin && (
+                            <td className="px-4 py-2.5 text-[10px] text-muted-foreground max-w-[180px]">
+                              <p className="font-medium text-foreground">{typeof r.impressions === "number" ? `${r.impressions} imp` : "—"}</p>
+                              {audienceLabel && <p className="truncate" title={audienceLabel}>{audienceLabel}</p>}
+                              {delivery?.eligibleForFeed === false && delivery?.deliveryError && (
+                                <p className="text-amber-700 dark:text-amber-400 mt-0.5 break-words" title={delivery.deliveryError}>
+                                  {delivery.exclusionReasons?.[0] ?? "excluded"}
+                                </p>
+                              )}
+                              {delivery?.eligibleForFeed && delivery?.impressions === 0 && (
+                                <p className="text-amber-700 dark:text-amber-400 mt-0.5">zero impressions</p>
+                              )}
+                              {delivery?.recoverableNarrowGeo && (
+                                <p className="text-red-600 dark:text-red-400 mt-0.5">narrow auto-geo</p>
+                              )}
+                            </td>
+                          )}
                           <td className="px-4 py-2.5 text-xs text-muted-foreground">
                             {new Date(r.expiresAt).toLocaleDateString()}
                           </td>

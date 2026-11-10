@@ -367,6 +367,7 @@ function buildActivePaidBoostEligibility(
     ${b("listing_id")} = ${l("id")}
     AND ${b("payment_status")} = 'paid'
     AND ${b("expires_at")} > NOW()
+    AND COALESCE(${b("campaign_status")}, 'active') <> 'paused'
     AND ${buildVideoListingEligibility(listingAlias, scope)}
   )`;
 }
@@ -570,6 +571,20 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     }
 
     const pinSelected = sql<number>`CASE WHEN ${selectedId > 0} AND ${listingsTable.id} = ${selectedId} THEN 0 ELSE 1 END`;
+    // Fair-share nudge: paid active campaigns with zero impressions get a
+    // temporary ranking boost so newly activated seller ads are not buried
+    // behind older high-engagement Admin creatives. Not equal impressions —
+    // just a reachable opportunity while targeting/budget still apply.
+    const zeroImpressionFairness = sql`(
+      CASE WHEN EXISTS (
+        SELECT 1 FROM boosts zero_imp
+        WHERE zero_imp.listing_id = ${listingsTable.id}
+          AND zero_imp.payment_status = 'paid'
+          AND zero_imp.expires_at > NOW()
+          AND COALESCE(zero_imp.impressions, 0) = 0
+          AND COALESCE(zero_imp.campaign_status, 'active') <> 'paused'
+      ) THEN 180 ELSE 0 END
+    )`;
     const engagementScore = sql`(
       ${listingsTable.viewCount}
       + ${listingsTable.favoriteCount} * 3
@@ -585,6 +600,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
           WHEN ${listingsTable.createdAt}    > NOW() - INTERVAL '7 days'   THEN 30
           ELSE 0
         END
+      + ${zeroImpressionFairness}
       + CASE
           WHEN ${seed} = 0 THEN (RANDOM() * 50)::int
           ELSE (ABS(SIN(${listingsTable.id}::float * ${seed}::float)) * 50)::int
@@ -603,6 +619,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
           WHEN ${listingsTable.boostStartAt} > NOW() - INTERVAL '48 hours' THEN 100
           ELSE 0
         END
+      + ${zeroImpressionFairness}
     )`;
 
     const orderBy =

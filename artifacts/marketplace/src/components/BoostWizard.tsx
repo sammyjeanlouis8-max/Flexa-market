@@ -171,11 +171,12 @@ export default function BoostWizard({ open, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Fetch estimated reach whenever confirm step is shown or budget changes
+  // Fetch estimated reach whenever confirm step is shown or budget changes.
+  // Advantage+ is country-wide unless the seller explicitly picks a city.
   useEffect(() => {
     if (step !== "confirm") return;
     const country = (audienceCountry || user?.country) ?? "Haiti";
-    const state = country === "Haiti" ? (user?.state ?? "Ouest") : null;
+    const city = audienceCity.trim() || null;
     setIsEstimating(true);
     setEstimatedViews(null);
     fetch("/api/boost/estimate", {
@@ -184,14 +185,24 @@ export default function BoostWizard({ open, onClose }: Props) {
       body: JSON.stringify({
         plan: "7day",
         budget,
-        audience: { country, state, audienceType: "advantage_plus", ageMin: 18, ageMax: 65, gender: "all", objective: "auto" },
+        audience: {
+          country,
+          state: null,
+          city,
+          cities: city ? [city] : null,
+          audienceType: "advantage_plus",
+          ageMin: 18,
+          ageMax: 65,
+          gender: "all",
+          objective: "auto",
+        },
       }),
     })
       .then(r => r.json())
       .then(d => setEstimatedViews(typeof d.estimatedReach === "number" ? d.estimatedReach : null))
       .catch(() => setEstimatedViews(null))
       .finally(() => setIsEstimating(false));
-  }, [step, budget, audienceCountry, user?.country, token]);
+  }, [step, budget, audienceCountry, audienceCity, user?.country, token]);
 
   // Default super-admin audience country to ALL when wizard opens
   useEffect(() => {
@@ -409,7 +420,9 @@ export default function BoostWizard({ open, onClose }: Props) {
       toast({ title: t("boostWizard.errorVideoRequired"), variant: "destructive" }); return;
     }
     const country = audienceCountry || user?.country || "Haiti";
-    const state = country === "Haiti" ? "Ouest" : null;
+    // Advantage+ is country-wide by default. Only pass city when the seller
+    // explicitly selected one — never hardcode a department like "Ouest".
+    const city = audienceCity.trim() || null;
     setConfirming(true);
     try {
       if (boostType === "video_only") {
@@ -428,7 +441,8 @@ export default function BoostWizard({ open, onClose }: Props) {
             audienceGender,
             audienceAgeMin,
             audienceAgeMax,
-            audienceCity: audienceCity || null,
+            audienceCity: city,
+            audienceCities: city ? [city] : null,
           }),
         });
         const data = await res.json();
@@ -454,7 +468,17 @@ export default function BoostWizard({ open, onClose }: Props) {
             plan: "7day",
             paymentMethod: "wallet",
             videoUrl,
-            audience: { country, state, audienceType: "advantage_plus", ageMin: 18, ageMax: 65, gender: "all", objective: "auto" },
+            audience: {
+              country,
+              state: null,
+              city,
+              cities: city ? [city] : null,
+              audienceType: "advantage_plus",
+              ageMin: 18,
+              ageMax: 65,
+              gender: "all",
+              objective: "auto",
+            },
             budget,
           }),
         });

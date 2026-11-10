@@ -176,7 +176,21 @@ export function notificationNativeHref(n: AppNotification): string {
     case "transfer_sent":
     case "wallet_recharged":
     case "payment_refunded":
+    case "earnings_payout":
+    case "payout_sent":
       return "/wallet";
+    case "seller_earnings":
+    case "commission":
+      return "/seller-earnings";
+    case "tv_live":
+    case "flexa_tv":
+      return "/tv";
+    case "music":
+    case "music_earnings":
+      return "/music";
+    case "admin_broadcast":
+    case "system":
+      return "/notifications";
     case "identity_verified":
       return "/kyc";
     case "subscription_payment_failed":

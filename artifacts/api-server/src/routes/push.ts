@@ -3,6 +3,7 @@ import { requireAuth, requireAdmin, requireRole } from "../middlewares/auth";
 import { getVapidPublicKey, upsertSubscription, deleteSubscription, isAllowedPushEndpoint } from "../lib/push";
 import { upsertExpoPushToken, deleteExpoPushToken, sendExpoPushToUser } from "../lib/expo-push";
 import { isApnsToken } from "../lib/expo-push";
+import { PUSH_CHANNELS } from "../lib/pushChannels";
 import { sendApnsNotification, getApnsConfig } from "../lib/apns";
 import { db, expoPushTokensTable, notificationsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -123,17 +124,24 @@ router.post("/push/expo-token", requireAuth, async (req, res): Promise<void> => 
 
 /**
  * DELETE /api/push/expo-token  (auth)
- * Body: { token }
- * Unregisters an Expo push token (e.g. on logout).
+ * Body: { token?, deviceId? }
+ * Unregisters Expo push token(s) owned by the authenticated user only.
+ * Ownership is enforced — another user's token is never deleted.
  */
 router.delete("/push/expo-token", requireAuth, async (req, res): Promise<void> => {
-  const { token } = req.body ?? {};
-  if (typeof token !== "string") {
-    res.status(400).json({ error: "token required" });
+  const { token, deviceId } = req.body ?? {};
+  const hasToken = typeof token === "string" && token.length > 0;
+  const hasDevice = typeof deviceId === "string" && deviceId.length >= 8;
+  if (!hasToken && !hasDevice) {
+    res.status(400).json({ error: "token or deviceId required" });
     return;
   }
-  await deleteExpoPushToken(req.userId!, token);
-  res.json({ ok: true });
+  const deleted = await deleteExpoPushToken(
+    req.userId!,
+    hasToken ? token : null,
+    hasDevice ? deviceId : null,
+  );
+  res.json({ ok: true, deleted });
 });
 
 /**
@@ -363,8 +371,8 @@ router.post("/push/manual-send", requireRole("superadmin"), async (req, res): Pr
         body: message,
         sound: "default",
         priority: "high",
-        channelId: "admin-broadcast",
-        data: { url, type: "admin_broadcast" },
+        channelId: PUSH_CHANNELS.ADMIN,
+        data: { url, type: "admin_broadcast", screen: "notifications" },
       }),
     ));
     acceptedUsers += results.filter((result) => result.acceptedDevices > 0).length;
@@ -428,9 +436,9 @@ router.post("/push/test-expo", requireAdmin, async (req, res): Promise<void> => 
     title: "🔔 Test Flexa Push",
     body: "Si ou wè sa — Android push fonksyone!",
     sound: "default",
-    channelId: "default",
+    channelId: PUSH_CHANNELS.SYSTEM,
     priority: "high",
-    data: { url: "/" },
+    data: { url: "/notifications", screen: "notifications", type: "system" },
   });
   res.json({ ok: true, message: "Push sent — check server logs for errors" });
 });

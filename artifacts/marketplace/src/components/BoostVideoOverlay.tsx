@@ -22,6 +22,13 @@ import {
   resolveBoostAdSkipInLabel,
   resolveBoostAdSkipLabel,
 } from "@/lib/boostAdControls";
+import {
+  clearBoostAdCooldown,
+  getBoostViewerScopeKey,
+  markBoostAdShown,
+  recordBoostPlaybackExposure,
+  shouldShowBoostAd,
+} from "@/lib/boostAdRotation";
 
 /**
  * Video Booster overlay — floating player, no dark background.
@@ -35,26 +42,9 @@ import {
  */
 
 const SKIP_AFTER_SEC = 10;
-const AD_INTERVAL_MS = 5 * 60_000;
-const STORAGE_KEY    = "flexamarket_boost_last_shown";
 
-// ─── Public helpers ───────────────────────────────────────────────────────────
-export function shouldShowBoostAd(): boolean {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return true;
-    return Date.now() - Number(raw) >= AD_INTERVAL_MS;
-  } catch { return true; }
-}
-
-export function markBoostAdShown(): void {
-  try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch { /* private */ }
-}
-
-/** Clear cooldown so a country/scope change can show a fresh market ad immediately. */
-export function clearBoostAdCooldown(): void {
-  try { localStorage.removeItem(STORAGE_KEY); } catch { /* private */ }
-}
+// ─── Public helpers (re-exported from boostAdRotation for Layout / tests) ─────
+export { shouldShowBoostAd, markBoostAdShown, clearBoostAdCooldown };
 
 // ─── URL helper ──────────────────────────────────────────────────────────────
 function toFetchableUrl(stored: string): string {
@@ -112,14 +102,24 @@ function trackBoostEvent(listingId: number, type: "view" | "click" | "skip" | "v
 interface Props {
   listing: BoostListing;
   onClose: () => void;
+  /** Signed-in account id; omit/null scopes rotation history to a stable guest id. */
+  viewerUserId?: number | null;
+  /** Current browsing / preview country — history is persisted per market. */
+  browsingCountry?: string | null;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
-export default function BoostVideoOverlay({ listing, onClose }: Props) {
+export default function BoostVideoOverlay({
+  listing,
+  onClose,
+  viewerUserId = null,
+  browsingCountry = null,
+}: Props) {
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const skipHandledRef = useRef(false);
+  const exposureRecordedRef = useRef(false);
   const isImageAd =
     listing.adFormat === "image" ||
     (!listing.boostVideoUrl && !!listing.boostImageUrl);
@@ -133,9 +133,21 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const [videoPct, setVideoPct] = useState(0); // 0–100 for the progress bar
   const [videoFailed, setVideoFailed] = useState(false);
 
-  useEffect(() => {
+  const recordOnScreenExposure = useCallback(() => {
+    if (exposureRecordedRef.current) return;
+    exposureRecordedRef.current = true;
+    const scopeKey = getBoostViewerScopeKey(viewerUserId, browsingCountry);
+    // Persist rotation before any navigation / force-close can wipe in-memory state.
+    recordBoostPlaybackExposure(scopeKey, listing.id);
     trackBoostEvent(listing.id, isImageAd ? "view" : "video_view");
-  }, [listing.id, isImageAd]);
+  }, [viewerUserId, browsingCountry, listing.id, isImageAd]);
+  const recordOnScreenExposureRef = useRef(recordOnScreenExposure);
+  recordOnScreenExposureRef.current = recordOnScreenExposure;
+
+  // Image creatives are on-screen at mount — that counts as delivery exposure.
+  useEffect(() => {
+    if (isImageAd) recordOnScreenExposureRef.current();
+  }, [isImageAd]);
 
   // ── Video progress bar ────────────────────────────────────────────────────
   useEffect(() => {
@@ -201,6 +213,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
       try {
         await vid.play();
         if (cancelled) return;
+        // Playback actually started on screen — persist rotation + frequency.
+        recordOnScreenExposureRef.current();
         if (withSound) {
           setSoundLocked(false);
           setAudioUnlocked(true);

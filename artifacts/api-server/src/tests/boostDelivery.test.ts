@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   audienceCityMatchesViewer,
+  isInterstitialEligibleForBrowsingCountry,
+  isInterstitialEligibleForRegionalGeo,
   listingAudienceFieldsForActivation,
   resolveBoostInitiateGeo,
   resolveInterstitialViewerScope,
+  splitBoostAudienceCountries,
   usesRegionalBoostGeo,
 } from "../lib/boostDelivery";
 
@@ -105,6 +108,15 @@ describe("resolveInterstitialViewerScope", () => {
     expect(guest.globalCountryAccess).toBe(false);
   });
 
+  it("prefers the guest's manual browsing country over CF-IPCountry", () => {
+    const manual = resolveInterstitialViewerScope({
+      requestedCountry: "Dominican Republic",
+      cfIpCountry: "HT",
+      user: null,
+    });
+    expect(manual.visibleCountries).toEqual(["Dominican Republic"]);
+  });
+
   it("uses admin preview country without the admin home country", () => {
     const preview = resolveInterstitialViewerScope({
       requestedCountry: "Haiti",
@@ -129,7 +141,111 @@ describe("resolveInterstitialViewerScope", () => {
   });
 });
 
-describe("merchant vs admin delivery contract (source)", () => {
+describe("Haiti / Dominican Republic interstitial country + commune gates", () => {
+  it("splits multi-country audience targets", () => {
+    expect(splitBoostAudienceCountries("Haiti,Dominican Republic")).toEqual([
+      "haiti",
+      "dominican republic",
+    ]);
+    expect(splitBoostAudienceCountries("Haiti|USA")).toEqual(["haiti", "usa"]);
+  });
+
+  it("includes Haiti-only campaigns only while browsing Haiti", () => {
+    const haitiOnly = {
+      listingCountry: "Haiti",
+      boostAudienceCountry: "Haiti",
+    };
+    expect(
+      isInterstitialEligibleForBrowsingCountry({
+        ...haitiOnly,
+        browsingCountry: "Haiti",
+      }),
+    ).toBe(true);
+    expect(
+      isInterstitialEligibleForBrowsingCountry({
+        ...haitiOnly,
+        browsingCountry: "Dominican Republic",
+      }),
+    ).toBe(false);
+  });
+
+  it("lets a Haiti+DR campaign enter rotation in each matching country", () => {
+    const both = {
+      listingCountry: "Haiti",
+      boostAudienceCountry: "Haiti,Dominican Republic",
+    };
+    expect(
+      isInterstitialEligibleForBrowsingCountry({
+        ...both,
+        browsingCountry: "Haiti",
+      }),
+    ).toBe(true);
+    expect(
+      isInterstitialEligibleForBrowsingCountry({
+        ...both,
+        browsingCountry: "Dominican Republic",
+      }),
+    ).toBe(true);
+    expect(
+      isInterstitialEligibleForBrowsingCountry({
+        ...both,
+        browsingCountry: "USA",
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps ALL audience inside the listing marketplace country", () => {
+    expect(
+      isInterstitialEligibleForBrowsingCountry({
+        listingCountry: "Haiti",
+        boostAudienceCountry: "ALL",
+        browsingCountry: "Haiti",
+      }),
+    ).toBe(true);
+    expect(
+      isInterstitialEligibleForBrowsingCountry({
+        listingCountry: "Haiti",
+        boostAudienceCountry: "ALL",
+        browsingCountry: "Dominican Republic",
+      }),
+    ).toBe(false);
+  });
+
+  it("respects a Haitian commune restriction for Custom campaigns", () => {
+    const capHaitienOnly = {
+      audienceType: "custom",
+      boostAudienceState: "Nord",
+      boostAudienceCity: "Cap-Haitien",
+      boostAudienceCities: ["Cap-Haitien"],
+    };
+    expect(
+      isInterstitialEligibleForRegionalGeo({
+        ...capHaitienOnly,
+        viewerState: "Nord",
+        viewerCity: "Cap-Haitien",
+      }),
+    ).toBe(true);
+    expect(
+      isInterstitialEligibleForRegionalGeo({
+        ...capHaitienOnly,
+        viewerState: "Ouest",
+        viewerCity: "Port-au-Prince",
+      }),
+    ).toBe(false);
+    // Advantage+ ignores commune pins (country-wide within the country gate).
+    expect(
+      isInterstitialEligibleForRegionalGeo({
+        audienceType: "advantage_plus",
+        boostAudienceState: "Nord",
+        boostAudienceCity: "Cap-Haitien",
+        viewerState: "Ouest",
+        viewerCity: "Port-au-Prince",
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("automatic promo delivery contract (source)", () => {
   it("random-video uses interstitial scope and Advantage+ country-wide SQL", async () => {
     const { readFileSync } = await import("node:fs");
     const { dirname, join } = await import("node:path");
@@ -144,19 +260,38 @@ describe("merchant vs admin delivery contract (source)", () => {
       join(here, "../../../marketplace/src/components/BoostVideoOverlay.tsx"),
       "utf8",
     );
+    const rotationSrc = readFileSync(
+      join(here, "../../../marketplace/src/lib/boostAdRotation.ts"),
+      "utf8",
+    );
     expect(boostSrc).toMatch(/resolveInterstitialViewerScope/);
     expect(boostSrc).toMatch(/coalesce\(\$\{listingsTable\.boostAudienceType\}, 'advantage_plus'\) <> 'custom'/);
     expect(boostSrc).toMatch(/resolveBoostInitiateGeo/);
     expect(boostSrc).not.toMatch(/req\.user\?\.state \|\| bodyState/);
-    // Merchant campaigns win over admin/platform ads in the interstitial.
-    expect(boostSrc).toMatch(/isSuperAdmin/);
-    expect(boostSrc).toMatch(/THEN 1 ELSE 0 END/);
+    // Seller / Admin / Super Admin creatives share one rotation — no role demotion.
+    expect(boostSrc).not.toMatch(/THEN 1 ELSE 0 END/);
+    expect(boostSrc).not.toMatch(/Prefer normal merchant campaigns/);
+    expect(boostSrc).toMatch(/rotationPreferSql/);
+    expect(boostSrc).toMatch(/excludeIds\.length - i/);
+    expect(boostSrc).toMatch(/regexp_split_to_array\(\$\{listingsTable\.boostAudienceCountry\}/);
     expect(layoutSrc).toMatch(/\/api\/boost\/random-video/);
+    expect(layoutSrc).toMatch(/getBoostExcludeIds/);
+    expect(layoutSrc).toMatch(/params\.set\("exclude"/);
+    expect(layoutSrc).toMatch(/params\.set\("country"/);
+    expect(layoutSrc).toMatch(/browsingCountry/);
     expect(layoutSrc).toMatch(/videoFeedParams/);
     expect(layoutSrc).toMatch(/allCountries/);
     expect(layoutSrc).toMatch(/fetchGenRef/);
     expect(layoutSrc).toMatch(/clearBoostAdCooldown/);
     expect(layoutSrc).toMatch(/force:\s*true/);
-    expect(overlaySrc).toMatch(/export function clearBoostAdCooldown/);
+    expect(layoutSrc).toMatch(/Cache-Control": "no-store"/);
+    // Cooldown / rotation persist only when playback begins, not on fetch.
+    expect(layoutSrc).not.toMatch(/markBoostAdShown\(/);
+    expect(overlaySrc).toMatch(/recordBoostPlaybackExposure/);
+    expect(overlaySrc).toMatch(/recordOnScreenExposure/);
+    expect(overlaySrc).toMatch(/browsingCountry/);
+    expect(rotationSrc).toMatch(/getBoostViewerScopeKey/);
+    expect(rotationSrc).toMatch(/recordBoostPlaybackExposure/);
+    expect(rotationSrc).toMatch(/normalizeBoostBrowsingCountry/);
   });
 });

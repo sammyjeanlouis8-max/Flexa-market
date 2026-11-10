@@ -520,8 +520,11 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     .filter((n) => Number.isFinite(n) && n > 0)
     .slice(0, 20);
 
+  // Hard-exclude is only for dead-creative retries (extraExclude). Client
+  // `exclude` is a soft preference: never-seen first, then least-recently shown.
+  // Creator role (Seller / Admin / Super Admin) must not affect ranking.
   const buildConds = (extraExclude: number[] = []) => {
-    const excluded = [...excludeIds, ...extraExclude];
+    const excluded = [...extraExclude];
     return [
       eq(listingsTable.isBoosted, true),
       or(eq(listingsTable.status, "available"), eq(listingsTable.status, "hidden")),
@@ -541,28 +544,50 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
         SELECT 1 FROM user_blocks ub
         WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId}
       )`] : []),
-      // Country gate — SA/global All Countries skip; otherwise listing.country ∈ allowed.
-      // Guests get CF/browsing country via resolveViewerScope (never sql`false` alone).
+      // Country gate — browsing country ∩ campaign target countries.
+      // - Audience null/empty/ALL → listing.country must match (ALL is never cross-border).
+      // - Explicit multi-country audience (comma/pipe) → eligible in each listed country.
+      // Guests get CF/browsing country via resolveInterstitialViewerScope.
       ...(skipCountryFilter ? [] : [
         allowedCountries.length > 0 && !allowedCountries.includes("__denied__")
           ? sql`(
-              lower(${listingsTable.country}) in (${sql.join(
-                allowedCountries.map(c => sql`${c.toLowerCase()}`),
-                sql`, `,
-              )})
-              AND (
-                ${listingsTable.boostAudienceCountry} IS NULL
-                OR ${listingsTable.boostAudienceCountry} = 'ALL'
-                OR lower(COALESCE(NULLIF(${listingsTable.boostAudienceCountry}, ''), ${listingsTable.country})) in (${sql.join(
+              (
+                (
+                  ${listingsTable.boostAudienceCountry} IS NULL
+                  OR btrim(${listingsTable.boostAudienceCountry}) = ''
+                  OR upper(btrim(${listingsTable.boostAudienceCountry})) = 'ALL'
+                )
+                AND lower(${listingsTable.country}) in (${sql.join(
                   allowedCountries.map(c => sql`${c.toLowerCase()}`),
                   sql`, `,
                 )})
+              )
+              OR (
+                ${listingsTable.boostAudienceCountry} IS NOT NULL
+                AND btrim(${listingsTable.boostAudienceCountry}) <> ''
+                AND upper(btrim(${listingsTable.boostAudienceCountry})) <> 'ALL'
+                AND (
+                  lower(btrim(${listingsTable.boostAudienceCountry})) in (${sql.join(
+                    allowedCountries.map(c => sql`${c.toLowerCase()}`),
+                    sql`, `,
+                  )})
+                  OR EXISTS (
+                    SELECT 1
+                    FROM unnest(regexp_split_to_array(${listingsTable.boostAudienceCountry}, '[,|]')) AS audience_part
+                    WHERE lower(btrim(audience_part)) = 'all'
+                       OR lower(btrim(audience_part)) in (${sql.join(
+                         allowedCountries.map(c => sql`${c.toLowerCase()}`),
+                         sql`, `,
+                       )})
+                  )
+                )
               )
             )`
           : sql`false`,
       ]),
       // Regional geo: only for Custom campaigns. Advantage+ / null type = country-wide
       // (also heals older merchant campaigns that were wrongly pinned to seller home).
+      // Department + commune (city) targeting is respected when configured.
       ...(applyRegionalFilters && viewerState
         ? [sql`(
             coalesce(${listingsTable.boostAudienceType}, 'advantage_plus') <> 'custom'
@@ -594,10 +619,21 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     ];
   };
 
+  const rotationPreferSql =
+    excludeIds.length > 0
+      ? sql`CASE ${sql.join(
+          excludeIds.map(
+            (id, i) =>
+              // excludeIds are most-recent-first: newest gets the worst rank.
+              sql`WHEN ${listingsTable.id} = ${id} THEN ${excludeIds.length - i}`,
+          ),
+          sql` `,
+        )} ELSE 0 END`
+      : sql`0`;
+
   const pickRow = async (extraExclude: number[] = []) => {
-    // Prefer normal merchant campaigns over admin/super-admin platform ads so
-    // changing country surfaces the market's merchant inventory first. Fall
-    // back to admin creatives only when no merchant row is eligible.
+    // One eligibility pool for Sellers, Admins, and Super Admins. Soft-rank by
+    // viewer rotation history (unseen → least recently shown), then random.
     const [row] = await db
       .select({
         id: listingsTable.id,
@@ -619,14 +655,7 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       .from(listingsTable)
       .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
       .where(and(...buildConds(extraExclude)))
-      .orderBy(
-        sql`CASE
-          WHEN coalesce(${usersTable.isSuperAdmin}, false)
-            OR coalesce(${usersTable.isAdmin}, false)
-            OR lower(coalesce(${usersTable.role}, '')) IN ('admin', 'superadmin')
-          THEN 1 ELSE 0 END`,
-        sql`random()`,
-      )
+      .orderBy(rotationPreferSql, sql`random()`)
       .limit(1);
     return row ?? null;
   };

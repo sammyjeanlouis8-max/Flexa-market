@@ -115,6 +115,83 @@ const CF_COUNTRY: Record<string, string> = {
   TT: "Trinidad and Tobago",
 };
 
+function normalizeCountryName(raw: string | null | undefined): string | null {
+  const c = (raw ?? "").trim().toLowerCase();
+  return c || null;
+}
+
+/** Split campaign target countries (`Haiti,Dominican Republic` / pipe). */
+export function splitBoostAudienceCountries(
+  boostAudienceCountry: string | null | undefined,
+): string[] {
+  const raw = (boostAudienceCountry ?? "").trim();
+  if (!raw) return [];
+  return raw
+    .split(/[,|]/)
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * Whether an interstitial campaign may enter automatic rotation for the
+ * viewer's current browsing country.
+ *
+ * Rules (aligned with Flexa Market country selection):
+ * - Audience null / empty / ALL → listing marketplace country must match
+ *   (ALL never unlocks a foreign listing country).
+ * - Explicit single or multi-country audience → eligible in each listed
+ *   country (a Haiti+DR campaign can rotate in both markets).
+ * - Creator role is irrelevant here — Sellers/Admins/Super Admins share this rule.
+ */
+export function isInterstitialEligibleForBrowsingCountry(opts: {
+  listingCountry?: string | null;
+  boostAudienceCountry?: string | null;
+  browsingCountry: string | null | undefined;
+}): boolean {
+  const viewer = normalizeCountryName(opts.browsingCountry);
+  if (!viewer) return false;
+  const listing = normalizeCountryName(opts.listingCountry);
+  const audienceRaw = (opts.boostAudienceCountry ?? "").trim();
+  const audience = audienceRaw.toLowerCase();
+  const parts = splitBoostAudienceCountries(audienceRaw);
+
+  if (!audienceRaw || audience === "all" || parts.includes("all")) {
+    return !!listing && listing === viewer;
+  }
+  if (parts.includes(viewer)) return true;
+  return audience === viewer;
+}
+
+/**
+ * Custom campaigns may restrict to department / commune. Advantage+ is
+ * country-wide. Empty regional targeting = whole country within the country gate.
+ */
+export function isInterstitialEligibleForRegionalGeo(opts: {
+  audienceType?: string | null;
+  boostAudienceState?: string | null;
+  boostAudienceCity?: string | null;
+  boostAudienceCities?: string[] | null;
+  viewerState?: string | null;
+  viewerCity?: string | null;
+}): boolean {
+  if (!usesRegionalBoostGeo(opts.audienceType)) return true;
+
+  const viewerState = (opts.viewerState ?? "").trim().toLowerCase();
+  if (viewerState) {
+    const rawState = (opts.boostAudienceState ?? "").trim();
+    if (rawState) {
+      const states = rawState.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+      if (!states.includes(viewerState)) return false;
+    }
+  }
+
+  return audienceCityMatchesViewer(
+    opts.viewerCity,
+    opts.boostAudienceCity,
+    opts.boostAudienceCities,
+  );
+}
+
 export type InterstitialViewerScope = {
   visibleCountries: string[];
   globalCountryAccess: boolean;

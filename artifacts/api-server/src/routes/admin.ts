@@ -14,6 +14,15 @@ import { listingAudienceFieldsForActivation } from "../lib/boostDelivery";
 import { SCOPE_OPTIONS, userInAdminScope } from "../lib/adminScope";
 import { hasUsableListingImage } from "../lib/listingMedia";
 import { parseAdminUserSearchQuery } from "../lib/adminUserSearch";
+import {
+  MESSAGE_SYSTEM_AVATAR,
+  MESSAGE_SYSTEM_NAME,
+  MESSAGE_SYSTEM_SUBTITLE,
+  buildControlPresenceBadge,
+  formatLastSeenExact,
+  isMessageSystemAccount,
+} from "../lib/adminUserPresence";
+import { isUserOnline } from "../lib/socketServer";
 
 const router = Router();
 
@@ -25,14 +34,30 @@ function formatUser(user: typeof usersTable.$inferSelect) {
 }
 
 /** Safe Flexa Control user row — no passwords, tokens, or raw device/session ids. */
-function formatControlUserListRow(user: typeof usersTable.$inferSelect) {
+function formatControlUserListRow(
+  user: typeof usersTable.$inferSelect,
+  opts?: { isOnline?: boolean; nowMs?: number },
+) {
+  const isSystem = isMessageSystemAccount(user);
+  // Presence: live authenticated socket session only — never invent online from
+  // createdAt or automated Message System traffic.
+  const isOnline = !isSystem && !!opts?.isOnline;
+  const presence = buildControlPresenceBadge({
+    isSystemAccount: isSystem,
+    isBanned: user.isBanned,
+    isRestricted: user.isRestricted,
+    isOnline,
+    lastSeenAt: isSystem ? null : user.lastSeenAt,
+    nowMs: opts?.nowMs,
+  });
   return {
     id: user.id,
-    name: user.name,
+    name: isSystem ? MESSAGE_SYSTEM_NAME : user.name,
     email: user.email,
     phone: user.phone,
-    avatar: user.avatar,
-    country: user.country,
+    // Official Flexa Market logo for Message System (same asset as chat).
+    avatar: isSystem ? MESSAGE_SYSTEM_AVATAR : user.avatar,
+    country: isSystem ? null : user.country,
     location: user.location,
     state: user.state,
     neighborhood: user.neighborhood,
@@ -44,9 +69,16 @@ function formatControlUserListRow(user: typeof usersTable.$inferSelect) {
     restrictedUntil: user.restrictedUntil,
     restrictionReason: user.restrictionReason,
     flagReason: user.flagReason,
-    lastSeenAt: user.lastSeenAt,
+    // Verified presence timestamp only (null for system / never-seen humans).
+    lastSeenAt: isSystem ? null : user.lastSeenAt,
     createdAt: user.createdAt,
     listingCount: user.listingCount,
+    isSystemAccount: isSystem,
+    subtitle: isSystem
+      ? MESSAGE_SYSTEM_SUBTITLE
+      : (user.country?.trim() || "Country not set"),
+    isOnline,
+    presence,
   };
 }
 
@@ -814,7 +846,15 @@ router.get("/admin/users", requireAdmin, async (req, res): Promise<void> => {
   const users = await db.select().from(usersTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(usersTable.createdAt));
-  res.json(users.map(formatControlUserListRow));
+  const nowMs = Date.now();
+  res.json(
+    users.map((u) =>
+      formatControlUserListRow(u, {
+        isOnline: isUserOnline(u.id),
+        nowMs,
+      }),
+    ),
+  );
 });
 
 /** Registered country is immutable via Control — reject all admin set/clear attempts. */
@@ -835,9 +875,10 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
   const scopeErr = assertUserInScope(req.user!, user);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
 
-  const ONLINE_MS = 5 * 60 * 1000;
-  const lastSeen = user.lastSeenAt ? new Date(user.lastSeenAt).getTime() : 0;
-  const isOnline = lastSeen > 0 && Date.now() - lastSeen < ONLINE_MS;
+  const isSystem = isMessageSystemAccount(user);
+  // Live socket presence only — not wall-clock lastSeenAt proximity.
+  const isOnline = !isSystem && isUserOnline(user.id);
+  const lastSeen = !isSystem && user.lastSeenAt ? new Date(user.lastSeenAt).getTime() : 0;
 
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
@@ -930,14 +971,30 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
         ? "active"
         : "inactive";
 
+  const presence = buildControlPresenceBadge({
+    isSystemAccount: isSystem,
+    isBanned: user.isBanned,
+    isRestricted: user.isRestricted,
+    isOnline,
+    lastSeenAt: isSystem ? null : user.lastSeenAt,
+  });
+  const lastSeenExact = isSystem
+    ? null
+    : formatLastSeenExact(user.lastSeenAt);
+  const lastSeenIso = !isSystem && user.lastSeenAt
+    ? new Date(user.lastSeenAt).toISOString()
+    : null;
+
   const latestLogin = recentLogins[0] ?? null;
   const deviceInfo = latestLogin
     ? parseUserAgent(latestLogin.userAgent)
     : { device: "Unavailable", os: "Unavailable", browser: "Unavailable" };
 
-  const addressParts = [user.neighborhood, user.location, user.state, user.country]
-    .map((p) => (typeof p === "string" ? p.trim() : ""))
-    .filter(Boolean);
+  const addressParts = isSystem
+    ? []
+    : [user.neighborhood, user.location, user.state, user.country]
+      .map((p) => (typeof p === "string" ? p.trim() : ""))
+      .filter(Boolean);
   const savedAddress = addressParts.length > 0 ? addressParts.join(", ") : null;
 
   // Derive session/device summaries from login history (no raw session tokens).
@@ -975,21 +1032,25 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
 
   res.json({
     user: {
-      ...formatControlUserListRow(user),
+      ...formatControlUserListRow(user, { isOnline }),
       email: user.email,
-      phone: user.phone,
-      countryDisplay: user.country?.trim() ? user.country : "Country not set",
+      phone: isSystem ? null : user.phone,
+      countryDisplay: isSystem
+        ? MESSAGE_SYSTEM_SUBTITLE
+        : (user.country?.trim() ? user.country : "Country not set"),
       savedAddress,
       address: {
-        neighborhood: user.neighborhood ?? null,
-        city: user.location ?? null,
-        state: user.state ?? null,
-        country: user.country ?? null,
+        neighborhood: isSystem ? null : (user.neighborhood ?? null),
+        city: isSystem ? null : (user.location ?? null),
+        state: isSystem ? null : (user.state ?? null),
+        country: isSystem ? null : (user.country ?? null),
         display: savedAddress,
       },
-      accountType,
+      accountType: isSystem ? "System Account" : accountType,
       accountStatus,
       isOnline,
+      isSystemAccount: isSystem,
+      presence,
       signupDate: user.createdAt,
     },
     overview: {
@@ -1013,22 +1074,29 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
     },
     activity: {
       isOnline,
-      onlineStatus: isOnline ? "online" : (lastSeen > 0 ? "offline" : "Unavailable"),
-      lastSeenAt: user.lastSeenAt ?? latestLogin?.createdAt ?? null,
+      onlineStatus: isSystem
+        ? "Unavailable"
+        : isOnline
+          ? "online"
+          : (lastSeen > 0 ? "offline" : "Unavailable"),
+      // Verified presence only — do not fall back to login logs / createdAt.
+      lastSeenAt: lastSeenIso,
+      lastSeenExact: lastSeenExact ?? "Unavailable",
+      lastSeenLabel: presence.label,
       visitsToday: visitsTodayRow[0]?.count ?? 0,
-      device: deviceInfo.device || "Unavailable",
-      os: deviceInfo.os || "Unavailable",
-      browser: deviceInfo.browser || "Unavailable",
-      sessions,
-      commonDevices,
-      latestLogin: latestLogin
-        ? {
+      device: isSystem ? "Unavailable" : (deviceInfo.device || "Unavailable"),
+      os: isSystem ? "Unavailable" : (deviceInfo.os || "Unavailable"),
+      browser: isSystem ? "Unavailable" : (deviceInfo.browser || "Unavailable"),
+      sessions: isSystem ? [] : sessions,
+      commonDevices: isSystem ? [] : commonDevices,
+      latestLogin: isSystem || !latestLogin
+        ? null
+        : {
             action: latestLogin.action,
             at: latestLogin.createdAt,
             ip: latestLogin.ip || null,
             ...deviceInfo,
-          }
-        : null,
+          },
     },
     audit: {
       restrictions: restrictionHistory,

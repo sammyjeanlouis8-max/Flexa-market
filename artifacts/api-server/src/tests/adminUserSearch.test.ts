@@ -131,13 +131,16 @@ describe("parseAdminUserSearchQuery + Control Users route contract", () => {
       /router\.get\("\/admin\/users", requireAdmin/,
     );
     // Must not truncate authorized results to a client page window.
-    const usersHandler = adminRoutes.match(
-      /router\.get\("\/admin\/users", requireAdmin[\s\S]*?res\.json\(users\.map\(formatControlUserListRow\)\);/,
-    )?.[0] ?? "";
-    expect(usersHandler).toBeTruthy();
-    expect(usersHandler).not.toMatch(/\.limit\(/);
-    expect(usersHandler).toMatch(/country && country !== "all"/);
-    expect(usersHandler).toMatch(/formatControlUserListRow/);
+    expect(adminRoutes).toMatch(/router\.get\("\/admin\/users", requireAdmin/);
+    expect(adminRoutes).toMatch(/formatControlUserListRow/);
+    expect(adminRoutes).toMatch(/isUserOnline\(u\.id\)/);
+    expect(adminRoutes).toMatch(/country && country !== "all"/);
+    const listSlice = adminRoutes.slice(
+      adminRoutes.indexOf('router.get("/admin/users", requireAdmin'),
+      adminRoutes.indexOf('router.get("/admin/users/:id"'),
+    );
+    expect(listSlice).toBeTruthy();
+    expect(listSlice).not.toMatch(/\.limit\(/);
   });
 
   it("keeps search above filters with the required placeholder in the UI", () => {

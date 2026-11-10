@@ -19,10 +19,24 @@ const ONLINE_MS = 5 * 60 * 1000;
 
 type AccountStatus = "active" | "inactive" | "suspended" | "blocked";
 
+type PresenceKind =
+  | "system"
+  | "online"
+  | "last_seen"
+  | "unavailable"
+  | "suspended"
+  | "blocked";
+
+type PresenceBadge = {
+  kind: PresenceKind;
+  label: string;
+};
+
 type AdminUserRow = {
   id: number;
   name: string;
   email?: string;
+  phone?: string | null;
   avatar?: string | null;
   country?: string | null;
   isBanned?: boolean;
@@ -36,7 +50,13 @@ type AdminUserRow = {
   isAdmin?: boolean;
   isSuperAdmin?: boolean;
   listingCount?: number;
+  isSystemAccount?: boolean;
+  subtitle?: string | null;
+  isOnline?: boolean;
+  presence?: PresenceBadge;
 };
+
+const MESSAGE_SYSTEM_AVATAR = "/flexa-logo-v2.png";
 
 type UserDetailPayload = {
   user: AdminUserRow & {
@@ -82,6 +102,8 @@ type UserDetailPayload = {
     isOnline: boolean;
     onlineStatus?: string;
     lastSeenAt: string | null;
+    lastSeenExact?: string | null;
+    lastSeenLabel?: string | null;
     visitsToday: number;
     device: string;
     os: string;
@@ -194,6 +216,33 @@ function StatusBadge({ status }: { status: AccountStatus }) {
   return (
     <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold", map[status])}>
       {label[status]}
+    </span>
+  );
+}
+
+/** Compact list badge — System Account / Online / Last seen … / Suspended. */
+function PresenceListBadge({ presence }: { presence?: PresenceBadge | null }) {
+  const kind = presence?.kind ?? "unavailable";
+  const label = presence?.label ?? "Last seen unavailable";
+  const map: Record<PresenceKind, string> = {
+    system: "bg-sky-100 text-sky-800 border-sky-200",
+    online: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    last_seen: "bg-slate-100 text-slate-600 border-slate-200",
+    unavailable: "bg-slate-100 text-slate-500 border-slate-200",
+    suspended: "bg-orange-50 text-orange-700 border-orange-200",
+    blocked: "bg-red-50 text-red-700 border-red-200",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-[9.5rem] shrink-0 items-center truncate rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-tight",
+        map[kind],
+      )}
+      title={label}
+      data-testid="admin-user-presence-badge"
+      data-presence-kind={kind}
+    >
+      {label}
     </span>
   );
 }
@@ -414,8 +463,14 @@ function UsersListScreen() {
           </p>
         ) : (
           rows.map((u) => {
-            const st = resolveStatus(u);
-            const countryLabel = u.country?.trim() ? u.country : t("adminUsers.countryNotSet", { defaultValue: "Country not set" });
+            const isSystem = !!u.isSystemAccount || u.role === "system";
+            const subtitle = u.subtitle
+              || (isSystem
+                ? "Automated messages"
+                : (u.country?.trim() || t("adminUsers.countryNotSet", { defaultValue: "Country not set" })));
+            const avatarSrc = isSystem
+              ? (u.avatar || MESSAGE_SYSTEM_AVATAR)
+              : (u.avatar ?? undefined);
             return (
               <button
                 key={u.id}
@@ -426,18 +481,25 @@ function UsersListScreen() {
                   selectedId === u.id ? "bg-[hsl(152,45%,95%)]" : "hover:bg-muted/40 active:bg-muted/60",
                 )}
                 data-testid={`admin-user-row-${u.id}`}
+                data-system-account={isSystem ? "true" : "false"}
               >
-                <Avatar className="h-9 w-9 shrink-0">
-                  <AvatarImage src={u.avatar ?? undefined} />
+                <Avatar className={cn("h-9 w-9 shrink-0", isSystem && "rounded-lg")}>
+                  <AvatarImage
+                    src={avatarSrc}
+                    alt={isSystem ? "Flexa Market" : u.name}
+                    className={isSystem ? "object-cover" : undefined}
+                  />
                   <AvatarFallback className={cn("text-[11px] font-bold text-white", avatarTone(u.id))}>
                     {initials(u.name || "?")}
                   </AvatarFallback>
                 </Avatar>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-bold leading-tight text-foreground">{u.name}</span>
-                  <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{countryLabel}</span>
+                  <span className="block truncate text-[14px] font-bold leading-tight text-foreground">
+                    {isSystem ? "Message System" : u.name}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{subtitle}</span>
                 </span>
-                <StatusBadge status={st} />
+                <PresenceListBadge presence={u.presence} />
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/70" />
               </button>
             );
@@ -525,7 +587,8 @@ function UserDetailsScreen({ userId }: { userId: number }) {
 
   const countryLabel = u?.countryDisplay || t("adminUsers.countryNotSet", { defaultValue: "Country not set" });
   const status = (u ? (u.accountStatus || resolveStatus(u)) : "inactive") as AccountStatus;
-  const onlineLabel = !detail
+  const isSystemUser = !!u?.isSystemAccount || u?.role === "system";
+  const onlineLabel = isSystemUser || !detail
     ? "Unavailable"
     : detail.activity.onlineStatus === "Unavailable"
       ? "Unavailable"
@@ -625,14 +688,20 @@ function UserDetailsScreen({ userId }: { userId: number }) {
           {countryLabel}
         </p>
         <div className="mt-2 flex items-center justify-center gap-2">
-          <StatusBadge status={status} />
-          <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
-            <span className={cn(
-              "h-2 w-2 rounded-full",
-              onlineLabel === "Unavailable" ? "bg-slate-300" : detail.activity.isOnline ? "bg-emerald-500" : "bg-slate-300",
-            )} />
-            {onlineLabel}
-          </span>
+          {isSystemUser ? (
+            <PresenceListBadge presence={{ kind: "system", label: "System Account" }} />
+          ) : (
+            <>
+              <StatusBadge status={status} />
+              <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
+                <span className={cn(
+                  "h-2 w-2 rounded-full",
+                  onlineLabel === "Unavailable" ? "bg-slate-300" : detail.activity.isOnline ? "bg-emerald-500" : "bg-slate-300",
+                )} />
+                {onlineLabel}
+              </span>
+            </>
+          )}
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
           {t("adminUsers.signedUp", { defaultValue: "Signed up" })}: {formatWhen(u.signupDate || u.createdAt)}
@@ -799,7 +868,11 @@ function UserDetailsScreen({ userId }: { userId: number }) {
               <div className="mt-2 space-y-2 text-[13px]">
                 <div className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Clock className="h-3.5 w-3.5" /> Last seen</span>
-                  <span className="font-semibold">{formatWhen(detail.activity.lastSeenAt)}</span>
+                  <span className="max-w-[62%] text-right font-semibold">
+                    {u.isSystemAccount
+                      ? "Unavailable"
+                      : (detail.activity.lastSeenExact || formatWhen(detail.activity.lastSeenAt))}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Smartphone className="h-3.5 w-3.5" /> Device</span>
@@ -888,8 +961,18 @@ function UserDetailsScreen({ userId }: { userId: number }) {
               </div>
               <div className="flex justify-between gap-3">
                 <span className="text-muted-foreground">Last seen</span>
-                <span className="font-semibold text-right">{formatWhen(detail.activity.lastSeenAt)}</span>
+                <span className="max-w-[62%] text-right font-semibold">
+                  {u.isSystemAccount
+                    ? "Unavailable"
+                    : (detail.activity.lastSeenExact || formatWhen(detail.activity.lastSeenAt))}
+                </span>
               </div>
+              {!u.isSystemAccount && detail.activity.lastSeenLabel && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Presence</span>
+                  <span className="font-semibold text-right">{detail.activity.lastSeenLabel}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Visits today</span>
                 <span className="font-semibold">{detail.activity.visitsToday}</span>

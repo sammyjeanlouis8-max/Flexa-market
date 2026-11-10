@@ -90,9 +90,11 @@ type NormalListing = {
   nearYou?: boolean;
 };
 
-// ─── Video promo grid items ───────────────────────────────────────────────────
-// Active boosted videos participate in the same continuous grid as products so
-// they never reserve a separate row or leave product-sized holes beside them.
+// ─── Home promotional videos (MAX 2, side-by-side) ───────────────────────────
+// Server-side surface=home enforces LIMIT 2 + newest activation. Full feed stays
+// on /videos and /videos/watch with pagination.
+
+const HOME_PROMO_VIDEO_LIMIT = 2;
 
 interface PromoVideoItem {
   id: number;
@@ -113,7 +115,13 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
     try {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const params = new URLSearchParams({ page: "1", limit: "6" });
+      // surface=home → server hard-caps at 2 latest eligible; never fetch the catalog.
+      const params = new URLSearchParams({
+        surface: "home",
+        page: "1",
+        limit: String(HOME_PROMO_VIDEO_LIMIT),
+        sort: "new",
+      });
       if (countryFilter) params.set("country", countryFilter);
       const res = await fetch(`/api/videos/feed?${params}`, { headers });
       if (!res.ok) return;
@@ -122,7 +130,7 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
         if (!v.boostEndAt) return true;
         return new Date(v.boostEndAt).getTime() > Date.now();
       });
-      setVideos(live);
+      setVideos(live.slice(0, HOME_PROMO_VIDEO_LIMIT));
     } catch { /* non-critical */ } finally {
       setLoading(false);
     }
@@ -136,18 +144,29 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
 
   if (loading) {
     return (
-      <Skeleton className="h-full min-h-[360px] w-full rounded-2xl md:min-h-[420px]" />
+      <div
+        className="grid grid-cols-2 gap-2.5 sm:gap-3"
+        data-testid="home-promo-videos-loading"
+        aria-hidden
+      >
+        <Skeleton className="min-h-[360px] w-full rounded-2xl md:min-h-[420px]" />
+        <Skeleton className="min-h-[360px] w-full rounded-2xl md:min-h-[420px]" />
+      </div>
     );
   }
 
   if (videos.length === 0) return null;
 
   return (
-    <>
-      {videos.map(v => (
+    <section
+      className="grid grid-cols-2 gap-2.5 sm:gap-3"
+      data-testid="home-promo-videos"
+      aria-label={t("home.videoPromo", { defaultValue: "Video Promo" })}
+    >
+      {videos.slice(0, HOME_PROMO_VIDEO_LIMIT).map(v => (
         <Link
           key={`promo-video-${v.id}`}
-          href={`/videos?video=${v.id}`}
+          href={`/videos/watch?video=${v.id}`}
           className="group relative block h-full min-h-[360px] w-full overflow-hidden rounded-2xl bg-black shadow-lg transition-transform duration-300 hover:scale-[1.015] active:scale-[0.98] md:min-h-[420px]"
           style={{ textDecoration: "none" }}
           data-testid={`button-promo-video-${v.id}`}
@@ -190,7 +209,7 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
             </div>
         </Link>
       ))}
-    </>
+    </section>
   );
 }
 
@@ -1128,6 +1147,9 @@ export default function Home() {
           </section>
         )}
 
+        {/* === HOME PROMO VIDEOS — max 2 latest eligible, side-by-side === */}
+        <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : (activeCountry ?? null)} />
+
         {/* === FEATURED PRODUCTS (2-col mobile) — shared PROMAX order === */}
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold text-foreground">
@@ -1150,7 +1172,7 @@ export default function Home() {
             >
               {(() => {
                 let aboveFoldIndex = 0;
-                return promaxGroups.slice(0, 2).flatMap(({ key, listings }) =>
+                return promaxGroups.flatMap(({ key, listings }) =>
                   listings
                     .filter((listing) => !personalizedIds.has(listing.id))
                     .map((listing) => {
@@ -1164,16 +1186,6 @@ export default function Home() {
                     }),
                 );
               })()}
-              <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : (activeCountry ?? null)} />
-              {promaxGroups.slice(2).flatMap(({ key, listings }) =>
-                listings
-                  .filter((listing) => !personalizedIds.has(listing.id))
-                  .map((listing) => (
-                    <div key={listing.id} data-promax-group={key} className="min-w-0">
-                      <ListingCard listing={listing} showAddToCart />
-                    </div>
-                  )),
-              )}
             </div>
           )
         )}

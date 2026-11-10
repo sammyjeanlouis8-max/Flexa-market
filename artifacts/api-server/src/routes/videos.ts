@@ -9,6 +9,7 @@ import {
   hasGlobalCountryAdminScope,
   SCOPE_OPTIONS,
 } from "../lib/adminScope";
+import { resolveHomePromoFeedQuery } from "../lib/homePromoVideos";
 
 const router = Router();
 
@@ -471,26 +472,38 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     const { isSuperAdmin, isAdmin, visibleCountries } = viewerScope;
 
     // ── Pagination ──────────────────────────────────────────────────────────
-    const page   = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10));
-    const limit  = Math.min(20, Math.max(1, parseInt(String(req.query.limit ?? "10"), 10)));
+    // surface=home → hard LIMIT 2, newest activation first. Full feed stays
+    // paginated (Discover / Watch) and is never capped to two videos.
+    const homeQuery = resolveHomePromoFeedQuery({
+      surface: typeof req.query.surface === "string" ? req.query.surface : null,
+      page: req.query.page as string | undefined,
+      limit: req.query.limit as string | undefined,
+      sort: typeof req.query.sort === "string" ? req.query.sort : null,
+    });
+    const page = homeQuery.page;
+    const limit = homeQuery.limit;
+    const sort = homeQuery.sort;
     const offset = (page - 1) * limit;
+    const isHomeSurface = homeQuery.surface === "home";
 
     // Anti-repeat: client sends comma-separated IDs it has already seen.
     // We exclude them from the result set so the feed feels fresh every scroll.
-    const excludeParam = String(req.query.exclude ?? "");
+    // Home strip never uses exclude — it always shows the two latest eligible.
+    const excludeParam = isHomeSurface ? "" : String(req.query.exclude ?? "");
     const excludeIds: number[] = excludeParam
       ? excludeParam.split(",").map(s => parseInt(s, 10)).filter(n => !isNaN(n) && n > 0)
       : [];
 
     // Randomization seed: client sends a numeric seed so each session gets a
     // different ordering for videos with similar engagement scores.
-    const seed = Math.abs(parseInt(String(req.query.seed ?? "0"), 10)) || 0;
-    const selectedId = Math.max(0, parseInt(String(req.query.selected ?? "0"), 10) || 0);
-    // Discovery filters: all (default ranking) | trending | new | mine
-    const sortRaw = String(req.query.sort ?? "all").trim().toLowerCase();
-    const sort = (["all", "trending", "new", "mine"].includes(sortRaw) ? sortRaw : "all") as
-      "all" | "trending" | "new" | "mine";
-    const searchQ = String(req.query.q ?? "").trim().slice(0, 80);
+    // Home surface disables seed randomness so ordering stays stable.
+    const seed = isHomeSurface
+      ? 0
+      : (Math.abs(parseInt(String(req.query.seed ?? "0"), 10)) || 0);
+    const selectedId = isHomeSurface
+      ? 0
+      : Math.max(0, parseInt(String(req.query.selected ?? "0"), 10) || 0);
+    const searchQ = isHomeSurface ? "" : String(req.query.q ?? "").trim().slice(0, 80);
 
     // ── Mandatory boost conditions (cannot be bypassed) ─────────────────────
     // Public Discover (all/trending/new): active paid boost only — expired
@@ -605,12 +618,14 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
         END
     )`;
 
+    // Newest activation first for Home / sort=new. Tie-break with createdAt then
+    // id so identical timestamps stay stable across requests (no admin priority).
     const orderBy =
-      sort === "new" || sort === "mine"
-        ? [pinSelected, desc(listingsTable.boostStartAt), desc(listingsTable.createdAt)]
+      sort === "new" || sort === "mine" || isHomeSurface
+        ? [pinSelected, desc(listingsTable.boostStartAt), desc(listingsTable.createdAt), desc(listingsTable.id)]
         : sort === "trending"
-          ? [pinSelected, sql`${trendingScore} DESC`, desc(listingsTable.boostStartAt)]
-          : [pinSelected, sql`${engagementScore} DESC`, desc(listingsTable.boostStartAt), desc(listingsTable.createdAt)];
+          ? [pinSelected, sql`${trendingScore} DESC`, desc(listingsTable.boostStartAt), desc(listingsTable.id)]
+          : [pinSelected, sql`${engagementScore} DESC`, desc(listingsTable.boostStartAt), desc(listingsTable.createdAt), desc(listingsTable.id)];
 
     // ── Query ────────────────────────────────────────────────────────────────
     const rows = await db
@@ -650,7 +665,8 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       .limit(limit + 1)
       .offset(offset);
 
-    const hasMore = rows.length > limit;
+    // Home strip never paginates — always the two latest eligible only.
+    const hasMore = isHomeSurface ? false : rows.length > limit;
     const items   = rows.slice(0, limit);
 
     // Resolve which sellers the viewing user already follows (one batch query)
@@ -746,6 +762,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       hasMore,
       nextPage:      hasMore ? page + 1 : null,
       sort,
+      surface: isHomeSurface ? "home" : "feed",
       // Return the canonical assigned spelling for scoped admins (rather than
       // echoing a differently-cased query parameter).
       viewingCountry: visibleCountries.length === 1 && visibleCountries[0] !== "__denied__"

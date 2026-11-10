@@ -286,10 +286,7 @@ export function ScientificMode({ onHistory, onOpenGraph }: Props) {
           <button
             key={k.label}
             type="button"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              handleKey(k);
-            }}
+            onClick={() => handleKey(k)}
             className="h-7 text-[10px] font-semibold rounded-sm bg-[#2f2f2f] text-[#ddd] active:bg-[#222]"
           >
             {k.label}
@@ -354,10 +351,7 @@ export function ScientificMode({ onHistory, onOpenGraph }: Props) {
                 <button
                   key={k.label + ri}
                   type="button"
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    handleKey(k);
-                  }}
+                  onClick={() => handleKey(k)}
                   className={`relative h-9 rounded-md text-[11px] font-semibold select-none active:scale-95 ${TONE_CLS[tone]}`}
                 >
                   {k.second && (

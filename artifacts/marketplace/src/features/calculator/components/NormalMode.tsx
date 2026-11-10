@@ -242,9 +242,13 @@ export function NormalMode({ history, onHistory }: Props) {
             key={i}
             type="button"
             aria-label={typeof k.label === "string" ? k.label : k.action}
+            onClick={() => handle(k.action)}
             onPointerDown={(e) => {
-              e.preventDefault();
-              handle(k.action);
+              // Prefer pointer for touch; prevent ghost click double-fire on touch devices.
+              if (e.pointerType === "touch") {
+                e.preventDefault();
+                handle(k.action);
+              }
             }}
             className={`h-14 rounded-2xl font-semibold text-xl flex items-center justify-center select-none active:scale-95 transition-transform ${TONE[k.tone ?? "num"]}`}
           >

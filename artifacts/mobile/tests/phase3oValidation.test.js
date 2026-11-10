@@ -57,7 +57,7 @@ test("Phase 3O inventory recount stays honest (not fake 83/83)", () => {
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.equal(byId["boost-paid"].status, "BLOCKED");
   assert.equal(byId.esim.status, "BLOCKED");
-  assert.ok(inv.verification.phase3o === true);
+  assert.ok(inv.verification.phase3o === true || inv.verification.phase3p === true);
 });
 
 test("product-variations still has no invented native SKU route", () => {

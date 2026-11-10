@@ -3,10 +3,11 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 189,
-  "branch": "cursor/native-phase3o-validate-09ff",
-  "auditedAt": "2026-11-10T07:50:47Z",
-  "auditCommit": "fcbc7537",
+  "pr": 191,
+  "branch": "cursor/native-phase3p-boost-fix-09ff",
+  "auditedAt": "2026-11-10T08:10:00Z",
+  "auditCommit": "5c1ba823",
+  "stackedOnPr": 189,
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
@@ -32,7 +33,8 @@
       "Phase 3L: Completion/audit \u2014 admin ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans/flagged/VIP/fees/Haiti ledger; customer loans/subscription plans/driver/flex-card/bnpl/cash-agents/commission-promo/credit-score; phone login BLOCKED (no phoneToken). Broadcast/push composers + TV/Music CMS + hash-security tools deferred. Play digital goods BLOCKED. FCM device unverified.",
       "Phase 3M: Phone OTP restored (phone+country \u2192 phoneToken via generatePhoneToken; email withdrawalToken preserved). Native login-phone. Admin broadcast email/SMS, push campaigns, TV CMS, Music CMS, password-hash security. Globe low-end Android tuning. Product variations still MISSING (no SKU API). Play digital goods still BLOCKED. FCM physical-device delivery still unverified (PARTIALLY_NATIVE).",
       "Phase 3N: BNPL physical checkout wired (POST /bnpl/checkout + stripe-checkout Pay later); subscription cancel-at-period-end; boost unpaid path marked complete (launch blocked server-side on Android UA); FCM diagnostics on notifications (still PARTIAL \u2014 device unverified); Vercel CI documented as legacy account-blocked (DigitalOcean is production). product-variations still MISSING; digital goods BLOCKED.",
-      "Phase 3O: Boost unpaid polish (form draft persistence, video preview, age/gender, /videos player); FCM retry + UA; honest non-FULLY inventory (push PARTIAL, variations MISSING, 5 BLOCKED, website PLACEHOLDER). No invented APIs. Vercel still legacy. Globe preserved. Counts remain 75/1/1/1/5."
+      "Phase 3O: Boost unpaid polish (form draft persistence, video preview, age/gender, /videos player); FCM retry + UA; honest non-FULLY inventory (push PARTIAL, variations MISSING, 5 BLOCKED, website PLACEHOLDER). No invented APIs. Vercel still legacy. Globe preserved. Counts remain 75/1/1/1/5.",
+      "Phase 3P: CRITICAL \u2014 seller Advantage+/video-only no longer stamps seller department/commune; country-wide auto feed parity with Admin free boosts. Super Admin feed-eligibility + feed-delivery-audit (read-only). Scheduled campaign status. FCM/OTP still need physical device. Counts remain 75/1/1/1/5."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -58,7 +60,8 @@
     "phase3lStartCommit": "f017d186",
     "phase3m": true,
     "phase3n": true,
-    "phase3o": true
+    "phase3o": true,
+    "phase3p": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",

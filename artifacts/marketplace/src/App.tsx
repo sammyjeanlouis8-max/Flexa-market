@@ -63,6 +63,8 @@ const OrderDetail        = lazy(() => import("@/pages/OrderDetail"));
 const OrderDelivered     = lazy(() => import("@/pages/OrderDelivered"));
 const OrderLabel         = lazy(() => import("@/pages/OrderLabel"));
 const Admin              = lazy(() => import("@/pages/Admin"));
+const AdminUsers         = lazy(() => import("@/pages/AdminUsers"));
+const AdminMore          = lazy(() => import("@/pages/AdminMore"));
 const AdminLiveSupport   = lazy(() => import("@/pages/AdminLiveSupport"));
 const Settings           = lazy(() => import("@/pages/Settings"));
 const SettingsSecurity   = lazy(() => import("@/pages/SettingsSecurity"));
@@ -288,7 +290,9 @@ function LayoutRoutes() {
           {/* Flexa Control dedicated section routes (same Admin shell, path-driven panels) */}
           <Route path="/admin/operations" component={Admin} />
           <Route path="/admin/appeals" component={Admin} />
-          <Route path="/admin/users" component={Admin} />
+          <Route path="/admin/more" component={AdminMore} />
+          <Route path="/admin/users/:id" component={AdminUsers} />
+          <Route path="/admin/users" component={AdminUsers} />
           <Route path="/admin/team" component={Admin} />
           <Route path="/admin/support" component={Admin} />
           <Route path="/admin/live-support" component={AdminLiveSupport} />

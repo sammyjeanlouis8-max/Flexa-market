@@ -680,6 +680,22 @@ export default {
     saving: "Enregistrement…",
     relist: "Remettre en vente",
   },
+  seo: {
+    homeTitle: "Flexa Market — Achat et vente en ligne en Haïti | flexamarket.com",
+    homeDescription:
+      "Flexa Market (FlexaMarket) est la marketplace officielle sur flexamarket.com. Achat et vente en ligne en Haïti — petites annonces Haïti, électronique, mode, véhicules, paiement sécurisé.",
+    homeHeading: "Flexa Market",
+    homeHeadingSupport: "Achat et vente en ligne en Haïti sur la marketplace officielle Flexa Market.",
+    searchTitle: "Rechercher des annonces — Flexa Market",
+    searchDescription:
+      "Recherchez sur Flexa Market — électronique, mode, véhicules, meubles et plus en Haïti et sur les autres marchés pris en charge.",
+    categoryTitle: "{{name}} — Acheter et vendre sur Flexa Market",
+    categoryDescription:
+      "Achetez {{name}} sur Flexa Market. Parcourez des produits approuvés avec paiement sécurisé en Haïti et ailleurs.",
+    electronicsTitle: "Électronique et téléphones — Acheter et vendre sur Flexa Market",
+    electronicsDescription:
+      "Téléphone à vendre en Haïti et électronique sur Flexa Market. Annonces approuvées, paiement sécurisé.",
+  },
   home: {
     todaysDeals: "Offres du jour",
     todaysPicks: "Sélection du jour",

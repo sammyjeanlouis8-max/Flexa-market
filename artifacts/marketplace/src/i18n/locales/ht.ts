@@ -680,6 +680,22 @@ export default {
     addStock: "+ Ajoute",
     saving: "Ap sovgade…",
   },
+  seo: {
+    homeTitle: "Flexa Market — Achte ak vann ann Ayiti | flexamarket.com",
+    homeDescription:
+      "Flexa Market (FlexaMarket) se marketplace ofisyèl sou flexamarket.com. Achte ak vann ann Ayiti — petites annonces, elektwonik, rad, machin ak plis, ak peman sekirize.",
+    homeHeading: "Flexa Market",
+    homeHeadingSupport: "Achte ak vann ann Ayiti sou marketplace ofisyèl Flexa Market.",
+    searchTitle: "Chèche anons — Flexa Market",
+    searchDescription:
+      "Chèche anons sou Flexa Market — elektwonik, rad, machin, mèb ak plis ann Ayiti ak lòt mache yo.",
+    categoryTitle: "{{name}} — Achte ak vann sou Flexa Market",
+    categoryDescription:
+      "Achte {{name}} sou Flexa Market. Gade pwodwi apwouve ak peman sekirize ann Ayiti ak lòt mache yo.",
+    electronicsTitle: "Elektwonik ak telefòn — Achte ak vann sou Flexa Market",
+    electronicsDescription:
+      "Telefòn pou vann ann Ayiti ak lòt elektwonik sou Flexa Market. Anons apwouve, peman sekirize.",
+  },
   home: {
 
     deliverTo: "Livre bay",

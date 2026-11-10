@@ -381,14 +381,20 @@ export default function SearchPage() {
   );
 
   const categorySeoName = selectedParent?.name || category;
+  const isElectronics = pathCategory === "electronics" || category === "electronics";
   useSEO({
-    title: pathCategory && categorySeoName
-      ? `${categorySeoName} — Buy & sell on FLEXA MARKET`
-      : "Search Listings",
-    description: pathCategory && categorySeoName
-      ? `Shop ${categorySeoName} on FLEXA MARKET. Browse approved products with secure checkout across Haiti and the Caribbean.`
-      : "Search Flexa Market listings — electronics, fashion, vehicles, furniture and more across Haiti and the Caribbean.",
+    title: pathCategory
+      ? isElectronics
+        ? t("seo.electronicsTitle")
+        : t("seo.categoryTitle", { name: categorySeoName })
+      : t("seo.searchTitle"),
+    description: pathCategory
+      ? isElectronics
+        ? t("seo.electronicsDescription")
+        : t("seo.categoryDescription", { name: categorySeoName })
+      : t("seo.searchDescription"),
     path: pathCategory ? `/categories/${pathCategory}` : "/search",
+    absoluteTitle: true,
   });
 
   const { data, isLoading } = useGetListings(

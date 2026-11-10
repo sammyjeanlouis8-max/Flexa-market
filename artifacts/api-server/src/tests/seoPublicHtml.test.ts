@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   buildCategoryMetaDescription,
+  buildCategorySeoTitle,
   buildProductJsonLd,
   buildProductMetaDescription,
   escapeHtml,
@@ -83,6 +84,7 @@ describe("seoPublicHtml helpers", () => {
     expect(html).toContain('rel="canonical" href="https://flexamarket.com/categories/fashion"');
     expect(html).toContain('href="https://flexamarket.com/categories/electronics"');
     expect(html).toContain("2 public listings");
+    expect(html).toContain("Flexa Market");
   });
 
   it("keeps empty category pages indexable with unique meta", () => {
@@ -98,6 +100,19 @@ describe("seoPublicHtml helpers", () => {
       name: "Real Estate",
       products: [],
     })).toContain("Real Estate");
+  });
+
+  it("targets phone intents on the electronics category page", () => {
+    expect(buildCategorySeoTitle({
+      slug: "electronics",
+      name: "Electronics",
+      products: [],
+    })).toContain("Electronics & phones");
+    expect(buildCategoryMetaDescription({
+      slug: "electronics",
+      name: "Electronics",
+      products: [{ id: 1, title: "Phone", price: 10, currency: "USD" }],
+    })).toMatch(/electronics and phones/i);
   });
 });
 

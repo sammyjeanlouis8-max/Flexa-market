@@ -680,6 +680,22 @@ export default {
     addStock: "+ Add",
     saving: "Saving…",
   },
+  seo: {
+    homeTitle: "Flexa Market — Buy & sell online | flexamarket.com",
+    homeDescription:
+      "Flexa Market (FlexaMarket) is the official marketplace at flexamarket.com. Buy and sell online across Haiti and other supported markets with secure checkout.",
+    homeHeading: "Flexa Market",
+    homeHeadingSupport: "Buy and sell online across Haiti and other supported markets.",
+    searchTitle: "Search listings — Flexa Market",
+    searchDescription:
+      "Search Flexa Market listings — electronics, fashion, vehicles, furniture, and more across Haiti and other supported markets.",
+    categoryTitle: "{{name}} — Buy & sell on Flexa Market",
+    categoryDescription:
+      "Shop {{name}} on Flexa Market. Browse approved products with secure checkout across Haiti and other supported markets.",
+    electronicsTitle: "Electronics & phones — Buy & sell on Flexa Market",
+    electronicsDescription:
+      "Shop electronics and phones on Flexa Market. Browse approved listings in Haiti and other supported markets with secure checkout.",
+  },
   home: {
 
     deliverTo: "Deliver to",

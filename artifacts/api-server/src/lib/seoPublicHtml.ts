@@ -5,6 +5,7 @@
  */
 
 export const SEO_BASE_URL = "https://flexamarket.com";
+export const SEO_BRAND_NAME = "Flexa Market";
 
 export function escapeHtml(str: string): string {
   return String(str)
@@ -107,7 +108,7 @@ export function buildProductJsonLd(listing: PublicListingSeoInput, baseUrl = SEO
     url,
     image: images.length ? images : undefined,
     sku: `FM-${listing.id}`,
-    brand: { "@type": "Brand", name: "FLEXA MARKET" },
+    brand: { "@type": "Brand", name: SEO_BRAND_NAME },
     offers: offer,
   };
 
@@ -127,14 +128,14 @@ export function buildProductMetaDescription(listing: PublicListingSeoInput): str
   }
   const body = listing.description?.trim()
     ? truncateMeta(listing.description, 90)
-    : "Available on FLEXA MARKET.";
+    : `Available on ${SEO_BRAND_NAME}.`;
   parts.push(body);
   return truncateMeta(parts.join(" — "), 160);
 }
 
 export function renderProductSeoHtml(listing: PublicListingSeoInput, baseUrl = SEO_BASE_URL): string {
   const url = `${baseUrl}/listings/${listing.id}`;
-  const title = `${listing.title} — FLEXA MARKET`;
+  const title = `${listing.title} — ${SEO_BRAND_NAME}`;
   const description = buildProductMetaDescription(listing);
   const images = listing.images
     .map((img) => absoluteAssetUrl(img, baseUrl))
@@ -161,7 +162,7 @@ export function renderProductSeoHtml(listing: PublicListingSeoInput, baseUrl = S
   <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
   <link rel="canonical" href="${escapeHtml(url)}" />
   <meta property="og:type" content="product" />
-  <meta property="og:site_name" content="FLEXA MARKET" />
+  <meta property="og:site_name" content="${escapeHtml(SEO_BRAND_NAME)}" />
   <meta property="og:url" content="${escapeHtml(url)}" />
   <meta property="og:title" content="${escapeHtml(title)}" />
   <meta property="og:description" content="${escapeHtml(description)}" />
@@ -185,7 +186,7 @@ export function renderProductSeoHtml(listing: PublicListingSeoInput, baseUrl = S
 </head>
 <body>
   <main>
-    <p class="nav"><a href="${escapeHtml(baseUrl)}/">FLEXA MARKET</a>${
+    <p class="nav"><a href="${escapeHtml(baseUrl)}/">${escapeHtml(SEO_BRAND_NAME)}</a>${
       categoryHref && listing.categoryName
         ? ` · <a href="${escapeHtml(categoryHref)}">${escapeHtml(listing.categoryName)}</a>`
         : ""
@@ -196,7 +197,7 @@ export function renderProductSeoHtml(listing: PublicListingSeoInput, baseUrl = S
       ${place ? `<p class="muted">${escapeHtml(place)}</p>` : ""}
       ${primaryImage ? `<p><img src="${escapeHtml(primaryImage)}" alt="${escapeHtml(listing.title)}" itemprop="image" width="800" height="800" /></p>` : ""}
       <div itemprop="description"><p>${escapeHtml(listing.description || listing.title).replace(/\n/g, "<br/>")}</p></div>
-      <p class="muted"><a href="${escapeHtml(url)}">View product on FLEXA MARKET</a></p>
+      <p class="muted"><a href="${escapeHtml(url)}">View product on ${escapeHtml(SEO_BRAND_NAME)}</a></p>
     </article>
   </main>
 </body>
@@ -223,21 +224,41 @@ export function buildCategoryMetaDescription(category: PublicCategorySeoInput): 
     return truncateMeta(category.description, 160);
   }
   const count = category.products.length;
+  const isElectronics = category.slug === "electronics";
+  if (isElectronics) {
+    if (count > 0) {
+      return truncateMeta(
+        `Shop electronics and phones on ${SEO_BRAND_NAME} — ${count} public listing${count === 1 ? "" : "s"} with secure checkout in Haiti and other supported markets.`,
+        160,
+      );
+    }
+    return truncateMeta(
+      `Browse electronics and phones on ${SEO_BRAND_NAME}. New approved listings appear here as sellers publish them.`,
+      160,
+    );
+  }
   if (count > 0) {
     return truncateMeta(
-      `Shop ${category.name} on FLEXA MARKET — ${count} public listing${count === 1 ? "" : "s"} with secure checkout across Haiti and the Caribbean.`,
+      `Shop ${category.name} on ${SEO_BRAND_NAME} — ${count} public listing${count === 1 ? "" : "s"} with secure checkout across Haiti and other supported markets.`,
       160,
     );
   }
   return truncateMeta(
-    `Browse ${category.name} on FLEXA MARKET. New approved listings appear here as sellers publish them.`,
+    `Browse ${category.name} on ${SEO_BRAND_NAME}. New approved listings appear here as sellers publish them.`,
     160,
   );
 }
 
+export function buildCategorySeoTitle(category: PublicCategorySeoInput): string {
+  if (category.slug === "electronics") {
+    return `Electronics & phones — Buy & sell on ${SEO_BRAND_NAME}`;
+  }
+  return `${category.name} — Buy & sell on ${SEO_BRAND_NAME}`;
+}
+
 export function renderCategorySeoHtml(category: PublicCategorySeoInput, baseUrl = SEO_BASE_URL): string {
   const url = `${baseUrl}/categories/${encodeURIComponent(category.slug)}`;
-  const title = `${category.name} — Buy & sell on FLEXA MARKET`;
+  const title = buildCategorySeoTitle(category);
   const description = buildCategoryMetaDescription(category);
   const itemList = {
     "@context": "https://schema.org",
@@ -298,7 +319,11 @@ export function renderCategorySeoHtml(category: PublicCategorySeoInput, baseUrl 
 </head>
 <body>
   <main>
-    <p><a href="${escapeHtml(baseUrl)}/">FLEXA MARKET</a> · <a href="${escapeHtml(baseUrl)}/search">Search</a></p>
+    <p><a href="${escapeHtml(baseUrl)}/">${escapeHtml(SEO_BRAND_NAME)}</a> · <a href="${escapeHtml(baseUrl)}/search">Search</a>${
+      category.slug !== "electronics"
+        ? ` · <a href="${escapeHtml(baseUrl)}/categories/electronics">Electronics &amp; phones</a>`
+        : ""
+    }</p>
     <h1>${escapeHtml(category.name)}</h1>
     <p>${escapeHtml(description)}</p>
     <ul style="padding:0;margin:1.5rem 0">

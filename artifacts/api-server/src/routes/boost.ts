@@ -619,6 +619,9 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     ];
   };
 
+  // Soft-rank only when the client sent a non-empty exclude history.
+  // Ordering by a bare SQL literal `0` + random() throws in production
+  // (HTTP 500) and silently kills first-visit automatic boosts.
   const rotationPreferSql =
     excludeIds.length > 0
       ? sql`CASE ${sql.join(
@@ -629,89 +632,101 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
           ),
           sql` `,
         )} ELSE 0 END`
-      : sql`0`;
+      : null;
 
-  const pickRow = async (extraExclude: number[] = []) => {
-    // One eligibility pool for Sellers, Admins, and Super Admins. Soft-rank by
-    // viewer rotation history (unseen → least recently shown), then random.
-    const [row] = await db
-      .select({
-        id: listingsTable.id,
-        title: listingsTable.title,
-        price: listingsTable.price,
-        images: listingsTable.images,
-        boostVideoUrl: listingsTable.boostVideoUrl,
-        boostImageUrl: listingsTable.boostImageUrl,
-        boostAdFormat: listingsTable.boostAdFormat,
-        boostAudienceType: listingsTable.boostAudienceType,
-        sellerId: listingsTable.sellerId,
-        sellerName: usersTable.name,
-        boostCtaType: listingsTable.boostCtaType,
-        boostExternalLink: listingsTable.boostExternalLink,
-        boostWhatsappNumber: listingsTable.boostWhatsappNumber,
-        boostCtaText: listingsTable.boostCtaText,
-        status: listingsTable.status,
-      })
-      .from(listingsTable)
-      .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
-      .where(and(...buildConds(extraExclude)))
-      .orderBy(rotationPreferSql, sql`random()`)
-      .limit(1);
-    return row ?? null;
-  };
+  try {
+    const pickRow = async (extraExclude: number[] = []) => {
+      // One eligibility pool for Sellers, Admins, and Super Admins. Soft-rank by
+      // viewer rotation history (unseen → least recently shown), then random.
+      const base = db
+        .select({
+          id: listingsTable.id,
+          title: listingsTable.title,
+          price: listingsTable.price,
+          images: listingsTable.images,
+          boostVideoUrl: listingsTable.boostVideoUrl,
+          boostImageUrl: listingsTable.boostImageUrl,
+          boostAdFormat: listingsTable.boostAdFormat,
+          boostAudienceType: listingsTable.boostAudienceType,
+          sellerId: listingsTable.sellerId,
+          sellerName: usersTable.name,
+          boostCtaType: listingsTable.boostCtaType,
+          boostExternalLink: listingsTable.boostExternalLink,
+          boostWhatsappNumber: listingsTable.boostWhatsappNumber,
+          boostCtaText: listingsTable.boostCtaText,
+          status: listingsTable.status,
+        })
+        .from(listingsTable)
+        .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
+        .where(and(...buildConds(extraExclude)));
 
-  let row = await pickRow();
-  if (!row) {
-    res.set("Cache-Control", "no-store");
-    res.json({ listing: null });
-    return;
-  }
+      const ordered = rotationPreferSql
+        ? base.orderBy(rotationPreferSql, sql`random()`)
+        : base.orderBy(sql`random()`);
 
-  res.set("Cache-Control", "no-store");
-  let resolvedBoostVideoUrl = await resolveBoostVideoUrl(row.boostVideoUrl);
-  let adFormat =
-    row.boostAdFormat === "image" || (!resolvedBoostVideoUrl && row.boostImageUrl)
-      ? "image"
-      : "video";
+      const [row] = await ordered.limit(1);
+      return row ?? null;
+    };
 
-  // Creative URL dead → try one more eligible ad instead of returning empty.
-  if (adFormat === "video" && !resolvedBoostVideoUrl) {
-    const retry = await pickRow([row.id]);
-    if (!retry) {
+    let row = await pickRow();
+    if (!row) {
+      res.set("Cache-Control", "no-store");
       res.json({ listing: null });
       return;
     }
-    row = retry;
-    resolvedBoostVideoUrl = await resolveBoostVideoUrl(row.boostVideoUrl);
-    adFormat =
+
+    res.set("Cache-Control", "no-store");
+    let resolvedBoostVideoUrl = await resolveBoostVideoUrl(row.boostVideoUrl);
+    let adFormat =
       row.boostAdFormat === "image" || (!resolvedBoostVideoUrl && row.boostImageUrl)
         ? "image"
         : "video";
-    if (adFormat === "video" && !resolvedBoostVideoUrl) {
-      res.json({ listing: null });
-      return;
-    }
-  }
 
-  res.json({
-    listing: {
-      id: row.id,
-      title: row.title,
-      price: row.price,
-      thumbnail: row.boostImageUrl || row.images?.[0] || null,
-      boostVideoUrl: resolvedBoostVideoUrl,
-      boostImageUrl: row.boostImageUrl ?? null,
-      adFormat,
-      sellerName: row.sellerName,
-      sellerId: row.sellerId,
-      boostCtaType: row.boostCtaType ?? null,
-      boostExternalLink: row.boostExternalLink ?? null,
-      boostWhatsappNumber: row.boostWhatsappNumber ?? null,
-      boostCtaText: row.boostCtaText ?? null,
-      status: row.status,
-      isVideoOnly: row.status === "hidden",
-    },
-  });
+    // Creative URL dead → try one more eligible ad instead of returning empty.
+    if (adFormat === "video" && !resolvedBoostVideoUrl) {
+      const retry = await pickRow([row.id]);
+      if (!retry) {
+        res.json({ listing: null });
+        return;
+      }
+      row = retry;
+      resolvedBoostVideoUrl = await resolveBoostVideoUrl(row.boostVideoUrl);
+      adFormat =
+        row.boostAdFormat === "image" || (!resolvedBoostVideoUrl && row.boostImageUrl)
+          ? "image"
+          : "video";
+      if (adFormat === "video" && !resolvedBoostVideoUrl) {
+        res.json({ listing: null });
+        return;
+      }
+    }
+
+    res.json({
+      listing: {
+        id: row.id,
+        title: row.title,
+        price: row.price,
+        thumbnail: row.boostImageUrl || row.images?.[0] || null,
+        boostVideoUrl: resolvedBoostVideoUrl,
+        boostImageUrl: row.boostImageUrl ?? null,
+        adFormat,
+        sellerName: row.sellerName,
+        sellerId: row.sellerId,
+        boostCtaType: row.boostCtaType ?? null,
+        boostExternalLink: row.boostExternalLink ?? null,
+        boostWhatsappNumber: row.boostWhatsappNumber ?? null,
+        boostCtaText: row.boostCtaText ?? null,
+        status: row.status,
+        isVideoOnly: row.status === "hidden",
+      },
+    });
+  } catch (err) {
+    // Soft-fail: never 500 the interstitial path — Layout silently drops !ok.
+    req.log?.error?.({ err }, "boost/random-video failed");
+    logger.error({ err }, "boost/random-video failed");
+    res.set("Cache-Control", "no-store");
+    res.status(200).json({ listing: null });
+  }
 });
 
 /**

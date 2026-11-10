@@ -234,3 +234,6 @@ jobs:
 
 # Owner requested fe deploy: SEO catalog + Flexa Market brand/intent (#215) (2026-11-10).
 # force_build_20261110_seo_catalog_brand
+
+# Owner requested fe deploy: SEO noindex empty categories (#216) (2026-11-10).
+# force_build_20261110_seo_noindex_empty_cats

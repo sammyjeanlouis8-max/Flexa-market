@@ -82,9 +82,26 @@ export function normalizeExpression(raw: string, angle: AngleMode): string {
   s = s.replace(/\)\(/g, ")*(");
   s = s.replace(/\)(pi|e|i|[a-zA-Z])/g, ")*$1");
 
-  // Factorial postfix → factorial()
+  // Factorial postfix → factorial()  (5! and (…) !)
   s = s.replace(/(\d+(?:\.\d+)?)!/g, "factorial($1)");
-  s = s.replace(/\)!/g, ")"); // handled via rewrite below if needed
+  while (/\)!/.test(s)) {
+    const idx = s.indexOf(")!");
+    let depth = 0;
+    let start = -1;
+    for (let i = idx; i >= 0; i--) {
+      if (s[i] === ")") depth++;
+      else if (s[i] === "(") {
+        depth--;
+        if (depth === 0) {
+          start = i;
+          break;
+        }
+      }
+    }
+    if (start < 0) break;
+    const inner = s.slice(start, idx + 1);
+    s = `${s.slice(0, start)}factorial(${inner})${s.slice(idx + 2)}`;
+  }
 
   if (angle === "DEG") {
     // Map trig to degree-aware helpers (same arity — no extra parens).

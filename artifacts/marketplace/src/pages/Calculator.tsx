@@ -18,7 +18,8 @@ import {
  */
 export default function CalculatorPage() {
   const { user } = useAuth();
-  const [mode, setMode] = useState<CalculatorMode>("normal");
+  // Open on Scientific to match the phone-style reference screen.
+  const [mode, setMode] = useState<CalculatorMode>("scientific");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [graphSeed, setGraphSeed] = useState("sin(x)");
 

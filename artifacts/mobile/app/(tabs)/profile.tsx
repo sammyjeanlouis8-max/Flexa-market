@@ -1,12 +1,17 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
+import { canAccessAdminCenter } from "@/lib/adminRoles";
+import { isSupportStaff } from "@/lib/supportRoles";
 
-const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap }[] = [
+type LinkItem = { label: string; href: string; icon: keyof typeof Feather.glyphMap };
+
+const BASE_LINKS: LinkItem[] = [
   { label: "Edit profile", href: "/edit-profile", icon: "edit-2" },
   { label: "My orders", href: "/orders", icon: "package" },
   { label: "Seller sales", href: "/sales", icon: "bar-chart-2" },
@@ -39,6 +44,19 @@ export default function ProfileTab() {
   const router = useRouter();
   const { user, token, logout, isLoading } = useAuth();
   const { country } = useMarketplace();
+  const { t } = useLanguage();
+
+  const links = useMemo(() => {
+    const staff: LinkItem[] = [];
+    if (canAccessAdminCenter(user)) {
+      staff.push({ label: t("adminTitle"), href: "/admin", icon: "shield" });
+    }
+    if (isSupportStaff(user)) {
+      staff.push({ label: t("supportAgentDesk"), href: "/support-agent", icon: "headphones" });
+      staff.push({ label: t("supportAdminDesk"), href: "/support-admin", icon: "activity" });
+    }
+    return [...staff, ...BASE_LINKS];
+  }, [user, t]);
 
   return (
     <ScrollView
@@ -77,7 +95,7 @@ export default function ProfileTab() {
       )}
 
       <View style={styles.list}>
-        {LINKS.map((item) => (
+        {links.map((item) => (
           <Pressable
             key={item.href}
             style={styles.row}

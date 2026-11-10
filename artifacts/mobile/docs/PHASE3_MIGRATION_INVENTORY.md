@@ -2,32 +2,31 @@
 
 Source of truth: `phase3-migration-inventory.json` (83 routes).
 
-## Summary — Phase 3M
+## Summary — Phase 3N
 
 | Status | Count |
 |--------|------:|
-| FULLY_NATIVE | 72 |
-| PARTIALLY_NATIVE | 4 |
+| FULLY_NATIVE | 75 |
+| PARTIALLY_NATIVE | 1 |
 | PLACEHOLDER | 1 |
 | MISSING | 1 |
 | BLOCKED | 5 |
 
-### Delta vs Phase 3L
+### Delta vs Phase 3M
 
-| Status | 3L | 3M |
+| Status | 3M | 3N |
 |--------|---:|---:|
-| FULLY_NATIVE | 70 | 72 |
-| PARTIALLY_NATIVE | 5 | 4 |
+| FULLY_NATIVE | 72 | 75 |
+| PARTIALLY_NATIVE | 4 | 1 |
 | PLACEHOLDER | 1 | 1 |
 | MISSING | 1 | 1 |
-| BLOCKED | 6 | 5 |
+| BLOCKED | 5 | 5 |
 
-### Phase 3M highlights
-- Phone login: additive OTP `phoneToken` + native `/auth/login-phone` (FULLY_NATIVE)
-- Admin analytics hub: broadcast, push campaigns, TV CMS, Music CMS, password security (FULLY_NATIVE)
-- **PLACEHOLDER:** website-embed (intentional — no WebView shell)
-- **MISSING:** product-variations (no SKU API)
-- **BLOCKED:** wallet top-up, paid boost, subscription billing, music purchase, eSIM provider
-- **PARTIALLY_NATIVE:** push-fcm (device unverified), boost, subscription, bnpl
+### Phase 3N highlights
+- BNPL physical checkout wired (`/bnpl/checkout` + Pay later on `/stripe-checkout`)
+- Subscription cancel-at-period-end; paid upgrade companion remains BLOCKED
+- Boost unpaid drafts/analytics FULLY_NATIVE; paid launch companion BLOCKED (+ Android `mode:launch` rejected)
+- push-fcm still PARTIAL (device unverified)
+- website-embed PLACEHOLDER · product-variations MISSING · 5 digital/provider BLOCKED
 
-See `PHASE3M_DEVICE_READINESS.md` for OTP, payments, FCM, and device checklists.
+See `PHASE3N_GAP_CLOSURE.md` for Vercel/DO and FCM checklists.

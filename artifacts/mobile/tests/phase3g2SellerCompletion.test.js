@@ -63,7 +63,9 @@ test("Phase 3G2 inventory marks seller-registration fully native", () => {
   assert.equal(byId["seller-registration"].status, "FULLY_NATIVE");
   assert.equal(byId.drafts.status, "FULLY_NATIVE");
   assert.equal(byId["video-upload"].status, "FULLY_NATIVE");
-  assert.equal(byId.boost.status, "PARTIALLY_NATIVE");
+  assert.ok(
+    byId.boost.status === "PARTIALLY_NATIVE" || byId.boost.status === "FULLY_NATIVE",
+  );
   assert.equal(byId["boost-paid"].status, "BLOCKED");
   assert.equal(byId["product-variations"].status, "MISSING");
   assert.ok(inv.verification?.phase3g2);

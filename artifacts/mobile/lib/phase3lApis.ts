@@ -67,6 +67,14 @@ export async function fetchAndroidPurchaseStatus(opts: AuthOpts) {
   );
 }
 
+/** Allowed on Android — cancels at period end; does not initiate purchase. */
+export async function cancelMySubscription(opts: AuthOpts) {
+  return requireOk(
+    await authedFetch("/subscription/cancel", { ...opts, method: "POST", body: {} }),
+    "Cancel subscription failed",
+  );
+}
+
 export async function fetchDriverMyApplication(opts: AuthOpts) {
   return requireOk(await authedFetch("/driver/my-application", opts), "Driver application failed");
 }

@@ -100,7 +100,7 @@ test("Phase 3L inventory recount keeps 83 routes with honest enums", () => {
   assert.equal(byId["website-embed"].status, "PLACEHOLDER");
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.ok(inv.verification?.phase3l || inv.verification?.phase3m);
-  assert.match(inv.branch, /phase3[lm]/);
+  assert.match(inv.branch, /phase3[lmn]/);
 });
 
 test("Phase 3L docs exist", () => {

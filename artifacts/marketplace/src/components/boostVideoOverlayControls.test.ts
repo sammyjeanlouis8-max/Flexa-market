@@ -31,9 +31,23 @@ describe("BoostVideoOverlay in-frame controls contract", () => {
 
 describe("Home promo strip contract", () => {
   it("shows at most two most-recent promo cards and deep-links into /videos", () => {
+    expect(homeSrc).toMatch(/HOME_PROMO_VIDEO_CARD_LIMIT/);
+    expect(homeSrc).toMatch(/HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT/);
     expect(homeSrc).toMatch(/selectHomePromoVideos/);
     expect(homeSrc).toMatch(/sort: "new"/);
-    expect(homeSrc).toMatch(/selectHomePromoVideos\(\(data\.videos \?\? \[\]\) as PromoVideoItem\[\], 2\)/);
+    expect(homeSrc).toMatch(
+      /selectHomePromoVideos\(\s*\(data\.videos \?\? \[\]\) as PromoVideoItem\[\],\s*HOME_PROMO_VIDEO_CARD_LIMIT,\s*\)/,
+    );
+    expect(homeSrc).toMatch(/videos\.slice\(0, HOME_PROMO_VIDEO_CARD_LIMIT\)/);
+    expect(homeSrc).toMatch(/data-testid="home-promo-video-strip"/);
+    expect(homeSrc).toMatch(/data-home-promo-video-card="true"/);
     expect(homeSrc).toMatch(/href=\{`\/videos\?video=\$\{v\.id\}`\}/);
+    // Dedicated strip — must not be nested inside the Featured product grid.
+    expect(homeSrc).toMatch(
+      /HOME PROMO STRIP[\s\S]*<VideoPromoSection[\s\S]*FEATURED PRODUCTS/,
+    );
+    const featuredIdx = homeSrc.indexOf("FEATURED PRODUCTS");
+    expect(featuredIdx).toBeGreaterThan(-1);
+    expect(homeSrc.slice(featuredIdx)).not.toMatch(/VideoPromoSection/);
   });
 });

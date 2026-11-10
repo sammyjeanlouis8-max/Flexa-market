@@ -93,10 +93,23 @@ export type HomePromoCandidate = {
   boostStartAt?: string | null;
 };
 
+/**
+ * Hard cap for promotional video cards on Home across every viewer role and
+ * layout variant. The full /videos feed stays uncapped; only Home is limited.
+ */
+export const HOME_PROMO_VIDEO_CARD_LIMIT = 2;
+
+/**
+ * Bound the Home preview query so we never pull a large feed just to paint
+ * two cards. Eligibility filtering still happens server-side; this is only a
+ * request ceiling for the Home strip.
+ */
+export const HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT = HOME_PROMO_VIDEO_CARD_LIMIT;
+
 /** Live (non-expired) promos, newest first, capped at `limit` (default 2). */
 export function selectHomePromoVideos<T extends HomePromoCandidate>(
   videos: T[],
-  limit = 2,
+  limit = HOME_PROMO_VIDEO_CARD_LIMIT,
   nowMs: number = Date.now(),
 ): T[] {
   const live = videos.filter((v) => {

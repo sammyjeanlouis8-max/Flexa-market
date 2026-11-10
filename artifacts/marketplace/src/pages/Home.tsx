@@ -12,6 +12,7 @@ import { useShoppingLocation } from "@/contexts/shopping-location";
 import ListingCard from "@/components/ListingCard";
 import TodaysDealCard from "@/components/TodaysDealCard";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
+import { selectHomePromoVideos } from "@/lib/boostAdControls";
 import { selectTodaysDealSlots } from "@/lib/todaysDeals";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -101,6 +102,8 @@ interface PromoVideoItem {
   title: string;
   sellerName: string;
   boostEndAt: string | null;
+  createdAt?: string | null;
+  boostStartAt?: string | null;
 }
 
 function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) {
@@ -113,16 +116,13 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
     try {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const params = new URLSearchParams({ page: "1", limit: "6" });
+      // Prefer newest boosts for the Home strip; keep a small pool then take 2.
+      const params = new URLSearchParams({ page: "1", limit: "6", sort: "new" });
       if (countryFilter) params.set("country", countryFilter);
       const res = await fetch(`/api/videos/feed?${params}`, { headers });
       if (!res.ok) return;
       const data = await res.json();
-      const live = (data.videos ?? []).filter((v: PromoVideoItem) => {
-        if (!v.boostEndAt) return true;
-        return new Date(v.boostEndAt).getTime() > Date.now();
-      });
-      setVideos(live);
+      setVideos(selectHomePromoVideos((data.videos ?? []) as PromoVideoItem[], 2));
     } catch { /* non-critical */ } finally {
       setLoading(false);
     }

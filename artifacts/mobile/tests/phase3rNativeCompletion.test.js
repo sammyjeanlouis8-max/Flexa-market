@@ -11,8 +11,8 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 const inv = JSON.parse(read("docs/phase3-migration-inventory.json"));
 
 test("Phase 3R inventory floor preserved — not fake 83/83 FULLY", () => {
-  assert.equal(inv.features.length, 83);
-  // 3R shipped 75/2/1/0/5; 3S may promote website-embed to FULLY (76/2/0/0/5).
+  assert.ok(inv.features.length >= 83);
+  // 3R shipped 75/2/1/0/5; later phases may grow FULLY (website/redeem).
   assert.ok(inv.summaryCounts.FULLY_NATIVE >= 75);
   assert.equal(inv.summaryCounts.PARTIALLY_NATIVE, 2);
   assert.ok(inv.summaryCounts.PLACEHOLDER <= 1);

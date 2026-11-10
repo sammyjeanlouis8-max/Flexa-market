@@ -3,10 +3,10 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": null,
+  "pr": 189,
   "branch": "cursor/native-phase3o-validate-09ff",
   "auditedAt": "2026-11-10T07:50:47Z",
-  "auditCommit": "407a0fe9",
+  "auditCommit": "fcbc7537",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",

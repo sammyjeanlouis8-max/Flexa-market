@@ -6,7 +6,7 @@
   "pr": null,
   "branch": "cursor/native-phase3u-final-native-09ff",
   "auditedAt": "2026-11-10T09:50:59.874Z",
-  "auditCommit": "b32eb8e3",
+  "auditCommit": "ca01af7b",
   "stackedOnPr": 198,
   "verification": {
     "phase1_2_intact": true,
@@ -17,7 +17,7 @@
     "partiallyNativeRouteCount": 2,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
-      "eSIM marked DEFERRED/BLOCKED — no fake catalog.",
+      "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
       "Wallet top-up remains BLOCKED by Android digital purchase guard.",
       "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell).",
       "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
@@ -29,18 +29,18 @@
       "Phase 3H: referrals, jobs, calculator, wallet-transfer, notification prefs, privacy blocks. Top-up still blocked.",
       "Phase 3I: Flexa TV (live/schedule/programs/series/movies + expo-av player) and Flexa Music (browse/detail/upload + persistent player). TV user upload admin-only BLOCKED; music purchases remain BLOCKED; user playlists admin-only.",
       "Phase 3J: Support Center/tickets/FlexaBot escalation, agent desk, admin support analytics/assign, chat block/report, knowledge FAQ. Full admin panel still PLACEHOLDER.",
-      "Phase 3K: Native Super Admin Control Center — hub, users/RBAC, moderation, reports, orders, deliveries, boosts, All Videos (allCountries), finance wallets/cashouts, audit, traffic, team, KYC queue, settings gap hub; support desks integrated. Web-only: appeals, driver/agent apps, Stripe/MonCash ledgers, broadcast/push composers, TV/Music CMS, fee editors.",
-      "Phase 3L: Completion/audit — admin ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans/flagged/VIP/fees/Haiti ledger; customer loans/subscription plans/driver/flex-card/bnpl/cash-agents/commission-promo/credit-score; phone login BLOCKED (no phoneToken). Broadcast/push composers + TV/Music CMS + hash-security tools deferred. Play digital goods BLOCKED. FCM device unverified.",
-      "Phase 3M: Phone OTP restored (phone+country → phoneToken via generatePhoneToken; email withdrawalToken preserved). Native login-phone. Admin broadcast email/SMS, push campaigns, TV CMS, Music CMS, password-hash security. Globe low-end Android tuning. Product variations still MISSING (no SKU API). Play digital goods still BLOCKED. FCM physical-device delivery still unverified (PARTIALLY_NATIVE).",
-      "Phase 3N: BNPL physical checkout wired (POST /bnpl/checkout + stripe-checkout Pay later); subscription cancel-at-period-end; boost unpaid path marked complete (launch blocked server-side on Android UA); FCM diagnostics on notifications (still PARTIAL — device unverified); Vercel CI documented as legacy account-blocked (DigitalOcean is production). product-variations still MISSING; digital goods BLOCKED.",
+      "Phase 3K: Native Super Admin Control Center \u2014 hub, users/RBAC, moderation, reports, orders, deliveries, boosts, All Videos (allCountries), finance wallets/cashouts, audit, traffic, team, KYC queue, settings gap hub; support desks integrated. Web-only: appeals, driver/agent apps, Stripe/MonCash ledgers, broadcast/push composers, TV/Music CMS, fee editors.",
+      "Phase 3L: Completion/audit \u2014 admin ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans/flagged/VIP/fees/Haiti ledger; customer loans/subscription plans/driver/flex-card/bnpl/cash-agents/commission-promo/credit-score; phone login BLOCKED (no phoneToken). Broadcast/push composers + TV/Music CMS + hash-security tools deferred. Play digital goods BLOCKED. FCM device unverified.",
+      "Phase 3M: Phone OTP restored (phone+country \u2192 phoneToken via generatePhoneToken; email withdrawalToken preserved). Native login-phone. Admin broadcast email/SMS, push campaigns, TV CMS, Music CMS, password-hash security. Globe low-end Android tuning. Product variations still MISSING (no SKU API). Play digital goods still BLOCKED. FCM physical-device delivery still unverified (PARTIALLY_NATIVE).",
+      "Phase 3N: BNPL physical checkout wired (POST /bnpl/checkout + stripe-checkout Pay later); subscription cancel-at-period-end; boost unpaid path marked complete (launch blocked server-side on Android UA); FCM diagnostics on notifications (still PARTIAL \u2014 device unverified); Vercel CI documented as legacy account-blocked (DigitalOcean is production). product-variations still MISSING; digital goods BLOCKED.",
       "Phase 3O: Boost unpaid polish (form draft persistence, video preview, age/gender, /videos player); FCM retry + UA; honest non-FULLY inventory (push PARTIAL, variations MISSING, 5 BLOCKED, website PLACEHOLDER). No invented APIs. Vercel still legacy. Globe preserved. Counts remain 75/1/1/1/5.",
-      "Phase 3P: CRITICAL — seller Advantage+/video-only no longer stamps seller department/commune; country-wide auto feed parity with Admin free boosts. Super Admin feed-eligibility + feed-delivery-audit (read-only). Scheduled campaign status. FCM/OTP still need physical device. Counts remain 75/1/1/1/5.",
+      "Phase 3P: CRITICAL \u2014 seller Advantage+/video-only no longer stamps seller department/commune; country-wide auto feed parity with Admin free boosts. Super Admin feed-eligibility + feed-delivery-audit (read-only). Scheduled campaign status. FCM/OTP still need physical device. Counts remain 75/1/1/1/5.",
       "Phase 3Q: Home max-2 promo videos (web+native); VideoFeed hard-stop audio on scroll; NativeVideoPlayer active prop; read-only Advantage+ geo recovery preview + SQL scripts (no production mutate). Physical device + production audit count still pending. Counts remain 75/1/1/1/5.",
       "Phase 3Q release validation: Mobile preflight PASS; Vercel Account-blocked obsolete; public Haiti feed limit=2 returns 2 videos; affected campaign count blocked without read-only DB URL; overall NO-GO for production data changes / CONDITIONAL GO for code merge after approval.",
-      "Phase 3R: Native completion push — product-variations PARTIAL (itemSize-only native screen; multi-SKU still no API); Admin TV multipart upload + Music provider connect; search recent history; profile public shop + promo/esim links; inventory honesty (promo-feed, delivery-confirm, image-upload routes). Counts 75/2/1/0/5. Still not 83/83: FCM PARTIAL, website PLACEHOLDER, 5 Play/eSIM BLOCKED.",
+      "Phase 3R: Native completion push \u2014 product-variations PARTIAL (itemSize-only native screen; multi-SKU still no API); Admin TV multipart upload + Music provider connect; search recent history; profile public shop + promo/esim links; inventory honesty (promo-feed, delivery-confirm, image-upload routes). Counts 75/2/1/0/5. Still not 83/83: FCM PARTIAL, website PLACEHOLDER, 5 Play/eSIM BLOCKED.",
       "Phase 3R gap closure: seller ship + shipping label on /orders/[id]; inventory honesty for order-detail/seller-orders/search history/home promo.",
-      "Phase 3S: website route → platform browser (FULLY for intentional external nav); product-variations presets; FCM local checklist; Android APK blocked without SDK/EAS login; physical device not run on agent.",
-      "Phase 3T: EAS preview APK blocked — eas whoami Not logged in; EXPO_TOKEN missing. Config verified (com.flexa.market, preview buildType=apk, google-services match). No APK claimed.",
+      "Phase 3S: website route \u2192 platform browser (FULLY for intentional external nav); product-variations presets; FCM local checklist; Android APK blocked without SDK/EAS login; physical device not run on agent.",
+      "Phase 3T: EAS preview APK blocked \u2014 eas whoami Not logged in; EXPO_TOKEN missing. Config verified (com.flexa.market, preview buildType=apk, google-services match). No APK claimed.",
       "Phase 3U: listing_variants schema+API+native seller/buyer/cart (PARTIAL until SQL approved); wallet-redeem FULLY; eSIM honest BLOCKED; payments audit; EXPO_TOKEN still missing for APK."
     ],
     "phase3b": true,
@@ -644,7 +644,7 @@
         "Physical-device FCM end-to-end verification",
         "EAS FCM V1 credential confirmation in Expo dashboard"
       ],
-      "work": "Phase 3U: code-complete Expo/FCM path retained; physical delivery still unverified — PARTIAL"
+      "work": "Phase 3U: code-complete Expo/FCM path retained; physical delivery still unverified \u2014 PARTIAL"
     },
     {
       "id": "kyc",
@@ -1147,7 +1147,7 @@
       "domain": "driver",
       "webRoute": "/delivery/apply",
       "nativeRoute": "/driver-apply",
-      "role": "buyer→driver",
+      "role": "buyer\u2192driver",
       "apis": [
         "/api/driver/my-application",
         "/api/delivery/application/draft",
@@ -1318,7 +1318,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3L–3R Control Center: ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans + broadcast/push/TV/Music CMS/security; Phase 3R TV upload + music providers"
+      "work": "Phase 3L\u20133R Control Center: ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans + broadcast/push/TV/Music CMS/security; Phase 3R TV upload + music providers"
     },
     {
       "id": "admin-users",
@@ -1441,7 +1441,7 @@
       "apis": [],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3S: intentional external browser via expo-web-browser to flexamarket.com — not a marketplace WebView embed"
+      "work": "Phase 3S: intentional external browser via expo-web-browser to flexamarket.com \u2014 not a marketplace WebView embed"
     },
     {
       "id": "esim",
@@ -1455,7 +1455,7 @@
       "missing": [
         "provider integration"
       ],
-      "work": "Phase 3U: honest BLOCKED shell — no provider API in-repo; no fake QR/plans"
+      "work": "Phase 3U: honest BLOCKED shell \u2014 no provider API in-repo; no fake QR/plans"
     },
     {
       "id": "smart-notifications",
@@ -1505,7 +1505,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3U: native redeem UI — allowed on Android (not Play digital goods)"
+      "work": "Phase 3U: native redeem UI \u2014 allowed on Android (not Play digital goods)"
     }
   ],
   "recommendedPhase3Order": [

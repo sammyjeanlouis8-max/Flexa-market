@@ -8,6 +8,7 @@ import {
   VALID_PLANS, VALID_PAY_METHODS, PLAN_META, HAITI_DEPARTMENTS, VALID_RADIUS_KM,
   getAllowedMethods, validateAudience, validateBudget, estimateReach,
   dailyBudgetFromTotal, LARGE_BOOST_BUDGET_USD,
+  resolveBoostAudienceGeo, resolveVideoOnlyAudienceGeo,
   type Plan, type PayMethod,
 } from "../lib/boostTargeting";
 import { getStripeClient } from "../lib/stripeClient";
@@ -140,8 +141,10 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     ? (typeof req.body.audience?.country === "string" ? req.body.audience.country : req.user?.country)
     : req.user?.country;
 
-  // Custom / map targeting: honor wizard selections (department, cities, radius).
-  // Advantage+ (automatic): default to the seller's registered region when omitted.
+  // Custom / map targeting: honor explicit wizard selections only.
+  // Advantage+ (automatic): country-wide when no department/city was selected.
+  // Never inject the seller/admin profile city or state — that silently excludes
+  // most viewers while Admin free boosts (null city/state) appear nationwide.
   const audienceType =
     req.body.audience?.audienceType === "custom" ? "custom" : "advantage_plus";
   const bodyState =
@@ -157,26 +160,22 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     ? (req.body.audience.cities as unknown[]).filter((c): c is string => typeof c === "string" && c.trim().length > 0)
     : [];
 
-  const resolvedState = isAdmin
-    ? (bodyState || bodyStates[0] || req.user?.state || null)
-    : audienceType === "custom"
-      ? (bodyState || bodyStates[0] || req.user?.state || null)
-      : (req.user?.state || bodyState || bodyStates[0] || null);
-
-  const resolvedCity = isAdmin
-    ? (bodyCity || bodyCities[0] || req.user?.location || null)
-    : audienceType === "custom"
-      ? (bodyCity || bodyCities[0] || null)
-      : (req.user?.location || bodyCity || bodyCities[0] || null);
+  const resolvedGeo = resolveBoostAudienceGeo({
+    audienceType,
+    bodyState: bodyState || null,
+    bodyStates,
+    bodyCity: bodyCity || null,
+    bodyCities,
+  });
 
   const audienceBody = {
     ...req.body.audience,
     audienceType,
     country: audienceCountry,
-    state: resolvedState,
-    states: bodyStates.length > 0 ? bodyStates : (bodyState ? undefined : req.body.audience?.states),
-    city: resolvedCity,
-    cities: audienceType === "custom" && bodyCities.length > 0 ? bodyCities : req.body.audience?.cities,
+    state: resolvedGeo.state,
+    states: resolvedGeo.states ?? undefined,
+    city: resolvedGeo.city,
+    cities: resolvedGeo.cities ?? undefined,
   };
   const audienceCheck = validateAudience(audienceBody, audienceCountry);
   if (!audienceCheck.ok) { res.status(400).json({ error: audienceCheck.error }); return; }
@@ -246,6 +245,7 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     objective: audience.objective ?? "auto",
     paymentMethod,
     paymentStatus: "pending",
+    campaignStatus: "pending",
     expiresAt,
   }).returning();
 
@@ -300,7 +300,11 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     }
 
     const paymentRef = `WBOOST-${boost.id}-${Date.now()}`;
-    await db.update(boostsTable).set({ paymentStatus: "paid", paymentRef }).where(eq(boostsTable.id, boost.id));
+    await db.update(boostsTable).set({
+      paymentStatus: "paid",
+      paymentRef,
+      campaignStatus: "active",
+    }).where(eq(boostsTable.id, boost.id));
     await db.update(listingsTable).set({
       isBoosted: true,
       boostStartAt: new Date(),
@@ -654,10 +658,22 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
   // Super-admins may target ALL countries globally.
   const isAllCountries = !!(req.user?.isSuperAdmin) && rawCountry === "ALL";
   const country = rawCountry;
-  const state = (!isAllCountries && country === "Haiti") ? (req.user!.state ?? "Ouest") : null;
-  const city  = (!isAllCountries && typeof req.body.audienceCity === "string" && req.body.audienceCity.trim())
-    ? req.body.audienceCity.trim()
-    : (!isAllCountries ? (req.user!.location ?? null) : null);
+  // Explicit audience only — never stamp seller profile state/city (that caused
+  // paid seller video-only boosts to deliver only inside one commune while Admin
+  // boosts with null geo appeared for the whole country).
+  const bodyCities = Array.isArray(req.body.audienceCities)
+    ? (req.body.audienceCities as unknown[])
+        .filter((c): c is string => typeof c === "string" && c.trim().length > 0)
+        .map((c) => c.trim())
+    : [];
+  const resolvedGeo = resolveVideoOnlyAudienceGeo({
+    isAllCountries,
+    audienceState: typeof req.body.audienceState === "string" ? req.body.audienceState : null,
+    audienceCity: typeof req.body.audienceCity === "string" ? req.body.audienceCity : null,
+    audienceCities: bodyCities,
+  });
+  const state = resolvedGeo.state;
+  const city = resolvedGeo.city;
   const gender = ["all", "male", "female"].includes(req.body.audienceGender) ? req.body.audienceGender : "all";
   const ageMin = Number.isFinite(Number(req.body.audienceAgeMin)) ? Math.max(13, Math.min(79, Number(req.body.audienceAgeMin))) : 18;
   const ageMax = Number.isFinite(Number(req.body.audienceAgeMax)) ? Math.max(ageMin + 1, Math.min(80, Number(req.body.audienceAgeMax))) : 65;
@@ -669,7 +685,7 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
   const dailyBudget = dailyBudgetFromTotal(budget, plan);
   const expiresAt = new Date(Date.now() + planMeta.days * 24 * 60 * 60 * 1000);
   const reach = estimateReach(budget, plan, {
-    country, state, city, audienceType: "advantage_plus", ageMin, ageMax, gender, objective: "auto",
+    country, state, city, cities: resolvedGeo.cities, audienceType: "advantage_plus", ageMin, ageMax, gender, objective: "auto",
   });
   if (budgetCheck.ok && budgetCheck.largeBudget) {
     logger.warn({ userId: req.userId, budget, threshold: LARGE_BOOST_BUDGET_USD }, "Large video-only booster budget");
@@ -711,7 +727,7 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
     audienceCountry: country,
     audienceState: state,
     audienceCity: city,
-    audienceCities: city ? [city] : null,
+    audienceCities: resolvedGeo.cities,
     audienceNeighborhood: null,
     audienceRadiusKm: null,
     audienceAgeMin: ageMin,
@@ -720,6 +736,7 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
     objective: "auto",
     paymentMethod: "wallet",
     paymentStatus: "pending",
+    campaignStatus: "active",
     expiresAt,
   }).returning();
 
@@ -743,14 +760,18 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
 
   // Activate boost
   const paymentRef = `WBOOST-${boost.id}-${Date.now()}`;
-  await db.update(boostsTable).set({ paymentStatus: "paid", paymentRef }).where(eq(boostsTable.id, boost.id));
+  await db.update(boostsTable).set({
+    paymentStatus: "paid",
+    paymentRef,
+    campaignStatus: "active",
+  }).where(eq(boostsTable.id, boost.id));
   await db.update(listingsTable).set({
     isBoosted: true,
     boostStartAt: new Date(),
     boostExpiresAt: expiresAt,
     boostAudienceCountry: country,
     boostAudienceState: state,
-    boostAudienceCities: city ? [city] : null,
+    boostAudienceCities: resolvedGeo.cities,
     boostAudienceCity: city,
     boostAudienceAgeMin: ageMin,
     boostAudienceAgeMax: ageMax,

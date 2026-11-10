@@ -96,6 +96,88 @@ export function audienceStateMatches(audienceState: string | null | undefined, v
   return decodeAudienceStates(audienceState).some((s) => s.toLowerCase() === needle);
 }
 
+export type ResolvedBoostAudienceGeo = {
+  state: string | null;
+  states: string[] | null;
+  city: string | null;
+  cities: string[] | null;
+};
+
+/**
+ * Resolve geo targeting for boost activation.
+ *
+ * Advantage+ / automatic campaigns are country-wide unless the advertiser
+ * explicitly selected department(s) or city/commune targets.
+ *
+ * NEVER inject the advertiser's profile state/city as a silent default —
+ * that incorrectly excludes most of the country from seller boosts while
+ * Admin free boosts (which leave city/state null) appear for everyone.
+ *
+ * Custom campaigns also keep only explicitly selected geo; profile fallback
+ * is not used so sellers cannot accidentally target a single commune.
+ */
+export function resolveBoostAudienceGeo(input: {
+  audienceType?: AudienceType | string | null;
+  bodyState?: string | null;
+  bodyStates?: string[] | null;
+  bodyCity?: string | null;
+  bodyCities?: string[] | null;
+}): ResolvedBoostAudienceGeo {
+  const bodyStates = (input.bodyStates ?? [])
+    .map((s) => (typeof s === "string" ? s.trim() : ""))
+    .filter(Boolean);
+  const fromSingleState =
+    typeof input.bodyState === "string" && input.bodyState.trim()
+      ? decodeAudienceStates(input.bodyState)
+      : [];
+  const states = bodyStates.length > 0
+    ? Array.from(new Set(bodyStates))
+    : fromSingleState.length > 0
+      ? fromSingleState
+      : null;
+
+  const bodyCities = (input.bodyCities ?? [])
+    .map((c) => (typeof c === "string" ? c.trim() : ""))
+    .filter(Boolean);
+  const fromSingleCity =
+    typeof input.bodyCity === "string" && input.bodyCity.trim()
+      ? [input.bodyCity.trim()]
+      : [];
+  const cities = bodyCities.length > 0
+    ? Array.from(new Set(bodyCities))
+    : fromSingleCity.length > 0
+      ? fromSingleCity
+      : null;
+
+  return {
+    state: states && states.length > 0 ? encodeAudienceStates(states) : null,
+    states,
+    city: cities && cities.length > 0 ? cities[0] : null,
+    cities,
+  };
+}
+
+/**
+ * Resolve geo for the legacy /boost/video-only endpoint.
+ * Explicit body fields only — never stamp seller profile location.
+ */
+export function resolveVideoOnlyAudienceGeo(input: {
+  isAllCountries: boolean;
+  audienceState?: string | null;
+  audienceCity?: string | null;
+  audienceCities?: string[] | null;
+}): ResolvedBoostAudienceGeo {
+  if (input.isAllCountries) {
+    return { state: null, states: null, city: null, cities: null };
+  }
+  return resolveBoostAudienceGeo({
+    audienceType: "advantage_plus",
+    bodyState: input.audienceState ?? null,
+    bodyCity: input.audienceCity ?? null,
+    bodyCities: input.audienceCities ?? null,
+  });
+}
+
 export type AudienceValidation =
   | { ok: true; audience: Audience }
   | { ok: false; error: string };

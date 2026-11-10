@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable, flexCardDebtsTable, siteDailyVisitsTable, adminAppealsTable } from "@workspace/db";
-import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte, like, isNotNull } from "drizzle-orm";
+import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, gt, lte, like, isNotNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole, getOnlineUserCount } from "../middlewares/auth";
 import { countActiveSessions, getVisitorBreakdown } from "./analytics";
@@ -12,6 +12,12 @@ import { accountRestrictedEmail, broadcastEmail } from "../lib/emailTemplates";
 import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
 import { SCOPE_OPTIONS, userInAdminScope } from "../lib/adminScope";
 import { hasUsableListingImage } from "../lib/listingMedia";
+import {
+  buildNarrowGeoRecoveryPlan,
+  diagnoseBoostDelivery,
+  type BoostDeliverySnapshot,
+} from "../lib/boostDeliveryMonitor";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -2022,6 +2028,8 @@ router.get("/admin/boosts", requireAdmin, async (req, res): Promise<void> => {
   const payMethod = req.query.paymentMethod as string | undefined;
   const status    = req.query.status as string | undefined;
   const country   = req.query.country as string | undefined;
+  const includeDelivery = req.user?.isSuperAdmin
+    && ["1", "true", "yes"].includes(String(req.query.delivery ?? "").toLowerCase());
 
   const rows = await db
     .select({
@@ -2031,6 +2039,14 @@ router.get("/admin/boosts", requireAdmin, async (req, res): Promise<void> => {
       paymentMethod: boostsTable.paymentMethod,
       paymentStatus: boostsTable.paymentStatus,
       paymentRef:    boostsTable.paymentRef,
+      campaignStatus: boostsTable.campaignStatus,
+      audienceType:  boostsTable.audienceType,
+      audienceCountry: boostsTable.audienceCountry,
+      audienceState: boostsTable.audienceState,
+      audienceCity:  boostsTable.audienceCity,
+      audienceCities: boostsTable.audienceCities,
+      impressions:   boostsTable.impressions,
+      startsAt:      boostsTable.startsAt,
       expiresAt:     boostsTable.expiresAt,
       createdAt:     boostsTable.createdAt,
       listingId:     listingsTable.id,
@@ -2038,9 +2054,20 @@ router.get("/admin/boosts", requireAdmin, async (req, res): Promise<void> => {
       listingImage:  listingsTable.images,
       listingCountry: listingsTable.country,
       listingPrice:  listingsTable.price,
+      listingStatus: listingsTable.status,
+      listingModerationStatus: listingsTable.moderationStatus,
+      stockQuantity: listingsTable.stockQuantity,
       isBoosted:     listingsTable.isBoosted,
+      boostVideoUrl: listingsTable.boostVideoUrl,
+      boostStartAt:  listingsTable.boostStartAt,
+      boostExpiresAt: listingsTable.boostExpiresAt,
+      boostAudienceState: listingsTable.boostAudienceState,
+      boostAudienceCity: listingsTable.boostAudienceCity,
+      boostAudienceCities: listingsTable.boostAudienceCities,
       sellerId:      usersTable.id,
       sellerName:    usersTable.name,
+      sellerState:   usersTable.state,
+      sellerLocation: usersTable.location,
     })
     .from(boostsTable)
     .innerJoin(listingsTable, eq(boostsTable.listingId, listingsTable.id))
@@ -2060,13 +2087,297 @@ router.get("/admin/boosts", requireAdmin, async (req, res): Promise<void> => {
   if (payMethod && payMethod !== "all") filtered = filtered.filter(r => r.paymentMethod === payMethod);
   if (status   && status   !== "all") filtered = filtered.filter(r => r.paymentStatus  === status);
 
-  res.json(filtered.map(r => ({
-    ...r,
-    expiresAt: r.expiresAt.toISOString(),
-    createdAt: r.createdAt.toISOString(),
-    isExpired: r.expiresAt < new Date(),
-    listingImage: (r.listingImage as string[])?.[0] ?? null,
-  })));
+  res.json(filtered.map(r => {
+    const base = {
+      ...r,
+      expiresAt: r.expiresAt.toISOString(),
+      createdAt: r.createdAt.toISOString(),
+      startsAt: r.startsAt ? r.startsAt.toISOString() : null,
+      boostStartAt: r.boostStartAt ? r.boostStartAt.toISOString() : null,
+      boostExpiresAt: r.boostExpiresAt ? r.boostExpiresAt.toISOString() : null,
+      isExpired: r.expiresAt < new Date(),
+      listingImage: (r.listingImage as string[])?.[0] ?? null,
+      // Non-super-admins never receive seller home geo (private profile fields).
+      sellerState: admin.isSuperAdmin ? r.sellerState : undefined,
+      sellerLocation: admin.isSuperAdmin ? r.sellerLocation : undefined,
+    };
+    if (!includeDelivery) return base;
+
+    const snapshot: BoostDeliverySnapshot = {
+      boostId: r.id,
+      listingId: r.listingId,
+      advertiserId: r.sellerId,
+      advertiserName: r.sellerName,
+      paymentStatus: r.paymentStatus,
+      paymentMethod: r.paymentMethod,
+      campaignStatus: r.campaignStatus,
+      audienceType: r.audienceType,
+      audienceCountry: r.audienceCountry ?? r.listingCountry,
+      audienceState: r.boostAudienceState ?? r.audienceState,
+      audienceCity: r.boostAudienceCity ?? r.audienceCity,
+      audienceCities: r.boostAudienceCities ?? r.audienceCities,
+      startsAt: r.boostStartAt ?? r.startsAt,
+      expiresAt: r.boostExpiresAt ?? r.expiresAt,
+      impressions: r.impressions ?? 0,
+      isBoosted: r.isBoosted,
+      boostVideoUrl: r.boostVideoUrl,
+      boostStartAt: r.boostStartAt,
+      boostExpiresAt: r.boostExpiresAt,
+      listingStatus: r.listingStatus,
+      listingModerationStatus: r.listingModerationStatus,
+      listingCountry: r.listingCountry,
+      listingPrice: r.listingPrice,
+      stockQuantity: r.stockQuantity,
+      sellerState: r.sellerState,
+      sellerLocation: r.sellerLocation,
+      createdAt: r.createdAt,
+    };
+    const diagnosis = diagnoseBoostDelivery(snapshot);
+    return {
+      ...base,
+      delivery: {
+        eligibleForFeed: diagnosis.eligibleForFeed,
+        exclusionReasons: diagnosis.exclusionReasons,
+        deliveryError: diagnosis.deliveryError,
+        recoverableNarrowGeo: diagnosis.recoverableNarrowGeo,
+        targetAudience: diagnosis.targetAudience,
+        impressions: diagnosis.impressions,
+      },
+    };
+  }));
+});
+
+/**
+ * Super Admin only — delivery health for active / recently created boosts.
+ * Surfaces zero-impression campaigns and exclusion reasons without exposing
+ * private advertiser fields to non-super-admins (guarded by requireSuperAdmin).
+ */
+router.get("/admin/boosts/delivery-health", requireSuperAdmin, async (req, res): Promise<void> => {
+  const hours = Math.min(168, Math.max(1, parseInt(String(req.query.hours ?? "48"), 10) || 48));
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+  const rows = await db
+    .select({
+      id: boostsTable.id,
+      paymentMethod: boostsTable.paymentMethod,
+      paymentStatus: boostsTable.paymentStatus,
+      campaignStatus: boostsTable.campaignStatus,
+      audienceType: boostsTable.audienceType,
+      audienceCountry: boostsTable.audienceCountry,
+      audienceState: boostsTable.audienceState,
+      audienceCity: boostsTable.audienceCity,
+      audienceCities: boostsTable.audienceCities,
+      impressions: boostsTable.impressions,
+      startsAt: boostsTable.startsAt,
+      expiresAt: boostsTable.expiresAt,
+      createdAt: boostsTable.createdAt,
+      listingId: listingsTable.id,
+      listingCountry: listingsTable.country,
+      listingPrice: listingsTable.price,
+      listingStatus: listingsTable.status,
+      listingModerationStatus: listingsTable.moderationStatus,
+      stockQuantity: listingsTable.stockQuantity,
+      isBoosted: listingsTable.isBoosted,
+      boostVideoUrl: listingsTable.boostVideoUrl,
+      boostStartAt: listingsTable.boostStartAt,
+      boostExpiresAt: listingsTable.boostExpiresAt,
+      boostAudienceState: listingsTable.boostAudienceState,
+      boostAudienceCity: listingsTable.boostAudienceCity,
+      boostAudienceCities: listingsTable.boostAudienceCities,
+      sellerId: usersTable.id,
+      sellerName: usersTable.name,
+      sellerState: usersTable.state,
+      sellerLocation: usersTable.location,
+    })
+    .from(boostsTable)
+    .innerJoin(listingsTable, eq(boostsTable.listingId, listingsTable.id))
+    .innerJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
+    .where(or(
+      gte(boostsTable.createdAt, since),
+      and(eq(boostsTable.paymentStatus, "paid"), gt(boostsTable.expiresAt, new Date())),
+    ))
+    .orderBy(desc(boostsTable.createdAt))
+    .limit(500);
+
+  const diagnoses = rows.map((r) => diagnoseBoostDelivery({
+    boostId: r.id,
+    listingId: r.listingId,
+    advertiserId: r.sellerId,
+    advertiserName: r.sellerName,
+    paymentStatus: r.paymentStatus,
+    paymentMethod: r.paymentMethod,
+    campaignStatus: r.campaignStatus,
+    audienceType: r.audienceType,
+    audienceCountry: r.audienceCountry ?? r.listingCountry,
+    audienceState: r.boostAudienceState ?? r.audienceState,
+    audienceCity: r.boostAudienceCity ?? r.audienceCity,
+    audienceCities: r.boostAudienceCities ?? r.audienceCities,
+    startsAt: r.boostStartAt ?? r.startsAt,
+    expiresAt: r.boostExpiresAt ?? r.expiresAt,
+    impressions: r.impressions ?? 0,
+    isBoosted: r.isBoosted,
+    boostVideoUrl: r.boostVideoUrl,
+    boostStartAt: r.boostStartAt,
+    boostExpiresAt: r.boostExpiresAt,
+    listingStatus: r.listingStatus,
+    listingModerationStatus: r.listingModerationStatus,
+    listingCountry: r.listingCountry,
+    listingPrice: r.listingPrice,
+    stockQuantity: r.stockQuantity,
+    sellerState: r.sellerState,
+    sellerLocation: r.sellerLocation,
+    createdAt: r.createdAt,
+  }));
+
+  const zeroImpressionEligible = diagnoses.filter(
+    (d) => d.eligibleForFeed && d.impressions === 0,
+  );
+  const recoverable = diagnoses.filter((d) => d.recoverableNarrowGeo);
+  const pendingReview = diagnoses.filter((d) => d.paymentStatus === "pending_review");
+
+  res.json({
+    windowHours: hours,
+    totals: {
+      scanned: diagnoses.length,
+      zeroImpressionEligible: zeroImpressionEligible.length,
+      recoverableNarrowGeo: recoverable.length,
+      pendingReview: pendingReview.length,
+    },
+    campaigns: diagnoses,
+  });
+});
+
+/**
+ * Super Admin — dry-run (default) or apply recovery that widens incorrectly
+ * auto-stamped Advantage+ geo on paid active seller campaigns.
+ * Never resets budgets, payments, or fabricates impressions.
+ * Body: { apply?: boolean, boostIds?: number[] }
+ */
+router.post("/admin/boosts/recover-narrow-geo", requireSuperAdmin, async (req, res): Promise<void> => {
+  const apply = req.body?.apply === true;
+  const requestedIds = Array.isArray(req.body?.boostIds)
+    ? (req.body.boostIds as unknown[])
+        .map((n) => parseInt(String(n), 10))
+        .filter((n) => Number.isFinite(n) && n > 0)
+    : null;
+
+  const rows = await db
+    .select({
+      id: boostsTable.id,
+      paymentMethod: boostsTable.paymentMethod,
+      paymentStatus: boostsTable.paymentStatus,
+      campaignStatus: boostsTable.campaignStatus,
+      audienceType: boostsTable.audienceType,
+      audienceCountry: boostsTable.audienceCountry,
+      audienceState: boostsTable.audienceState,
+      audienceCity: boostsTable.audienceCity,
+      audienceCities: boostsTable.audienceCities,
+      impressions: boostsTable.impressions,
+      startsAt: boostsTable.startsAt,
+      expiresAt: boostsTable.expiresAt,
+      listingId: listingsTable.id,
+      listingCountry: listingsTable.country,
+      listingPrice: listingsTable.price,
+      listingStatus: listingsTable.status,
+      listingModerationStatus: listingsTable.moderationStatus,
+      stockQuantity: listingsTable.stockQuantity,
+      isBoosted: listingsTable.isBoosted,
+      boostVideoUrl: listingsTable.boostVideoUrl,
+      boostStartAt: listingsTable.boostStartAt,
+      boostExpiresAt: listingsTable.boostExpiresAt,
+      boostAudienceState: listingsTable.boostAudienceState,
+      boostAudienceCity: listingsTable.boostAudienceCity,
+      boostAudienceCities: listingsTable.boostAudienceCities,
+      sellerId: usersTable.id,
+      sellerName: usersTable.name,
+      sellerState: usersTable.state,
+      sellerLocation: usersTable.location,
+    })
+    .from(boostsTable)
+    .innerJoin(listingsTable, eq(boostsTable.listingId, listingsTable.id))
+    .innerJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
+    .where(and(
+      eq(boostsTable.paymentStatus, "paid"),
+      gt(boostsTable.expiresAt, new Date()),
+      eq(listingsTable.isBoosted, true),
+      ne(boostsTable.paymentMethod, "admin"),
+      ...(requestedIds && requestedIds.length > 0
+        ? [inArray(boostsTable.id, requestedIds)]
+        : []),
+    ))
+    .limit(500);
+
+  const plans = rows
+    .map((r) => buildNarrowGeoRecoveryPlan({
+      boostId: r.id,
+      listingId: r.listingId,
+      advertiserId: r.sellerId,
+      advertiserName: r.sellerName,
+      paymentStatus: r.paymentStatus,
+      paymentMethod: r.paymentMethod,
+      campaignStatus: r.campaignStatus,
+      audienceType: r.audienceType ?? "advantage_plus",
+      audienceCountry: r.audienceCountry ?? r.listingCountry,
+      audienceState: r.boostAudienceState ?? r.audienceState,
+      audienceCity: r.boostAudienceCity ?? r.audienceCity,
+      audienceCities: r.boostAudienceCities ?? r.audienceCities,
+      startsAt: r.boostStartAt ?? r.startsAt,
+      expiresAt: r.boostExpiresAt ?? r.expiresAt,
+      impressions: r.impressions ?? 0,
+      isBoosted: r.isBoosted,
+      boostVideoUrl: r.boostVideoUrl,
+      boostStartAt: r.boostStartAt,
+      boostExpiresAt: r.boostExpiresAt,
+      listingStatus: r.listingStatus,
+      listingModerationStatus: r.listingModerationStatus,
+      listingCountry: r.listingCountry,
+      listingPrice: r.listingPrice,
+      stockQuantity: r.stockQuantity,
+      sellerState: r.sellerState,
+      sellerLocation: r.sellerLocation,
+    }))
+    .filter((p): p is NonNullable<typeof p> => !!p);
+
+  if (!apply) {
+    res.json({
+      dryRun: true,
+      apply: false,
+      candidateCount: plans.length,
+      candidates: plans,
+      message: "Dry run only. Re-post with { apply: true } after explicit approval to widen targeting.",
+    });
+    return;
+  }
+
+  let updated = 0;
+  for (const plan of plans) {
+    await db.transaction(async (tx) => {
+      await tx.update(listingsTable).set({
+        boostAudienceState: null,
+        boostAudienceCity: null,
+        boostAudienceCities: null,
+      }).where(eq(listingsTable.id, plan.listingId));
+      await tx.update(boostsTable).set({
+        audienceState: null,
+        audienceCity: null,
+        audienceCities: null,
+        campaignStatus: "active",
+      }).where(eq(boostsTable.id, plan.boostId));
+    });
+    updated += 1;
+  }
+
+  await log(req.userId!, "boost_geo_recovery", "boost", undefined,
+    `Widened auto-stamped Advantage+ geo on ${updated} seller campaign(s)`);
+  logger.warn({ updated, adminId: req.userId }, "Applied boost narrow-geo recovery");
+
+  res.json({
+    dryRun: false,
+    apply: true,
+    updated,
+    candidates: plans,
+    message: `Widened country-level targeting on ${updated} campaign(s). Payments and budgets unchanged.`,
+  });
 });
 
 // ─── Boost Control ────────────────────────────────────────────────────────────
@@ -2194,6 +2505,7 @@ router.post("/admin/listings/:id/boost", requireAdmin, async (req, res): Promise
     estimatedReach: isSuperAdmin ? 999_999 : 10_000, // super admin boosts get max reach
     paymentMethod: "admin",
     paymentStatus: "paid",
+    campaignStatus: "active",
     expiresAt,
     audienceCountry,
     audienceState: audState,
@@ -2269,9 +2581,9 @@ router.post("/admin/boosts/:boostId/approve", requireAdmin, async (req, res): Pr
   }
 
   await db.transaction(async (tx) => {
-    // Mark the boost as paid.
+    // Mark the boost as paid and active in the delivery pool.
     await tx.update(boostsTable)
-      .set({ paymentStatus: "paid" })
+      .set({ paymentStatus: "paid", campaignStatus: "active" })
       .where(eq(boostsTable.id, boostId));
 
     // Activate the listing with the original audience/expiry from initiate.

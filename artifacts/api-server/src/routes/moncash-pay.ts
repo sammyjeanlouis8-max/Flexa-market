@@ -100,7 +100,7 @@ async function completeVerifiedBoost(input: {
 
   return db.transaction(async (tx) => {
     const [claimed] = await tx.update(boostsTable)
-      .set({ paymentStatus: "paid" })
+      .set({ paymentStatus: "paid", campaignStatus: "active" })
       .where(and(
         eq(boostsTable.id, input.boostId),
         eq(boostsTable.listingId, input.listingId),

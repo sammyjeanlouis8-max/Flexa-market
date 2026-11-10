@@ -3,17 +3,17 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 187,
-  "branch": "cursor/native-device-phase3m-09ff",
-  "auditedAt": "2026-11-10T07:29:05Z",
-  "auditCommit": "9aec68a7",
+  "pr": null,
+  "branch": "cursor/native-phase3n-gaps-09ff",
+  "auditedAt": "2026-11-10T07:39:53Z",
+  "auditCommit": "pending-3n",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
     "placeholderRouteCount": 1,
-    "fullyNativeRouteCount": 72,
-    "partiallyNativeRouteCount": 4,
+    "fullyNativeRouteCount": 75,
+    "partiallyNativeRouteCount": 1,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
       "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
@@ -30,7 +30,8 @@
       "Phase 3J: Support Center/tickets/FlexaBot escalation, agent desk, admin support analytics/assign, chat block/report, knowledge FAQ. Full admin panel still PLACEHOLDER.",
       "Phase 3K: Native Super Admin Control Center \u2014 hub, users/RBAC, moderation, reports, orders, deliveries, boosts, All Videos (allCountries), finance wallets/cashouts, audit, traffic, team, KYC queue, settings gap hub; support desks integrated. Web-only: appeals, driver/agent apps, Stripe/MonCash ledgers, broadcast/push composers, TV/Music CMS, fee editors.",
       "Phase 3L: Completion/audit \u2014 admin ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans/flagged/VIP/fees/Haiti ledger; customer loans/subscription plans/driver/flex-card/bnpl/cash-agents/commission-promo/credit-score; phone login BLOCKED (no phoneToken). Broadcast/push composers + TV/Music CMS + hash-security tools deferred. Play digital goods BLOCKED. FCM device unverified.",
-      "Phase 3M: Phone OTP restored (phone+country \u2192 phoneToken via generatePhoneToken; email withdrawalToken preserved). Native login-phone. Admin broadcast email/SMS, push campaigns, TV CMS, Music CMS, password-hash security. Globe low-end Android tuning. Product variations still MISSING (no SKU API). Play digital goods still BLOCKED. FCM physical-device delivery still unverified (PARTIALLY_NATIVE)."
+      "Phase 3M: Phone OTP restored (phone+country \u2192 phoneToken via generatePhoneToken; email withdrawalToken preserved). Native login-phone. Admin broadcast email/SMS, push campaigns, TV CMS, Music CMS, password-hash security. Globe low-end Android tuning. Product variations still MISSING (no SKU API). Play digital goods still BLOCKED. FCM physical-device delivery still unverified (PARTIALLY_NATIVE).",
+      "Phase 3N: BNPL physical checkout wired (POST /bnpl/checkout + stripe-checkout Pay later); subscription cancel-at-period-end; boost unpaid path marked complete (launch blocked server-side on Android UA); FCM diagnostics on notifications (still PARTIAL \u2014 device unverified); Vercel CI documented as legacy account-blocked (DigitalOcean is production). product-variations still MISSING; digital goods BLOCKED."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -54,7 +55,8 @@
     "phase3kStartCommit": "623f638a",
     "phase3l": true,
     "phase3lStartCommit": "f017d186",
-    "phase3m": true
+    "phase3m": true,
+    "phase3n": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -123,8 +125,8 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 72,
-    "PARTIALLY_NATIVE": 4,
+    "FULLY_NATIVE": 75,
+    "PARTIALLY_NATIVE": 1,
     "PLACEHOLDER": 1,
     "MISSING": 1,
     "BLOCKED": 5
@@ -474,7 +476,7 @@
       "missing": [
         "Play Billing or policy-compliant top-up"
       ],
-      "work": "Blocked by ANDROID_DIGITAL_PURCHASE_UNAVAILABLE; design alternate later"
+      "work": "Blocked by ANDROID_DIGITAL_PURCHASE_UNAVAILABLE; design alternate later | Confirmed BLOCKED in Phase 3N audit"
     },
     {
       "id": "wallet-transfer",
@@ -527,18 +529,16 @@
       "name": "BNPL",
       "domain": "customer",
       "webRoute": "/bnpl",
-      "nativeRoute": "/bnpl",
+      "nativeRoute": "/bnpl,/stripe-checkout",
       "role": "buyer",
       "apis": [
         "/api/bnpl/settings",
         "/api/bnpl/eligibility",
         "/api/bnpl/checkout"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "inline BNPL checkout composer (uses existing Stripe BNPL during listing checkout)"
-      ],
-      "work": "Phase 3L eligibility + settings; checkout remains via listing Stripe BNPL path"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3N: eligibility UI + Pay later on physical stripe-checkout via /bnpl/checkout (WebBrowser)"
     },
     {
       "id": "profile-account",
@@ -631,7 +631,7 @@
         "Physical-device FCM end-to-end verification",
         "EAS FCM V1 credential confirmation in Expo dashboard"
       ],
-      "work": "Phase 3M: code path intact + admin manual push composer. Physical-device FCM delivery still unverified \u2014 do not claim verified."
+      "work": "Phase 3N: notifications diagnostics (token/perm/package/EAS). Physical-device FCM delivery still unverified \u2014 do not claim verified."
     },
     {
       "id": "kyc",
@@ -689,11 +689,11 @@
         "/api/subscription/my",
         "/api/subscription/android/purchase-status"
       ],
-      "status": "PARTIALLY_NATIVE",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "Play Billing / RevenueCat Android purchase initiation"
+        "Paid upgrade remains companion subscription-billing BLOCKED"
       ],
-      "work": "Phase 3L plans + status native; paid checkout remains BLOCKED companion subscription-billing"
+      "work": "Phase 3N: plans + status + cancel-at-period-end; purchase stays BLOCKED companion"
     },
     {
       "id": "subscription-billing",
@@ -710,7 +710,7 @@
       "missing": [
         "Play Billing integration"
       ],
-      "work": "Android digital purchase guard"
+      "work": "Android digital purchase guard | Confirmed BLOCKED in Phase 3N audit"
     },
     {
       "id": "referrals",
@@ -1031,11 +1031,11 @@
         "/api/boost/*",
         "/api/booster/*"
       ],
-      "status": "PARTIALLY_NATIVE",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "paid launch (Play blocked)"
+        "Paid launch remains companion boost-paid BLOCKED"
       ],
-      "work": "Draft builder multi geo, filters, pause/resume paid, analytics; paid checkout blocked"
+      "work": "Phase 3N: drafts/analytics/pause-resume complete; Android mode:launch rejected server-side"
     },
     {
       "id": "boost-paid",
@@ -1051,7 +1051,7 @@
       "missing": [
         "Play Billing or alternate"
       ],
-      "work": "Android digital purchase guard"
+      "work": "Android digital purchase guard | Confirmed BLOCKED in Phase 3N audit"
     },
     {
       "id": "boost-analytics",
@@ -1278,7 +1278,7 @@
       "missing": [
         "Play Billing"
       ],
-      "work": "Android digital purchase guard"
+      "work": "Android digital purchase guard | Confirmed BLOCKED in Phase 3N audit"
     },
     {
       "id": "admin-panel",
@@ -1449,7 +1449,7 @@
       "missing": [
         "provider integration"
       ],
-      "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready"
+      "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready | Confirmed BLOCKED in Phase 3N audit"
     },
     {
       "id": "smart-notifications",
@@ -1480,7 +1480,7 @@
       "missing": [
         "No backend variation/SKU APIs \u2014 only optional itemSize text"
       ],
-      "work": "Phase 3M: still no multi-SKU API \u2014 only optional itemSize text on listings. Required contract: GET/POST listing variants with sku, price, stock, images; cart must send variantId."
+      "work": "Phase 3N: still no multi-SKU API. Required: listings/:id/variants CRUD + cart variantId. See PHASE3N_GAP_CLOSURE.md."
     }
   ],
   "recommendedPhase3Order": [

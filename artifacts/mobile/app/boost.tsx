@@ -27,17 +27,20 @@ export default function BoostScreen() {
 
       <View style={styles.card}>
         <Feather name="zap" size={28} color="#F97316" />
-        <Text style={styles.heading}>Paid boost unavailable on Android</Text>
+        <Text style={styles.heading}>Campaign drafts & analytics</Text>
         <Text style={styles.body}>
-          Digital advertising purchases are blocked in the Android app by Play
-          Store policy (`ANDROID_DIGITAL_PURCHASE_UNAVAILABLE`). You can still
-          review existing campaigns and analytics.
+          Create and manage boost drafts, pause/resume existing paid campaigns, and open
+          analytics. Paid launch / wallet spend stays blocked on Android
+          (`ANDROID_DIGITAL_PURCHASE_UNAVAILABLE`) until Play Billing policy review.
         </Text>
         <Pressable style={styles.btn} onPress={() => router.push("/boost-create")}>
           <Text style={styles.btnText}>Create campaign draft</Text>
         </Pressable>
         <Pressable style={styles.link} onPress={() => router.push("/my-boosts")}>
           <Text style={styles.linkText}>Open my campaigns</Text>
+        </Pressable>
+        <Pressable style={styles.link} onPress={() => router.push("/boost-analytics")}>
+          <Text style={styles.linkText}>Boost analytics</Text>
         </Pressable>
         <Pressable style={styles.link} onPress={() => router.push("/drafts")}>
           <Text style={styles.linkText}>Drafts hub</Text>

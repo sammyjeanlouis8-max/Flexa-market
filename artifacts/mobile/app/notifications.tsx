@@ -142,16 +142,21 @@ export default function NotificationsScreen() {
         )}
       </View>
 
-      <Text style={styles.pushNote}>
-        In-app center uses your real account notifications. Push delivery
-        preparation:{" "}
-        {pushStatus.tokenRegistered
-          ? "Expo token registered for this session"
-          : pushStatus.registrationAttempted
-            ? pushStatus.lastError || "token not registered yet"
-            : "will register after sign-in (FCM via google-services when available)"}
-        . No simulated push events.
-      </Text>
+      <View style={styles.pushCard}>
+        <Text style={styles.pushNote}>
+          In-app center uses your real account notifications. No simulated push events.
+          Physical FCM delivery is not claimed verified without a device test.
+        </Text>
+        <Text style={styles.pushMeta}>
+          token: {pushStatus.tokenRegistered ? "registered" : "not registered"}
+          {" · "}perm: {pushStatus.permissionStatus || "—"}
+          {" · "}pkg: {pushStatus.androidPackage}
+          {" · "}EAS: {pushStatus.easProjectId.slice(0, 8)}…
+        </Text>
+        {pushStatus.lastError ? (
+          <Text style={styles.pushErr}>{pushStatus.lastError}</Text>
+        ) : null}
+      </View>
 
       {authLoading || (token && items === null && !error) ? (
         <ActivityIndicator color="#F97316" style={{ marginTop: 40 }} />
@@ -223,12 +228,30 @@ const styles = StyleSheet.create({
     width: 64,
     textAlign: "right",
   },
-  pushNote: {
+  pushCard: {
     marginHorizontal: 16,
     marginBottom: 10,
+    backgroundColor: "#FFF7ED",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    padding: 10,
+    gap: 4,
+  },
+  pushNote: {
     fontSize: 11,
-    color: "#64748B",
+    color: "#9A3412",
     lineHeight: 15,
+  },
+  pushMeta: {
+    fontSize: 10,
+    color: "#64748B",
+    lineHeight: 14,
+  },
+  pushErr: {
+    fontSize: 10,
+    color: "#B91C1C",
+    fontWeight: "700",
   },
   card: {
     flexDirection: "row",

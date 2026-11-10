@@ -51,6 +51,7 @@ const allowedRoutes: Array<[string, string]> = [
   ["GET", "/api/stripe/checkout/complete-redirect"],
   ["POST", "/api/stripe/webhook"],
   ["POST", "/api/stripe/checkout"],
+  ["POST", "/api/bnpl/checkout"],
   ["POST", "/api/cart/checkout"],
   ["POST", "/api/listings/42/purchase"],
   ["GET", "/api/wallet/balance"],

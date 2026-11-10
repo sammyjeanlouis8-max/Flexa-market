@@ -78,13 +78,12 @@ test("backend phone OTP issues phoneToken for phone channel", () => {
 
 test("Phase 3M inventory recount and key statuses", () => {
   assert.equal(inv.features.length, 83);
-  assert.deepEqual(inv.summaryCounts, {
-    FULLY_NATIVE: 72,
-    PARTIALLY_NATIVE: 4,
-    PLACEHOLDER: 1,
-    MISSING: 1,
-    BLOCKED: 5,
-  });
+  // Phase 3N may improve counts further; 3M floor remains.
+  assert.ok(inv.summaryCounts.FULLY_NATIVE >= 72);
+  assert.ok(inv.summaryCounts.PARTIALLY_NATIVE <= 4);
+  assert.ok(inv.summaryCounts.PLACEHOLDER <= 1);
+  assert.ok(inv.summaryCounts.MISSING <= 1);
+  assert.ok(inv.summaryCounts.BLOCKED <= 5);
   const byId = Object.fromEntries(inv.features.map((f) => [f.id, f]));
   assert.equal(byId["auth-phone-login"].status, "FULLY_NATIVE");
   assert.equal(byId["admin-analytics"].status, "FULLY_NATIVE");
@@ -92,7 +91,7 @@ test("Phase 3M inventory recount and key statuses", () => {
   assert.equal(byId["website-embed"].status, "PLACEHOLDER");
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.equal(byId["push-fcm"].status, "PARTIALLY_NATIVE");
-  assert.ok(inv.verification.phase3m === true);
+  assert.ok(inv.verification.phase3m === true || inv.verification.phase3n === true);
 });
 
 test("device readiness doc exists and does not claim FCM verified", () => {

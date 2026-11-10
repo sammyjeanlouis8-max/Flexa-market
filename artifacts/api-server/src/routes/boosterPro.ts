@@ -12,6 +12,10 @@ import {
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, optionalAuth, requireNotRestricted, requireCardNotBlocked } from "../middlewares/auth";
 import {
+  ANDROID_DIGITAL_PURCHASE_UNAVAILABLE,
+  isAndroidNativeApp,
+} from "../middlewares/androidDigitalPurchaseGuard";
+import {
   validateAudience,
   validateBudget,
   estimateReach,
@@ -280,6 +284,15 @@ router.get("/booster/analytics", requireAuth, async (req, res): Promise<void> =>
 router.post("/booster/campaigns", requireAuth, requireNotRestricted, requireCardNotBlocked, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const mode = req.body?.mode === "draft" ? "draft" : "launch";
+  // Paid launch spends wallet / digital promo inventory — block on Android native UA.
+  // Draft saves remain allowed. Path-based digital guard does not inspect body.mode.
+  if (mode === "launch" && isAndroidNativeApp(req.get("user-agent"))) {
+    res.status(403).json({
+      error: "Digital purchases are unavailable in the Android app.",
+      code: ANDROID_DIGITAL_PURCHASE_UNAVAILABLE,
+    });
+    return;
+  }
   const adFormat = req.body?.adFormat === "image" ? "image" : "video";
   const adTitle = String(req.body?.adTitle ?? "").trim().slice(0, 120);
   const adDescription = String(req.body?.adDescription ?? "").trim().slice(0, 2000);

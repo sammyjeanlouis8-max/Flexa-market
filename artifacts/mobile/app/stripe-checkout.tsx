@@ -21,8 +21,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { listAddresses, type UserAddress } from "@/lib/addressesApi";
+import { createBnplCheckoutSession } from "@/lib/bnplCheckoutApi";
 import { calculateDeliveryPrice, isDominicanListingCountry } from "@/lib/checkoutApi";
 import { fetchListing, type Listing } from "@/lib/api";
+import { fetchBnplEligibility, fetchBnplSettings } from "@/lib/phase3lApis";
 import { createStripeCheckoutSession } from "@/lib/stripeCheckoutApi";
 
 export default function StripeCheckoutScreen() {
@@ -33,14 +35,17 @@ export default function StripeCheckoutScreen() {
     offerId: offerIdParam,
     offerAmount,
     canceled,
+    pay,
   } = useLocalSearchParams<{
     listingId?: string;
     offerId?: string;
     offerAmount?: string;
     canceled?: string;
+    pay?: string;
   }>();
   const listingId = Number(listingIdParam);
   const offerId = offerIdParam ? Number(offerIdParam) : undefined;
+  const preferBnpl = pay === "bnpl";
   const { token, user, isLoading: authLoading } = useAuth();
 
   const [listing, setListing] = useState<Listing | null>(null);
@@ -59,6 +64,9 @@ export default function StripeCheckoutScreen() {
   const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [addresses, setAddresses] = useState<UserAddress[]>([]);
+  const [bnplEligible, setBnplEligible] = useState(false);
+  const [bnplSettings, setBnplSettings] = useState<any>(null);
+  const [payMode, setPayMode] = useState<"card" | "bnpl">(preferBnpl ? "bnpl" : "card");
 
   useEffect(() => {
     if (!authLoading && !token) router.replace("/auth/login");
@@ -111,6 +119,13 @@ export default function StripeCheckoutScreen() {
         }
       })
       .catch(() => {});
+    void Promise.all([
+      fetchBnplSettings().catch(() => null),
+      fetchBnplEligibility({ token }).catch(() => null),
+    ]).then(([settings, eligibility]) => {
+      setBnplSettings(settings);
+      setBnplEligible(!!eligibility?.eligible);
+    });
   }, [token]);
 
   const refreshDelivery = useCallback(async () => {
@@ -151,48 +166,69 @@ export default function StripeCheckoutScreen() {
     void refreshDelivery();
   }, [refreshDelivery]);
 
+  const shippingBody = () => ({
+    listingId: listing!.id,
+    shippingName: name.trim(),
+    shippingPhone: phone.trim(),
+    shippingEmail: email.trim() || undefined,
+    shippingStreet: street.trim(),
+    shippingCity: city.trim(),
+    shippingRegion: region.trim() || undefined,
+    shippingZip: zip.trim() || undefined,
+    shippingCountry: listing!.country || user?.country || undefined,
+    deliveryFeeUsd: deliveryFee > 0 ? deliveryFee : undefined,
+    deliveryMethod,
+  });
+
+  const openHostedCheckout = async (url: string) => {
+    const result = await WebBrowser.openBrowserAsync(url, {
+      enableBarCollapsing: true,
+      showInRecents: true,
+    });
+    if (result.type === "cancel" || result.type === "dismiss") {
+      Alert.alert(
+        "Returned from Stripe",
+        "If you completed payment, your order will appear under Orders shortly. If not, you can try again.",
+        [
+          { text: "View orders", onPress: () => router.replace("/orders") },
+          { text: "OK" },
+        ],
+      );
+    }
+  };
+
   const onPay = async () => {
     if (!token || !listing) return;
     if (!name.trim() || !phone.trim() || !street.trim() || !city.trim()) {
       Alert.alert("Shipping required", "Name, phone, street, and city are required.");
       return;
     }
+    if (payMode === "bnpl" && offerId) {
+      Alert.alert(
+        "BNPL unavailable for offers",
+        "Private offer checkout uses card Stripe checkout. BNPL applies to public listing price only.",
+      );
+      return;
+    }
     setSubmitting(true);
     try {
+      if (payMode === "bnpl") {
+        const session = await createBnplCheckoutSession(shippingBody(), { token });
+        if (!session.sessionUrl) throw new Error("BNPL did not return a checkout URL");
+        await openHostedCheckout(session.sessionUrl);
+        return;
+      }
       const session = await createStripeCheckoutSession(
         {
-          listingId: listing.id,
+          ...shippingBody(),
           offerId: offerId && Number.isFinite(offerId) ? offerId : undefined,
-          shippingName: name.trim(),
-          shippingPhone: phone.trim(),
-          shippingEmail: email.trim() || undefined,
-          shippingStreet: street.trim(),
-          shippingCity: city.trim(),
-          shippingRegion: region.trim() || undefined,
-          shippingZip: zip.trim() || undefined,
-          shippingCountry: listing.country || user?.country || undefined,
-          deliveryFeeUsd: deliveryFee > 0 ? deliveryFee : undefined,
-          deliveryMethod,
         },
         { token },
       );
       if (!session.url) {
         throw new Error("Stripe did not return a checkout URL");
       }
-      const result = await WebBrowser.openBrowserAsync(session.url, {
-        enableBarCollapsing: true,
-        showInRecents: true,
-      });
-      if (result.type === "cancel" || result.type === "dismiss") {
-        Alert.alert(
-          "Returned from Stripe",
-          "If you completed payment, your order will appear under Orders shortly. If not, you can try again.",
-          [
-            { text: "View orders", onPress: () => router.replace("/orders") },
-            { text: "OK" },
-          ],
-        );
-      }
+      await openHostedCheckout(session.url);
     } catch (e) {
       const err = e as Error & { code?: string };
       if (err.code === "PAYMENT_METHOD_UNAVAILABLE") {
@@ -212,6 +248,10 @@ export default function StripeCheckoutScreen() {
   const negotiated = offerAmount != null ? Number(offerAmount) : NaN;
   const price =
     offerId && Number.isFinite(negotiated) && negotiated > 0 ? negotiated : listPrice;
+  const bnplMin = Number(bnplSettings?.minAmountUsd ?? 0);
+  const bnplMax = Number(bnplSettings?.maxAmountUsd ?? Number.POSITIVE_INFINITY);
+  const bnplInRange = price + deliveryFee >= bnplMin && price + deliveryFee <= bnplMax;
+  const showBnpl = bnplEligible && bnplInRange && !offerId;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
@@ -222,7 +262,7 @@ export default function StripeCheckoutScreen() {
         >
           <Feather name="arrow-left" size={22} color="#0F172A" />
         </Pressable>
-        <Text style={styles.title}>Card checkout</Text>
+        <Text style={styles.title}>{payMode === "bnpl" ? "BNPL checkout" : "Card checkout"}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -334,15 +374,50 @@ export default function StripeCheckoutScreen() {
             ))}
           </View>
 
+          {showBnpl ? (
+            <>
+              <Text style={styles.section}>Payment method</Text>
+              <View style={styles.methods}>
+                <Pressable
+                  style={[styles.method, payMode === "card" && styles.methodOn]}
+                  onPress={() => setPayMode("card")}
+                  testID="checkout-pay-card"
+                >
+                  <Text style={[styles.methodText, payMode === "card" && styles.methodTextOn]}>
+                    Card
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.method, payMode === "bnpl" && styles.methodOn]}
+                  onPress={() => setPayMode("bnpl")}
+                  testID="checkout-pay-bnpl"
+                >
+                  <Text style={[styles.methodText, payMode === "bnpl" && styles.methodTextOn]}>
+                    Pay later
+                  </Text>
+                </Pressable>
+              </View>
+              {payMode === "bnpl" ? (
+                <Text style={styles.drNote}>
+                  Uses Stripe BNPL (Klarna / Affirm / Afterpay when enabled). Same physical-goods
+                  checkout policy as card — opened in the system browser.
+                </Text>
+              ) : null}
+            </>
+          ) : null}
+
           <Pressable
             style={[styles.payBtn, submitting && { opacity: 0.7 }]}
             onPress={() => void onPay()}
             disabled={submitting}
+            testID="checkout-continue"
           >
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.payBtnText}>Continue to Stripe</Text>
+              <Text style={styles.payBtnText}>
+                {payMode === "bnpl" ? "Continue to BNPL" : "Continue to Stripe"}
+              </Text>
             )}
           </Pressable>
           <Text style={styles.footerNote}>

@@ -6,7 +6,7 @@
   "pr": null,
   "branch": "cursor/native-phase3n-gaps-09ff",
   "auditedAt": "2026-11-10T07:39:53Z",
-  "auditCommit": "pending-3n",
+  "auditCommit": "308048a3",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",

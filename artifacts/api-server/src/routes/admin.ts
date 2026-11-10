@@ -19,10 +19,19 @@ import {
   MESSAGE_SYSTEM_NAME,
   MESSAGE_SYSTEM_SUBTITLE,
   buildControlPresenceBadge,
+  formatLastSeenAgoLabel,
   formatLastSeenExact,
   isMessageSystemAccount,
+  parseUserAgentLoose,
 } from "../lib/adminUserPresence";
-import { isUserOnline } from "../lib/socketServer";
+import { getActiveSocketCount, isUserOnline } from "../lib/socketServer";
+import {
+  buildDevicesFromLoginLogs,
+  formatControlUserDisplayId,
+  maskEmail,
+  maskPhone,
+  resolveControlRoles,
+} from "../lib/adminUserProfile";
 
 const router = Router();
 
@@ -886,7 +895,7 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
   // Root cause fix: user_restrictions uses `restricted_at`, not `created_at`.
   // Selecting the missing column threw and Express returned HTTP 500
   // ("Internal server error") for every User Details open.
-  const [salesRows, listingCountRow, visitsTodayRow, recentLogins, restrictionHistory, auditRows] = await Promise.all([
+  const [salesRows, purchaseRows, listingCountRow, visitsTodayRow, recentLogins, restrictionHistory, auditRows] = await Promise.all([
     db.select({
       id: transactionsTable.id,
       listingId: transactionsTable.listingId,
@@ -899,6 +908,16 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
       createdAt: transactionsTable.createdAt,
     }).from(transactionsTable)
       .where(eq(transactionsTable.sellerUserId, id))
+      .orderBy(desc(transactionsTable.createdAt))
+      .limit(50),
+    db.select({
+      id: transactionsTable.id,
+      amount: transactionsTable.amount,
+      currency: transactionsTable.currency,
+      paymentStatus: transactionsTable.paymentStatus,
+      createdAt: transactionsTable.createdAt,
+    }).from(transactionsTable)
+      .where(and(eq(transactionsTable.userId, id), eq(transactionsTable.type, "purchase")))
       .orderBy(desc(transactionsTable.createdAt))
       .limit(50),
     db.select({ count: count() }).from(listingsTable).where(eq(listingsTable.sellerId, id)),
@@ -950,7 +969,9 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
 
   const completedSales = salesRows.filter(s => s.paymentStatus === "completed" || s.paymentStatus === "paid" || s.paymentStatus === "released");
   const netSales = completedSales.reduce((sum, s) => sum + (Number(s.sellerEarnings ?? s.amount) || 0), 0);
-  const currency = completedSales[0]?.currency ?? salesRows[0]?.currency ?? "USD";
+  const currency = completedSales[0]?.currency ?? salesRows[0]?.currency ?? purchaseRows[0]?.currency ?? "USD";
+  const completedPurchases = purchaseRows.filter(s => s.paymentStatus === "completed" || s.paymentStatus === "paid" || s.paymentStatus === "released");
+  const buyerSpend = completedPurchases.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
 
   const accountType = user.isSuperAdmin
     ? "Super Admin"
@@ -1030,11 +1051,37 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
     };
   });
 
+  const isSuperAdminViewer = !!req.user?.isSuperAdmin || getRole(req.user) === "superadmin";
+  const roles = resolveControlRoles({
+    ...user,
+    listingCount: listingCountRow[0]?.count ?? user.listingCount ?? 0,
+    isSystemAccount: isSystem,
+  });
+  const displayId = formatControlUserDisplayId(user.id);
+  // Super admins see full contact; country admins get masked values.
+  const emailFull = isSystem ? null : user.email;
+  const phoneFull = isSystem ? null : user.phone;
+  const emailDisplay = isSystem
+    ? "Unavailable"
+    : isSuperAdminViewer
+      ? (emailFull || "Unavailable")
+      : maskEmail(emailFull);
+  const phoneDisplay = isSystem
+    ? "Unavailable"
+    : isSuperAdminViewer
+      ? (phoneFull || "Unavailable")
+      : maskPhone(phoneFull);
+
   res.json({
     user: {
       ...formatControlUserListRow(user, { isOnline }),
-      email: user.email,
-      phone: isSystem ? null : user.phone,
+      displayId,
+      email: emailFull,
+      phone: phoneFull,
+      emailDisplay,
+      phoneDisplay,
+      emailMasked: !isSuperAdminViewer && !isSystem,
+      phoneMasked: !isSuperAdminViewer && !isSystem,
       countryDisplay: isSystem
         ? MESSAGE_SYSTEM_SUBTITLE
         : (user.country?.trim() ? user.country : "Country not set"),
@@ -1047,16 +1094,24 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
         display: savedAddress,
       },
       accountType: isSystem ? "System Account" : accountType,
+      roles,
+      isVerified: !!user.isVerified,
+      signupDate: user.createdAt,
       accountStatus,
       isOnline,
       isSystemAccount: isSystem,
       presence,
-      signupDate: user.createdAt,
+      // System accounts cannot be blocked/suspended via ordinary actions.
+      canRestrict: !isSystem,
+      canMessage: !isSystem,
     },
     overview: {
       ordersSold: completedSales.length,
       netSales,
+      ordersBought: completedPurchases.length,
+      buyerSpend,
       currency,
+      periodLabel: "All time",
       visitsToday: visitsTodayRow[0]?.count ?? 0,
       listingCount: listingCountRow[0]?.count ?? 0,
       restriction: user.isRestricted
@@ -1071,6 +1126,11 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
       periodLabel: "All time (completed sales)",
       items: salesRows,
       totals: { ordersSold: completedSales.length, netSales, currency },
+    },
+    purchases: {
+      periodLabel: "All time (completed purchases)",
+      items: purchaseRows.slice(0, 20),
+      totals: { ordersBought: completedPurchases.length, buyerSpend, currency },
     },
     activity: {
       isOnline,
@@ -1102,7 +1162,147 @@ router.get("/admin/users/:id", requireAdmin, async (req, res): Promise<void> => 
       restrictions: restrictionHistory,
       actions: auditRows,
     },
+    links: {
+      orders: `/admin/deliveries?userId=${id}`,
+      products: `/admin/listings?sellerId=${id}`,
+      payments: `/admin/transactions?userId=${id}`,
+      tickets: `/admin/support?userId=${id}`,
+      reports: `/admin/reports?userId=${id}`,
+      moderation: `/admin/moderation?userId=${id}`,
+      security: `/admin/security?userId=${id}`,
+      devices: `/admin/users/${id}?view=devices`,
+      message: `/messages?withUser=${id}`,
+    },
   });
+});
+
+/** Devices & Sessions — login-history devices + live socket session counts. */
+router.get("/admin/users/:id/devices", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid user id" }); return; }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  const scopeErr = assertUserInScope(req.user!, user);
+  if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
+
+  if (isMessageSystemAccount(user)) {
+    res.json({
+      user: {
+        id: user.id,
+        name: MESSAGE_SYSTEM_NAME,
+        displayId: formatControlUserDisplayId(user.id),
+        isSystemAccount: true,
+      },
+      totals: {
+        knownDevices: 0,
+        devicesWithActiveSessions: 0,
+        activeSessions: 0,
+      },
+      knownDevices: [],
+      note: "System Account — human device and session history does not apply.",
+      footer: "Active sessions can remain open while the user is offline.",
+    });
+    return;
+  }
+
+  const logs = await db.select({
+    action: loginLogsTable.action,
+    userAgent: loginLogsTable.userAgent,
+    createdAt: loginLogsTable.createdAt,
+  }).from(loginLogsTable)
+    .where(eq(loginLogsTable.userId, id))
+    .orderBy(desc(loginLogsTable.createdAt))
+    .limit(200);
+
+  const built = buildDevicesFromLoginLogs(logs, {
+    activeSocketCount: getActiveSocketCount(id),
+    formatLastSeen: (at) => formatLastSeenAgoLabel(at),
+  });
+
+  res.json({
+    user: {
+      id: user.id,
+      name: user.name,
+      displayId: formatControlUserDisplayId(user.id),
+      isSystemAccount: false,
+    },
+    totals: {
+      knownDevices: built.knownDeviceCount,
+      devicesWithActiveSessions: built.devicesWithActiveSessions,
+      activeSessions: built.activeSessionCount,
+    },
+    knownDevices: built.knownDevices.map((d) => ({
+      key: d.key,
+      label: d.label,
+      modelNote: d.modelNote,
+      modelAvailable: d.modelAvailable,
+      os: d.os,
+      browser: d.browser,
+      sessionCount: d.sessionCount,
+      activeSessionCount: d.activeSessionCount,
+      lastSeenAt: d.lastSeenAt,
+      lastSeenLabel: d.lastSeenLabel,
+      lastSeenExact: d.lastSeenAt ? formatLastSeenExact(d.lastSeenAt) : "Unavailable",
+      badges: d.badges,
+      history: d.history,
+    })),
+    unmatchedActiveSessions: built.unmatchedActiveSessions,
+    footer: "Active sessions can remain open while the user is offline.",
+  });
+});
+
+/** Invalidate all JWTs for the user (sign out every session). */
+router.post("/admin/users/:id/sign-out-all", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid user id" }); return; }
+  const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!target) { res.status(404).json({ error: "User not found" }); return; }
+  const scopeErr = assertUserInScope(req.user!, target);
+  if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
+  if (isMessageSystemAccount(target)) {
+    res.status(400).json({ error: "Cannot sign out the Message System account" }); return;
+  }
+  if (target.isSuperAdmin && !req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Cannot sign out a Super Admin" }); return;
+  }
+  const now = new Date(Math.floor(Date.now() / 1000) * 1000);
+  await db.update(usersTable).set({ tokenInvalidatedAt: now } as any).where(eq(usersTable.id, id));
+  await logAdminAction(req, {
+    actionType: "user_sign_out_all",
+    actionCategory: "security",
+    description: `Signed out all sessions for ${target.name}`,
+    targetType: "user",
+    targetId: id,
+    targetName: target.name,
+    riskLevel: "high",
+    metadata: { reason: typeof req.body?.reason === "string" ? req.body.reason : null },
+  });
+  res.json({ success: true });
+});
+
+/** Add an internal admin note to the audit trail. */
+router.post("/admin/users/:id/internal-note", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid user id" }); return; }
+  const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+  if (!note || note.length < 3) {
+    res.status(400).json({ error: "A note of at least 3 characters is required" }); return;
+  }
+  const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!target) { res.status(404).json({ error: "User not found" }); return; }
+  const scopeErr = assertUserInScope(req.user!, target);
+  if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
+  await logAdminAction(req, {
+    actionType: "user_internal_note",
+    actionCategory: "user",
+    description: note.slice(0, 500),
+    targetType: "user",
+    targetId: id,
+    targetName: target.name,
+    riskLevel: "low",
+    metadata: { note: note.slice(0, 2000) },
+  });
+  res.json({ success: true });
 });
 
 router.get("/admin/users/:id/activity", requireAdmin, async (req, res): Promise<void> => {
@@ -1217,46 +1417,8 @@ router.get("/admin/users/:id/activity", requireAdmin, async (req, res): Promise<
   });
 });
 
-// Parse a user-agent string into human-readable device/OS/browser info.
-// Returns "Unavailable" when the UA cannot establish a device/OS/browser.
 function parseUserAgent(ua: string | null): { device: string; os: string; browser: string } {
-  if (!ua || !ua.trim()) {
-    return { device: "Unavailable", os: "Unavailable", browser: "Unavailable" };
-  }
-  let device = "Unavailable";
-  let os = "Unavailable";
-  let browser = "Unavailable";
-  // Device
-  if (/iPhone/.test(ua)) device = "iPhone";
-  else if (/iPad/.test(ua)) device = "iPad";
-  else if (/Android/.test(ua)) {
-    const m = ua.match(/Android [^;]+; ([^)]+)\)/);
-    device = m ? m[1].trim() : "Android";
-  } else if (/Macintosh/.test(ua)) device = "Mac";
-  else if (/Windows/.test(ua)) device = "Windows PC";
-  else if (/Linux/.test(ua)) device = "Linux";
-  // OS
-  const iosM = ua.match(/OS ([\d_]+) like/);
-  if (iosM) os = "iOS " + iosM[1].replace(/_/g, ".");
-  else {
-    const andM = ua.match(/Android ([\d.]+)/);
-    if (andM) os = "Android " + andM[1];
-    else {
-      const winM = ua.match(/Windows NT ([\d.]+)/);
-      if (winM) { const nm: Record<string, string> = { "10.0": "10/11", "6.3": "8.1", "6.2": "8", "6.1": "7" }; os = "Windows " + (nm[winM[1]] || winM[1]); }
-      else { const macM = ua.match(/Mac OS X ([\d_]+)/); if (macM) os = "macOS " + macM[1].replace(/_/g, "."); }
-    }
-  }
-  // Browser / app shell
-  if (/CriOS/.test(ua)) browser = "Chrome iOS";
-  else if (/FxiOS/.test(ua)) browser = "Firefox iOS";
-  else if (/SamsungBrowser/.test(ua)) browser = "Samsung Browser";
-  else if (/EdgA?\//.test(ua)) browser = "Edge";
-  else if (/OPR\//.test(ua)) browser = "Opera";
-  else if (/Chrome\//.test(ua)) browser = "Chrome";
-  else if (/Firefox\//.test(ua)) browser = "Firefox";
-  else if (/Safari\//.test(ua) && /Version\//.test(ua)) browser = "Safari";
-  return { device, os, browser };
+  return parseUserAgentLoose(ua);
 }
 
 router.get("/admin/users/:id/security", requireAdmin, async (req, res): Promise<void> => {

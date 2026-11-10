@@ -126,15 +126,24 @@ describe("Control Users presence contract", () => {
       resolve(__dirname, "../../../marketplace/src/pages/AdminUsers.tsx"),
       "utf8",
     );
+    const detailsUi = readFileSync(
+      resolve(__dirname, "../../../marketplace/src/components/admin/AdminUserDetails.tsx"),
+      "utf8",
+    );
     expect(adminRoutes).toMatch(/isMessageSystemAccount/);
     expect(adminRoutes).toMatch(/buildControlPresenceBadge/);
     expect(adminRoutes).toMatch(/isUserOnline/);
     expect(adminRoutes).toMatch(/MESSAGE_SYSTEM_AVATAR/);
     expect(adminRoutes).toMatch(/formatLastSeenExact/);
+    expect(adminRoutes).toMatch(/\/admin\/users\/:id\/devices/);
+    expect(adminRoutes).toMatch(/sign-out-all/);
+    expect(adminRoutes).toMatch(/internal-note/);
     expect(ui).toMatch(/PresenceListBadge/);
     expect(ui).toMatch(/flexa-logo-v2\.png/);
     expect(ui).toMatch(/Message System/);
-    expect(ui).toMatch(/lastSeenExact/);
+    expect(detailsUi).toMatch(/lastSeenExact/);
+    expect(detailsUi).toMatch(/System Account/);
+    expect(detailsUi).toMatch(/Devices & Sessions/);
     expect(MESSAGE_SYSTEM_NAME).toBe("Message System");
     expect(MESSAGE_SYSTEM_AVATAR).toBe("/flexa-logo-v2.png");
   });

@@ -16,6 +16,11 @@ export function isUserOnline(userId: number): boolean {
   return (onlineUsers.get(userId)?.size ?? 0) > 0;
 }
 
+/** Count live authenticated socket connections for a user (active sessions). */
+export function getActiveSocketCount(userId: number): number {
+  return onlineUsers.get(userId)?.size ?? 0;
+}
+
 export async function setLastSeen(userId: number): Promise<void> {
   await db.update(usersTable).set({ lastSeenAt: new Date() }).where(eq(usersTable.id, userId));
 }

@@ -28,12 +28,18 @@ function makeT(map: Record<string, string>) {
 }
 
 describe("boostAdControls labels", () => {
-  it("keeps the interstitial Message CTA in English regardless of UI locale", () => {
+  it("translates the interstitial Message CTA with the selected locale", () => {
     const t = makeT({
       "boostAd.messageOnFlexa": "Mesaj sou Flexa",
       "booster.cta.message": "Mesaj sou Flexa",
     });
-    expect(resolveBoostAdCtaLabel({ ctaType: "message", t })).toBe("Message on Flexa");
+    expect(resolveBoostAdCtaLabel({ ctaType: "message", t })).toBe("Mesaj sou Flexa");
+    expect(
+      resolveBoostAdCtaLabel({
+        ctaType: "message",
+        t: makeT({ "boostAd.messageOnFlexa": "Message on Flexa" }),
+      }),
+    ).toBe("Message on Flexa");
     expect(
       resolveBoostAdCtaLabel({
         ctaType: "message",

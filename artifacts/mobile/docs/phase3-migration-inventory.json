@@ -6,7 +6,7 @@
   "pr": null,
   "branch": "cursor/native-device-phase3m-09ff",
   "auditedAt": "2026-11-10T07:29:05Z",
-  "auditCommit": "pending-3m",
+  "auditCommit": "a62a9264",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",

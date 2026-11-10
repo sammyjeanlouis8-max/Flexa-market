@@ -6,7 +6,7 @@
   "pr": null,
   "branch": "cursor/native-phase3q-boost-recovery-09ff",
   "auditedAt": "2026-11-10T08:20:00Z",
-  "auditCommit": "pending",
+  "auditCommit": "6f393f5e",
   "stackedOnPr": 191,
   "verification": {
     "phase1_2_intact": true,

@@ -11,10 +11,15 @@ const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap 
   { label: "My orders", href: "/orders", icon: "package" },
   { label: "Seller sales", href: "/sales", icon: "bar-chart-2" },
   { label: "My listings", href: "/my-listings", icon: "grid" },
+  { label: "My boosts", href: "/my-boosts", icon: "zap" },
+  { label: "Promo videos", href: "/videos", icon: "video" },
+  { label: "Flexa Music", href: "/music", icon: "music" },
   { label: "Private offers", href: "/offers", icon: "tag" },
   { label: "Favorites", href: "/favorites", icon: "heart" },
   { label: "Wallet", href: "/wallet", icon: "credit-card" },
   { label: "Addresses", href: "/addresses", icon: "map-pin" },
+  { label: "Subscription", href: "/subscription", icon: "award" },
+  { label: "Calculator", href: "/calculator", icon: "percent" },
   { label: "Support", href: "/support", icon: "life-buoy" },
   { label: "Notifications", href: "/notifications", icon: "bell" },
   { label: "Settings", href: "/settings", icon: "settings" },
@@ -77,6 +82,15 @@ export default function ProfileTab() {
             <Feather name="chevron-right" size={18} color="#94A3B8" />
           </Pressable>
         ))}
+        {user?.isSuperAdmin || user?.isAdmin ? (
+          <Pressable style={styles.row} onPress={() => router.push("/admin")}>
+            <View style={styles.rowLeft}>
+              <Feather name="shield" size={18} color="#0F172A" />
+              <Text style={styles.rowLabel}>Admin</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color="#94A3B8" />
+          </Pressable>
+        ) : null}
       </View>
     </ScrollView>
   );

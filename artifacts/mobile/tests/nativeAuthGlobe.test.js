@@ -29,7 +29,7 @@ test("Auth globe uses expo-gl GPU rendering with the flag atlas asset", () => {
   assert.match(source, /from ["']expo-gl["']/);
   assert.match(source, /GLView/);
   assert.match(source, /getFlagAtlasAsset|auth-globe-flags/);
-  assert.match(source, /REVOLUTION_MS\s*=\s*12_000/);
+  assert.match(source, /REVOLUTION_MS\s*=\s*16_000/);
   assert.match(source, /endFrameEXP/);
   assert.match(source, /AuthGlobeLite/);
   assert.ok(fs.existsSync(path.join(root, "assets/images/auth-globe-flags.jpg")));

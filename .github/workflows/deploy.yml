@@ -221,3 +221,7 @@ jobs:
 # Owner requested fe deploy: merchant ad delivery + admin country preview (#203) (2026-11-10).
 
 # force_build_20261110160802
+
+# Owner requested fe deploy ALL: promo auto-rotation + country scope (#208) (2026-11-10).
+
+# force_build_20261110172234_promo_rotation

@@ -39,6 +39,16 @@ import {
   setUserMutedPreference,
   preferUnmutedAutoplay,
 } from "@/lib/audioUnlocked";
+import {
+  claimPromoPlayback,
+  isPromoPlaybackOwner,
+  playPromoIfOwner,
+  registerPromoVideo,
+  releasePromoPlayback,
+  silenceAllPromoVideos,
+  silencePromoVideo,
+  unregisterPromoVideo,
+} from "@/lib/promoVideoPlayerController";
 import { COUNTRY_FLAGS } from "@/lib/countries";
 import {
   buildPromoChatDraft,
@@ -936,7 +946,22 @@ function VideoCard({
     }
   }, [isActive, isNext, video.thumbnailUrl]);
 
+  // Register this card's <video> with the exclusive promo player controller.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    registerPromoVideo(video.id, el);
+    return () => {
+      unregisterPromoVideo(video.id, el);
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
+    };
+  }, [video.id]);
+
   // Sync muted state across cards when unlock / user-mute preference changes.
+  // Never call bare play() — always go through ownership-gated playPromoIfOwner.
   useEffect(() => {
     const onUnlocked = (e: Event) => {
       if (!isActiveRef.current || !visibleFrameRef.current) return;
@@ -945,10 +970,11 @@ function VideoCard({
       if (!unlocked) return;
       setMuted(false);
       setSoundLocked(false);
-      if (videoRef.current) {
-        videoRef.current.muted = false;
-        videoRef.current.play().catch(() => {});
-      }
+      const el = videoRef.current;
+      if (!el) return;
+      el.muted = false;
+      const gen = activationGenerationRef.current;
+      void playPromoIfOwner(video.id, el, gen)?.catch(() => {});
     };
     const onUserMuted = (e: Event) => {
       if (!isActiveRef.current) return;
@@ -957,13 +983,29 @@ function VideoCard({
       if (videoRef.current) videoRef.current.muted = userMuted;
       if (!userMuted) setSoundLocked(false);
     };
+    const onResume = () => {
+      if (!isActiveRef.current || pausedByUser) return;
+      const el = videoRef.current;
+      if (!el) return;
+      const gen = activationGenerationRef.current;
+      if (!isPromoPlaybackOwner(video.id, gen)) {
+        claimPromoPlayback(video.id, el, gen);
+      }
+      if (isUserMutedPreference()) {
+        el.muted = true;
+        setMuted(true);
+      }
+      void playPromoIfOwner(video.id, el, gen)?.catch(() => {});
+    };
     window.addEventListener("flexa:audio-unlocked", onUnlocked);
     window.addEventListener("flexa:user-muted", onUserMuted);
+    window.addEventListener("flexa:promo-resume", onResume);
     return () => {
       window.removeEventListener("flexa:audio-unlocked", onUnlocked);
       window.removeEventListener("flexa:user-muted", onUserMuted);
+      window.removeEventListener("flexa:promo-resume", onResume);
     };
-  }, []);
+  }, [pausedByUser, video.id]);
 
   const cancelVisualReadinessChecks = useCallback(() => {
     if (visualReadyTimerRef.current) {
@@ -1045,10 +1087,13 @@ function VideoCard({
     const resume = () => {
       pendingReloadResumeRef.current = null;
       if (!isActiveRef.current || activationGenerationRef.current !== generation) return;
+      if (!isPromoPlaybackOwner(video.id, generation)) return;
       if (resumeAt > 0 && Number.isFinite(resumeAt)) {
         try { el.currentTime = resumeAt; } catch { /* ignore */ }
       }
-      el.play().catch(showPlaybackFailure);
+      const playPromise = playPromoIfOwner(video.id, el, generation);
+      if (playPromise) playPromise.catch(showPlaybackFailure);
+      else showPlaybackFailure();
     };
     pendingReloadResumeRef.current = { element: el, listener: resume };
     el.addEventListener("loadedmetadata", resume, { once: true });
@@ -1059,7 +1104,7 @@ function VideoCard({
       cancelPendingReloadResume();
       return false;
     }
-  }, [cancelPendingReloadResume, cancelVisualReadinessChecks, showPlaybackFailure]);
+  }, [cancelPendingReloadResume, cancelVisualReadinessChecks, showPlaybackFailure, video.id]);
 
   const scheduleFramePresentationCheck = useCallback((el: HTMLVideoElement) => {
     if (!isActiveRef.current || visibleFrameRef.current) return;
@@ -1109,15 +1154,18 @@ function VideoCard({
 
   const handleVideoStall = useCallback(() => {
     const el = videoRef.current;
-    if (!el || !isActive || el.paused) return;
+    if (!el || !isActiveRef.current || el.paused) return;
     if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    const generation = activationGenerationRef.current;
     stallTimerRef.current = setTimeout(() => {
       const v = videoRef.current;
-      if (!v || v.paused || v.readyState >= 3) return;
+      if (!v || !isActiveRef.current || activationGenerationRef.current !== generation) return;
+      if (!isPromoPlaybackOwner(video.id, generation)) return;
+      if (v.paused || v.readyState >= 3) return;
       // Gentle recovery first: nudge playback without destroying the buffer.
       // Calling v.load() resets the element and re-downloads from scratch, which
       // on slow connections turns a brief buffer wait into a visible freeze loop.
-      v.play().catch(() => {});
+      void playPromoIfOwner(video.id, v, generation)?.catch(() => {});
       stallAttemptsRef.current += 1;
       // Hard-reload only as a last resort and only ONCE per activation, when the
       // element is still essentially empty (readyState < 2 = no current frame).
@@ -1127,18 +1175,21 @@ function VideoCard({
         if (!hardReloadVideoOnce(v)) showPlaybackFailure();
       }
     }, 3000);
-  }, [hardReloadVideoOnce, isActive, showPlaybackFailure]);
+  }, [hardReloadVideoOnce, showPlaybackFailure, video.id]);
 
   const handleMuteToggle = useCallback(() => {
+    if (!isActiveRef.current) return;
     const turnOn = muted; // currently muted → unmute
     if (turnOn) {
       setUserMutedPreference(false);
       setAudioUnlocked(true);
       setSoundLocked(false);
       setMuted(false);
-      if (videoRef.current) {
-        videoRef.current.muted = false;
-        videoRef.current.play().catch(() => {});
+      const el = videoRef.current;
+      if (el) {
+        el.muted = false;
+        const gen = activationGenerationRef.current;
+        void playPromoIfOwner(video.id, el, gen)?.catch(() => {});
       }
     } else {
       // Explicit mute — remember across video switches; keep unlock so we
@@ -1148,15 +1199,22 @@ function VideoCard({
       setSoundLocked(false);
       if (videoRef.current) videoRef.current.muted = true;
     }
-  }, [muted]);
+  }, [muted, video.id]);
 
-  // Auto-play / pause + WhatsApp overlay + impression tracking + skip countdown
+  // Auto-play / pause + WhatsApp overlay + impression tracking + skip countdown.
+  // CRITICAL: every play path is ownership-gated. Cleanup MUST silence audio
+  // immediately so Video A cannot keep playing after the user scrolls to Video B.
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
     isActiveRef.current = isActive;
     activationGenerationRef.current += 1;
     cancelPendingReloadResume();
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+
     if (isActive) {
       // A newly visible card always starts in autoplay mode. Do not carry the
       // previous card's paused UI into this one while its first frame buffers.
@@ -1170,17 +1228,23 @@ function VideoCard({
       setVideoBuffering(true);
       setLoadFailed(false);
 
+      const activationGeneration = activationGenerationRef.current;
+      claimPromoPlayback(video.id, el, activationGeneration);
+
       const tryPlay = () => {
         if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
+        if (!isPromoPlaybackOwner(video.id, activationGeneration)) return;
         // Prefer unmuted autoplay wherever the platform permits it (native
         // WebViews, prior unlock, and browsers that allow sound). Rejected
         // unmuted play falls back to muted + minimal tap-for-sound hint.
         // Explicit user mute is preserved across video switches.
         const playMutedFallback = (showHint: boolean) => {
+          if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
+          if (!isPromoPlaybackOwner(video.id, activationGeneration)) return;
           el.muted = true;
           setMuted(true);
           setSoundLocked(showHint && !isUserMutedPreference());
-          void el.play().catch(() => {});
+          void playPromoIfOwner(video.id, el, activationGeneration)?.catch(() => {});
         };
 
         if (isUserMutedPreference()) {
@@ -1195,24 +1259,29 @@ function VideoCard({
         el.muted = false;
         setMuted(false);
         setSoundLocked(false);
-        void el.play().then(() => {
-          if (!isActiveRef.current) return;
+        const playPromise = playPromoIfOwner(video.id, el, activationGeneration);
+        if (!playPromise) return;
+        void playPromise.then(() => {
+          if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
+          if (!isPromoPlaybackOwner(video.id, activationGeneration)) return;
           setAudioUnlocked(true);
           setSoundLocked(false);
         }).catch(() => {
           if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
+          if (!isPromoPlaybackOwner(video.id, activationGeneration)) return;
           // If sound was already unlocked this session, keep trying unmuted so
           // switching videos does not drop audio after a transient rejection.
           if (isAudioUnlocked() || isNativeMobileApp()) {
             el.muted = false;
             setMuted(false);
-            void el.play().catch(() => playMutedFallback(true));
+            const retry = playPromoIfOwner(video.id, el, activationGeneration);
+            if (retry) void retry.catch(() => playMutedFallback(true));
+            else playMutedFallback(true);
             return;
           }
           playMutedFallback(true);
         });
       };
-      const activationGeneration = activationGenerationRef.current;
       el.addEventListener("canplay", tryPlay);
       el.addEventListener("loadeddata", tryPlay);
 
@@ -1238,7 +1307,7 @@ function VideoCard({
 
       // Qualified video view after ~3s of active playback + 5s retention marker
       const postProgress = (marker: number, watchMs: number, type: string) => {
-        if (!isActiveRef.current) return;
+        if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
         fetch("/api/boost-analytics/events", {
           method: "POST",
           headers: {
@@ -1283,26 +1352,42 @@ function VideoCard({
         isActiveRef.current = false;
         cancelPendingReloadResume();
         cancelVisualReadinessChecks();
+        if (stallTimerRef.current) {
+          clearTimeout(stallTimerRef.current);
+          stallTimerRef.current = null;
+        }
         if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+        // Immediately stop audio/video — do not wait for the inactive branch.
+        releasePromoPlayback(video.id, el, activationGeneration);
+        setPlaying(false);
       };
-    } else {
-      cancelPendingReloadResume();
-      cancelVisualReadinessChecks();
-      el.pause();
-      setPlaying(false);
-      setShowComments(false);
-      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
-      setShowWhatsAppBtn(false);
-      setWhatsAppDismissed(false);
     }
+
+    // Inactive: silence this card so it cannot leak audio while off-screen.
+    cancelPendingReloadResume();
+    cancelVisualReadinessChecks();
+    releasePromoPlayback(video.id, el);
+    silencePromoVideo(el);
+    setPlaying(false);
+    setShowComments(false);
+    if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+    setShowWhatsAppBtn(false);
+    setWhatsAppDismissed(false);
     return () => {
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
     };
-  }, [armVisualReadinessCheck, cancelPendingReloadResume, cancelVisualReadinessChecks, isActive]);
+  }, [armVisualReadinessCheck, cancelPendingReloadResume, cancelVisualReadinessChecks, isActive, video.id]);
 
-  // Touch handlers: hold-to-pause + double-tap like + single-tap mute
+  // Touch handlers: hold-to-pause + double-tap like + single-tap mute.
+  // Swipe landings on a deactivated card must NEVER restart its audio.
   const handleTouchStart = useCallback(() => {
+    if (!isActiveRef.current) return;
     holdTimerRef.current = setTimeout(() => {
+      if (!isActiveRef.current) return;
       isPausedByHoldRef.current = true;
       videoRef.current?.pause();
       setPlaying(false);
@@ -1314,9 +1399,17 @@ function VideoCard({
       clearTimeout(holdTimerRef.current);
       holdTimerRef.current = null;
     }
+    if (!isActiveRef.current) {
+      isPausedByHoldRef.current = false;
+      return;
+    }
     if (isPausedByHoldRef.current) {
       isPausedByHoldRef.current = false;
-      videoRef.current?.play().catch(() => {});
+      const el = videoRef.current;
+      if (el) {
+        const gen = activationGenerationRef.current;
+        void playPromoIfOwner(video.id, el, gen)?.catch(() => {});
+      }
       setPlaying(true);
       return;
     }
@@ -1342,8 +1435,10 @@ function VideoCard({
       lastTapRef.current = now;
       // Ignore single-tap if the video just became active (scroll gesture lands on card)
       if (Date.now() - activatedAtRef.current < 500) return;
+      if (!isActiveRef.current) return;
       const el = videoRef.current;
       if (!el) return;
+      const gen = activationGenerationRef.current;
       // First meaningful tap enables sound when the browser blocked unmuted
       // autoplay (or user had not unmuted yet). Once sound is on, single-tap
       // toggles play/pause as usual. Explicit mute uses the mute button.
@@ -1353,14 +1448,15 @@ function VideoCard({
         setSoundLocked(false);
         setMuted(false);
         el.muted = false;
-        el.play().catch(() => {});
+        void playPromoIfOwner(video.id, el, gen)?.catch(() => {});
         setPlaying(true);
         return;
       }
       // single-tap toggles play/pause
       if (el.paused) {
         setPausedByUser(false);
-        el.play().catch(showPlaybackFailure);
+        const playPromise = playPromoIfOwner(video.id, el, gen);
+        if (playPromise) playPromise.catch(showPlaybackFailure);
         setPlaying(true);
       } else {
         setPausedByUser(true);
@@ -1643,12 +1739,14 @@ function VideoCard({
       <video
         ref={(el) => {
           (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
-          // Prefer unmuted; tryPlay() falls back to muted if the browser blocks it.
-          if (el) el.muted = muted;
+          // Inactive cards must stay muted even if React mute state is stale from
+          // a prior activation — otherwise a re-render undoes silencePromoVideo
+          // and previous-ad audio leaks while the next card is on screen.
+          if (el) el.muted = isActive ? muted : true;
         }}
         src={video.videoUrl ?? undefined}
         playsInline
-        muted={muted}
+        muted={isActive ? muted : true}
         preload={isActive ? "auto" : isNext ? "metadata" : "none"}
         poster={video.thumbnailUrl ?? generatedThumbnail ?? undefined}
         className={`absolute inset-0 w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
@@ -1711,6 +1809,7 @@ function VideoCard({
           className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/30 text-white"
           onClick={(e) => {
             e.stopPropagation();
+            if (!isActiveRef.current) return;
             const el = videoRef.current;
             if (!el) return;
             cancelVisualReadinessChecks();
@@ -1721,8 +1820,12 @@ function VideoCard({
             setHasVisibleFrame(false);
             setLoadFailed(false);
             setVideoBuffering(true);
+            const gen = activationGenerationRef.current;
+            claimPromoPlayback(video.id, el, gen);
             el.load();
-            el.play().catch(showPlaybackFailure);
+            const playPromise = playPromoIfOwner(video.id, el, gen);
+            if (playPromise) playPromise.catch(showPlaybackFailure);
+            else showPlaybackFailure();
           }}
           onTouchStart={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
@@ -2185,7 +2288,22 @@ export default function VideoFeed() {
       html.style.setProperty("--flexa-android-bottom", "48px");
     }
 
+    const onVisibility = () => {
+      if (document.hidden) {
+        // App background / tab hide — stop every promo video immediately so
+        // audio cannot continue under the home screen or another route.
+        silenceAllPromoVideos();
+      } else {
+        window.dispatchEvent(new Event("flexa:promo-resume"));
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", silenceAllPromoVideos);
+
     return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", silenceAllPromoVideos);
+      silenceAllPromoVideos();
       html.classList.remove("video-feed-immersive");
       html.style.backgroundColor = prevHtmlBg;
       body.style.backgroundColor = prevBodyBg;
@@ -2217,6 +2335,8 @@ export default function VideoFeed() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const videosRef = useRef<VideoItem[]>([]);
+  videosRef.current = videos;
   const feedGenerationRef = useRef(0);
   const activeVideoIdRef = useRef<number | null>(null);
   const pendingPreservedActiveIdRef = useRef<number | null>(null);
@@ -2454,34 +2574,47 @@ export default function VideoFeed() {
     return () => clearInterval(poll);
   }, [token]);
 
-  // IntersectionObserver — track which card is ≥55% visible
+  // IntersectionObserver — pick the MOST visible card (≥55%).
+  // Using "first entry ≥55%" during snap transitions flipped activeIdx rapidly
+  // and left overlapping play() promises on adjacent cards.
+  const intersectionRatiosRef = useRef<Map<Element, number>>(new Map());
   useEffect(() => {
     if (observerRef.current) observerRef.current.disconnect();
+    intersectionRatiosRef.current = new Map();
 
     observerRef.current = new IntersectionObserver(
       entries => {
         for (const entry of entries) {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.55) {
-            const idx = cardRefs.current.indexOf(entry.target as HTMLDivElement);
-            if (idx >= 0) {
-              setActiveIdx(idx);
-              activeVideoIdRef.current = videos[idx]?.id ?? null;
-              if (idx >= videos.length - 2 && hasMore && !loadingMore) {
-                fetchPage(page + 1);
-              }
-              // Auto-loop: when last video is reached and there are no more pages,
-              // silently restart the feed with a new seed so the scroll never ends.
-              if (idx >= videos.length - 1 && !hasMore && !loadingMore) {
-                sessionSeedRef.current = Math.floor(Math.random() * 1_000_000) + 1;
-                seenIdsRef.current = new Set();
-                fetchPage(1, true);
-                scrollTo(0);
-              }
-            }
+          intersectionRatiosRef.current.set(entry.target, entry.intersectionRatio);
+        }
+        let bestIdx = -1;
+        let bestRatio = 0;
+        cardRefs.current.forEach((el, idx) => {
+          if (!el) return;
+          const ratio = intersectionRatiosRef.current.get(el) ?? 0;
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestIdx = idx;
           }
+        });
+        if (bestIdx < 0 || bestRatio < 0.55) return;
+
+        const feedVideos = videosRef.current;
+        setActiveIdx(bestIdx);
+        activeVideoIdRef.current = feedVideos[bestIdx]?.id ?? null;
+        if (bestIdx >= feedVideos.length - 2 && hasMore && !loadingMore) {
+          fetchPage(page + 1);
+        }
+        // Auto-loop: when last video is reached and there are no more pages,
+        // silently restart the feed with a new seed so the scroll never ends.
+        if (bestIdx >= feedVideos.length - 1 && !hasMore && !loadingMore) {
+          sessionSeedRef.current = Math.floor(Math.random() * 1_000_000) + 1;
+          seenIdsRef.current = new Set();
+          fetchPage(1, true);
+          scrollTo(0);
         }
       },
-      { root: containerRef.current, threshold: [0.55, 0.75] },
+      { root: containerRef.current, threshold: [0.25, 0.55, 0.75, 0.9, 1] },
     );
 
     cardRefs.current.forEach(el => { if (el) observerRef.current!.observe(el); });

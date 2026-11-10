@@ -10,6 +10,7 @@ import { logAdminAction } from "../lib/auditLogger";
 import { sendEmailBatch, sendEmail } from "../lib/email";
 import { accountRestrictedEmail, broadcastEmail } from "../lib/emailTemplates";
 import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
+import { listingAudienceFieldsForActivation } from "../lib/boostDelivery";
 import { SCOPE_OPTIONS, userInAdminScope } from "../lib/adminScope";
 import { hasUsableListingImage } from "../lib/listingMedia";
 
@@ -2168,6 +2169,11 @@ router.post("/admin/listings/:id/boost", requireAdmin, async (req, res): Promise
   const now = new Date();
   const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 
+  // Advantage+ = country-wide. Custom keeps explicit state/city. Always clear
+  // stale regional pins so leftover seller geo cannot linger on admin boosts.
+  const freeBoostState = audAudienceType === "custom" ? audState : null;
+  const freeBoostCity = audAudienceType === "custom" ? audCity : null;
+
   // Stamp all audience fields + boostStartAt=NOW so video feed shows it immediately.
   await db.update(listingsTable)
     .set({
@@ -2175,7 +2181,9 @@ router.post("/admin/listings/:id/boost", requireAdmin, async (req, res): Promise
       boostExpiresAt: expiresAt,
       boostVideoUrl: videoUrl,
       boostAudienceCountry: audienceCountry,
-      boostAudienceCity: audCity,
+      boostAudienceState: freeBoostState,
+      boostAudienceCity: freeBoostCity,
+      boostAudienceCities: null,
       boostAudienceAgeMin: audAgeMin,
       boostAudienceAgeMax: audAgeMax,
       boostAudienceGender: audGender,
@@ -2196,8 +2204,8 @@ router.post("/admin/listings/:id/boost", requireAdmin, async (req, res): Promise
     paymentStatus: "paid",
     expiresAt,
     audienceCountry,
-    audienceState: audState,
-    audienceCity: audCity,
+    audienceState: freeBoostState,
+    audienceCity: freeBoostCity,
     audienceAgeMin: audAgeMin,
     audienceAgeMax: audAgeMax,
     audienceGender: audGender,
@@ -2275,18 +2283,23 @@ router.post("/admin/boosts/:boostId/approve", requireAdmin, async (req, res): Pr
       .where(eq(boostsTable.id, boostId));
 
     // Activate the listing with the original audience/expiry from initiate.
+    // Advantage+ clears stale regional geo so older merchant campaigns heal on approve.
     // boostStartAt = NOW() so the video feed shows it immediately.
+    const activatedAudience = listingAudienceFieldsForActivation({
+      audienceType: boost.audienceType,
+      audienceCountry: boost.audienceCountry,
+      audienceState: boost.audienceState,
+      audienceCity: boost.audienceCity,
+      audienceCities: boost.audienceCities,
+      audienceNeighborhood: boost.audienceNeighborhood,
+      audienceRadiusKm: boost.audienceRadiusKm,
+    });
     await tx.update(listingsTable)
       .set({
         isBoosted: true,
         boostExpiresAt: boost.expiresAt,
         boostStartAt: new Date(),
-        boostAudienceCountry: boost.audienceCountry,
-        boostAudienceState: boost.audienceState,
-        boostAudienceCity: boost.audienceCity,
-        boostAudienceCities: boost.audienceCities,
-        boostAudienceNeighborhood: boost.audienceNeighborhood,
-        boostAudienceRadiusKm: boost.audienceRadiusKm,
+        ...activatedAudience,
       })
       .where(eq(listingsTable.id, boost.listingId));
 

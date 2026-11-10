@@ -29,7 +29,7 @@
       "Phase 3I: Flexa TV (live/schedule/programs/series/movies + expo-av player) and Flexa Music (browse/detail/upload + persistent player). TV user upload admin-only BLOCKED; music purchases remain BLOCKED; user playlists admin-only.",
       "Phase 3J: Support Center/tickets/FlexaBot escalation, agent desk, admin support analytics/assign, chat block/report, knowledge FAQ. Full admin panel still PLACEHOLDER.",
       "Phase 3K: Native Super Admin Control Center — hub, users/RBAC, moderation, reports, orders, deliveries, boosts, All Videos (allCountries), finance wallets/cashouts, audit, traffic, team, KYC queue, settings gap hub; support desks integrated. Web-only: appeals, driver/agent apps, Stripe/MonCash ledgers, broadcast/push composers, TV/Music CMS, fee editors.",
-      "Phase 3L: Completion/audit — implemented admin operations/appeals/drivers/agents/stripe/returns/fraud/commissions/flex-cards/loans; customer loans/subscription(plans)/driver-apply/dashboard/flex-card/bnpl/cash-agents/commission-promo/credit-score; phone login documented BLOCKED (no phoneToken issuer). Paid digital goods remain BLOCKED. Physical-device FCM still unverified."
+      "Phase 3L: Completion/audit — admin ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans/flagged/VIP/fees/Haiti ledger; customer loans/subscription plans/driver/flex-card/bnpl/cash-agents/commission-promo/credit-score; phone login BLOCKED (no phoneToken). Broadcast/push composers + TV/Music CMS + hash-security tools deferred. Play digital goods BLOCKED. FCM device unverified."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -1306,8 +1306,7 @@
         "broadcast email/SMS composer",
         "push campaign composer",
         "TV/Music CMS admin",
-        "platform fee editor",
-        "MonCash dedicated ledger UI"
+        "password-hash security tools UI"
       ],
       "work": "Phase 3L Control Center expanded with operations/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans"
     },
@@ -1316,7 +1315,7 @@
       "name": "User / Seller / Driver Management",
       "domain": "admin",
       "webRoute": "/admin/users,/admin/driver-applications,/admin/agents",
-      "nativeRoute": "/admin/users,/admin/users/[id],/admin/team,/admin/kyc,/admin/drivers,/admin/agents",
+      "nativeRoute": "/admin/users,/admin/users/[id],/admin/team,/admin/kyc,/admin/drivers,/admin/agents,/admin/flagged",
       "role": "admin+",
       "apis": [
         "/api/admin/users",
@@ -1325,7 +1324,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [
-        "security hash tools UI (superadmin-only destructive tools stay web)"
+        "password-hash security tools UI (superadmin destructive tools stay optional)"
       ],
       "work": "Phase 3L: driver + agent application review added; users/team/KYC from 3K"
     },
@@ -1351,7 +1350,7 @@
       "name": "Financial Management / Payments / Wallet Ops / Refunds",
       "domain": "admin",
       "webRoute": "/admin/transactions,/admin/stripe-transactions,/admin?tab=wallet|payments|...",
-      "nativeRoute": "/admin/finance,/admin/stripe,/admin/returns,/admin/flex-cards,/admin/loans-admin,/admin/commissions",
+      "nativeRoute": "/admin/finance,/admin/stripe,/admin/returns,/admin/flex-cards,/admin/loans-admin,/admin/commissions,/admin/haiti-ledger",
       "role": "financeAdmin/superadmin",
       "apis": [
         "/api/wallet/admin/*",
@@ -1360,8 +1359,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [
-        "MonCash admin ledger dedicated UI",
-        "Stripe refund composer (read list only; refunds remain server Super Admin)"
+        "Stripe refund composer UI (list is read-only; refunds remain server Super Admin)"
       ],
       "work": "Phase 3L: stripe read ledger, returns decide, flex-card debts, loans queue, commission/revenue summaries"
     },
@@ -1391,7 +1389,7 @@
       "name": "Admin Analytics / Announcements / Role Management",
       "domain": "admin",
       "webRoute": "/admin (revenue, broadcast, team, push)",
-      "nativeRoute": "/admin/traffic,/admin/audit,/admin/fraud,/admin/settings",
+      "nativeRoute": "/admin/traffic,/admin/audit,/admin/fraud,/admin/fees,/admin/subscriptions,/admin/settings",
       "role": "admin/superadmin",
       "apis": [
         "/api/admin/broadcast",
@@ -1401,9 +1399,11 @@
       "status": "PARTIALLY_NATIVE",
       "missing": [
         "broadcast email/SMS composer",
-        "manual push campaign composer"
+        "manual push campaign composer",
+        "TV/Music CMS admin",
+        "password-hash security tools UI"
       ],
-      "work": "Phase 3L: fraud dashboard/alerts; broadcast/push composers still MISSING (documented)"
+      "work": "Phase 3L: fees + VIP subscriptions + fraud; broadcast/push composers still deferred"
     },
     {
       "id": "delete-account",

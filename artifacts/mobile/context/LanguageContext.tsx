@@ -229,6 +229,16 @@ const T: Record<Lang, Record<string, string>> = {
     adminCommissionsNote: "Live Super Admin commission/revenue endpoints only — no fabricated charts.",
     adminFlexCards: "Flex Card debts", adminFlexCardsHint: "Blocked accounts & balances",
     adminLoans: "Loan applications", adminLoansHint: "Admin loan queue",
+    adminFlagged: "Flagged users", adminFlaggedHint: "Action-queue user flags",
+    adminFlaggedNote: "Sourced from /admin/action-queue?type=user — no invented flagged route.",
+    adminUnflag: "Clear flag",
+    adminVipSubs: "VIP subscriptions", adminVipSubsHint: "Grant / revoke vendor plans",
+    adminVipSubsNote: "Super Admin only. Digital Play purchases remain blocked on Android.",
+    adminGrantSub: "Grant plan", adminRevokeSub: "Revoke",
+    adminFeesHint: "Edit live platform fee keys",
+    adminFeesNote: "Updates call PUT /admin/platform-fees. Server validates ranges.",
+    adminHaitiLedger: "Haiti wallet ledger", adminHaitiLedgerHint: "MonCash-adjacent admin txs",
+    adminHaitiLedgerNote: "Uses /wallet/haiti/admin/transactions — not an invented moncash-transactions path.",
   },
 
   ht: {

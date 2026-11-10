@@ -31,6 +31,10 @@ export default function AdminLayout() {
       <Stack.Screen name="commissions" />
       <Stack.Screen name="flex-cards" />
       <Stack.Screen name="loans-admin" />
+      <Stack.Screen name="flagged" />
+      <Stack.Screen name="subscriptions" />
+      <Stack.Screen name="fees" />
+      <Stack.Screen name="haiti-ledger" />
     </Stack>
   );
 }

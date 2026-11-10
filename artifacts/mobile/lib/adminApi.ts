@@ -489,3 +489,61 @@ export async function fetchAdminSubscriptions(opts: AuthOpts): Promise<any[]> {
   const data = await requireOk(res, "Admin subscriptions failed");
   return Array.isArray(data) ? data : Array.isArray(data.subscriptions) ? data.subscriptions : [];
 }
+
+export async function grantAdminSubscription(
+  body: { userId: number; plan: string; months?: number },
+  opts: AuthOpts,
+): Promise<void> {
+  const res = await authedFetch("/admin/subscriptions/grant", {
+    ...opts,
+    method: "POST",
+    body,
+  });
+  await requireOk(res, "Grant subscription failed");
+}
+
+export async function revokeAdminSubscription(
+  body: { userId: number },
+  opts: AuthOpts,
+): Promise<void> {
+  const res = await authedFetch("/admin/subscriptions/revoke", {
+    ...opts,
+    method: "POST",
+    body,
+  });
+  await requireOk(res, "Revoke subscription failed");
+}
+
+export async function fetchAdminPlatformFees(opts: AuthOpts): Promise<Record<string, number>> {
+  const res = await authedFetch("/admin/platform-fees", opts);
+  return await requireOk(res, "Platform fees failed");
+}
+
+export async function updateAdminPlatformFee(
+  body: { key: string; value: number },
+  opts: AuthOpts,
+): Promise<void> {
+  const res = await authedFetch("/admin/platform-fees", {
+    ...opts,
+    method: "PUT",
+    body,
+  });
+  await requireOk(res, "Update platform fee failed");
+}
+
+export async function fetchAdminHaitiTransactions(opts: AuthOpts): Promise<any[]> {
+  const res = await authedFetch("/wallet/haiti/admin/transactions?limit=100", opts);
+  const data = await requireOk(res, "Haiti ledger failed");
+  return Array.isArray(data)
+    ? data
+    : Array.isArray(data.transactions)
+      ? data.transactions
+      : Array.isArray(data.items)
+        ? data.items
+        : [];
+}
+
+export async function fetchAdminFlaggedUsers(opts: AuthOpts): Promise<any[]> {
+  const data = await fetchAdminActionQueue({ ...opts, type: "user" });
+  return data.items;
+}

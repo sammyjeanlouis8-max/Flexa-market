@@ -19,7 +19,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { createBoosterDraft, fetchBoosterMeta, type BoosterMeta } from "@/lib/boosterApi";
-import { uploadChunkedVideo } from "@/lib/chunkedVideoUpload";
+import {
+  loadVideoUploadSession,
+  uploadChunkedVideo,
+} from "@/lib/chunkedVideoUpload";
 import { fetchUserListings } from "@/lib/sellerApi";
 import type { Listing } from "@/lib/api";
 
@@ -36,18 +39,23 @@ export default function BoostCreateScreen() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [listingId, setListingId] = useState<number | null>(null);
-  const [dept, setDept] = useState<string | null>(null);
+  const [depts, setDepts] = useState<string[]>([]);
   const [cities, setCities] = useState<string[]>([]);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadAbort, setUploadAbort] = useState<AbortController | null>(null);
 
   const departments = meta?.haitiDepartments ?? [];
   const communes = useMemo(() => {
-    if (!dept || !meta?.communesByDepartment) return [];
-    return meta.communesByDepartment[dept] ?? [];
-  }, [dept, meta]);
+    if (!meta?.communesByDepartment || depts.length === 0) return [];
+    const set = new Set<string>();
+    for (const d of depts) {
+      for (const c of meta.communesByDepartment[d] ?? []) set.add(c);
+    }
+    return [...set];
+  }, [depts, meta]);
 
   useEffect(() => {
     if (!token || !user?.id) return;
@@ -62,7 +70,58 @@ export default function BoostCreateScreen() {
       .catch(() => {});
   }, [token, user?.id]);
 
+  const runVideoUpload = async (
+    uri: string,
+    contentType: string,
+    resumeUploadId?: string | null,
+  ) => {
+    if (!token) return;
+    const ac = new AbortController();
+    setUploadAbort(ac);
+    setUploading(true);
+    setUploadPct(0);
+    try {
+      const { url } = await uploadChunkedVideo(uri, {
+        token,
+        contentType,
+        purpose: "boost",
+        resumeUploadId,
+        signal: ac.signal,
+        onProgress: (p) => setUploadPct(p.percent),
+      });
+      setVideoUrl(url);
+      Alert.alert("Uploaded", "Promo video uploaded. Save as draft when ready.");
+    } catch (e) {
+      if (e instanceof Error && /cancelled/i.test(e.message)) {
+        Alert.alert("Cancelled", "Upload cancelled. You can resume from Drafts later.");
+      } else {
+        Alert.alert("Upload failed", e instanceof Error ? e.message : "Error");
+      }
+    } finally {
+      setUploading(false);
+      setUploadPct(null);
+      setUploadAbort(null);
+    }
+  };
+
   const pickVideo = async () => {
+    if (!token) return;
+    const existing = await loadVideoUploadSession();
+    if (existing?.purpose === "boost" && existing.localUri) {
+      Alert.alert("Resume upload?", "An interrupted boost video upload was found.", [
+        { text: "Start new", style: "destructive", onPress: () => void pickFreshVideo() },
+        {
+          text: "Resume",
+          onPress: () =>
+            void runVideoUpload(existing.localUri, existing.contentType, existing.uploadId),
+        },
+      ]);
+      return;
+    }
+    await pickFreshVideo();
+  };
+
+  const pickFreshVideo = async () => {
     if (!token) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -76,23 +135,7 @@ export default function BoostCreateScreen() {
     });
     if (result.canceled || !result.assets?.[0]?.uri) return;
     const asset = result.assets[0];
-    setUploading(true);
-    setUploadPct(0);
-    try {
-      const { url } = await uploadChunkedVideo(asset.uri, {
-        token,
-        contentType: asset.mimeType || "video/mp4",
-        purpose: "boost",
-        onProgress: (p) => setUploadPct(p.percent),
-      });
-      setVideoUrl(url);
-      Alert.alert("Uploaded", "Promo video uploaded. Save as draft when ready.");
-    } catch (e) {
-      Alert.alert("Upload failed", e instanceof Error ? e.message : "Error");
-    } finally {
-      setUploading(false);
-      setUploadPct(null);
-    }
+    await runVideoUpload(asset.uri, asset.mimeType || "video/mp4", null);
   };
 
   const onSaveDraft = async () => {
@@ -104,8 +147,8 @@ export default function BoostCreateScreen() {
       Alert.alert("Title required", "Enter a campaign title.");
       return;
     }
-    if (user.country === "Haiti" && !dept) {
-      Alert.alert("Audience", "Select a Haiti department for custom targeting.");
+    if (user.country === "Haiti" && depts.length === 0) {
+      Alert.alert("Audience", "Select at least one Haiti department for custom targeting.");
       return;
     }
     const start = new Date();
@@ -124,8 +167,8 @@ export default function BoostCreateScreen() {
           audience: {
             country: user.country,
             audienceType: "custom",
-            state: dept,
-            states: dept ? [dept] : [],
+            state: depts[0] ?? null,
+            states: depts,
             cities,
           },
         },
@@ -203,26 +246,31 @@ export default function BoostCreateScreen() {
 
         {user?.country === "Haiti" ? (
           <>
-            <Text style={styles.label}>Haiti department</Text>
+            <Text style={styles.label}>Haiti departments (multi-select)</Text>
             <View style={styles.wrap}>
-              {departments.map((d) => (
-                <Pressable
-                  key={d}
-                  style={[styles.chip, dept === d && styles.chipOn]}
-                  onPress={() => {
-                    setDept(d);
-                    setCities([]);
-                  }}
-                >
-                  <Text style={[styles.chipText, dept === d && styles.chipTextOn]}>{d}</Text>
-                </Pressable>
-              ))}
+              {departments.map((d) => {
+                const on = depts.includes(d);
+                return (
+                  <Pressable
+                    key={d}
+                    style={[styles.chip, on && styles.chipOn]}
+                    onPress={() => {
+                      setDepts((prev) =>
+                        on ? prev.filter((x) => x !== d) : [...prev, d],
+                      );
+                      setCities([]);
+                    }}
+                  >
+                    <Text style={[styles.chipText, on && styles.chipTextOn]}>{d}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
             {communes.length > 0 ? (
               <>
-                <Text style={styles.label}>Communes (optional)</Text>
+                <Text style={styles.label}>Communes (optional · multi-select)</Text>
                 <View style={styles.wrap}>
-                  {communes.slice(0, 30).map((c) => {
+                  {communes.slice(0, 40).map((c) => {
                     const on = cities.includes(c);
                     return (
                       <Pressable
@@ -263,6 +311,15 @@ export default function BoostCreateScreen() {
             </Text>
           )}
         </Pressable>
+        {uploading ? (
+          <Pressable
+            style={styles.cancelUpload}
+            onPress={() => uploadAbort?.abort()}
+            testID="btn-cancel-boost-video"
+          >
+            <Text style={styles.cancelUploadText}>Cancel upload</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           style={[styles.saveBtn, saving && { opacity: 0.7 }]}
@@ -342,6 +399,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   videoText: { color: "#C2410C", fontWeight: "700" },
+  cancelUpload: { alignItems: "center", paddingVertical: 10 },
+  cancelUploadText: { color: "#DC2626", fontWeight: "700" },
   saveBtn: {
     marginTop: 20,
     backgroundColor: "#F97316",

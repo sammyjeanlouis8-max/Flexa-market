@@ -1,11 +1,10 @@
 # Flexa Market — Phase 3 Native Migration Inventory
 
-**Phase 3E:** [#174](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/174) OPEN  
-**Phase 3F:** [#175](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/175) OPEN (base: 3E)  
-**Phase 3G branch:** `cursor/native-seller-phase3g-09ff` (tip of 3F `f4e88fc6`)  
+**PR chain (verified):** #174 → #175 → #176 → #177 → Phase 3G2  
+**Phase 3G2 branch:** `cursor/native-seller-phase3g2-09ff` (from push-harden `09f4acdf`)  
 **Backend:** `https://flexamarket.com/api`
 
-## Snapshot counts (after Phase 3G)
+## Snapshot counts (after Phase 3G2)
 
 | Status | Count |
 |---|---|
@@ -14,28 +13,26 @@
 | PLACEHOLDER | 6 |
 | MISSING | 18 |
 | BLOCKED | 5 |
-| **Total features** | **83** (+1 product-variations tracker) |
+| **Total** | **83** |
 
-## Phase 3G completed
+Machine-readable source of truth: `phase3-migration-inventory.json`.
 
-- KYC native submit (admin review; no auto-approve)
-- Seller registration path (KYC + payout + sell)
-- Store manager invite + manager dashboard
-- Sell drafts (AsyncStorage) + drafts hub
-- Chunked Wasabi video upload (listing + boost draft)
-- Boost **draft** campaign builder (Haiti dept/commune; paid launch blocked)
-- `itemSize` single-field size/variant (multi-SKU **MISSING** — no backend API)
+## Phase 3G / 3G2 seller highlights
 
-## Explicit blockers
-
-- `boost-paid` BLOCKED (Play digital goods)
-- `product-variations` MISSING (no variant APIs)
-- No server listing-draft table (client drafts only)
+- KYC, seller registration hub, store manager
+- Sell drafts + interrupted video recovery
+- Resumable chunked Wasabi video (cancel/retry)
+- Boost draft builder with Haiti multi-dept/commune
+- Campaign filters, pause/resume (paid only), analytics
+- Paid boost checkout still **BLOCKED**
+- Multi-SKU variations still **MISSING** (itemSize only)
 
 ## Safe merge order later
 
 1. #174 → main  
 2. #175 → main  
-3. Phase 3G PR → main  
+3. #176 → main  
+4. #177 → main  
+5. Phase 3G2 PR → main  
 
 Do not merge without authorization.

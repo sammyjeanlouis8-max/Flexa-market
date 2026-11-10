@@ -302,28 +302,122 @@ export type BoostCampaign = {
   budget?: number;
   impressions?: number;
   clicks?: number;
+  videoViews?: number;
   expiresAt?: string | null;
+  endsAt?: string | null;
+  startsAt?: string | null;
   createdAt?: string;
   title?: string;
   [key: string]: unknown;
 };
 
+function normalizeCampaign(raw: any): BoostCampaign {
+  const id = Number(raw?.id ?? raw?.boostId);
+  return {
+    ...raw,
+    id,
+    listingId: raw?.listingId != null ? Number(raw.listingId) : undefined,
+    status: String(raw?.status ?? raw?.campaignStatus ?? ""),
+    paymentStatus: raw?.paymentStatus,
+    expiresAt: raw?.expiresAt ?? raw?.endsAt ?? null,
+    endsAt: raw?.endsAt ?? raw?.expiresAt ?? null,
+    title: raw?.title ?? raw?.plan,
+  };
+}
+
 export async function fetchMyBoosts(opts: AuthOpts): Promise<BoostCampaign[]> {
   const res = await authedFetch("/boost/my-active", opts);
   const data = await readJson(res);
   if (!res.ok) throw new Error(data.error || `Boosts failed (${res.status})`);
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data.boosts)) return data.boosts;
-  return [];
+  const rows: any[] = Array.isArray(data) ? data : Array.isArray(data.boosts) ? data.boosts : [];
+  return rows.map(normalizeCampaign).filter((c: BoostCampaign) => Number.isFinite(c.id));
 }
 
 export async function fetchBoosterCampaigns(opts: AuthOpts): Promise<BoostCampaign[]> {
   const res = await authedFetch("/booster/campaigns", opts);
   const data = await readJson(res);
   if (!res.ok) throw new Error(data.error || `Campaigns failed (${res.status})`);
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data.campaigns)) return data.campaigns;
-  return [];
+  const rows: any[] = Array.isArray(data)
+    ? data
+    : Array.isArray(data.campaigns)
+      ? data.campaigns
+      : [];
+  return rows.map(normalizeCampaign).filter((c: BoostCampaign) => Number.isFinite(c.id));
+}
+
+export async function pauseBoosterCampaign(
+  id: number,
+  opts: AuthOpts,
+): Promise<{ ok: boolean; status?: string }> {
+  const res = await authedFetch(`/booster/campaigns/${id}/pause`, {
+    ...opts,
+    method: "POST",
+    body: {},
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Pause failed (${res.status})`);
+  return data;
+}
+
+export async function resumeBoosterCampaign(
+  id: number,
+  opts: AuthOpts,
+): Promise<{ ok: boolean; status?: string }> {
+  const res = await authedFetch(`/booster/campaigns/${id}/resume`, {
+    ...opts,
+    method: "POST",
+    body: {},
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Resume failed (${res.status})`);
+  return data;
+}
+
+export type BoosterAnalytics = {
+  impressions?: number;
+  clicks?: number;
+  skips?: number;
+  videoViews?: number;
+  spend?: number;
+  series?: Array<{ date: string; impressions: number; clicks: number; videoViews: number }>;
+  [key: string]: unknown;
+};
+
+export async function fetchBoosterAnalytics(
+  opts: AuthOpts & { boostId?: number },
+): Promise<BoosterAnalytics> {
+  const q = opts.boostId ? `?boostId=${opts.boostId}` : "";
+  const res = await authedFetch(`/booster/analytics${q}`, opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Analytics failed (${res.status})`);
+  return data as BoosterAnalytics;
+}
+
+export type FieldErrors = Partial<
+  Record<
+    "title" | "description" | "price" | "categoryId" | "condition" | "location" | "images",
+    string
+  >
+>;
+
+export function validateListingDraftFields(
+  input: Partial<CreateListingInput>,
+): FieldErrors {
+  const errors: FieldErrors = {};
+  if (!input.title?.trim() || input.title.trim().length < 3) {
+    errors.title = "Title must be at least 3 characters";
+  }
+  if (!input.description?.trim() || input.description.trim().length < 10) {
+    errors.description = "Description must be at least 10 characters";
+  }
+  if (input.price == null || !(Number(input.price) > 0)) {
+    errors.price = "Enter a valid price";
+  }
+  if (!input.categoryId) errors.categoryId = "Select a category";
+  if (!input.condition) errors.condition = "Select condition";
+  if (!input.location?.trim()) errors.location = "Location is required";
+  if (!input.images?.length) errors.images = "Add at least one product image";
+  return errors;
 }
 
 export type VideoFeedItem = {

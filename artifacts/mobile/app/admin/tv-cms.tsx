@@ -1,6 +1,7 @@
 /**
  * Flexa TV CMS — programs list + live broadcast controls via verified /admin/tv/* APIs.
  */
+import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
@@ -14,6 +15,7 @@ import {
   fetchAdminTvPrograms,
   fetchAdminTvViewers,
   postAdminTvBroadcast,
+  uploadAdminTvVideo,
 } from "@/lib/phase3mApis";
 
 export default function AdminTvCmsScreen() {
@@ -24,6 +26,7 @@ export default function AdminTvCmsScreen() {
   const [viewers, setViewers] = useState<any | null>(null);
   const [title, setTitle] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -112,6 +115,43 @@ export default function AdminTvCmsScreen() {
           placeholderTextColor="#94A3B8"
           autoCapitalize="none"
         />
+        <Pressable
+          style={[adminStyles.btnGhost, { marginTop: 8, alignSelf: "flex-start" }]}
+          disabled={!token || uploading}
+          onPress={() => {
+            if (!token) return;
+            void (async () => {
+              const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+              if (!perm.granted) {
+                Alert.alert(t("adminTvCms"), "Media library permission required");
+                return;
+              }
+              const picked = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ["videos"],
+                quality: 1,
+              });
+              if (picked.canceled || !picked.assets?.[0]?.uri) return;
+              const asset = picked.assets[0];
+              setUploading(true);
+              try {
+                const { videoUrl: url } = await uploadAdminTvVideo(asset.uri, {
+                  token,
+                  fileName: asset.fileName || "tv-upload.mp4",
+                  mimeType: asset.mimeType || "video/mp4",
+                });
+                setVideoUrl(url);
+              } catch (e) {
+                Alert.alert(t("adminTvCms"), e instanceof Error ? e.message : "Upload failed");
+              } finally {
+                setUploading(false);
+              }
+            })();
+          }}
+        >
+          <Text style={adminStyles.btnGhostText}>
+            {uploading ? "Uploading…" : "Upload video file"}
+          </Text>
+        </Pressable>
         <Pressable
           style={[adminStyles.btn, { marginTop: 8, alignSelf: "flex-start" }]}
           onPress={() => {

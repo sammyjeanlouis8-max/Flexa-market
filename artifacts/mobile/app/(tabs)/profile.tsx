@@ -16,16 +16,19 @@ const BASE_LINKS: LinkItem[] = [
   { label: "My orders", href: "/orders", icon: "package" },
   { label: "Seller sales", href: "/sales", icon: "bar-chart-2" },
   { label: "My listings", href: "/my-listings", icon: "grid" },
+  { label: "Size / color", href: "/product-variations", icon: "layers" },
   { label: "Become a seller", href: "/seller-registration", icon: "briefcase" },
   { label: "Drafts", href: "/drafts", icon: "file-text" },
   { label: "Identity (KYC)", href: "/kyc", icon: "shield" },
   { label: "Store manager", href: "/store-manager", icon: "users" },
   { label: "Campaigns", href: "/my-boosts", icon: "zap" },
+  { label: "Promo videos", href: "/promo-feed", icon: "play-circle" },
   { label: "Private offers", href: "/offers", icon: "tag" },
   { label: "Favorites", href: "/favorites", icon: "heart" },
   { label: "Wallet", href: "/wallet", icon: "credit-card" },
   { label: "Transfer", href: "/wallet-transfer", icon: "send" },
   { label: "Flex Card", href: "/flex-card", icon: "credit-card" },
+  { label: "eSIM", href: "/esim", icon: "smartphone" },
   { label: "Loans", href: "/loans", icon: "book" },
   { label: "Credit score", href: "/credit-score", icon: "activity" },
   { label: "BNPL", href: "/bnpl", icon: "shopping-bag" },
@@ -84,6 +87,12 @@ export default function ProfileTab() {
             {user.country ?? country}
             {user.city ? ` · ${user.city}` : ""}
           </Text>
+          <Pressable
+            style={styles.secondaryBtn}
+            onPress={() => router.push(`/profile/${user.id}`)}
+          >
+            <Text style={styles.secondaryBtnText}>Public shop</Text>
+          </Pressable>
           <Pressable style={styles.secondaryBtn} onPress={() => logout()}>
             <Text style={styles.secondaryBtnText}>Sign out</Text>
           </Pressable>

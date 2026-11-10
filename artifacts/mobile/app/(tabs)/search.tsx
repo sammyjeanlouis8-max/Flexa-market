@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -27,6 +28,34 @@ type CategoryNode = {
   children?: CategoryNode[];
 };
 
+const SEARCH_HISTORY_KEY = "flexa.search.recent.v1";
+const MAX_HISTORY = 8;
+
+async function loadSearchHistory(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.map((x) => String(x)).filter(Boolean).slice(0, MAX_HISTORY)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function pushSearchHistory(term: string): Promise<string[]> {
+  const cleaned = term.trim();
+  if (!cleaned) return loadSearchHistory();
+  const prev = await loadSearchHistory();
+  const next = [cleaned, ...prev.filter((x) => x.toLowerCase() !== cleaned.toLowerCase())].slice(
+    0,
+    MAX_HISTORY,
+  );
+  await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
+  return next;
+}
+
 export default function SearchTab() {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
@@ -35,6 +64,7 @@ export default function SearchTab() {
   const [category, setCategory] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [listings, setListings] = useState<Listing[]>([]);
+  const [history, setHistory] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
@@ -48,36 +78,49 @@ export default function SearchTab() {
       } catch {
         /* categories optional for search */
       }
+      const h = await loadSearchHistory();
+      if (!cancelled) setHistory(h);
     })();
     return () => {
       cancelled = true;
     };
   }, [token]);
 
+  const runSearchWith = useCallback(
+    async (rawQuery: string) => {
+      const q = rawQuery.trim();
+      if (!q && !category) return;
+      setLoading(true);
+      setError(null);
+      setSearched(true);
+      try {
+        if (q) {
+          const next = await pushSearchHistory(q);
+          setHistory(next);
+        }
+        const data = await fetchListings(
+          {
+            country,
+            q: q || undefined,
+            category: category || undefined,
+            page: 1,
+            limit: 40,
+          },
+          { token },
+        );
+        setListings(data.listings ?? []);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Search failed");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [category, country, token],
+  );
+
   const runSearch = useCallback(async () => {
-    const q = query.trim();
-    if (!q && !category) return;
-    setLoading(true);
-    setError(null);
-    setSearched(true);
-    try {
-      const data = await fetchListings(
-        {
-          country,
-          q: q || undefined,
-          category: category || undefined,
-          page: 1,
-          limit: 40,
-        },
-        { token },
-      );
-      setListings(data.listings ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Search failed");
-    } finally {
-      setLoading(false);
-    }
-  }, [category, country, query, token]);
+    await runSearchWith(query);
+  }, [query, runSearchWith]);
 
   useEffect(() => {
     if (category) void runSearch();
@@ -126,6 +169,26 @@ export default function SearchTab() {
           ))}
         </ScrollView>
       </View>
+
+      {!searched && history.length > 0 ? (
+        <View style={styles.historyWrap}>
+          <Text style={styles.historyTitle}>Recent</Text>
+          <View style={styles.historyChips}>
+            {history.map((term) => (
+              <Pressable
+                key={term}
+                style={styles.historyChip}
+                onPress={() => {
+                  setQuery(term);
+                  void runSearchWith(term);
+                }}
+              >
+                <Text style={styles.historyChipText}>{term}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       {loading ? (
         <ActivityIndicator color="#F97316" style={{ marginTop: 40 }} />
@@ -185,4 +248,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  historyWrap: { paddingHorizontal: 12, marginBottom: 8, gap: 8 },
+  historyTitle: { fontSize: 13, fontWeight: "800", color: "#0F172A" },
+  historyChips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  historyChip: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  historyChipText: { color: "#475569", fontWeight: "600", fontSize: 12 },
 });

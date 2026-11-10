@@ -69,6 +69,50 @@ export default function SettingsScreen() {
         <Feather name="chevron-right" size={18} color="#94A3B8" />
       </Pressable>
 
+      <Pressable
+        style={[styles.row, { marginTop: 10 }]}
+        onPress={() => router.push("/security")}
+      >
+        <View>
+          <Text style={styles.label}>Security</Text>
+          <Text style={styles.value}>Password & delete account</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
+      <Pressable
+        style={[styles.row, { marginTop: 10 }]}
+        onPress={() => router.push("/help")}
+      >
+        <View>
+          <Text style={styles.label}>Help</Text>
+          <Text style={styles.value}>Help Center & Support</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
+      <Pressable
+        style={[styles.row, { marginTop: 10 }]}
+        onPress={() => router.push("/legal/privacy")}
+      >
+        <View>
+          <Text style={styles.label}>Legal</Text>
+          <Text style={styles.value}>Privacy, Terms, EULA</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
+      <Pressable
+        style={[styles.row, { marginTop: 10 }]}
+        onPress={() => router.push("/track/FM-")}
+      >
+        <View>
+          <Text style={styles.label}>Guest tracking</Text>
+          <Text style={styles.value}>Track with FM- number</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
       <Text style={styles.hint}>
         Guests browse listings for the selected country. Signed-in shoppers use
         their account country from the DigitalOcean backend.

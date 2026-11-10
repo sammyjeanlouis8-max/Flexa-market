@@ -3,7 +3,7 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": null,
+  "pr": 194,
   "branch": "cursor/native-phase3q-boost-recovery-09ff",
   "auditedAt": "2026-11-10T08:20:00Z",
   "auditCommit": "6f393f5e",

@@ -19,7 +19,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { uploadChunkedVideo } from "@/lib/chunkedVideoUpload";
+import {
+  loadVideoUploadSession,
+  uploadChunkedVideo,
+} from "@/lib/chunkedVideoUpload";
 import { uploadLocalFile } from "@/lib/mediaUpload";
 import {
   clearSellDraft,
@@ -29,9 +32,10 @@ import {
 import {
   createListing,
   fetchCategories,
-  validateListingDraft,
+  validateListingDraftFields,
   type Category,
   type CreateListingInput,
+  type FieldErrors,
 } from "@/lib/sellerApi";
 
 const CONDITIONS: CreateListingInput["condition"][] = [
@@ -41,6 +45,9 @@ const CONDITIONS: CreateListingInput["condition"][] = [
   "fair",
   "poor",
 ];
+
+const SIZE_PRESETS = ["XS", "S", "M", "L", "XL", "XXL", "One size"];
+const COLOR_PRESETS = ["Black", "White", "Red", "Blue", "Green", "Yellow", "Brown", "Other"];
 
 type LocalImage = {
   key: string;
@@ -68,12 +75,22 @@ export default function SellTab() {
   const [city, setCity] = useState(user?.city || "");
   const [stock, setStock] = useState("1");
   const [itemSize, setItemSize] = useState("");
+  const [sizePreset, setSizePreset] = useState<string | null>(null);
+  const [colorPreset, setColorPreset] = useState<string | null>(null);
   const [images, setImages] = useState<LocalImage[]>([]);
   const [listingVideoUrl, setListingVideoUrl] = useState<string | null>(null);
   const [videoPct, setVideoPct] = useState<number | null>(null);
+  const [videoAbort, setVideoAbort] = useState<AbortController | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [publishing, setPublishing] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
   const mounted = useRef(true);
+
+  const composeItemSize = useCallback((size: string | null, color: string | null, custom: string) => {
+    const parts = [size, color].filter(Boolean);
+    if (custom.trim() && !parts.includes(custom.trim())) parts.push(custom.trim());
+    return parts.join(" / ");
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -276,13 +293,14 @@ export default function SellTab() {
       city: city.trim() || undefined,
       country: user.country || undefined,
       stockQuantity: stock.trim() ? Number(stock) : 1,
-      itemSize: itemSize.trim() || null,
+      itemSize: composeItemSize(sizePreset, colorPreset, itemSize) || null,
       images: doneUrls,
       listingVideoUrl: listingVideoUrl || null,
     };
-    const err = validateListingDraft(draft);
-    if (err) {
-      Alert.alert("Check listing", err);
+    const errors = validateListingDraftFields(draft);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) {
+      Alert.alert("Check listing", Object.values(errors)[0] || "Fix highlighted fields");
       return;
     }
     if (images.some((i) => i.status === "uploading") || videoPct != null) {
@@ -304,7 +322,10 @@ export default function SellTab() {
       setDescription("");
       setPrice("");
       setItemSize("");
+      setSizePreset(null);
+      setColorPreset(null);
       setListingVideoUrl(null);
+      setFieldErrors({});
       setImages([]);
     } catch (e) {
       Alert.alert("Publish failed", e instanceof Error ? e.message : "Could not publish");
@@ -313,7 +334,63 @@ export default function SellTab() {
     }
   };
 
+  const runListingVideo = async (
+    uri: string,
+    contentType: string,
+    resumeUploadId?: string | null,
+  ) => {
+    if (!token) return;
+    const ac = new AbortController();
+    setVideoAbort(ac);
+    setVideoPct(0);
+    try {
+      const { url } = await uploadChunkedVideo(uri, {
+        token,
+        contentType,
+        purpose: "listing",
+        resumeUploadId,
+        signal: ac.signal,
+        onProgress: (p) => {
+          if (mounted.current) setVideoPct(p.percent);
+        },
+      });
+      if (mounted.current) setListingVideoUrl(url);
+    } catch (e) {
+      if (e instanceof Error && /cancelled/i.test(e.message)) {
+        Alert.alert("Cancelled", "Video upload cancelled. Resume from Drafts when ready.");
+      } else {
+        Alert.alert("Video upload failed", e instanceof Error ? e.message : "Error");
+      }
+    } finally {
+      if (mounted.current) {
+        setVideoPct(null);
+        setVideoAbort(null);
+      }
+    }
+  };
+
   const pickListingVideo = async () => {
+    if (!token) return;
+    const existing = await loadVideoUploadSession();
+    if (existing?.purpose === "listing" && existing.localUri) {
+      Alert.alert("Resume product video?", "An interrupted upload was found on this device.", [
+        {
+          text: "Start new",
+          style: "destructive",
+          onPress: () => void pickFreshListingVideo(),
+        },
+        {
+          text: "Resume",
+          onPress: () =>
+            void runListingVideo(existing.localUri, existing.contentType, existing.uploadId),
+        },
+      ]);
+      return;
+    }
+    await pickFreshListingVideo();
+  };
+
+  const pickFreshListingVideo = async () => {
     if (!token) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -327,22 +404,7 @@ export default function SellTab() {
     });
     if (result.canceled || !result.assets?.[0]?.uri) return;
     const asset = result.assets[0];
-    setVideoPct(0);
-    try {
-      const { url } = await uploadChunkedVideo(asset.uri, {
-        token,
-        contentType: asset.mimeType || "video/mp4",
-        purpose: "listing",
-        onProgress: (p) => {
-          if (mounted.current) setVideoPct(p.percent);
-        },
-      });
-      if (mounted.current) setListingVideoUrl(url);
-    } catch (e) {
-      Alert.alert("Video upload failed", e instanceof Error ? e.message : "Error");
-    } finally {
-      if (mounted.current) setVideoPct(null);
-    }
+    await runListingVideo(asset.uri, asset.mimeType || "video/mp4", null);
   };
 
   return (
@@ -399,15 +461,29 @@ export default function SellTab() {
           ) : null}
         </ScrollView>
 
-        <Field label="Title" value={title} onChangeText={setTitle} placeholder="What are you selling?" />
+        <Field
+          label="Title"
+          value={title}
+          onChangeText={(v) => {
+            setTitle(v);
+            setFieldErrors((e) => ({ ...e, title: undefined }));
+          }}
+          placeholder="What are you selling?"
+          error={fieldErrors.title}
+        />
         <Field
           label="Description"
           value={description}
-          onChangeText={setDescription}
+          onChangeText={(v) => {
+            setDescription(v);
+            setFieldErrors((e) => ({ ...e, description: undefined }));
+          }}
           placeholder="Condition, details, delivery notes…"
           multiline
+          error={fieldErrors.description}
         />
         <Text style={styles.label}>Price</Text>
+        {fieldErrors.price ? <Text style={styles.fieldError}>{fieldErrors.price}</Text> : null}
         <View style={styles.priceRow}>
           {(["USD", "HTG", "DOP"] as const).map((c) => (
             <Pressable
@@ -422,13 +498,19 @@ export default function SellTab() {
         <TextInput
           style={styles.input}
           value={price}
-          onChangeText={setPrice}
+          onChangeText={(v) => {
+            setPrice(v);
+            setFieldErrors((e) => ({ ...e, price: undefined }));
+          }}
           keyboardType="decimal-pad"
           placeholder="0.00"
           placeholderTextColor="#94A3B8"
         />
 
         <Text style={styles.label}>Condition</Text>
+        {fieldErrors.condition ? (
+          <Text style={styles.fieldError}>{fieldErrors.condition}</Text>
+        ) : null}
         <View style={styles.wrapChips}>
           {CONDITIONS.map((c) => (
             <Pressable
@@ -444,12 +526,18 @@ export default function SellTab() {
         </View>
 
         <Text style={styles.label}>Category</Text>
+        {fieldErrors.categoryId ? (
+          <Text style={styles.fieldError}>{fieldErrors.categoryId}</Text>
+        ) : null}
         <View style={styles.wrapChips}>
           {categories.map((c) => (
             <Pressable
               key={c.id}
               style={[styles.chip, categoryId === c.id && styles.chipOn]}
-              onPress={() => setCategoryId(c.id)}
+              onPress={() => {
+                setCategoryId(c.id);
+                setFieldErrors((e) => ({ ...e, categoryId: undefined }));
+              }}
             >
               <Text style={[styles.chipText, categoryId === c.id && styles.chipTextOn]}>
                 {c.name}
@@ -462,8 +550,12 @@ export default function SellTab() {
         <Field
           label="Location"
           value={location}
-          onChangeText={setLocation}
+          onChangeText={(v) => {
+            setLocation(v);
+            setFieldErrors((e) => ({ ...e, location: undefined }));
+          }}
           placeholder="Neighborhood / area"
+          error={fieldErrors.location}
         />
         <Field
           label="Stock quantity"
@@ -472,12 +564,43 @@ export default function SellTab() {
           keyboardType="number-pad"
           placeholder="1"
         />
+
+        <Text style={styles.section}>Size / color (single itemSize field)</Text>
+        <Text style={styles.hint}>
+          Multi-SKU variations are not in the backend API yet. Choices map to one `itemSize` string.
+        </Text>
+        <Text style={styles.label}>Size</Text>
+        <View style={styles.wrapChips}>
+          {SIZE_PRESETS.map((s) => (
+            <Pressable
+              key={s}
+              style={[styles.chip, sizePreset === s && styles.chipOn]}
+              onPress={() => setSizePreset((prev) => (prev === s ? null : s))}
+            >
+              <Text style={[styles.chipText, sizePreset === s && styles.chipTextOn]}>{s}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.label}>Color</Text>
+        <View style={styles.wrapChips}>
+          {COLOR_PRESETS.map((c) => (
+            <Pressable
+              key={c}
+              style={[styles.chip, colorPreset === c && styles.chipOn]}
+              onPress={() => setColorPreset((prev) => (prev === c ? null : c))}
+            >
+              <Text style={[styles.chipText, colorPreset === c && styles.chipTextOn]}>{c}</Text>
+            </Pressable>
+          ))}
+        </View>
         <Field
-          label="Size / variant (single field — multi-SKU not in API)"
+          label="Custom note (optional)"
           value={itemSize}
           onChangeText={setItemSize}
-          placeholder="e.g. Large / Red"
+          placeholder="e.g. EU 42"
         />
+
+        {fieldErrors.images ? <Text style={styles.fieldError}>{fieldErrors.images}</Text> : null}
 
         <Text style={styles.section}>Product video (optional · ≤5 min)</Text>
         <Pressable style={styles.videoBtn} onPress={() => void pickListingVideo()}>
@@ -486,9 +609,14 @@ export default function SellTab() {
               ? `Uploading video… ${videoPct}%`
               : listingVideoUrl
                 ? "Video attached · tap to replace"
-                : "Upload product video (chunked)"}
+                : "Upload product video (chunked · resumable)"}
           </Text>
         </Pressable>
+        {videoPct != null ? (
+          <Pressable style={styles.cancelVideo} onPress={() => videoAbort?.abort()}>
+            <Text style={styles.cancelVideoText}>Cancel upload</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           style={[styles.publish, publishing && { opacity: 0.7 }]}
@@ -517,12 +645,17 @@ function Field(props: {
   placeholder?: string;
   multiline?: boolean;
   keyboardType?: "default" | "decimal-pad" | "number-pad";
+  error?: string;
 }) {
   return (
     <View style={{ marginBottom: 12 }}>
       <Text style={styles.label}>{props.label}</Text>
       <TextInput
-        style={[styles.input, props.multiline && styles.inputMulti]}
+        style={[
+          styles.input,
+          props.multiline && styles.inputMulti,
+          props.error ? styles.inputError : null,
+        ]}
         value={props.value}
         onChangeText={props.onChangeText}
         placeholder={props.placeholder}
@@ -530,6 +663,7 @@ function Field(props: {
         multiline={props.multiline}
         keyboardType={props.keyboardType}
       />
+      {props.error ? <Text style={styles.fieldError}>{props.error}</Text> : null}
     </View>
   );
 }
@@ -635,4 +769,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   videoBtnText: { color: "#C2410C", fontWeight: "700" },
+  cancelVideo: { alignItems: "center", marginBottom: 8 },
+  cancelVideoText: { color: "#DC2626", fontWeight: "700" },
+  fieldError: { color: "#B91C1C", fontSize: 12, fontWeight: "600", marginBottom: 6 },
+  inputError: { borderColor: "#FCA5A5" },
 });

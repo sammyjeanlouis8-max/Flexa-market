@@ -4,7 +4,7 @@
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
   "pr": null,
-  "branch": "cursor/native-push-harden-09ff",
+  "branch": "cursor/native-seller-phase3g2-09ff",
   "auditedAt": "2026-11-09T22:10:00Z",
   "auditCommit": "deeda28a",
   "verification": {
@@ -23,7 +23,8 @@
       "Realtime via socket.io /api/socket.io with HTTP polling fallback.",
       "Phase 3E: buyer recovery, categories, delivery tip/rate, help/legal/delete, public track/shop.",
       "Phase 3F: edit listing, inventory restock, seller analytics, earnings/payouts, boost library read-only.",
-      "Phase 3G: KYC, store manager, sell drafts, chunked video, boost draft builder; multi-SKU variations blocked by API."
+      "Phase 3G: KYC, store manager, sell drafts, chunked video, boost draft builder; multi-SKU variations blocked by API.",
+      "Phase 3G2: resumable video, seller registration hub, campaign filters/analytics, Haiti multi-dept, field validation; variations still API-blocked; paid boost blocked."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -34,7 +35,9 @@
     "phase3fStartCommit": "04986815",
     "phase3g": true,
     "phase3gStartCommit": "f4e88fc6",
-    "pushHardening": true
+    "pushHardening": true,
+    "phase3g2": true,
+    "phase3g2StartCommit": "09f4acdf"
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -627,7 +630,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3G native KYC multipart submit; admin approval required"
+      "work": "Native multipart KYC; admin review required"
     },
     {
       "id": "language-picker",
@@ -916,14 +919,14 @@
       "name": "Video Upload",
       "domain": "seller",
       "webRoute": "/videos, drafts",
-      "nativeRoute": "/(tabs)/sell,/boost-create",
+      "nativeRoute": "/(tabs)/sell,/boost-create,/drafts",
       "role": "seller",
       "apis": [
         "/api/storage/uploads/chunk-*"
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3G chunked Wasabi video for listing + boost draft"
+      "work": "Resumable chunked Wasabi upload with cancel/retry/session"
     },
     {
       "id": "inventory",
@@ -1006,7 +1009,7 @@
       "name": "Boost Campaigns",
       "domain": "seller",
       "webRoute": "/boost/:listingId,/booster/*",
-      "nativeRoute": "/boost,/boost-create,/my-boosts",
+      "nativeRoute": "/boost,/boost-create,/my-boosts,/boost-analytics",
       "role": "seller",
       "apis": [
         "/api/boost/*",
@@ -1016,7 +1019,7 @@
       "missing": [
         "paid launch (Play blocked)"
       ],
-      "work": "Phase 3G draft campaign builder + geo audience; paid launch blocked"
+      "work": "Draft builder multi geo, filters, pause/resume paid, analytics; paid checkout blocked"
     },
     {
       "id": "boost-paid",
@@ -1076,7 +1079,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3G sell draft AsyncStorage + booster draft list (no server listing drafts)"
+      "work": "Sell drafts + interrupted video session recovery + campaign drafts"
     },
     {
       "id": "store-manager",
@@ -1091,14 +1094,14 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3G invite/remove manager + manager order ready"
+      "work": "Invite/remove + manager dashboard (existing APIs)"
     },
     {
       "id": "seller-registration",
       "name": "Seller Registration / Stripe Connect",
       "domain": "seller",
       "webRoute": "/sell + /settings/stripe-return",
-      "nativeRoute": "/kyc,/seller-earnings,/sell",
+      "nativeRoute": "/seller-registration,/kyc,/seller-earnings,/store-manager",
       "role": "seller",
       "apis": [
         "/api/kyc/*",
@@ -1107,7 +1110,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3G: become seller via listing + KYC + payout setup"
+      "work": "Phase 3G2 seller onboarding hub with KYC/payout/listing steps"
     },
     {
       "id": "driver-apply",
@@ -1415,7 +1418,7 @@
       "missing": [
         "No backend variation/SKU APIs \u2014 only optional itemSize text"
       ],
-      "work": "Blocked until listing variants API exists; itemSize field shipped on Sell"
+      "work": "Size/color presets map to single itemSize; multi-SKU blocked until API exists"
     }
   ],
   "recommendedPhase3Order": [

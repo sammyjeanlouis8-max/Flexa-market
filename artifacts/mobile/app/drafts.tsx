@@ -19,6 +19,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import {
+  loadVideoUploadSession,
+  saveVideoUploadSession,
+  type VideoUploadSession,
+} from "@/lib/chunkedVideoUpload";
 import { fetchBoosterCampaigns, type BoostCampaign } from "@/lib/sellerApi";
 import { clearSellDraft, loadSellDraft, type SellDraft } from "@/lib/sellDrafts";
 
@@ -27,6 +32,7 @@ export default function DraftsScreen() {
   const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
   const [sellDraft, setSellDraft] = useState<SellDraft | null>(null);
+  const [videoSession, setVideoSession] = useState<VideoUploadSession | null>(null);
   const [campaigns, setCampaigns] = useState<BoostCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -36,8 +42,12 @@ export default function DraftsScreen() {
       if (mode === "refresh") setRefreshing(true);
       else setLoading(true);
       try {
-        const draft = await loadSellDraft();
+        const [draft, session] = await Promise.all([
+          loadSellDraft(),
+          loadVideoUploadSession(),
+        ]);
         setSellDraft(draft);
+        setVideoSession(session);
         if (token) {
           const all = await fetchBoosterCampaigns({ token }).catch(() => []);
           setCampaigns(all.filter((c) => String(c.status).toLowerCase() === "draft"));
@@ -121,6 +131,41 @@ export default function DraftsScreen() {
                 </View>
               ) : (
                 <Text style={styles.empty}>No product draft saved on this device.</Text>
+              )}
+              <Text style={styles.section}>Interrupted video upload</Text>
+              {videoSession ? (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>
+                    {videoSession.purpose === "boost" ? "Boost video" : "Product video"}
+                  </Text>
+                  <Text style={styles.meta}>
+                    {videoSession.receivedChunkIndices.length}/{videoSession.totalChunks} chunks ·
+                    resume from Sell or Campaign draft
+                  </Text>
+                  <View style={styles.row}>
+                    <Pressable
+                      style={styles.btn}
+                      onPress={() =>
+                        router.push(
+                          videoSession.purpose === "boost" ? "/boost-create" : "/(tabs)/sell",
+                        )
+                      }
+                    >
+                      <Text style={styles.btnText}>Resume</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.ghost}
+                      onPress={async () => {
+                        await saveVideoUploadSession(null);
+                        setVideoSession(null);
+                      }}
+                    >
+                      <Text style={styles.ghostText}>Discard</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.empty}>No interrupted video upload.</Text>
               )}
               <Text style={styles.section}>Campaign drafts</Text>
               <Text style={styles.note}>

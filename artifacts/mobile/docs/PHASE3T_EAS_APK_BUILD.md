@@ -30,7 +30,16 @@ Produce a real installable Android **APK** for package `com.flexa.market` via Ex
 | Build ID | **none** |
 | Build URL | **none** |
 | APK download link | **none** |
-| Blocker | Owner must add secret **`EXPO_TOKEN`** (Expo access token for `muelsa89`). Do not paste token in chat. |
+| Blocker | **`EXPO_TOKEN` still not present in this agent VM** (`printenv EXPO_TOKEN` empty; `eas whoami` → Not logged in) even after owner reported the secret was configured. |
+
+### Re-verify attempt (America/New_York)
+
+1. `test -n "$EXPO_TOKEN"` → **missing**
+2. `npx eas-cli whoami` → **Not logged in**
+3. No EAS project access check possible without auth
+4. Build **not started** — would fail identically to prior auth error
+
+**Likely cause:** Cloud Agent secrets are injected at session/environment start. A secret added mid-run may not appear until a **new agent turn/session** boots with the secret bound to this environment (`70ee1718-d7ea-11f1-ba91-f63b1661ac50`). Do not paste the token in chat.
 
 Evidence: `npx eas-cli build --platform android --profile preview --non-interactive` cannot authenticate without `EXPO_TOKEN`.
 

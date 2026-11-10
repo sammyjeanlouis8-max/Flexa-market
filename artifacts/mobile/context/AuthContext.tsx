@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { identifyIapUser, logoutIapUser } from "@/lib/iap";
 
 const TOKEN_KEY = "flexamarket_token";
 
@@ -58,12 +59,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data);
+        // Mirror Swift shell: Purchases.logIn(String(userId)) so restores
+        // attach Apple purchases to the same Flexa account / webhook app_user_id.
+        if (data?.id) {
+          void identifyIapUser(Number(data.id)).catch(() => {});
+        }
       } else if (res.status === 401) {
         // Only a definitive invalid-token response may destroy the saved
         // session. Temporary server/proxy errors must leave the user signed in.
         await AsyncStorage.removeItem(TOKEN_KEY);
         setToken(null);
         setUser(null);
+        void logoutIapUser();
       }
     } catch {
       // network error — keep token, retry later
@@ -95,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
+    void logoutIapUser();
   }, []);
 
   const refreshUser = useCallback(async () => {

@@ -1,40 +1,68 @@
 # Phase 3E — iOS native finish (Expo)
 
-Branch: `cursor/ios-native-finish-cdf4`  
-Reference Android preview: **1.0.1 (48)** behavior preserved in shared RN code.  
-Bundle ID unchanged: `com.flexamarket.mobile` · EAS project `45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e`  
-`app.json` / `eas.json` **not modified** (authorization required for audio background mode + RevenueCat plugin).
+Branch: `cursor/ios-native-finish-cdf4` · PR #201  
+Bundle ID: `com.flexamarket.mobile` · Team: `D782MM56VY` · EAS: `45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e`
 
-## Newly native / upgraded
+## RevenueCat / IAP
 
-| Route | Status | Notes |
-|---|---|---|
-| `/auth/forgot-password` | FULLY_NATIVE | `/api/recovery/*` wizard |
-| `/videos` | FULLY_NATIVE | Vertical feed, `?video=` pin, SA allCountries |
-| Home strip | FULLY_NATIVE | Exactly **2** latest eligible promo videos |
-| `/boost`, `/my-boosts` | PARTIAL | Draft/manage/analytics; Android paid blocked |
-| `/edit-listing/[id]` | FULLY_NATIVE | Camera + library, upload retry keeps form |
-| `/music` + mini player | PARTIAL | expo-av; needs `UIBackgroundModes: audio` auth |
-| `/calculator` | FULLY_NATIVE | Local math |
-| `/admin` | PARTIAL | Role gate + All Videos country filter |
-| `/subscription` | PARTIAL | RevenueCat product IDs + availability probe |
+- Dependency: `react-native-purchases@9.15.3`
+- Plugin: `./plugins/withRevenueCatIos.js` injects public `RevenueCatApiKey` into Info.plist from env
+- Env: `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` set on EAS for production/preview/development
+- Public Apple SDK key source: legacy `artifacts/ios-native/Sources/Info.plist` (`appl_…`)
+- App user association: `Purchases.logIn(String(flexaUserId))` — same as Swift shell; webhook uses `event.app_user_id`
+- Products: `com.flexamarket.subscription.standard.monthly` / `…premium.monthly`
+- UI success only after `CustomerInfo` entitlement / active subscription confirmation
 
-## Still external (allowed)
+## Background audio
 
-- EULA / Terms → `expo-web-browser` (legal docs, not marketplace WebView)
-- Stripe hosted checkout → `WebBrowser` (payment provider)
-- Maps / tel / WhatsApp from tracking
+- `app.json` → `ios.infoPlist.UIBackgroundModes` includes `audio` (kept `remote-notification`, `fetch`)
+- Mini player: `staysActiveInBackground: true`
 
-## Blockers needing human / Apple
+## Push cold start
 
-1. **RevenueCat in Expo**: add `react-native-purchases` + `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` EAS secret; do not change `app.json` until authorized. Legacy Swift shell still has working IAP.
-2. **Background music on iPhone**: authorize adding `"audio"` to `ios.infoPlist.UIBackgroundModes`.
-3. **iOS build number**: local `app.json` shows iOS `buildNumber: "4"` while production `autoIncrement` is remote — report conflicts before changing.
-4. Real-device IAP restore + APNs cold-start deep links need a signed iOS build (not Expo Go).
+- `PushBootstrap` uses `getLastNotificationResponseAsync` + pending path until auth restore finishes
 
-## Commands
+## Build number / ASC
+
+| Source | Value |
+|---|---|
+| Local `app.json` buildNumber | `4` (ignored; `appVersionSource: remote`) |
+| EAS remote counter | `64` after failed attempt |
+| EAS build 64 | **ERRORED** — invalid Distribution Certificate `1F7F477C…` |
+| EAS build 101 (2026-11-04) | **ERRORED** — same invalid certificate; IPA never produced → almost certainly never uploaded to App Store Connect |
+| Last finished EAS iOS | build **63** (2026-08-11) |
+
+ASC portal confirmation of whether 101 appears in App Store Connect remains **pending** without interactive Apple login.
+
+## Signing blocker (blocks installable preview)
+
+Distribution certificate stored in EAS is rejected by Xcode:
+
+> Signing certificate "iPhone Distribution: samuel jean louis (D782MM56VY)", serial "1F7F477CE7E64CB2ADBB05055D814744", is not valid for code signing.
+
+Do **not** revoke blindly from this agent. On your Mac, run interactive credential repair (create replacement if Apple already invalidated the old cert):
+
+```bash
+cd artifacts/mobile
+eas login
+eas credentials -p ios
+# pick production → Distribution Certificate → Set up a new certificate if current is invalid
+# keep Team D782MM56VY
+```
+
+For **preview/internal** install on your iPhone (no TestFlight):
+
+```bash
+cd artifacts/mobile
+eas device:create --apple-team-id D782MM56VY
+# follow link / QR to register this iPhone UDID, then:
+eas build -p ios --profile preview
+```
+
+## Verification
 
 ```bash
 pnpm --filter @workspace/mobile run typecheck
 cd artifacts/mobile && node --test tests/*.test.js tests/*.test.ts
+pnpm --filter @workspace/mobile run release:check
 ```

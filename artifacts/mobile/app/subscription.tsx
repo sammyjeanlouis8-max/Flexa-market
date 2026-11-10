@@ -1,11 +1,11 @@
 /**
- * Native subscription screen.
- * iOS purchases go through RevenueCat when react-native-purchases is present.
- * Until then, shows exact blocker + restore affordance probe.
+ * Native subscription screen — RevenueCat StoreKit via react-native-purchases.
+ * Purchases are identified with Purchases.logIn(String(flexaUserId)), matching
+ * the legacy Swift shell so existing paid subscribers keep access after restore.
  */
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,10 +20,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import {
   getIapAvailability,
+  getIapEntitlements,
   IAP_PRODUCT_IDS,
   listIapProducts,
   purchaseSubscriptionPlan,
   restoreIapPurchases,
+  type IapEntitlementResult,
   type IapProduct,
   type SubscriptionPlan,
 } from "@/lib/iap";
@@ -31,20 +33,35 @@ import {
 export default function SubscriptionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { token, user } = useAuth();
+  const { token, user, refreshUser } = useAuth();
   const availability = getIapAvailability();
   const [products, setProducts] = useState<IapProduct[]>([]);
+  const [entitlement, setEntitlement] = useState<IapEntitlementResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
-  useEffect(() => {
-    if (!availability.supported) return;
+  const refresh = useCallback(async () => {
+    if (!availability.supported || !user?.id) return;
     setLoadingProducts(true);
-    void listIapProducts()
-      .then(setProducts)
-      .catch(() => setProducts([]))
-      .finally(() => setLoadingProducts(false));
-  }, [availability.supported]);
+    try {
+      const [prods, ents] = await Promise.all([
+        listIapProducts(),
+        getIapEntitlements(user.id),
+      ]);
+      setProducts(prods);
+      setEntitlement(ents);
+    } catch {
+      setProducts([]);
+    } finally {
+      setLoadingProducts(false);
+    }
+  }, [availability.supported, user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
   const onPurchase = async (plan: SubscriptionPlan) => {
     if (!user?.id) {
@@ -53,9 +70,29 @@ export default function SubscriptionScreen() {
     }
     setBusy(true);
     try {
-      await purchaseSubscriptionPlan(plan, user.id);
-      Alert.alert("Subscribed", "Your entitlement will sync via RevenueCat webhook.");
-    } catch (e) {
+      const result = await purchaseSubscriptionPlan(plan, user.id);
+      if (!result.ok) {
+        Alert.alert(
+          "Not confirmed",
+          "RevenueCat did not confirm an active entitlement for this purchase. No success state was shown.",
+        );
+        return;
+      }
+      setEntitlement(result);
+      await refreshUser();
+      Alert.alert(
+        "Subscription active",
+        `RevenueCat confirmed ${result.plan ?? plan}. Access syncs to your Flexa account via webhook.`,
+      );
+    } catch (e: any) {
+      const code = e?.code ?? e?.userInfo?.readableErrorCode;
+      if (
+        code === "1" ||
+        code === 1 ||
+        String(e?.message || "").toLowerCase().includes("cancel")
+      ) {
+        return;
+      }
       Alert.alert("Purchase failed", e instanceof Error ? e.message : "Error");
     } finally {
       setBusy(false);
@@ -69,8 +106,20 @@ export default function SubscriptionScreen() {
     }
     setBusy(true);
     try {
-      await restoreIapPurchases(user.id);
-      Alert.alert("Restored", "Purchases restored. Entitlements refresh from the server.");
+      const result = await restoreIapPurchases(user.id);
+      setEntitlement(result);
+      if (!result.ok) {
+        Alert.alert(
+          "No active entitlement",
+          "Restore finished, but RevenueCat did not confirm an active subscription for this Apple ID / Flexa account.",
+        );
+        return;
+      }
+      await refreshUser();
+      Alert.alert(
+        "Restored",
+        `RevenueCat confirmed ${result.plan}. Your Flexa account should regain access shortly.`,
+      );
     } catch (e) {
       Alert.alert("Restore failed", e instanceof Error ? e.message : "Error");
     } finally {
@@ -96,8 +145,9 @@ export default function SubscriptionScreen() {
       </View>
 
       <Text style={styles.body}>
-        Standard and Premium plans unlock seller tools. Physical goods checkout stays outside IAP.
-        Digital subscriptions use Apple IAP / RevenueCat on iPhone.
+        Standard and Premium use Apple IAP through RevenueCat. Purchases are linked to your Flexa
+        user id (same as the previous iPhone app), so restore works for accounts that already paid.
+        Physical goods stay outside IAP.
       </Text>
 
       <View style={styles.card}>
@@ -105,27 +155,39 @@ export default function SubscriptionScreen() {
         <Text style={styles.mono}>{IAP_PRODUCT_IDS.standard}</Text>
         <Text style={styles.mono}>{IAP_PRODUCT_IDS.premium}</Text>
         <Text style={styles.meta}>Bundle ID: com.flexamarket.mobile · Team D782MM56VY</Text>
+        {entitlement?.ok ? (
+          <Text style={styles.active}>
+            Active: {entitlement.plan ?? entitlement.activeEntitlementIds.join(", ")}
+          </Text>
+        ) : (
+          <Text style={styles.meta}>No confirmed RevenueCat entitlement on device yet</Text>
+        )}
       </View>
 
       {!availability.supported ? (
         <View style={styles.warn}>
-          <Text style={styles.warnTitle}>IAP not ready in this Expo build</Text>
+          <Text style={styles.warnTitle}>IAP not ready in this binary</Text>
           <Text style={styles.warnBody}>{availability.reason}</Text>
-          <Text style={styles.warnBody}>
-            Legacy Swift shell still contains the production RevenueCat manager. Adding
-            react-native-purchases + EXPO_PUBLIC_REVENUECAT_IOS_API_KEY requires authorization
-            before changing app.json / eas.json.
-          </Text>
         </View>
       ) : (
         <>
           {loadingProducts ? <ActivityIndicator color="#F97316" /> : null}
           {(products.length
             ? products
-            : [
-                { plan: "standard" as const, identifier: IAP_PRODUCT_IDS.standard, priceString: "—", title: "Standard" },
-                { plan: "premium" as const, identifier: IAP_PRODUCT_IDS.premium, priceString: "—", title: "Premium" },
-              ]
+            : ([
+                {
+                  plan: "standard" as const,
+                  identifier: IAP_PRODUCT_IDS.standard,
+                  priceString: "—",
+                  title: "Standard",
+                },
+                {
+                  plan: "premium" as const,
+                  identifier: IAP_PRODUCT_IDS.premium,
+                  priceString: "—",
+                  title: "Premium",
+                },
+              ] as IapProduct[])
           ).map((p) => (
             <Pressable
               key={p.plan}
@@ -173,8 +235,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardTitle: { fontWeight: "800", color: "#0F172A" },
-  mono: { fontSize: 12, color: "#475569", fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }) },
+  mono: {
+    fontSize: 12,
+    color: "#475569",
+    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
+  },
   meta: { fontSize: 12, color: "#94A3B8", marginTop: 4 },
+  active: { marginTop: 6, color: "#16A34A", fontWeight: "800", fontSize: 13 },
   warn: {
     backgroundColor: "#FFF7ED",
     borderColor: "#FED7AA",

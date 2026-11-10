@@ -67,11 +67,23 @@ test("Phase 3E music + calculator + admin + edit listing exist natively", () => 
 test("Phase 3E subscription exposes RevenueCat product IDs without fake purchase success", () => {
   const sub = assertNative("app/subscription.tsx");
   const iap = read("lib/iap.ts");
+  const app = JSON.parse(read("app.json"));
   assert.match(sub, /IAP_PRODUCT_IDS/);
-  assert.match(sub, /getIapAvailability|IAP not ready/);
+  assert.match(sub, /RevenueCat did not confirm|confirmed/);
   assert.match(iap, /com\.flexamarket\.subscription\.standard\.monthly/);
   assert.match(iap, /com\.flexamarket\.subscription\.premium\.monthly/);
   assert.match(iap, /react-native-purchases/);
+  assert.match(iap, /logIn/);
+  assert.match(iap, /readEntitlements/);
+  assert.ok(app.expo.ios.infoPlist.UIBackgroundModes.includes("audio"));
+  assert.ok(
+    app.expo.plugins.some(
+      (p) =>
+        p === "./plugins/withRevenueCatIos.js" ||
+        (Array.isArray(p) && p[0] === "./plugins/withRevenueCatIos.js"),
+    ),
+  );
+  assert.match(read("package.json"), /react-native-purchases/);
 });
 
 test("Root layout registers new native routes and does not restore WebView shell", () => {

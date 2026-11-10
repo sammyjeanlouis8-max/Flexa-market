@@ -33,8 +33,14 @@ export default function BoostScreen() {
           Store policy (`ANDROID_DIGITAL_PURCHASE_UNAVAILABLE`). You can still
           review existing campaigns and analytics.
         </Text>
-        <Pressable style={styles.btn} onPress={() => router.push("/my-boosts")}>
-          <Text style={styles.btnText}>Open my campaigns</Text>
+        <Pressable style={styles.btn} onPress={() => router.push("/boost-create")}>
+          <Text style={styles.btnText}>Create campaign draft</Text>
+        </Pressable>
+        <Pressable style={styles.link} onPress={() => router.push("/my-boosts")}>
+          <Text style={styles.linkText}>Open my campaigns</Text>
+        </Pressable>
+        <Pressable style={styles.link} onPress={() => router.push("/drafts")}>
+          <Text style={styles.linkText}>Drafts hub</Text>
         </Pressable>
         <Pressable style={styles.link} onPress={() => router.push("/videos")}>
           <Text style={styles.linkText}>Promotional videos</Text>

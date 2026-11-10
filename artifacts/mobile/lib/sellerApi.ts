@@ -25,6 +25,7 @@ export type CreateListingInput = {
   state?: string;
   country?: string;
   stockQuantity?: number | null;
+  itemSize?: string | null;
   images: string[];
   listingVideoUrl?: string | null;
   deliveryMethod?: "motorcycle" | "car" | "bus" | "self_delivery";

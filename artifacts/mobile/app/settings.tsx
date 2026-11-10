@@ -82,6 +82,28 @@ export default function SettingsScreen() {
 
       <Pressable
         style={[styles.row, { marginTop: 10 }]}
+        onPress={() => router.push("/kyc")}
+      >
+        <View>
+          <Text style={styles.label}>Identity (KYC)</Text>
+          <Text style={styles.value}>Seller verification documents</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
+      <Pressable
+        style={[styles.row, { marginTop: 10 }]}
+        onPress={() => router.push("/store-manager")}
+      >
+        <View>
+          <Text style={styles.label}>Store manager</Text>
+          <Text style={styles.value}>Invite helper · manage access</Text>
+        </View>
+        <Feather name="chevron-right" size={18} color="#94A3B8" />
+      </Pressable>
+
+      <Pressable
+        style={[styles.row, { marginTop: 10 }]}
         onPress={() => router.push("/help")}
       >
         <View>

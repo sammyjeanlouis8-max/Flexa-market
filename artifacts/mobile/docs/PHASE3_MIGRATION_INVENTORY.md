@@ -1,36 +1,41 @@
 # Flexa Market — Phase 3 Native Migration Inventory
 
-**Phase 3E PR:** [#174](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/174) (OPEN)  
-**Phase 3F branch:** `cursor/native-seller-phase3f-09ff` (stacked on 3E tip `04986815`)  
-**Backend:** `https://flexamarket.com/api`  
-**Machine-readable:** [`phase3-migration-inventory.json`](./phase3-migration-inventory.json)
+**Phase 3E:** [#174](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/174) OPEN  
+**Phase 3F:** [#175](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/175) OPEN (base: 3E)  
+**Phase 3G branch:** `cursor/native-seller-phase3g-09ff` (tip of 3F `f4e88fc6`)  
+**Backend:** `https://flexamarket.com/api`
 
-## Snapshot counts (after Phase 3F)
+## Snapshot counts (after Phase 3G)
 
 | Status | Count |
 |---|---|
-| FULLY_NATIVE | 46 |
-| PARTIALLY_NATIVE | 4 |
-| PLACEHOLDER | 7 |
-| MISSING | 20 |
+| FULLY_NATIVE | 51 |
+| PARTIALLY_NATIVE | 3 |
+| PLACEHOLDER | 6 |
+| MISSING | 18 |
 | BLOCKED | 5 |
+| **Total features** | **83** (+1 product-variations tracker) |
 
-## Phase 3F completed
+## Phase 3G completed
 
-- Edit Product (`/edit-listing/[id]`) + Wasabi images + validation
-- Inventory restock on My Listings
-- Seller analytics (`/seller/analytics`)
-- Earnings & payouts (`/sales/summary` + payout account config)
-- Boost entry explains Android digital purchase block
-- Campaign library + promo videos feed (read-only)
-- Sales dashboard enriched with verified summary totals
+- KYC native submit (admin review; no auto-approve)
+- Seller registration path (KYC + payout + sell)
+- Store manager invite + manager dashboard
+- Sell drafts (AsyncStorage) + drafts hub
+- Chunked Wasabi video upload (listing + boost draft)
+- Boost **draft** campaign builder (Haiti dept/commune; paid launch blocked)
+- `itemSize` single-field size/variant (multi-SKU **MISSING** — no backend API)
 
-## Still open (seller)
+## Explicit blockers
 
-- Chunked listing/boost **video composer**
-- Paid boost checkout (**BLOCKED**)
-- Drafts / store-manager / seller-registration+KYC native
+- `boost-paid` BLOCKED (Play digital goods)
+- `product-variations` MISSING (no variant APIs)
+- No server listing-draft table (client drafts only)
 
-## Preserved
+## Safe merge order later
 
-Phases 1–3E · AuthGlobe · no WebViews · no APK/deploy · eSIM deferred
+1. #174 → main  
+2. #175 → main  
+3. Phase 3G PR → main  
+
+Do not merge without authorization.

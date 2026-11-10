@@ -129,7 +129,7 @@ test("Phase 3K inventory upgrades admin modules and keeps 83 routes", () => {
   );
   assert.equal(byId["admin-support"].status, "FULLY_NATIVE");
   assert.ok(inv.verification?.phase3k);
-  assert.ok(/phase3k|phase3l/.test(inv.branch));
+  assert.ok(/phase3k|phase3l|phase3m/.test(inv.branch));
   assert.ok(Array.isArray(inv.discoveredAdminWebRoutes));
   assert.ok(inv.discoveredAdminWebRoutes.length >= 20);
 });

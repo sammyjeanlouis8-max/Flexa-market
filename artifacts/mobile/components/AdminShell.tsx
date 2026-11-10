@@ -123,6 +123,17 @@ export const adminStyles = StyleSheet.create({
     paddingHorizontal: 12,
     color: "#0F172A",
   },
+  input: {
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: "#0F172A",
+    marginTop: 6,
+  },
   metricGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   metric: {
     width: "47%",

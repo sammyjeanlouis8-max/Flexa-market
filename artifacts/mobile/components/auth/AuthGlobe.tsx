@@ -35,10 +35,10 @@ import { getFlagAtlasAsset } from "../../lib/globeAssetCache";
 import AuthGlobeLite from "./AuthGlobeLite";
 
 const REVOLUTION_MS = 12_000;
-/** Downgrade after this many consecutive slow frames. */
-const JANK_STREAK = 18;
+/** Downgrade after this many consecutive slow frames (faster on low-end Android). */
+const JANK_STREAK = 12;
 /** Frame considered slow if it exceeds target interval by this factor. */
-const JANK_FACTOR = 1.85;
+const JANK_FACTOR = 1.65;
 
 type Mesh = {
   positions: Float32Array;

@@ -35,6 +35,11 @@ export default function AdminLayout() {
       <Stack.Screen name="subscriptions" />
       <Stack.Screen name="fees" />
       <Stack.Screen name="haiti-ledger" />
+      <Stack.Screen name="broadcast" />
+      <Stack.Screen name="push-campaigns" />
+      <Stack.Screen name="tv-cms" />
+      <Stack.Screen name="music-cms" />
+      <Stack.Screen name="security" />
     </Stack>
   );
 }

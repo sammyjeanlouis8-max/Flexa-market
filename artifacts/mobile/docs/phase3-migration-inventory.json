@@ -3,20 +3,20 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 185,
-  "branch": "cursor/native-completion-phase3l-09ff",
-  "auditedAt": "2026-11-10T05:30:00Z",
-  "auditCommit": "73e24017",
+  "pr": null,
+  "branch": "cursor/native-device-phase3m-09ff",
+  "auditedAt": "2026-11-10T07:29:05Z",
+  "auditCommit": "pending-3m",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
     "placeholderRouteCount": 1,
-    "fullyNativeRouteCount": 70,
-    "partiallyNativeRouteCount": 5,
+    "fullyNativeRouteCount": 72,
+    "partiallyNativeRouteCount": 4,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
-      "eSIM marked DEFERRED/BLOCKED — no fake catalog.",
+      "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
       "Wallet top-up remains BLOCKED by Android digital purchase guard.",
       "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell).",
       "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
@@ -28,8 +28,9 @@
       "Phase 3H: referrals, jobs, calculator, wallet-transfer, notification prefs, privacy blocks. Top-up still blocked.",
       "Phase 3I: Flexa TV (live/schedule/programs/series/movies + expo-av player) and Flexa Music (browse/detail/upload + persistent player). TV user upload admin-only BLOCKED; music purchases remain BLOCKED; user playlists admin-only.",
       "Phase 3J: Support Center/tickets/FlexaBot escalation, agent desk, admin support analytics/assign, chat block/report, knowledge FAQ. Full admin panel still PLACEHOLDER.",
-      "Phase 3K: Native Super Admin Control Center — hub, users/RBAC, moderation, reports, orders, deliveries, boosts, All Videos (allCountries), finance wallets/cashouts, audit, traffic, team, KYC queue, settings gap hub; support desks integrated. Web-only: appeals, driver/agent apps, Stripe/MonCash ledgers, broadcast/push composers, TV/Music CMS, fee editors.",
-      "Phase 3L: Completion/audit — admin ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans/flagged/VIP/fees/Haiti ledger; customer loans/subscription plans/driver/flex-card/bnpl/cash-agents/commission-promo/credit-score; phone login BLOCKED (no phoneToken). Broadcast/push composers + TV/Music CMS + hash-security tools deferred. Play digital goods BLOCKED. FCM device unverified."
+      "Phase 3K: Native Super Admin Control Center \u2014 hub, users/RBAC, moderation, reports, orders, deliveries, boosts, All Videos (allCountries), finance wallets/cashouts, audit, traffic, team, KYC queue, settings gap hub; support desks integrated. Web-only: appeals, driver/agent apps, Stripe/MonCash ledgers, broadcast/push composers, TV/Music CMS, fee editors.",
+      "Phase 3L: Completion/audit \u2014 admin ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans/flagged/VIP/fees/Haiti ledger; customer loans/subscription plans/driver/flex-card/bnpl/cash-agents/commission-promo/credit-score; phone login BLOCKED (no phoneToken). Broadcast/push composers + TV/Music CMS + hash-security tools deferred. Play digital goods BLOCKED. FCM device unverified.",
+      "Phase 3M: Phone OTP restored (phone+country \u2192 phoneToken via generatePhoneToken; email withdrawalToken preserved). Native login-phone. Admin broadcast email/SMS, push campaigns, TV CMS, Music CMS, password-hash security. Globe low-end Android tuning. Product variations still MISSING (no SKU API). Play digital goods still BLOCKED. FCM physical-device delivery still unverified (PARTIALLY_NATIVE)."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -52,7 +53,8 @@
     "phase3k": true,
     "phase3kStartCommit": "623f638a",
     "phase3l": true,
-    "phase3lStartCommit": "f017d186"
+    "phase3lStartCommit": "f017d186",
+    "phase3m": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -121,11 +123,11 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 70,
-    "PARTIALLY_NATIVE": 5,
+    "FULLY_NATIVE": 72,
+    "PARTIALLY_NATIVE": 4,
     "PLACEHOLDER": 1,
     "MISSING": 1,
-    "BLOCKED": 6
+    "BLOCKED": 5
   },
   "features": [
     {
@@ -181,11 +183,11 @@
         "/api/otp/verify",
         "/api/auth/login-phone"
       ],
-      "status": "BLOCKED",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "OTP verify must return phoneToken via generatePhoneToken; current server returns email withdrawalToken only"
+        "Production SMS requires Twilio env (TWILIO_ACCOUNT_SID/AUTH_TOKEN/FROM_NUMBER); DEV returns devCode without Twilio"
       ],
-      "work": "Phase 3L honest deferred screen documenting API contract gap — no fake SMS login"
+      "work": "Phase 3M: additive phone OTP channel issues phoneToken; native login-phone screen; withdrawalToken never used for login"
     },
     {
       "id": "auth-forgot-password",
@@ -629,7 +631,7 @@
         "Physical-device FCM end-to-end verification",
         "EAS FCM V1 credential confirmation in Expo dashboard"
       ],
-      "work": "Hardened: logout unregister, deviceId lifecycle, channels, deep links, inbox mark-read sync. Delivery not device-verified."
+      "work": "Phase 3M: code path intact + admin manual push composer. Physical-device FCM delivery still unverified \u2014 do not claim verified."
     },
     {
       "id": "kyc",
@@ -1132,7 +1134,7 @@
       "domain": "driver",
       "webRoute": "/delivery/apply",
       "nativeRoute": "/driver-apply",
-      "role": "buyer→driver",
+      "role": "buyer\u2192driver",
       "apis": [
         "/api/driver/my-application",
         "/api/delivery/application/draft",
@@ -1389,21 +1391,23 @@
       "name": "Admin Analytics / Announcements / Role Management",
       "domain": "admin",
       "webRoute": "/admin (revenue, broadcast, team, push)",
-      "nativeRoute": "/admin/traffic,/admin/audit,/admin/fraud,/admin/fees,/admin/subscriptions,/admin/settings",
+      "nativeRoute": "/admin/traffic,/admin/audit,/admin/fraud,/admin/fees,/admin/subscriptions,/admin/settings,/admin/broadcast,/admin/push-campaigns,/admin/tv-cms,/admin/music-cms,/admin/security",
       "role": "admin/superadmin",
       "apis": [
-        "/api/admin/broadcast",
-        "/api/push/manual",
+        "/api/admin/broadcast-email",
+        "/api/admin/broadcast-sms",
+        "/api/push/manual-send",
+        "/api/admin/tv/programs",
+        "/api/admin/music/artists",
+        "/api/admin/password-hash-stats",
         "/api/admin/admins"
       ],
-      "status": "PARTIALLY_NATIVE",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "broadcast email/SMS composer",
-        "manual push campaign composer",
-        "TV/Music CMS admin",
-        "password-hash security tools UI"
+        "Multipart TV video upload UI (API exists; create via URL supported)",
+        "Music provider key connect UI (API exists; artists/playlists/bulk wired)"
       ],
-      "work": "Phase 3L: fees + VIP subscriptions + fraud; broadcast/push composers still deferred"
+      "work": "Phase 3M: broadcast/push composers + TV/Music CMS + password security tools"
     },
     {
       "id": "delete-account",
@@ -1445,7 +1449,7 @@
       "missing": [
         "provider integration"
       ],
-      "work": "DEFERRED — honest /esim screen; no fake plans/QR; preserve backend until ready"
+      "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready"
     },
     {
       "id": "smart-notifications",
@@ -1474,9 +1478,9 @@
       "apis": [],
       "status": "MISSING",
       "missing": [
-        "No backend variation/SKU APIs — only optional itemSize text"
+        "No backend variation/SKU APIs \u2014 only optional itemSize text"
       ],
-      "work": "Still no multi-SKU API"
+      "work": "Phase 3M: still no multi-SKU API \u2014 only optional itemSize text on listings. Required contract: GET/POST listing variants with sku, price, stock, images; cart must send variantId."
     }
   ],
   "recommendedPhase3Order": [

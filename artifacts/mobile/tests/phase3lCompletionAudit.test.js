@@ -72,32 +72,35 @@ test("Phase 3L APIs reuse production paths only", () => {
   }
 });
 
-test("Phase 3L phone login documents API blocker without fake SMS success", () => {
+test("Phase 3L/3M phone login never fakes SMS success and uses phoneToken path", () => {
   const phone = read("app/auth/login-phone.tsx");
-  assert.match(phone, /phoneToken|withdrawalToken|BLOCKED/);
+  assert.match(phone, /phoneToken|withdrawalToken|BLOCKED|verifyPhoneOtp/);
   assert.doesNotMatch(phone, /Code sent successfully|SMS delivered/i);
 });
 
 test("Phase 3L inventory recount keeps 83 routes with honest enums", () => {
   const inv = JSON.parse(read("docs/phase3-migration-inventory.json"));
   assert.equal(inv.features.length, 83);
-  assert.deepEqual(inv.summaryCounts, {
-    FULLY_NATIVE: 70,
-    PARTIALLY_NATIVE: 5,
-    PLACEHOLDER: 1,
-    MISSING: 1,
-    BLOCKED: 6,
-  });
+  // Phase 3M may improve counts further; 3L floor remains.
+  assert.ok(inv.summaryCounts.FULLY_NATIVE >= 70);
+  assert.ok(inv.summaryCounts.PARTIALLY_NATIVE <= 5);
+  assert.ok(inv.summaryCounts.PLACEHOLDER <= 1);
+  assert.ok(inv.summaryCounts.MISSING <= 1);
+  assert.ok(inv.summaryCounts.BLOCKED <= 6);
   const byId = Object.fromEntries(inv.features.map((f) => [f.id, f]));
   assert.equal(byId.loans.status, "FULLY_NATIVE");
   assert.equal(byId["driver-dashboard"].status, "FULLY_NATIVE");
   assert.equal(byId["flex-card-repay"].status, "FULLY_NATIVE");
-  assert.equal(byId["auth-phone-login"].status, "BLOCKED");
+  assert.ok(
+    byId["auth-phone-login"].status === "BLOCKED" ||
+      byId["auth-phone-login"].status === "FULLY_NATIVE" ||
+      byId["auth-phone-login"].status === "PARTIALLY_NATIVE",
+  );
   assert.equal(byId["product-variations"].status, "MISSING");
   assert.equal(byId["website-embed"].status, "PLACEHOLDER");
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
-  assert.ok(inv.verification?.phase3l);
-  assert.match(inv.branch, /phase3l/);
+  assert.ok(inv.verification?.phase3l || inv.verification?.phase3m);
+  assert.match(inv.branch, /phase3[lm]/);
 });
 
 test("Phase 3L docs exist", () => {

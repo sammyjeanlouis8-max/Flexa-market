@@ -1,11 +1,9 @@
 /**
- * Admin settings / system tools hub.
- * Broadcast SMS/email and push campaign composers remain on web (documented gaps).
- * Preserves existing Firebase/Expo push routes — does not alter package IDs.
+ * Admin settings / system tools hub — links to native broadcast, push, fees, security.
  */
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text } from "react-native";
 import { AdminShell, adminStyles } from "@/components/AdminShell";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -42,21 +40,38 @@ export default function AdminSettingsScreen() {
         <Text style={adminStyles.cardSub}>{t("adminAppSettingsHint")}</Text>
       </Pressable>
 
-      <View style={adminStyles.card}>
-        <Text style={adminStyles.cardTitle}>{t("adminBroadcast")}</Text>
-        <Text style={adminStyles.cardSub}>{t("adminBroadcastMissing")}</Text>
-      </View>
-
-      <View style={adminStyles.card}>
-        <Text style={adminStyles.cardTitle}>{t("adminPushCampaigns")}</Text>
-        <Text style={adminStyles.cardSub}>{t("adminPushCampaignsMissing")}</Text>
-      </View>
-
       {isSuperAdminUser(user) ? (
-        <Pressable style={adminStyles.card} onPress={() => router.push("/admin/fees")}>
-          <Text style={adminStyles.cardTitle}>{t("adminFeeSettings")}</Text>
-          <Text style={adminStyles.cardSub}>{t("adminFeesHint")}</Text>
-        </Pressable>
+        <>
+          <Pressable style={adminStyles.card} onPress={() => router.push("/admin/broadcast")}>
+            <Text style={adminStyles.cardTitle}>{t("adminBroadcast")}</Text>
+            <Text style={adminStyles.cardSub}>{t("adminBroadcastHint")}</Text>
+          </Pressable>
+          <Pressable style={adminStyles.card} onPress={() => router.push("/admin/push-campaigns")}>
+            <Text style={adminStyles.cardTitle}>{t("adminPushCampaigns")}</Text>
+            <Text style={adminStyles.cardSub}>{t("adminPushHint")}</Text>
+          </Pressable>
+          <Pressable style={adminStyles.card} onPress={() => router.push("/admin/fees")}>
+            <Text style={adminStyles.cardTitle}>{t("adminFeeSettings")}</Text>
+            <Text style={adminStyles.cardSub}>{t("adminFeesHint")}</Text>
+          </Pressable>
+        </>
+      ) : null}
+
+      {(user?.isAdmin || isSuperAdminUser(user)) ? (
+        <>
+          <Pressable style={adminStyles.card} onPress={() => router.push("/admin/tv-cms")}>
+            <Text style={adminStyles.cardTitle}>{t("adminTvCms")}</Text>
+            <Text style={adminStyles.cardSub}>{t("adminTvCmsHint")}</Text>
+          </Pressable>
+          <Pressable style={adminStyles.card} onPress={() => router.push("/admin/music-cms")}>
+            <Text style={adminStyles.cardTitle}>{t("adminMusicCms")}</Text>
+            <Text style={adminStyles.cardSub}>{t("adminMusicCmsHint")}</Text>
+          </Pressable>
+          <Pressable style={adminStyles.card} onPress={() => router.push("/admin/security")}>
+            <Text style={adminStyles.cardTitle}>{t("adminSecurity")}</Text>
+            <Text style={adminStyles.cardSub}>{t("adminSecurityHint")}</Text>
+          </Pressable>
+        </>
       ) : null}
     </AdminShell>
   );

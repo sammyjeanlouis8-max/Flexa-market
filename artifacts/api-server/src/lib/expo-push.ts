@@ -277,6 +277,15 @@ export async function upsertExpoPushToken(opts: {
 }): Promise<void> {
   if (!isExpoPushToken(opts.token) && !isApnsToken(opts.token)) return;
 
+  // Token refresh / reinstall / account switch on the same install:
+  // retire other tokens bound to this deviceId (never leave stale owners).
+  if (opts.deviceId) {
+    await db
+      .delete(expoPushTokensTable)
+      .where(eq(expoPushTokensTable.deviceId, opts.deviceId))
+      .catch(() => {});
+  }
+
   const existing = await db
     .select()
     .from(expoPushTokensTable)
@@ -287,7 +296,7 @@ export async function upsertExpoPushToken(opts: {
       .update(expoPushTokensTable)
       .set({
         userId: opts.userId,
-        deviceId: opts.deviceId ?? null,
+        deviceId: opts.deviceId ?? existing[0].deviceId ?? null,
         platform: opts.platform ?? null,
         updatedAt: new Date(),
       })
@@ -302,14 +311,44 @@ export async function upsertExpoPushToken(opts: {
   }
 }
 
+/**
+ * Delete a push token only when it belongs to `userId` (ownership check).
+ * Optionally also clear all tokens for a deviceId owned by that user.
+ * Returns number of rows removed.
+ */
 export async function deleteExpoPushToken(
   userId: number,
-  token: string,
-): Promise<void> {
-  await db
-    .delete(expoPushTokensTable)
-    .where(eq(expoPushTokensTable.token, token))
-    .catch(() => {});
+  token?: string | null,
+  deviceId?: string | null,
+): Promise<number> {
+  let deleted = 0;
+  if (typeof token === "string" && token.length > 0) {
+    const result = await db
+      .delete(expoPushTokensTable)
+      .where(
+        and(
+          eq(expoPushTokensTable.userId, userId),
+          eq(expoPushTokensTable.token, token),
+        ),
+      )
+      .returning({ id: expoPushTokensTable.id })
+      .catch(() => [] as { id: number }[]);
+    deleted += result.length;
+  }
+  if (typeof deviceId === "string" && deviceId.length >= 8) {
+    const result = await db
+      .delete(expoPushTokensTable)
+      .where(
+        and(
+          eq(expoPushTokensTable.userId, userId),
+          eq(expoPushTokensTable.deviceId, deviceId),
+        ),
+      )
+      .returning({ id: expoPushTokensTable.id })
+      .catch(() => [] as { id: number }[]);
+    deleted += result.length;
+  }
+  return deleted;
 }
 
 /**

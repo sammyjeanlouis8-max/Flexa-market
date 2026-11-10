@@ -4,7 +4,7 @@
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
   "pr": null,
-  "branch": "cursor/native-seller-phase3g-09ff",
+  "branch": "cursor/native-push-harden-09ff",
   "auditedAt": "2026-11-09T22:10:00Z",
   "auditCommit": "deeda28a",
   "verification": {
@@ -33,7 +33,8 @@
     "phase3f": true,
     "phase3fStartCommit": "04986815",
     "phase3g": true,
-    "phase3gStartCommit": "f4e88fc6"
+    "phase3gStartCommit": "f4e88fc6",
+    "pushHardening": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -593,9 +594,7 @@
         "/api/notifications"
       ],
       "status": "FULLY_NATIVE",
-      "missing": [
-        "Foreground FCM delivery verification on device"
-      ],
+      "missing": [],
       "work": "Phase 3A list + Phase 3C push tap deep-links to chat/orders"
     },
     {
@@ -603,17 +602,17 @@
       "name": "Android push (FCM)",
       "domain": "customer",
       "webRoute": "N/A",
-      "nativeRoute": "expo-notifications (partial deps)",
+      "nativeRoute": "expo-notifications + PushBootstrap",
       "role": "buyer",
       "apis": [
         "/api/push/expo-token"
       ],
       "status": "PARTIALLY_NATIVE",
       "missing": [
-        "Device FCM end-to-end verification",
-        "Do not claim push delivery"
+        "Physical-device FCM end-to-end verification",
+        "EAS FCM V1 credential confirmation in Expo dashboard"
       ],
-      "work": "Expo token registration wired; google-services present for com.flexa.market"
+      "work": "Hardened: logout unregister, deviceId lifecycle, channels, deep links, inbox mark-read sync. Delivery not device-verified."
     },
     {
       "id": "kyc",

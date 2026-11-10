@@ -38,3 +38,40 @@ export async function unblockUser(userId: number, opts: AuthOpts): Promise<void>
   const data = await readJson(res);
   throw new Error(data.error || `Unblock failed (${res.status})`);
 }
+
+export async function blockUser(
+  userId: number,
+  opts: AuthOpts,
+): Promise<{ blocked?: boolean; reportId?: number }> {
+  const res = await fetch(`${getApiBase()}/users/${userId}/block`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${opts.token}`,
+    },
+    body: "{}",
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Block failed (${res.status})`);
+  return data;
+}
+
+/** Report a user or listing via existing moderation queue. */
+export async function reportTarget(
+  input: { targetType: "user" | "listing"; targetId: number; reason: string },
+  opts: AuthOpts,
+): Promise<void> {
+  const res = await fetch(`${getApiBase()}/reports`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${opts.token}`,
+    },
+    body: JSON.stringify(input),
+  });
+  if (res.ok || res.status === 201) return;
+  const data = await readJson(res);
+  throw new Error(data.error || data.message || `Report failed (${res.status})`);
+}

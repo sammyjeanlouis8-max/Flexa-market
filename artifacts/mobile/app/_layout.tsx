@@ -49,7 +49,10 @@ export default function RootLayout() {
                     <Stack.Screen name="offers" />
                     <Stack.Screen name="support" />
                     <Stack.Screen name="support/[id]" />
+                    <Stack.Screen name="support-agent/index" />
+                    <Stack.Screen name="support-admin" />
                     <Stack.Screen name="chatbot" />
+                    <Stack.Screen name="help" />
                     <Stack.Screen name="addresses" />
                     <Stack.Screen name="edit-profile" />
                     <Stack.Screen name="stripe-checkout" />

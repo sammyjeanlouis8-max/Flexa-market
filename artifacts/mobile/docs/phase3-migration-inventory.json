@@ -6,7 +6,7 @@
   "pr": null,
   "branch": "cursor/native-phase3r-complete-09ff",
   "auditedAt": "2026-11-10T09:00:00Z",
-  "auditCommit": "pending",
+  "auditCommit": "9bb565a3",
   "stackedOnPr": 194,
   "verification": {
     "phase1_2_intact": true,
@@ -1315,7 +1315,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3L–3R Control Center: ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans + broadcast/push/TV/Music CMS/security; Phase 3R TV upload + music providers"
+      "work": "Phase 3L\u20133R Control Center: ops/appeals/drivers/agents/stripe/returns/fraud/commissions/flex/loans + broadcast/push/TV/Music CMS/security; Phase 3R TV upload + music providers"
     },
     {
       "id": "admin-users",

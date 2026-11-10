@@ -4,6 +4,7 @@ import {
   BOOST_AD_GUEST_ID_KEY,
   BOOST_AD_INTERVAL_MS,
   BOOST_AD_LEGACY_DEVICE_ID_KEY,
+  boostCooldownStorageKey,
   boostRotationStorageKey,
   clearBoostAdCooldown,
   getBoostExcludeIds,
@@ -47,23 +48,17 @@ describe("pickNextBoostRotationId", () => {
     const superAdmin = 303;
     const eligible = [seller, admin, superAdmin];
 
-    // After a seller promo plays, the next pick must be a different role's creative.
     expect(pickNextBoostRotationId(eligible, [seller])).not.toBe(seller);
     expect([admin, superAdmin]).toContain(
       pickNextBoostRotationId(eligible, [seller])!,
     );
-
-    // Force-close / reopen with cached history still prefers unseen.
     expect(pickNextBoostRotationId(eligible, [admin, seller])).toBe(superAdmin);
-
-    // Once all three were shown, least-recently-shown wins (seller oldest here).
     expect(
       pickNextBoostRotationId(eligible, [superAdmin, admin, seller]),
     ).toBe(seller);
   });
 
   it("after every eligible video was shown, rotates to the least recently shown", () => {
-    // History most-recent-first: 30 just played, then 20, then 10 (oldest).
     expect(pickNextBoostRotationId([10, 20, 30], [30, 20, 10])).toBe(10);
   });
 
@@ -95,41 +90,47 @@ describe("parseBoostRotationHistory", () => {
 });
 
 describe("scoped persistence + cooldown", () => {
-  it("scopes history to the signed-in account and records only on playback", () => {
+  it("scopes history to the signed-in account AND browsing country", () => {
     stubStorage();
-    const scope = getBoostViewerScopeKey(7);
-    expect(scope).toBe("user_7");
-    expect(getBoostExcludeIds(scope)).toEqual([]);
+    const haiti = getBoostViewerScopeKey(7, "Haiti");
+    const dr = getBoostViewerScopeKey(7, "Dominican Republic");
+    expect(haiti).toBe("user_7|haiti");
+    expect(dr).toBe("user_7|dominican republic");
 
-    recordBoostPlaybackExposure(scope, 101, 1_000);
-    recordBoostPlaybackExposure(scope, 202, 2_000);
-    expect(getBoostExcludeIds(scope)).toEqual([202, 101]);
-    expect(JSON.parse(memory.get(boostRotationStorageKey(scope))!)).toEqual([
-      { id: 202, at: 2_000 },
+    recordBoostPlaybackExposure(haiti, 101, 1_000);
+    expect(getBoostExcludeIds(haiti)).toEqual([101]);
+    // Dominican Republic must not reuse Haiti playback history.
+    expect(getBoostExcludeIds(dr)).toEqual([]);
+
+    recordBoostPlaybackExposure(dr, 202, 2_000);
+    expect(getBoostExcludeIds(dr)).toEqual([202]);
+    expect(getBoostExcludeIds(haiti)).toEqual([101]);
+    expect(JSON.parse(memory.get(boostRotationStorageKey(haiti))!)).toEqual([
       { id: 101, at: 1_000 },
     ]);
-
-    // Different account keeps a separate rotation history.
-    const other = getBoostViewerScopeKey(8);
-    expect(getBoostExcludeIds(other)).toEqual([]);
   });
 
   it("reuses a stable guest identity (including legacy device id)", () => {
     stubStorage();
     memory.set(BOOST_AD_LEGACY_DEVICE_ID_KEY, "legacy-device");
     expect(getOrCreateBoostGuestId()).toBe("legacy-device");
-    expect(getBoostViewerScopeKey(null)).toBe("guest_legacy-device");
+    expect(getBoostViewerScopeKey(null, "Haiti")).toBe("guest_legacy-device|haiti");
     expect(memory.get(BOOST_AD_GUEST_ID_KEY)).toBe("legacy-device");
   });
 
-  it("keeps frequency cooldown separate from billable impressions", () => {
+  it("keeps frequency cooldown per market, separate from billable impressions", () => {
     stubStorage();
-    expect(shouldShowBoostAd(10_000)).toBe(true);
-    markBoostAdShown(10_000);
-    expect(shouldShowBoostAd(10_000 + BOOST_AD_INTERVAL_MS - 1)).toBe(false);
-    expect(shouldShowBoostAd(10_000 + BOOST_AD_INTERVAL_MS)).toBe(true);
-    clearBoostAdCooldown();
+    const haiti = getBoostViewerScopeKey(1, "Haiti");
+    const dr = getBoostViewerScopeKey(1, "Dominican Republic");
+    expect(shouldShowBoostAd(haiti, 10_000)).toBe(true);
+    markBoostAdShown(haiti, 10_000);
+    expect(shouldShowBoostAd(haiti, 10_000 + BOOST_AD_INTERVAL_MS - 1)).toBe(false);
+    // Other country is unaffected — country switch can deliver immediately.
+    expect(shouldShowBoostAd(dr, 10_000)).toBe(true);
+    expect(shouldShowBoostAd(haiti, 10_000 + BOOST_AD_INTERVAL_MS)).toBe(true);
+    clearBoostAdCooldown(haiti);
+    expect(memory.has(boostCooldownStorageKey(haiti))).toBe(false);
     expect(memory.has(BOOST_AD_COOLDOWN_KEY)).toBe(false);
-    expect(shouldShowBoostAd(10_000)).toBe(true);
+    expect(shouldShowBoostAd(haiti, 10_000)).toBe(true);
   });
 });

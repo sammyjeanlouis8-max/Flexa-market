@@ -544,28 +544,50 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
         SELECT 1 FROM user_blocks ub
         WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId}
       )`] : []),
-      // Country gate — SA/global All Countries skip; otherwise listing.country ∈ allowed.
-      // Guests get CF/browsing country via resolveViewerScope (never sql`false` alone).
+      // Country gate — browsing country ∩ campaign target countries.
+      // - Audience null/empty/ALL → listing.country must match (ALL is never cross-border).
+      // - Explicit multi-country audience (comma/pipe) → eligible in each listed country.
+      // Guests get CF/browsing country via resolveInterstitialViewerScope.
       ...(skipCountryFilter ? [] : [
         allowedCountries.length > 0 && !allowedCountries.includes("__denied__")
           ? sql`(
-              lower(${listingsTable.country}) in (${sql.join(
-                allowedCountries.map(c => sql`${c.toLowerCase()}`),
-                sql`, `,
-              )})
-              AND (
-                ${listingsTable.boostAudienceCountry} IS NULL
-                OR ${listingsTable.boostAudienceCountry} = 'ALL'
-                OR lower(COALESCE(NULLIF(${listingsTable.boostAudienceCountry}, ''), ${listingsTable.country})) in (${sql.join(
+              (
+                (
+                  ${listingsTable.boostAudienceCountry} IS NULL
+                  OR btrim(${listingsTable.boostAudienceCountry}) = ''
+                  OR upper(btrim(${listingsTable.boostAudienceCountry})) = 'ALL'
+                )
+                AND lower(${listingsTable.country}) in (${sql.join(
                   allowedCountries.map(c => sql`${c.toLowerCase()}`),
                   sql`, `,
                 )})
+              )
+              OR (
+                ${listingsTable.boostAudienceCountry} IS NOT NULL
+                AND btrim(${listingsTable.boostAudienceCountry}) <> ''
+                AND upper(btrim(${listingsTable.boostAudienceCountry})) <> 'ALL'
+                AND (
+                  lower(btrim(${listingsTable.boostAudienceCountry})) in (${sql.join(
+                    allowedCountries.map(c => sql`${c.toLowerCase()}`),
+                    sql`, `,
+                  )})
+                  OR EXISTS (
+                    SELECT 1
+                    FROM unnest(regexp_split_to_array(${listingsTable.boostAudienceCountry}, '[,|]')) AS audience_part
+                    WHERE lower(btrim(audience_part)) = 'all'
+                       OR lower(btrim(audience_part)) in (${sql.join(
+                         allowedCountries.map(c => sql`${c.toLowerCase()}`),
+                         sql`, `,
+                       )})
+                  )
+                )
               )
             )`
           : sql`false`,
       ]),
       // Regional geo: only for Custom campaigns. Advantage+ / null type = country-wide
       // (also heals older merchant campaigns that were wrongly pinned to seller home).
+      // Department + commune (city) targeting is respected when configured.
       ...(applyRegionalFilters && viewerState
         ? [sql`(
             coalesce(${listingsTable.boostAudienceType}, 'advantage_plus') <> 'custom'

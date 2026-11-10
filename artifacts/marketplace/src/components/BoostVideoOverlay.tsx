@@ -104,10 +104,17 @@ interface Props {
   onClose: () => void;
   /** Signed-in account id; omit/null scopes rotation history to a stable guest id. */
   viewerUserId?: number | null;
+  /** Current browsing / preview country — history is persisted per market. */
+  browsingCountry?: string | null;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
-export default function BoostVideoOverlay({ listing, onClose, viewerUserId = null }: Props) {
+export default function BoostVideoOverlay({
+  listing,
+  onClose,
+  viewerUserId = null,
+  browsingCountry = null,
+}: Props) {
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -129,11 +136,11 @@ export default function BoostVideoOverlay({ listing, onClose, viewerUserId = nul
   const recordOnScreenExposure = useCallback(() => {
     if (exposureRecordedRef.current) return;
     exposureRecordedRef.current = true;
-    const scopeKey = getBoostViewerScopeKey(viewerUserId);
+    const scopeKey = getBoostViewerScopeKey(viewerUserId, browsingCountry);
     // Persist rotation before any navigation / force-close can wipe in-memory state.
     recordBoostPlaybackExposure(scopeKey, listing.id);
     trackBoostEvent(listing.id, isImageAd ? "view" : "video_view");
-  }, [viewerUserId, listing.id, isImageAd]);
+  }, [viewerUserId, browsingCountry, listing.id, isImageAd]);
   const recordOnScreenExposureRef = useRef(recordOnScreenExposure);
   recordOnScreenExposureRef.current = recordOnScreenExposure;
 

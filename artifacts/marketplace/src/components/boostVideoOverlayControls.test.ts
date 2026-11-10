@@ -32,6 +32,7 @@ describe("BoostVideoOverlay in-frame controls contract", () => {
     expect(overlaySrc).toMatch(/recordBoostPlaybackExposure/);
     expect(overlaySrc).toMatch(/recordOnScreenExposureRef\.current\(\)/);
     expect(overlaySrc).toMatch(/viewerUserId/);
+    expect(overlaySrc).toMatch(/browsingCountry/);
   });
 });
 

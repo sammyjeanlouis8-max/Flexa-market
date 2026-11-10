@@ -51,6 +51,11 @@ export function markBoostAdShown(): void {
   try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch { /* private */ }
 }
 
+/** Clear cooldown so a country/scope change can show a fresh market ad immediately. */
+export function clearBoostAdCooldown(): void {
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* private */ }
+}
+
 // ─── URL helper ──────────────────────────────────────────────────────────────
 function toFetchableUrl(stored: string): string {
   const value = stored.trim();

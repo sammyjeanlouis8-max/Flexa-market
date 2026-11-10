@@ -140,13 +140,23 @@ describe("merchant vs admin delivery contract (source)", () => {
       join(here, "../../../marketplace/src/components/Layout.tsx"),
       "utf8",
     );
+    const overlaySrc = readFileSync(
+      join(here, "../../../marketplace/src/components/BoostVideoOverlay.tsx"),
+      "utf8",
+    );
     expect(boostSrc).toMatch(/resolveInterstitialViewerScope/);
     expect(boostSrc).toMatch(/coalesce\(\$\{listingsTable\.boostAudienceType\}, 'advantage_plus'\) <> 'custom'/);
     expect(boostSrc).toMatch(/resolveBoostInitiateGeo/);
     expect(boostSrc).not.toMatch(/req\.user\?\.state \|\| bodyState/);
+    // Merchant campaigns win over admin/platform ads in the interstitial.
+    expect(boostSrc).toMatch(/isSuperAdmin/);
+    expect(boostSrc).toMatch(/THEN 1 ELSE 0 END/);
     expect(layoutSrc).toMatch(/\/api\/boost\/random-video/);
     expect(layoutSrc).toMatch(/videoFeedParams/);
     expect(layoutSrc).toMatch(/allCountries/);
     expect(layoutSrc).toMatch(/fetchGenRef/);
+    expect(layoutSrc).toMatch(/clearBoostAdCooldown/);
+    expect(layoutSrc).toMatch(/force:\s*true/);
+    expect(overlaySrc).toMatch(/export function clearBoostAdCooldown/);
   });
 });

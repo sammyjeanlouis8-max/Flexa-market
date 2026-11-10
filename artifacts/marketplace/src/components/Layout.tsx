@@ -14,7 +14,11 @@ import PushNotificationsBanner from "@/components/PushNotificationsBanner";
 import PasswordUpgradeBanner from "@/components/PasswordUpgradeBanner";
 import { FlexCardDebtBanner } from "@/components/FlexCardDebtBanner";
 import OfflineBar from "@/components/OfflineBar";
-import BoostVideoOverlay, { shouldShowBoostAd, markBoostAdShown } from "@/components/BoostVideoOverlay";
+import BoostVideoOverlay, {
+  shouldShowBoostAd,
+  markBoostAdShown,
+  clearBoostAdCooldown,
+} from "@/components/BoostVideoOverlay";
 import { useAdminCountry } from "@/contexts/admin-country";
 import { adminVideoFeedParamsKey } from "@/lib/adminCountryAccess";
 import { useShoppingLocation } from "@/contexts/shopping-location";
@@ -146,6 +150,7 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
   const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef  = useRef(false); // true while the timer is armed
   const fetchGenRef = useRef(0);
+  const prevDeliveryScopeKeyRef = useRef<string | null>(null);
   const deliveryScopeKey = isAdminViewer
     ? adminVideoFeedParamsKey(videoFeedParams)
     : `user|${user?.country ?? shoppingCountry ?? ""}`;
@@ -155,8 +160,8 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
     pendingRef.current = false;
   }, []);
 
-  const fetchRandomAd = useCallback(async (generation: number) => {
-    if (!shouldShowBoostAd()) return;
+  const fetchRandomAd = useCallback(async (generation: number, opts?: { force?: boolean }) => {
+    if (!opts?.force && !shouldShowBoostAd()) return;
     try {
       const tk = localStorage.getItem("flexamarket_token");
       const params = new URLSearchParams();
@@ -179,7 +184,8 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
       if (generation !== fetchGenRef.current) return;
       const data = await res.json();
       if (generation !== fetchGenRef.current) return;
-      if (!data?.listing || !shouldShowBoostAd()) return;
+      if (!data?.listing) return;
+      if (!opts?.force && !shouldShowBoostAd()) return;
       markBoostAdShown();
       setListing(data.listing as BoostAdListing);
     } catch { /* non-critical */ }
@@ -211,16 +217,29 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
     armTimer();
   }, [location, armTimer, cancelTimer]);
 
-  // Admin country preview (or guest market) changed → drop old ad and re-query.
-  // Do not depend on `location` here — route changes are handled above without
-  // resetting an already-armed countdown.
+  // Admin country preview (or guest market) changed → drop old ad and force a
+  // fresh fetch for the new country (bypass the 5-minute cooldown so merchant
+  // ads in the newly selected market can auto-play immediately).
+  // Skip the initial mount — the normal 10s browsing arm handles first paint.
   useEffect(() => {
+    const prev = prevDeliveryScopeKeyRef.current;
+    prevDeliveryScopeKeyRef.current = deliveryScopeKey;
+    if (prev === null || prev === deliveryScopeKey) return;
+
     fetchGenRef.current += 1;
+    const generation = fetchGenRef.current;
     setListing(null);
     cancelTimer();
-    // Force a fresh arm after scope change (bypass pendingRef latch).
     pendingRef.current = false;
-    armTimer();
+    clearBoostAdCooldown();
+    const isBrowsing = BROWSING_ROUTES.some((rx) => rx.test(location));
+    if (!isBrowsing) return;
+    pendingRef.current = true;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      pendingRef.current = false;
+      void fetchRandomAd(generation, { force: true });
+    }, 500);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when delivery scope changes
   }, [deliveryScopeKey]);
 

@@ -595,6 +595,9 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
   };
 
   const pickRow = async (extraExclude: number[] = []) => {
+    // Prefer normal merchant campaigns over admin/super-admin platform ads so
+    // changing country surfaces the market's merchant inventory first. Fall
+    // back to admin creatives only when no merchant row is eligible.
     const [row] = await db
       .select({
         id: listingsTable.id,
@@ -616,7 +619,14 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       .from(listingsTable)
       .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
       .where(and(...buildConds(extraExclude)))
-      .orderBy(sql`random()`)
+      .orderBy(
+        sql`CASE
+          WHEN coalesce(${usersTable.isSuperAdmin}, false)
+            OR coalesce(${usersTable.isAdmin}, false)
+            OR lower(coalesce(${usersTable.role}, '')) IN ('admin', 'superadmin')
+          THEN 1 ELSE 0 END`,
+        sql`random()`,
+      )
       .limit(1);
     return row ?? null;
   };

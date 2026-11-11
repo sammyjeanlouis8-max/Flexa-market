@@ -55,7 +55,7 @@ test("Phase 3N inventory recount and remaining incomplete statuses", () => {
   assert.ok(inv.features.length >= 83);
   assert.ok(inv.features.length >= 83);
   assert.ok(inv.summaryCounts.FULLY_NATIVE >= 75);
-  assert.ok(inv.summaryCounts.BLOCKED === 4 || inv.summaryCounts.BLOCKED === 5);
+  assert.ok(inv.summaryCounts.BLOCKED >= 3 && inv.summaryCounts.BLOCKED <= 5);
   const byId = Object.fromEntries(inv.features.map((f) => [f.id, f]));
   assert.equal(byId.bnpl.status, "FULLY_NATIVE");
   assert.equal(byId.subscription.status, "FULLY_NATIVE");
@@ -73,7 +73,10 @@ test("Phase 3N inventory recount and remaining incomplete statuses", () => {
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.equal(byId["boost-paid"].status, "BLOCKED");
   assert.ok(["BLOCKED","FULLY_NATIVE"].includes(byId["subscription-billing"].status));
-  assert.equal(byId["music-purchase"].status, "BLOCKED");
+  assert.ok(
+    byId["music-purchase"].status === "BLOCKED" ||
+      byId["music-purchase"].status === "FULLY_NATIVE",
+  );
   assert.equal(byId.esim.status, "BLOCKED");
   assert.ok(
     inv.verification.phase3n === true ||
@@ -81,7 +84,9 @@ test("Phase 3N inventory recount and remaining incomplete statuses", () => {
       inv.verification.phase3p === true ||
       inv.verification.phase3q === true ||
       inv.verification.phase3r === true ||
-      inv.verification.phase3s === true,
+      inv.verification.phase3s === true ||
+      inv.verification.phase3u === true ||
+      inv.verification.iosVariantsPushPhase === true,
   );
   assert.ok(byId.bnpl.apis.includes("/api/bnpl/checkout"));
 });

@@ -9,24 +9,24 @@ const test = require("node:test");
 const root = path.join(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 
-test("inventory is 78/2/0/0/4 of 84 — not 100%", () => {
+test("inventory is 79/2/0/0/3 of 84 — not 100%", () => {
   const inv = JSON.parse(read("docs/phase3-migration-inventory.json"));
   assert.equal(inv.features.length, 84);
   assert.deepEqual(inv.summaryCounts, {
-    FULLY_NATIVE: 78,
+    FULLY_NATIVE: 79,
     PARTIALLY_NATIVE: 2,
     PLACEHOLDER: 0,
     MISSING: 0,
-    BLOCKED: 4,
+    BLOCKED: 3,
   });
   const byId = Object.fromEntries(inv.features.map((f) => [f.id, f]));
   assert.equal(byId["subscription-billing"].status, "FULLY_NATIVE");
+  assert.equal(byId["music-purchase"].status, "FULLY_NATIVE");
   assert.equal(byId["product-variations"].status, "PARTIALLY_NATIVE");
   assert.equal(byId["push-fcm"].status, "PARTIALLY_NATIVE");
   assert.equal(byId.esim.status, "BLOCKED");
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.equal(byId["boost-paid"].status, "BLOCKED");
-  assert.equal(byId["music-purchase"].status, "BLOCKED");
   assert.ok(inv.verification.phase3vIosAllPages === true);
 });
 
@@ -76,7 +76,7 @@ test("AuthContext identifies RevenueCat user; PushBootstrap waits for auth", () 
 
 test("doc refuses overall 100%", () => {
   const doc = read("docs/IOS_ALL_PAGES_NATIVE.md");
-  assert.match(doc, /78\/84|not 100%/i);
+  assert.match(doc, /79\/84|78\/84|not 100%/i);
   assert.doesNotMatch(doc, /84\/84 FULLY|100% overall complete/i);
 });
 

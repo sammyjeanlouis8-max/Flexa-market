@@ -4,13 +4,13 @@
 
 | Status | Count |
 |---|---|
-| FULLY_NATIVE | 78 |
+| FULLY_NATIVE | 79 |
 | PARTIALLY_NATIVE | 2 |
 | PLACEHOLDER | 0 |
 | MISSING | 0 |
-| BLOCKED | 4 |
+| BLOCKED | 3 |
 
-iOS RevenueCat unlocks `subscription-billing`. Remaining BLOCKED: wallet-topup, boost-paid, music-purchase, esim. PARTIAL: push-fcm, product-variations. **Not 100%** — external contracts / SQL / device verification required.
+iOS RevenueCat + free Music. Remaining BLOCKED: wallet-topup, boost-paid, esim. PARTIAL: push-fcm, product-variations (test DB OK; prod SQL pending). **Not 100%**. See `IOS_VARIANTS_PUSH_REPORT.md`.
 
 
 Source of truth: `phase3-migration-inventory.json` (83 routes).

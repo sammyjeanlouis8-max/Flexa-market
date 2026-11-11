@@ -5,7 +5,7 @@
   "backend": "https://flexamarket.com/api",
   "pr": null,
   "branch": "cursor/ios-all-pages-native-e34a",
-  "auditedAt": "2026-11-10T23:47:18.024Z",
+  "auditedAt": "2026-11-11T13:35:50.784Z",
   "auditCommit": "7cfb5716",
   "stackedOnPr": 199,
   "verification": {
@@ -13,7 +13,7 @@
     "typecheck": "pass",
     "focusedTestsPass": 19,
     "placeholderRouteCount": 0,
-    "fullyNativeRouteCount": 78,
+    "fullyNativeRouteCount": 79,
     "partiallyNativeRouteCount": 2,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
@@ -42,7 +42,8 @@
       "Phase 3S: website route \u2192 platform browser (FULLY for intentional external nav); product-variations presets; FCM local checklist; Android APK blocked without SDK/EAS login; physical device not run on agent.",
       "Phase 3T: EAS preview APK blocked \u2014 eas whoami Not logged in; EXPO_TOKEN missing. Config verified (com.flexa.market, preview buildType=apk, google-services match). No APK claimed.",
       "Phase 3U: listing_variants schema+API+native seller/buyer/cart (PARTIAL until SQL approved); wallet-redeem FULLY; eSIM honest BLOCKED; payments audit; EXPO_TOKEN still missing for APK.",
-      "Phase iOS-all-pages: ported RevenueCat IAP + push cold-start pending-path; subscription-billing \u2192 FULLY_NATIVE (iOS StoreKit). Counts 78/2/0/0/4. Still not 100%: push-fcm PARTIAL (device), product-variations PARTIAL (SQL), wallet-topup/boost-paid/music-purchase/esim BLOCKED (contracts)."
+      "Phase iOS-all-pages: ported RevenueCat IAP + push cold-start pending-path; subscription-billing \u2192 FULLY_NATIVE (iOS StoreKit). Counts 78/2/0/0/4. Still not 100%: push-fcm PARTIAL (device), product-variations PARTIAL (SQL), wallet-topup/boost-paid/music-purchase/esim BLOCKED (contracts).",
+      "iOS variants/push phase: music-purchase \u2192 FULLY (Music free). Isolated listing_variants test DB OK; production SQL pending. Counts 79/2/0/0/3. Push stays PARTIAL without physical iPhone proof."
     ],
     "phase3b": true,
     "phase3c": true,
@@ -76,7 +77,8 @@
     "phase3s": true,
     "phase3t": true,
     "phase3u": true,
-    "phase3vIosAllPages": true
+    "phase3vIosAllPages": true,
+    "iosVariantsPushPhase": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -145,11 +147,11 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 78,
+    "FULLY_NATIVE": 79,
     "PARTIALLY_NATIVE": 2,
     "PLACEHOLDER": 0,
     "MISSING": 0,
-    "BLOCKED": 4
+    "BLOCKED": 3
   },
   "features": [
     {
@@ -633,20 +635,22 @@
     },
     {
       "id": "push-fcm",
-      "name": "Android push (FCM)",
+      "name": "Push notifications (FCM Android + APNs/Expo iOS)",
       "domain": "customer",
       "webRoute": "N/A",
       "nativeRoute": "expo-notifications + PushBootstrap",
       "role": "buyer",
       "apis": [
-        "/api/push/expo-token"
+        "/api/push/expo-token",
+        "/api/push/apns-token",
+        "Expo push API + APNs HTTP/2"
       ],
       "status": "PARTIALLY_NATIVE",
       "missing": [
-        "Physical-device FCM end-to-end verification",
-        "EAS FCM V1 credential confirmation in Expo dashboard"
+        "Physical iPhone foreground/background/killed delivery + tap deep-link proof",
+        "EAS push credentials + DO APNs key confirmation for production sends"
       ],
-      "work": "Phase 3U: code-complete Expo/FCM path retained; physical delivery still unverified \u2014 PARTIAL"
+      "work": "Code path complete (expo-token + apns-token, PushBootstrap cold-start, deep links). Agent cannot run physical iPhone \u2014 stays PARTIAL until Sammy completes device matrix."
     },
     {
       "id": "kyc",
@@ -1285,16 +1289,18 @@
       "name": "Music digital purchase",
       "domain": "media",
       "webRoute": "/music",
-      "nativeRoute": null,
+      "nativeRoute": "/music,/music/[id],/music/upload",
       "role": "buyer",
       "apis": [
-        "/api/music buy/subscribe"
+        "/api/music",
+        "/api/music/:id",
+        "/api/music/stream-url/:id",
+        "/api/music/upload-signature",
+        "/api/music/register"
       ],
-      "status": "BLOCKED",
-      "missing": [
-        "Play Billing"
-      ],
-      "work": "Android digital purchase guard | Confirmed BLOCKED in Phase 3N audit"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "iOS variants/push phase: Flexa Music is free \u2014 no digital purchase required. Upload/playback covered by flexa-music native screens."
     },
     {
       "id": "admin-panel",
@@ -1491,10 +1497,10 @@
       ],
       "status": "PARTIALLY_NATIVE",
       "missing": [
-        "Apply listing_variants SQL on DigitalOcean with explicit approval",
-        "Physical QA of multi-SKU cart after migration"
+        "Apply listing_variants SQL on DigitalOcean with explicit Sammy approval after reviewing isolated test-DB report",
+        "Physical iPhone QA of multi-SKU cart after production migration"
       ],
-      "work": "Phase 3U: GET/PUT /listings/:id/variants + native manager/buyer/cart; schemaReady gate; not FULLY until migration applied"
+      "work": "Isolated Postgres test DB flexa_variants_test applied migration successfully (create/select/stock reject/decrement/replace/cascade/rollback). Native seller/buyer/cart/checkout code ready. Production NOT migrated \u2014 stays PARTIAL."
     },
     {
       "id": "wallet-redeem",

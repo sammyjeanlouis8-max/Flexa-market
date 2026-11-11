@@ -17,7 +17,7 @@ test("Phase 3R inventory floor preserved — not fake 83/83 FULLY", () => {
   assert.equal(inv.summaryCounts.PARTIALLY_NATIVE, 2);
   assert.ok(inv.summaryCounts.PLACEHOLDER <= 1);
   assert.equal(inv.summaryCounts.MISSING, 0);
-  assert.ok(inv.summaryCounts.BLOCKED === 4 || inv.summaryCounts.BLOCKED === 5);
+  assert.ok(inv.summaryCounts.BLOCKED >= 3 && inv.summaryCounts.BLOCKED <= 5);
   assert.ok(inv.verification.phase3r === true);
   const byId = Object.fromEntries(inv.features.map((f) => [f.id, f]));
   assert.equal(byId["push-fcm"].status, "PARTIALLY_NATIVE");

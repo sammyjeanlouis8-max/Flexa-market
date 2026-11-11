@@ -8,13 +8,13 @@
 
 | Status | Count | Notes |
 |--------|------:|-------|
-| FULLY_NATIVE | **78** | includes iOS StoreKit `subscription-billing` |
+| FULLY_NATIVE | **79** | StoreKit subscription-billing + free `music-purchase` |
 | PARTIALLY_NATIVE | **2** | `push-fcm` (device unverified) · `product-variations` (SQL pending) |
 | PLACEHOLDER | **0** | |
 | MISSING | **0** | |
-| BLOCKED | **4** | wallet-topup, boost-paid, music-purchase, esim |
+| BLOCKED | **3** | wallet-topup, boost-paid, esim |
 
-**Total: 84** · Overall FULLY **78/84 ≈ 92.9%** — **not 100%**.
+**Total: 84** · Overall FULLY **79/84 ≈ 94.0%** — **not 100%**.
 
 Every Expo Router marketplace screen is a real native RN UI (no WebView feature shells, no `NativePlaceholder` routes). Remaining non-FULLY items are external blockers, not missing pages.
 
@@ -32,7 +32,6 @@ Every Expo Router marketplace screen is a real native RN UI (no WebView feature 
 |----|-----|
 | `wallet-topup` | Digital funds top-up needs billing policy path |
 | `boost-paid` | No boost StoreKit/Play products wired |
-| `music-purchase` | No music IAP products / buy flow |
 | `esim` | No provider contract in-repo |
 | `product-variations` | Needs approved `listing_variants` SQL on DigitalOcean |
 | `push-fcm` | Needs physical-device FCM/APNs E2E proof |

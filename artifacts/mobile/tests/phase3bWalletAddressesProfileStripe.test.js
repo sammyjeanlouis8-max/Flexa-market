@@ -104,7 +104,7 @@ test("inventory marks Phase 3B features FULLY_NATIVE and eSIM BLOCKED", () => {
   assert.equal(byId.esim.status, "BLOCKED");
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.ok(data.summaryCounts.FULLY_NATIVE >= 20);
-  assert.ok(data.summaryCounts.BLOCKED >= 4);
+  assert.ok(data.summaryCounts.BLOCKED >= 3);
 });
 
 test("root layout registers Phase 3B routes and LanguageProvider", () => {

@@ -44,7 +44,7 @@ test("Phase 3P inventory stays honest (not fake 83/83)", () => {
   assert.ok(inv.features.length >= 83);
   assert.ok(inv.features.length >= 83);
   assert.ok(inv.summaryCounts.FULLY_NATIVE >= 75);
-  assert.ok(inv.summaryCounts.BLOCKED === 4 || inv.summaryCounts.BLOCKED === 5);
+  assert.ok(inv.summaryCounts.BLOCKED >= 3 && inv.summaryCounts.BLOCKED <= 5);
   assert.ok(/phase3p|phase3q|phase3r|phase3s|phase3u|ios-all-pages/.test(inv.branch));
   assert.ok(
     inv.verification.phase3p === true ||

@@ -53,23 +53,25 @@ export default function CalculatorPage() {
     );
   }
 
+  const isScientific = mode === "scientific";
+
   return (
     <div
-      className="w-full overflow-x-hidden"
+      className="w-full h-full min-h-0 flex flex-col overflow-hidden pb-safe-nav"
       style={{
         background: "linear-gradient(180deg, #050505 0%, #0c0c0c 40%, #101410 100%)",
-        minHeight: "calc(100dvh - 56px)",
       }}
+      data-testid="calculator-page"
     >
-      <div className="mx-auto w-full max-w-lg px-3 pt-3 pb-8">
-        <header className="mb-3 flex items-center gap-2">
-          <CalcIcon className="w-6 h-6 text-[#39ff14]" aria-hidden />
-          <h1 className="text-xl font-bold text-white tracking-tight">Calculator</h1>
+      <div className="mx-auto w-full max-w-lg px-3 pt-2 pb-1 flex flex-col flex-1 min-h-0">
+        <header className="mb-1.5 flex items-center gap-2 flex-shrink-0">
+          <CalcIcon className="w-5 h-5 text-[#39ff14]" aria-hidden />
+          <h1 className="text-lg font-bold text-white tracking-tight">Calculator</h1>
         </header>
 
         <div
-          className="mb-4 sticky top-0 z-20 py-2 -mx-1 px-1"
-          style={{ background: "rgba(5,5,5,0.92)", backdropFilter: "blur(8px)" }}
+          className="mb-2 flex-shrink-0 py-1 -mx-1 px-1"
+          style={{ background: "rgba(5,5,5,0.92)" }}
         >
           <ModeTabs
             mode={mode}
@@ -77,15 +79,19 @@ export default function CalculatorPage() {
               setMode(m);
             }}
           />
-          <p className="mt-1.5 text-[11px]" style={{ color: "#777" }}>
-            Normal · Scientific · Graph · Formulas — chwazi yon mòd anwo a
-          </p>
+          {!isScientific && (
+            <p className="mt-1.5 text-[11px]" style={{ color: "#777" }}>
+              Normal · Scientific · Graph · Formulas — chwazi yon mòd anwo a
+            </p>
+          )}
         </div>
 
         <div
           role="tabpanel"
           aria-label={`${mode} calculator`}
-          className="transition-opacity duration-200"
+          className={`flex-1 min-h-0 transition-opacity duration-200 ${
+            isScientific ? "overflow-hidden" : "overflow-y-auto"
+          }`}
         >
           {mode === "normal" && (
             <NormalMode history={history} onHistory={pushHistory} />
@@ -103,9 +109,11 @@ export default function CalculatorPage() {
           {mode === "formulas" && <FormulasMode />}
         </div>
 
-        <p className="mt-6 text-center text-[10px]" style={{ color: "#555" }}>
-          Flexa Market Advanced Calculator · math.js + KaTeX · no eval() · verified formula subset
-        </p>
+        {!isScientific && (
+          <p className="mt-3 text-center text-[10px] flex-shrink-0" style={{ color: "#555" }}>
+            Flexa Market Advanced Calculator · math.js + KaTeX · no eval() · verified formula subset
+          </p>
+        )}
       </div>
     </div>
   );

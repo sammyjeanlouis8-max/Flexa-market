@@ -1,7 +1,39 @@
 # Native iOS PR — variants + push report
 
 **PR:** #221 · **Branch:** `cursor/ios-all-pages-native-e34a`  
+**HEAD SHA:** `739fd54abe9bbad8c85d59042f594f1fa20d6b51`  
 **Build target:** keep **1.0.1 (101)** — `eas.json` preview has no `autoIncrement`; production still has remote `autoIncrement` (do **not** run production profile next). Local `app.json` `buildNumber` is ignored when `appVersionSource: remote`.
+
+## 0) App Store Connect / TestFlight build 101 gate (2026-11-11)
+
+| Question | Result |
+|---|---|
+| Does ASC already have a usable **1.0.1 (101)**? | **No.** Only EAS attempt for bn **101** is `1a0d41c8-8373-4333-b275-783c133ae806` → **ERRORED**, **no IPA**, commit `bff575e4…` (not `739fd54a`). |
+| Highest successful ASC submit observed | **1.0.1 (63)** finished submit → ASC App ID `6754947270` (Aug 2026). No submit for 101. |
+| EAS remote `buildNumber` now | **101** (still). Number **not** bumped — ASC never consumed a successful 101. |
+| Signed build from `739fd54a` + internal TestFlight | **Blocked** by invalid Distribution certificate (same serial as Nov 4 / Nov 10 failures). |
+| Real iPhone seller→buyer variant E2E | **Not run** (no IPA / no device on this agent). |
+| DigitalOcean prod `listing_variants` | **Not applied** (guardrail). Local `flexa_variants_test` only. |
+
+**Exact signing error** (`XCODE_BUILD_ERROR`):
+
+```text
+Signing certificate is invalid. Signing certificate "iPhone Distribution: samuel jean louis (D782MM56VY)", serial number "1F7F477CE7E64CB2ADBB05055D814744", is not valid for code signing. It may have been revoked or expired. (in target 'FlexaMarket' from project 'FlexaMarket')
+```
+
+Failed EAS builds with that error:
+- bn **101** · https://expo.dev/accounts/muelsa89/projects/mobile/builds/1a0d41c8-8373-4333-b275-783c133ae806
+- bn **64** (2026-11-10) · https://expo.dev/accounts/muelsa89/projects/mobile/builds/8e801655-c14d-4a27-b1bf-0e853b68c85a
+
+**Owner actions (Mac + Apple team `D782MM56VY`):**
+1. `cd artifacts/mobile && eas credentials -p ios`
+2. Remove Dist Cert serial `1F7F477CE7E64CB2ADBB05055D814744`; create a new Apple Distribution cert + provisioning for `com.flexamarket.mobile`
+3. Register the physical iPhone on the team if using internal/ad-hoc
+4. From `739fd54a`: `eas build -p ios --profile preview --non-interactive` (keeps remote **101**)
+5. Submit IPA → confirm Internal TestFlight shows **1.0.1 (101)** for testers
+6. Point the binary at a **test** API that already has `listing_variants` (preview env today uses `EXPO_PUBLIC_DOMAIN=flexamarket.com` = prod without migration)
+
+Agent credentials: `EXPO_TOKEN` only; `eas credentials` needs interactive Apple login; no ASC API key in this environment.
 
 ## 1) PR checks
 
@@ -82,8 +114,10 @@ COMMIT;
 
 ### Exact steps for Sammy (real iPhone + test build 101)
 
-1. Install TestFlight / internal preview build **1.0.1 (101)** for `com.flexamarket.mobile` (do not use production profile — would autoIncrement past 101).
-2. Sign in with a real Flexa account.
+> **Gate:** TestFlight **1.0.1 (101)** is **not** available yet — see §0. Complete Dist Cert repair + preview build/submit first. Do **not** use production profile (would autoIncrement past 101).
+
+1. After §0 succeeds: Install TestFlight / internal preview build **1.0.1 (101)** for `com.flexamarket.mobile`.
+2. Sign in with a real Flexa account (against a backend that has `listing_variants` if testing variations).
 3. Allow notifications when prompted.
 4. Confirm token registered: Settings → Notifications screen may show diagnostics; or ask support/admin to confirm `expo_push_tokens` row for your user (Expo `ExponentPushToken[…]` and/or `apns:…`).
 5. **Foreground:** keep app open on Home. Have admin/support send a test push (or use server script) with payload:

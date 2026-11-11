@@ -3,7 +3,6 @@
  * Submits to admin review — never auto-approves.
  */
 import { Feather } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
@@ -25,6 +24,7 @@ import {
   type DocType,
   type KycStatus,
 } from "@/lib/kycApi";
+import { pickSystemMedia } from "@/lib/systemMediaPicker";
 
 const DOC_TYPES: { id: DocType; label: string }[] = [
   { id: "national_id", label: "National ID" },
@@ -70,16 +70,11 @@ export default function KycScreen() {
   );
 
   const pick = async (kind: "document" | "selfie") => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission", "Photo access is required for KYC.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickSystemMedia({
       mediaTypes: ["images"],
       quality: 0.8,
     });
-    if (result.canceled || !result.assets?.[0]?.uri) return;
+    if (result.canceled || !result.assets[0]?.uri) return;
     if (kind === "document") setDocumentUri(result.assets[0].uri);
     else setSelfieUri(result.assets[0].uri);
   };

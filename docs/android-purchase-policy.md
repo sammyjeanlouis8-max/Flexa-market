@@ -14,7 +14,7 @@ Already-paid transactions must still be settled through the existing verified, i
 
 - Build a new signed AAB with an increased version code. A GitHub or website deployment cannot modify an AAB already uploaded to Play Console.
 - Inspect the **merged release manifest**, not only Expo's public configuration. Broad photo/video library access, obsolete storage permissions, and battery-optimization exemption must not be reintroduced by dependencies.
-- Confirm the Android system picker can attach a selected photo/video without broad gallery permission. Confirm microphone/camera permission denial is recoverable.
+- Confirm the Android system picker (`lib/systemMediaPicker.ts` / Photo Picker) can attach a selected photo/video without broad gallery permission. Do not call media-library permission APIs for one-time picks. Confirm microphone permission denial is recoverable for chat voice; camera/location are not declared for this release.
 - Check the actual target SDK and Play Console's current requirement; an app.json field alone does not prove the compiled target.
 - Exercise app startup, sign-in, chat, physical checkout and digital-purchase restrictions on an Android device.
 - Supply accurate Data Safety answers, reviewer access, privacy and account-deletion URLs in Play Console. Repository changes cannot submit these declarations.

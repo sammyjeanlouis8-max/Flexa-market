@@ -4,7 +4,6 @@
  * Persists form fields locally; resumable chunked video upload; local preview.
  */
 import { Feather } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -26,6 +25,7 @@ import {
   saveBoostFormDraft,
 } from "@/lib/boostDrafts";
 import { createBoosterDraft, fetchBoosterMeta, type BoosterMeta } from "@/lib/boosterApi";
+import { pickSystemMedia } from "@/lib/systemMediaPicker";
 import {
   loadVideoUploadSession,
   uploadChunkedVideo,
@@ -168,17 +168,12 @@ export default function BoostCreateScreen() {
 
   const pickFreshVideo = async () => {
     if (!token) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission", "Allow media access to upload a promo video.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickSystemMedia({
       mediaTypes: ["videos"],
       quality: 0.7,
       videoMaxDuration: 120,
     });
-    if (result.canceled || !result.assets?.[0]?.uri) return;
+    if (result.canceled || !result.assets[0]?.uri) return;
     const asset = result.assets[0];
     await runVideoUpload(asset.uri, asset.mimeType || "video/mp4", null);
   };

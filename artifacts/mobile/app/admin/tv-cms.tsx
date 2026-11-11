@@ -1,7 +1,6 @@
 /**
  * Flexa TV CMS — programs list + live broadcast controls via verified /admin/tv/* APIs.
  */
-import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
@@ -17,6 +16,7 @@ import {
   postAdminTvBroadcast,
   uploadAdminTvVideo,
 } from "@/lib/phase3mApis";
+import { pickSystemMedia } from "@/lib/systemMediaPicker";
 
 export default function AdminTvCmsScreen() {
   const router = useRouter();
@@ -121,16 +121,11 @@ export default function AdminTvCmsScreen() {
           onPress={() => {
             if (!token) return;
             void (async () => {
-              const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-              if (!perm.granted) {
-                Alert.alert(t("adminTvCms"), "Media library permission required");
-                return;
-              }
-              const picked = await ImagePicker.launchImageLibraryAsync({
+              const picked = await pickSystemMedia({
                 mediaTypes: ["videos"],
                 quality: 1,
               });
-              if (picked.canceled || !picked.assets?.[0]?.uri) return;
+              if (picked.canceled || !picked.assets[0]?.uri) return;
               const asset = picked.assets[0];
               setUploading(true);
               try {

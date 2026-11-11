@@ -3,7 +3,6 @@
  * Owner-only; requires ≥1 image; preserves moderation via server.
  */
 import { Feather } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -28,6 +27,7 @@ import {
   type Category,
   type CreateListingInput,
 } from "@/lib/sellerApi";
+import { pickSystemMedia } from "@/lib/systemMediaPicker";
 
 const CONDITIONS: CreateListingInput["condition"][] = [
   "new",
@@ -183,18 +183,13 @@ export default function EditListingScreen() {
 
   const pickImages = async () => {
     if (!token) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow photo access to upload product images.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickSystemMedia({
       mediaTypes: ["images"],
       allowsMultipleSelection: true,
       selectionLimit: Math.max(1, 5 - images.length),
       quality: 0.7,
     });
-    if (result.canceled || !result.assets?.length) return;
+    if (result.canceled || !result.assets.length) return;
     const next: LocalImage[] = result.assets.slice(0, 5 - images.length).map((a, idx) => ({
       key: `${Date.now()}-${idx}`,
       uri: a.uri,

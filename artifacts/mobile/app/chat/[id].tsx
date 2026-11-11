@@ -4,7 +4,6 @@
  */
 import { Feather } from "@expo/vector-icons";
 import { Audio, ResizeMode, Video } from "expo-av";
-import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -37,6 +36,7 @@ import {
   type ChatMessage,
   type Conversation,
 } from "@/lib/chatApi";
+import { pickSystemMedia } from "@/lib/systemMediaPicker";
 import {
   emitStopTyping,
   emitTyping,
@@ -273,16 +273,11 @@ export default function ChatThreadScreen() {
 
   const onPickImage = async () => {
     if (!token || sending) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow photo access to send images.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickSystemMedia({
       mediaTypes: ["images"],
       quality: 0.8,
     });
-    if (result.canceled || !result.assets?.[0]) return;
+    if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     await sendMedia(
       asset.uri,
@@ -294,17 +289,12 @@ export default function ChatThreadScreen() {
 
   const onPickVideo = async () => {
     if (!token || sending) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow media access to send videos.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickSystemMedia({
       mediaTypes: ["videos"],
       quality: 0.7,
       videoMaxDuration: 60,
     });
-    if (result.canceled || !result.assets?.[0]) return;
+    if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     await sendMedia(
       asset.uri,

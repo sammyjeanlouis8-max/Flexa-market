@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { fetchListing, type Listing } from "@/lib/api";
+import { reportTarget } from "@/lib/blocksApi";
 import { isDominicanListingCountry } from "@/lib/checkoutApi";
 import { createConversation } from "@/lib/chatApi";
 import {
@@ -256,17 +257,107 @@ export default function ListingDetailScreen() {
         <Text style={styles.topTitle} numberOfLines={1}>
           Listing
         </Text>
-        <Pressable
-          style={styles.iconBtn}
-          onPress={onToggleFavorite}
-          accessibilityLabel={favorited ? "Remove favorite" : "Add favorite"}
-        >
-          <Feather
-            name="heart"
-            size={20}
-            color={favorited ? "#EF4444" : "#0F172A"}
-          />
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            style={styles.iconBtn}
+            onPress={() => {
+              if (!token || !listingId) {
+                router.push("/auth/login");
+                return;
+              }
+              Alert.alert("Report listing", "Why are you reporting this listing?", [
+                {
+                  text: "Counterfeit / IP",
+                  onPress: () =>
+                    void reportTarget(
+                      {
+                        targetType: "listing",
+                        targetId: listingId,
+                        reason: "Counterfeit goods or intellectual property complaint",
+                      },
+                      { token },
+                    )
+                      .then(() =>
+                        Alert.alert(
+                          "Reported",
+                          "Thanks — moderators will review this listing.",
+                        ),
+                      )
+                      .catch((e) =>
+                        Alert.alert(
+                          "Report",
+                          e instanceof Error ? e.message : "Could not report",
+                        ),
+                      ),
+                },
+                {
+                  text: "Prohibited / unsafe",
+                  onPress: () =>
+                    void reportTarget(
+                      {
+                        targetType: "listing",
+                        targetId: listingId,
+                        reason: "Prohibited, restricted, or unsafe listing",
+                      },
+                      { token },
+                    )
+                      .then(() =>
+                        Alert.alert(
+                          "Reported",
+                          "Thanks — moderators will review this listing.",
+                        ),
+                      )
+                      .catch((e) =>
+                        Alert.alert(
+                          "Report",
+                          e instanceof Error ? e.message : "Could not report",
+                        ),
+                      ),
+                },
+                {
+                  text: "Spam / scam",
+                  onPress: () =>
+                    void reportTarget(
+                      {
+                        targetType: "listing",
+                        targetId: listingId,
+                        reason: "Spam, scam, or misleading listing",
+                      },
+                      { token },
+                    )
+                      .then(() =>
+                        Alert.alert(
+                          "Reported",
+                          "Thanks — moderators will review this listing.",
+                        ),
+                      )
+                      .catch((e) =>
+                        Alert.alert(
+                          "Report",
+                          e instanceof Error ? e.message : "Could not report",
+                        ),
+                      ),
+                },
+                { text: "Cancel", style: "cancel" },
+              ]);
+            }}
+            accessibilityLabel="Report listing"
+            testID="listing-report"
+          >
+            <Feather name="flag" size={18} color="#0F172A" />
+          </Pressable>
+          <Pressable
+            style={styles.iconBtn}
+            onPress={onToggleFavorite}
+            accessibilityLabel={favorited ? "Remove favorite" : "Add favorite"}
+          >
+            <Feather
+              name="heart"
+              size={20}
+              color={favorited ? "#EF4444" : "#0F172A"}
+            />
+          </Pressable>
+        </View>
       </View>
 
       {loading ? (

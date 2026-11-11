@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,21 +68,32 @@ requireCondition(
 );
 requireCondition(
   Number.isInteger(appConfig.android?.versionCode) &&
-    appConfig.android.versionCode >= 39,
-  "Android versionCode must be an integer at least 39.",
+    appConfig.android.versionCode >= 40,
+  "Android versionCode must be an integer at least 40.",
 );
 for (const permission of [
   "android.permission.READ_MEDIA_IMAGES",
   "android.permission.READ_MEDIA_VIDEO",
   "android.permission.READ_EXTERNAL_STORAGE",
   "android.permission.WRITE_EXTERNAL_STORAGE",
+  "android.permission.ACCESS_FINE_LOCATION",
+  "android.permission.ACCESS_COARSE_LOCATION",
+  "android.permission.CAMERA",
 ]) {
   requireCondition(
     blockedAndroidPermissions.has(permission) &&
       !appConfig.android?.permissions?.includes(permission),
-    `Android broad media permission must remain blocked: ${permission}.`,
+    `Android permission must remain blocked for this release: ${permission}.`,
   );
 }
+requireCondition(
+  !appConfig.android?.permissions?.includes("android.permission.CAMERA"),
+  "Unused CAMERA permission must not be declared; media uses the system picker.",
+);
+requireCondition(
+  existsSync(path.join(mobileDir, "lib", "systemMediaPicker.ts")),
+  "System media picker helper must exist for Play photo/video compliance.",
+);
 const buildProperties = appConfig.plugins?.find(
   (plugin) =>
     Array.isArray(plugin) && plugin[0] === "expo-build-properties",

@@ -2879,6 +2879,8 @@ export default {
     genderOther: "Autre",
     phoneNumber: "Numéro de téléphone",
     noPhone: "Aucun numéro. Ajoutez-en un pour recevoir les notifications SMS.",
+    phoneEditHint: "Modifiez votre numéro ici — il s’enregistre automatiquement, comme sur le téléphone.",
+    verifyPhoneByEmail: "Vérifier ce numéro par code e-mail",
     add: "Ajouter",
     phoneChangeInstructions: "Saisissez votre numéro. Un code à 6 chiffres sera envoyé à votre adresse e-mail pour confirmation.",
     emailCodeInstructions: "Un code à 6 chiffres a été envoyé à {{email}}. Saisissez-le ci-dessous pour confirmer.",

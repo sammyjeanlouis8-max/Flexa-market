@@ -2877,6 +2877,8 @@ export default {
     genderOther: "Lòt",
     phoneNumber: "Nimewo telefòn",
     noPhone: "Pa gen nimewo. Ajoute youn pou resevwa notifikasyon SMS.",
+    phoneEditHint: "Modifye nimewo ou isit la — li sove otomatikman, menm jan sou telefòn.",
+    verifyPhoneByEmail: "Verifye nimewo sa a ak kòd nan imèl",
     add: "Ajoute",
     phoneChangeInstructions: "Antre nimewo ou. N ap voye yon kòd 6 chif nan imèl ou pou konfime.",
     emailCodeInstructions: "Nou voye yon kòd 6 chif nan {{email}}. Antre li anba a pou konfime.",

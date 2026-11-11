@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { COUNTRY_FLAGS } from "@/lib/countries";
+import { prefetchRoute } from "@/lib/prefetchRoutes";
 
 export default function SettingsIdentity() {
   const { user } = useAuth();
@@ -93,7 +94,13 @@ export default function SettingsIdentity() {
 
       <Card className="rounded-2xl overflow-hidden divide-y divide-border">
         {rows.map(({ icon: Icon, label, sub, to }) => (
-          <Link key={label} href={to} className="flex items-center gap-3 px-4 py-3.5 hover:bg-accent min-h-11">
+          <Link
+            key={label}
+            href={to}
+            onMouseEnter={() => prefetchRoute(to)}
+            onFocus={() => prefetchRoute(to)}
+            className="flex items-center gap-3 px-4 py-3.5 hover:bg-accent min-h-11"
+          >
             <div className="h-9 w-9 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 flex items-center justify-center">
               <Icon className="h-4 w-4" />
             </div>

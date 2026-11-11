@@ -110,6 +110,7 @@
       "expo-asset",
       "expo-font",
       "./plugins/withAndroidAdaptiveLayout.js",
+      "./plugins/withPlayCompliancePermissions.js",
       [
         "expo-image-picker",
         {

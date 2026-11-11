@@ -94,6 +94,15 @@ requireCondition(
   existsSync(path.join(mobileDir, "lib", "systemMediaPicker.ts")),
   "System media picker helper must exist for Play photo/video compliance.",
 );
+requireCondition(
+  existsSync(
+    path.join(mobileDir, "plugins", "withPlayCompliancePermissions.js"),
+  ) &&
+    (appConfig.plugins ?? []).includes(
+      "./plugins/withPlayCompliancePermissions.js",
+    ),
+  "Play compliance AndroidManifest permission plugin must be registered.",
+);
 const buildProperties = appConfig.plugins?.find(
   (plugin) =>
     Array.isArray(plugin) && plugin[0] === "expo-build-properties",

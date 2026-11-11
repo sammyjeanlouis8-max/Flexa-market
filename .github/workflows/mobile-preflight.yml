@@ -64,3 +64,4 @@ jobs:
       - name: Reject duplicate native modules
         working-directory: artifacts/mobile
         run: pnpm dlx expo-doctor@1.18.0
+# keepalive: ios variants/push phase 20261111T133811Z

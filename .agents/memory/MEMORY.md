@@ -21,4 +21,4 @@
 - [Flexa staff RBAC](flexa-staff-rbac.md) — canonical role outranks legacy isAdmin; finance/superadmin use dedicated guards, staff scope fails closed through country/department/city.
 
 ## Deploy target
-Production is DigitalOcean App Platform only (`deploy.yml` + DO API). Do not use or reconnect Vercel. Remove any leftover `vercel.json` if reintroduced. Vercel GitHub status checks are account-level noise — disconnect the Vercel GitHub App in repo Settings → Integrations.
+Production is DigitalOcean App Platform only (`deploy.yml` + DO API). Do not use or reconnect Vercel. Remove any leftover `vercel.json` if reintroduced. The three failing PR checks `Vercel – flexa-market-api-server-{2jmn,fihd,g97n}` come from the **Vercel** GitHub App (commit statuses), not Actions. Disconnect for this repo only: GitHub → Flexa-market → Settings → Integrations → Applications → Vercel → Configure → remove Flexa-market (or uninstall for this repo). Also remove those contexts from any branch protection / ruleset required checks if listed.

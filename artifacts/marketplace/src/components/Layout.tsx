@@ -14,7 +14,16 @@ import PushNotificationsBanner from "@/components/PushNotificationsBanner";
 import PasswordUpgradeBanner from "@/components/PasswordUpgradeBanner";
 import { FlexCardDebtBanner } from "@/components/FlexCardDebtBanner";
 import OfflineBar from "@/components/OfflineBar";
-import BoostVideoOverlay, { shouldShowBoostAd, markBoostAdShown } from "@/components/BoostVideoOverlay";
+import BoostVideoOverlay from "@/components/BoostVideoOverlay";
+import {
+  clearBoostAdCooldown,
+  getBoostExcludeIds,
+  getBoostViewerScopeKey,
+  shouldShowBoostAd,
+} from "@/lib/boostAdRotation";
+import { useAdminCountry } from "@/contexts/admin-country";
+import { adminVideoFeedParamsKey } from "@/lib/adminCountryAccess";
+import { useShoppingLocation } from "@/contexts/shopping-location";
 import Footer from "@/components/Footer";
 import NotificationsDropdown from "@/components/NotificationsDropdown";
 import UserMenu from "@/components/UserMenu";
@@ -134,38 +143,91 @@ interface BoostAdListing {
   isVideoOnly?: boolean;
 }
 
-function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => void } {
+function useBoostAdTrigger(): {
+  listing: BoostAdListing | null;
+  dismiss: () => void;
+  viewerUserId: number | null;
+  browsingCountry: string | null;
+} {
   const [location] = useLocation();
+  const { user } = useAuth();
+  const { videoFeedParams, isAdminViewer, effectiveCountry } = useAdminCountry();
+  const { country: shoppingCountry, city: shoppingCity } = useShoppingLocation();
   const [listing, setListing] = useState<BoostAdListing | null>(null);
   const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef  = useRef(false); // true while the timer is armed
+  const fetchGenRef = useRef(0);
+  const listingRef = useRef<BoostAdListing | null>(null);
+  const prevDeliveryScopeKeyRef = useRef<string | null>(null);
+  const viewerUserId = user?.id ?? null;
+  // Manual guest selection / admin preview / account country — never IP alone.
+  const browsingCountry = isAdminViewer
+    ? (effectiveCountry || videoFeedParams.country || null)
+    : (user?.country ?? shoppingCountry ?? null);
+  const browsingCity = isAdminViewer ? null : (user?.location ?? shoppingCity ?? null);
+  const rotationScopeKey = getBoostViewerScopeKey(viewerUserId, browsingCountry);
+  const deliveryScopeKey = isAdminViewer
+    ? adminVideoFeedParamsKey(videoFeedParams)
+    : `user|${browsingCountry ?? ""}|${browsingCity ?? ""}`;
 
   const cancelTimer = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     pendingRef.current = false;
   }, []);
 
+  const fetchRandomAd = useCallback(async (generation: number, opts?: { force?: boolean }) => {
+    const scopeKey = getBoostViewerScopeKey(viewerUserId, browsingCountry);
+    if (!opts?.force && !shouldShowBoostAd(scopeKey)) return;
+    if (listingRef.current) return; // already displaying an interstitial
+    try {
+      const tk = localStorage.getItem("flexamarket_token");
+      const params = new URLSearchParams();
+      if (isAdminViewer) {
+        if (videoFeedParams.country) params.set("country", videoFeedParams.country);
+        if (videoFeedParams.allCountries) params.set("allCountries", videoFeedParams.allCountries);
+      } else if (browsingCountry) {
+        // Browsing country (guest manual selection wins over CF on the server).
+        params.set("country", browsingCountry);
+        if (browsingCity) params.set("city", browsingCity);
+      }
+      // Soft rotation hint scoped to this market. Fetch/preload does not mutate
+      // history — playback start on the overlay does.
+      const excludeIds = getBoostExcludeIds(scopeKey);
+      if (excludeIds.length > 0) params.set("exclude", excludeIds.join(","));
+      const qs = params.toString();
+      const res = await fetch(`/api/boost/random-video${qs ? `?${qs}` : ""}`, {
+        headers: {
+          ...(tk ? { Authorization: `Bearer ${tk}` } : {}),
+          "Cache-Control": "no-store",
+        },
+      });
+      if (!res.ok) return;
+      // Discard stale responses after country switch / remount — never play a
+      // cached listing from the previous market.
+      if (generation !== fetchGenRef.current) return;
+      const data = await res.json();
+      if (generation !== fetchGenRef.current) return;
+      if (!data?.listing) return;
+      if (!opts?.force && !shouldShowBoostAd(scopeKey)) return;
+      if (listingRef.current) return;
+      // Do NOT mark cooldown / rotation here — only when playback begins.
+      listingRef.current = data.listing as BoostAdListing;
+      setListing(data.listing as BoostAdListing);
+    } catch { /* non-critical */ }
+  }, [isAdminViewer, videoFeedParams, browsingCountry, browsingCity, viewerUserId]);
+
   const armTimer = useCallback(() => {
     if (pendingRef.current) return;           // already armed — keep existing countdown
-    if (!shouldShowBoostAd()) return;         // still within cooldown window
+    if (listingRef.current) return;           // interstitial already on screen
+    if (!shouldShowBoostAd(rotationScopeKey)) return; // still within cooldown window
     pendingRef.current = true;
-    timerRef.current = setTimeout(async () => {
+    const generation = fetchGenRef.current;
+    timerRef.current = setTimeout(() => {
       timerRef.current  = null;
       pendingRef.current = false;
-      if (!shouldShowBoostAd()) return;
-      try {
-        const tk = localStorage.getItem("flexamarket_token");
-        const res = await fetch("/api/boost/random-video", {
-          headers: tk ? { Authorization: `Bearer ${tk}` } : {},
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!data?.listing || !shouldShowBoostAd()) return;
-        markBoostAdShown();
-        setListing(data.listing as BoostAdListing);
-      } catch { /* non-critical */ }
+      void fetchRandomAd(generation);
     }, BOOST_AD_DELAY_MS);
-  }, []);
+  }, [fetchRandomAd, rotationScopeKey]);
 
   // Unmount cleanup
   useEffect(() => () => cancelTimer(), [cancelTimer]);
@@ -181,14 +243,42 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
     armTimer();
   }, [location, armTimer, cancelTimer]);
 
+  // Browsing country / admin preview changed → drop any on-screen or in-flight
+  // ad from the previous market and force a fresh eligible fetch (no-store).
+  // Skip the initial mount — the normal 10s browsing arm handles first paint.
+  useEffect(() => {
+    const prev = prevDeliveryScopeKeyRef.current;
+    prevDeliveryScopeKeyRef.current = deliveryScopeKey;
+    if (prev === null || prev === deliveryScopeKey) return;
+
+    fetchGenRef.current += 1;
+    const generation = fetchGenRef.current;
+    listingRef.current = null;
+    setListing(null);
+    cancelTimer();
+    pendingRef.current = false;
+    // Clear previous-market cooldown so the new country can deliver immediately.
+    clearBoostAdCooldown(getBoostViewerScopeKey(viewerUserId, browsingCountry));
+    const isBrowsing = BROWSING_ROUTES.some((rx) => rx.test(location));
+    if (!isBrowsing) return;
+    pendingRef.current = true;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      pendingRef.current = false;
+      void fetchRandomAd(generation, { force: true });
+    }, 500);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when delivery scope changes
+  }, [deliveryScopeKey]);
+
   const dismiss = useCallback(() => {
+    listingRef.current = null;
     setListing(null);
     // Re-arm for next session after cooldown clears (armTimer will no-op if
     // shouldShowBoostAd is still false, which is correct)
     armTimer();
   }, [armTimer]);
 
-  return { listing, dismiss };
+  return { listing, dismiss, viewerUserId, browsingCountry };
 }
 
 // ─── Top search bar ───────────────────────────────────────────────────────────
@@ -287,6 +377,7 @@ function getPageTitle(loc: string, t: (key: string, options?: Record<string, unk
   if (loc.startsWith("/search")) return t("page.search");
   if (loc.startsWith("/agent")) return t("page.agent");
   if (loc.startsWith("/chatbot")) return t("page.chatbot");
+  if (loc.startsWith("/videos/profile")) return t("videoProfile.title", { defaultValue: "Video profile" });
   if (loc === "/videos" || loc.startsWith("/videos/watch")) return t("videoFeed.title");
   return "";
 }
@@ -515,6 +606,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isHomePage = location === "/";
   // Messages page needs full-height layout (no bottom padding, overflow clipped)
   const isMessages = location.startsWith("/messages");
+  // Calculator owns its viewport height so the scientific pad fits without page scroll.
+  const isCalculatorPage = /^\/calculator(?:\/|$)/.test(location);
   // Video feed also needs full-height, immersive layout
   const isVideoFeed = location === "/videos/watch" || location.startsWith("/videos/watch?");
   // Entire Promotional Videos section owns its TikTok-style chrome (header + bottom nav).
@@ -552,7 +645,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/settings(?:\/|$)/,
     /^\/order-label\//,
     /^\/orders(?:\/|$)/,
-    /^\/videos(?:\/(?:watch|favorites))?\/?$/,
+    /^\/videos(?:\/(?:watch|favorites|profile(?:\/[^/]+)?))?\/?$/,
     /^\/wallet/,
     /^\/subscription\/?$/,
     /^\/chatbot/,
@@ -782,7 +875,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                 {(marketCategories as Array<{ id: number; name: string; slug: string }>).slice(0, 10).map((cat) => (
                   <Link
                     key={cat.id}
-                    href={`/search?category=${encodeURIComponent(cat.slug || cat.name)}`}
+                    href={`/categories/${encodeURIComponent(cat.slug || cat.name)}`}
                     className="shrink-0 px-2.5 h-8 inline-flex items-center rounded-md text-white/90 text-[13px] font-medium hover:bg-white/10 whitespace-nowrap"
                   >
                     {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
@@ -810,7 +903,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       {/* pb-safe-nav = calc(56px + env(safe-area-inset-bottom)) so content
           never hides under the fixed bottom nav on any iPhone model. */}
       <main className={
-        isMessages || isPromoVideosSection
+        isMessages || isPromoVideosSection || isCalculatorPage
           ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isMessageThread ? " message-thread-main" : ""}${isPromoVideosSection ? "" : " md:pl-56"}`
           : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage ? "" : "pb-safe-nav"} md:pl-56`
       }
@@ -1065,7 +1158,12 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* Sponsored video overlay */}
       {boostAd.listing && (
-        <BoostVideoOverlay listing={boostAd.listing} onClose={boostAd.dismiss} />
+        <BoostVideoOverlay
+          listing={boostAd.listing}
+          onClose={boostAd.dismiss}
+          viewerUserId={boostAd.viewerUserId}
+          browsingCountry={boostAd.browsingCountry}
+        />
       )}
 
       {/* First-login language picker modal */}

@@ -12,11 +12,17 @@ import { useShoppingLocation } from "@/contexts/shopping-location";
 import ListingCard from "@/components/ListingCard";
 import TodaysDealCard from "@/components/TodaysDealCard";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
+import {
+  HOME_PROMO_VIDEO_CARD_LIMIT,
+  HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT,
+  selectHomePromoVideos,
+} from "@/lib/boostAdControls";
 import { selectTodaysDealSlots } from "@/lib/todaysDeals";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { MobileSelect } from "@/components/ui/mobile-select";
+import { buildWebsiteJsonLd, SEO_BRAND_NAME } from "@/lib/seoBrand";
 import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import {
@@ -101,6 +107,8 @@ interface PromoVideoItem {
   title: string;
   sellerName: string;
   boostEndAt: string | null;
+  createdAt?: string | null;
+  boostStartAt?: string | null;
 }
 
 function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) {
@@ -113,17 +121,22 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
     try {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      // Home shows at most TWO latest eligible promo videos (never the full catalog).
-      const params = new URLSearchParams({ page: "1", limit: "2" });
+      // Bound preview query + hard-cap selection so Home never paints >2 cards.
+      const params = new URLSearchParams({
+        page: "1",
+        limit: String(HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT),
+        sort: "new",
+      });
       if (countryFilter) params.set("country", countryFilter);
       const res = await fetch(`/api/videos/feed?${params}`, { headers });
       if (!res.ok) return;
       const data = await res.json();
-      const live = (data.videos ?? []).filter((v: PromoVideoItem) => {
-        if (!v.boostEndAt) return true;
-        return new Date(v.boostEndAt).getTime() > Date.now();
-      });
-      setVideos(live.slice(0, 2));
+      setVideos(
+        selectHomePromoVideos(
+          (data.videos ?? []) as PromoVideoItem[],
+          HOME_PROMO_VIDEO_CARD_LIMIT,
+        ),
+      );
     } catch { /* non-critical */ } finally {
       setLoading(false);
     }
@@ -135,25 +148,51 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
     return () => clearInterval(poll);
   }, [load]);
 
+  // Belt-and-suspenders: never render more than the Home hard cap, even if
+  // state somehow holds a larger array (stale cache, race, etc.).
+  const cards = videos.slice(0, HOME_PROMO_VIDEO_CARD_LIMIT);
+
   if (loading) {
     return (
-      <Skeleton className="h-full min-h-[360px] w-full rounded-2xl md:min-h-[420px]" />
+      <section
+        data-testid="home-promo-video-strip"
+        data-promo-card-limit={HOME_PROMO_VIDEO_CARD_LIMIT}
+        aria-busy="true"
+        aria-label={t("home.videoPromo", { defaultValue: "Video Promo" })}
+      >
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+          {Array.from({ length: HOME_PROMO_VIDEO_CARD_LIMIT }).map((_, i) => (
+            <Skeleton
+              key={`promo-skel-${i}`}
+              className="min-h-[360px] w-full rounded-2xl md:min-h-[420px]"
+              data-testid="home-promo-video-skeleton"
+            />
+          ))}
+        </div>
+      </section>
     );
   }
 
-  if (videos.length === 0) return null;
+  if (cards.length === 0) return null;
 
   return (
-    <>
-      {videos.map(v => (
-        <Link
-          key={`promo-video-${v.id}`}
-          href={`/videos?video=${v.id}`}
-          className="group relative block h-full min-h-[360px] w-full overflow-hidden rounded-2xl bg-black shadow-lg transition-transform duration-300 hover:scale-[1.015] active:scale-[0.98] md:min-h-[420px]"
-          style={{ textDecoration: "none" }}
-          data-testid={`button-promo-video-${v.id}`}
-          data-promax-group="video_promo"
-        >
+    <section
+      data-testid="home-promo-video-strip"
+      data-promo-card-count={cards.length}
+      data-promo-card-limit={HOME_PROMO_VIDEO_CARD_LIMIT}
+      aria-label={t("home.videoPromo", { defaultValue: "Video Promo" })}
+    >
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+        {cards.map((v) => (
+          <Link
+            key={`promo-video-${v.id}`}
+            href={`/videos?video=${v.id}`}
+            className="group relative block h-full min-h-[360px] w-full overflow-hidden rounded-2xl bg-black shadow-lg transition-transform duration-300 hover:scale-[1.015] active:scale-[0.98] md:min-h-[420px]"
+            style={{ textDecoration: "none" }}
+            data-testid={`button-promo-video-${v.id}`}
+            data-home-promo-video-card="true"
+            data-promax-group="video_promo"
+          >
             <PromoVideoPoster
               videoUrl={v.videoUrl}
               thumbnailUrl={v.thumbnailUrl}
@@ -189,16 +228,16 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
               )}
               <p className="line-clamp-2 text-sm font-black leading-tight text-white">{v.title}</p>
             </div>
-        </Link>
-      ))}
-    </>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Home() {
-  useSEO({ path: "/" });
   const [, setLocation] = useLocation();
   const [q, setQ] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -212,7 +251,23 @@ export default function Home() {
     setGuestCountry,
     setGuestCity,
   } = useShoppingLocation();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const homeSeoJsonLd = useMemo(
+    () =>
+      buildWebsiteJsonLd({
+        name: t("seo.homeHeading", { defaultValue: SEO_BRAND_NAME }),
+        description: t("seo.homeDescription"),
+        inLanguage: [i18n.language?.split("-")[0] || "en", "en", "ht", "fr"],
+      }),
+    [t, i18n.language],
+  );
+  useSEO({
+    title: t("seo.homeTitle"),
+    description: t("seo.homeDescription"),
+    path: "/",
+    absoluteTitle: true,
+    jsonLd: homeSeoJsonLd,
+  });
   const queryClient = useQueryClient();
   const {
     selectedCountry: adminCountry,
@@ -674,6 +729,16 @@ export default function Home() {
 
       <div className="px-3 py-2 space-y-4 md:px-4 md:py-4 md:space-y-6">
 
+        {/* Brand H1 — crawlable homepage heading; keep layout compact */}
+        <header className="pt-1 pb-0.5">
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-foreground">
+            {t("seo.homeHeading", { defaultValue: SEO_BRAND_NAME })}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
+            {t("seo.homeHeadingSupport")}
+          </p>
+        </header>
+
         {/* === ADMIN VIEW BANNER + COUNTRY PICKER (centralized AdminCountryContext) === */}
         {isAdmin && canSelectAll && (
           <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-xl px-4 py-3 space-y-2">
@@ -1011,30 +1076,29 @@ export default function Home() {
               <h2 className="text-base font-bold text-foreground">
                 {t("home.shopByCategory", { defaultValue: "Shop by Category" })}
               </h2>
-              <button
-                type="button"
-                onClick={() => setLocation("/search")}
+              <Link
+                href="/search"
                 className="text-xs font-semibold text-[hsl(152,65%,28%)] flex items-center gap-0.5"
               >
                 {t("buttons.seeAll")} <ChevronRight className="h-3.5 w-3.5" />
-              </button>
+              </Link>
             </div>
             <div className="grid grid-cols-4 gap-2">
               {categories.slice(0, 8).map((cat) => (
-                <button
+                <Link
                   key={cat.id}
-                  type="button"
-                  onClick={() => handleCategoryClick(cat.slug)}
+                  href={`/categories/${encodeURIComponent(cat.slug)}`}
                   className={cn(
                     "flex flex-col items-center gap-1.5 rounded-xl bg-muted/60 border border-border p-2.5 active:scale-[0.98] transition",
                     activeCategory === cat.slug && "border-[#F97316] bg-orange-50 dark:bg-orange-950/20",
                   )}
+                  data-testid={`link-shop-category-${cat.slug}`}
                 >
                   <span className="text-2xl leading-none">{cat.icon}</span>
                   <span className="text-[10px] font-semibold text-foreground text-center line-clamp-2 leading-tight">
                     {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
                   </span>
-                </button>
+                </Link>
               ))}
             </div>
           </section>
@@ -1129,6 +1193,9 @@ export default function Home() {
           </section>
         )}
 
+        {/* === HOME PROMO STRIP — exactly ≤2 cards; full feed opens on tap === */}
+        <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : (activeCountry ?? null)} />
+
         {/* === FEATURED PRODUCTS (2-col mobile) — shared PROMAX order === */}
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold text-foreground">
@@ -1151,7 +1218,7 @@ export default function Home() {
             >
               {(() => {
                 let aboveFoldIndex = 0;
-                return promaxGroups.slice(0, 2).flatMap(({ key, listings }) =>
+                return promaxGroups.flatMap(({ key, listings }) =>
                   listings
                     .filter((listing) => !personalizedIds.has(listing.id))
                     .map((listing) => {
@@ -1165,16 +1232,6 @@ export default function Home() {
                     }),
                 );
               })()}
-              <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : (activeCountry ?? null)} />
-              {promaxGroups.slice(2).flatMap(({ key, listings }) =>
-                listings
-                  .filter((listing) => !personalizedIds.has(listing.id))
-                  .map((listing) => (
-                    <div key={listing.id} data-promax-group={key} className="min-w-0">
-                      <ListingCard listing={listing} showAddToCart />
-                    </div>
-                  )),
-              )}
             </div>
           )
         )}

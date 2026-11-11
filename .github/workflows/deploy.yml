@@ -1,4 +1,9 @@
 name: Deploy to DigitalOcean
+# fe-deploy: calculator-fit-no-scroll #218 20261111T002500Z
+# fe-deploy: video-profile-experience-219 20261110T234331Z
+# fe-deploy: boost-message-cta-english e95fecc1
+# fe-deploy: interstitial-merchant-country 02e82ebf
+# fe-deploy: home-two-promo-cards 02683d71
 
 # Automatic production deploy: push/merge to main → App Platform redeploy.
 # Manual runs support dry-run secret validation without deploying.
@@ -201,3 +206,43 @@ jobs:
 # Owner requested fe deploy: multi-country admin promo + marketplace scope (#158) (2026-11-09).
 
 # Owner requested fe deploy retry: multi-country admin + promo scope (#158) (2026-11-09).
+
+# Owner requested fe deploy: Advanced Calculator four modes (#184) (2026-11-10).
+
+# Owner requested fe deploy retry: Advanced Calculator four modes (#184) (2026-11-10).
+
+# Owner requested fe deploy: Scientific Classic + Pro (#186) (2026-11-10).
+
+# Owner requested fe deploy after lockfile fix so calculator Classic/Pro goes live (2026-11-10).
+
+# Owner requested fe deploy retry after calculator lockfile fix went live (2026-11-10).
+
+# Owner requested fe deploy: promo ad Message/Skip in-player + Home 2-card strip (#202) (2026-11-10).
+
+# Owner requested fe deploy: merchant ad delivery + admin country preview (#203) (2026-11-10).
+
+# force_build_20261110160802
+
+# Owner requested fe deploy ALL: promo auto-rotation + country scope (#208) (2026-11-10).
+
+# force_build_20261110172234_promo_rotation
+
+# Owner requested fe deploy: Flexa Control Users redesign (#210) (2026-11-10).
+
+# force_build_20261110173707_users_redesign
+# Owner requested fe deploy: SEO Phase 1 public products + categories (#214) (2026-11-10).
+# force_build_20261110_seo_phase1
+
+# Owner requested fe deploy: SEO catalog + Flexa Market brand/intent (#215) (2026-11-10).
+# force_build_20261110_seo_catalog_brand
+
+# Owner requested fe deploy: SEO noindex empty categories (#216) (2026-11-10).
+# force_build_20261110_seo_noindex_empty_cats
+# Owner requested fe deploy: fix automatic boost 500 (#217) (2026-11-10).
+# force_build_20261110_boost_random_video_500
+
+# Owner requested fe deploy: i18n wallet + boost Message CTA (#220) (2026-11-10).
+# force_build_20261110T225431Z_i18n_wallet_boost_message
+
+# Owner requested fe deploy: Video Profile experience (#219) (2026-11-10).
+# force_build_20261110T234331Z_video_profile_experience

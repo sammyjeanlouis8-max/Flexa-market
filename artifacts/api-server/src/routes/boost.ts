@@ -15,6 +15,11 @@ import { handleCheckoutCompleted } from "./stripeCheckout";
 import { logger } from "../lib/logger";
 import { extractWasabiKey } from "../lib/s3";
 import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
+import {
+  listingAudienceFieldsForActivation,
+  resolveBoostInitiateGeo,
+  resolveInterstitialViewerScope,
+} from "../lib/boostDelivery";
 
 /**
  * Resolve a stored boostVideoUrl to a playable URL.
@@ -141,8 +146,8 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     : req.user?.country;
 
   // Custom / map targeting: honor wizard selections (department, cities, radius).
-  // Advantage+ (automatic): country-wide — do NOT stamp the seller's department/commune.
-  // Stamping seller geo here previously excluded most viewers from GET /api/videos/feed
+  // Advantage+ (automatic): country-wide — never pin to the seller's home geo.
+  // Stamping seller geo previously excluded most viewers from GET /api/videos/feed
   // while Admin free boosts (null state/city) appeared nationwide.
   const audienceType =
     req.body.audience?.audienceType === "custom" ? "custom" : "advantage_plus";
@@ -159,26 +164,32 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     ? (req.body.audience.cities as unknown[]).filter((c): c is string => typeof c === "string" && c.trim().length > 0)
     : [];
 
-  const resolvedState = audienceType === "advantage_plus"
-    ? null
-    : (bodyState || bodyStates[0] || req.user?.state || null);
-
-  const resolvedCity = audienceType === "advantage_plus"
-    ? null
-    : (bodyCity || bodyCities[0] || null);
+  const initiateGeo = resolveBoostInitiateGeo({
+    audienceType,
+    bodyState,
+    bodyStates,
+    bodyCity,
+    bodyCities,
+    // Custom only: admins may fall back to their profile region; merchants must pick.
+    fallbackState: audienceType === "custom" && isAdmin ? (req.user?.state ?? null) : null,
+    fallbackCity: null,
+  });
+  const resolvedState = initiateGeo.state;
+  const resolvedCity = initiateGeo.city;
 
   const audienceBody = {
     ...req.body.audience,
     audienceType,
     country: audienceCountry,
+    // Advantage+: force country-wide even if the client still sends home geo.
     state: resolvedState,
-    states: audienceType === "advantage_plus"
-      ? []
-      : (bodyStates.length > 0 ? bodyStates : (bodyState ? undefined : req.body.audience?.states)),
+    states: audienceType === "custom"
+      ? (bodyStates.length > 0 ? bodyStates : (bodyState ? undefined : req.body.audience?.states))
+      : [],
     city: resolvedCity,
-    cities: audienceType === "advantage_plus"
-      ? []
-      : (bodyCities.length > 0 ? bodyCities : req.body.audience?.cities),
+    cities: audienceType === "custom"
+      ? (bodyCities.length > 0 ? bodyCities : (initiateGeo.cities ?? req.body.audience?.cities))
+      : [],
   };
   const audienceCheck = validateAudience(audienceBody, audienceCountry);
   if (!audienceCheck.ok) { res.status(400).json({ error: audienceCheck.error }); return; }
@@ -303,22 +314,25 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
 
     const paymentRef = `WBOOST-${boost.id}-${Date.now()}`;
     await db.update(boostsTable).set({ paymentStatus: "paid", paymentRef }).where(eq(boostsTable.id, boost.id));
+    const activatedAudience = listingAudienceFieldsForActivation({
+      audienceType: audience.audienceType,
+      audienceCountry: audience.country,
+      audienceState: audience.state,
+      audienceCity: audience.city,
+      audienceCities: audience.cities,
+      audienceNeighborhood: audience.neighborhood,
+      audienceRadiusKm: audience.radiusKm,
+    });
     await db.update(listingsTable).set({
       isBoosted: true,
       boostStartAt: new Date(),
       boostExpiresAt: expiresAt,
-      boostAudienceCountry: audience.country,
-      boostAudienceState: audience.state ?? null,
-      boostAudienceCities: audience.cities ?? null,
-      boostAudienceCity: audience.city ?? null,
-      boostAudienceNeighborhood: audience.neighborhood ?? null,
-      boostAudienceRadiusKm: audience.radiusKm ?? null,
+      ...activatedAudience,
       boostAudienceInterests: audience.interests ?? null,
       boostAudienceAgeMin: audience.ageMin ?? null,
       boostAudienceAgeMax: audience.ageMax ?? null,
       boostAudienceGender: audience.gender ?? "all",
       boostAudienceObjective: audience.objective ?? "auto",
-      boostAudienceType: audience.audienceType ?? "advantage_plus",
       boostDailyBudget: dailyBudget,
     }).where(eq(listingsTable.id, listingId));
 
@@ -444,177 +458,277 @@ router.post("/listings/:id/boost/confirm", requireAuth, async (req, res): Promis
  * Random boost-ad video. Returned to a marketplace visitor after they have
  * been browsing for ~10s; the client renders it as a brief autoplay overlay.
  *
- * Selection rules:
- *  - Listing is currently boosted, status = available, and has a video URL.
- *  - boostExpiresAt is in the future.
- *  - Audience country, when set on the boost, must match the viewer's
- *    country; if the boost has no country target, anyone is eligible.
- *  - The signed-in viewer never sees their own listings.
+ * Selection rules (same eligibility for merchant and admin creators):
+ *  - Listing is currently boosted with playable video or image creative.
+ *  - Start/expiry windows, moderation, and lifecycle gates.
+ *  - Country scope from resolveViewerScope (?country= / allCountries= for admin preview).
+ *  - Advantage+ = country-wide (ignore stale department/city pins).
+ *  - Custom targeting = department/city match for regular customers.
+ *  - Viewer never sees their own listings.
  *
- * Picks one row at random with `ORDER BY random() LIMIT 1`.
+ * Picks randomly; retries once if the chosen creative URL cannot be resolved.
  */
 router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> => {
-  // Align with promo feed scope: SA/global All Countries → worldwide;
-  // specific ?country= → that country; multi-country admin → assigned union.
+  const requestedCountry = typeof req.query.country === "string" ? req.query.country.trim() : "";
+  const forceAllCountries = ["1", "true", "yes"].includes(
+    String(req.query.allCountries ?? "").trim().toLowerCase(),
+  );
+  // Optional regional preview (when admin UI supports dept/commune pickers).
+  const previewState =
+    typeof req.query.state === "string" ? req.query.state.trim() : "";
+  const previewCity =
+    typeof req.query.city === "string" ? req.query.city.trim() : "";
+
   const role = getRole(req.user);
   const isSuperAdmin = role === "superadmin";
   const isAdmin = hasRole(req.user, "admin") && !isSuperAdmin;
   const isGlobalCountryAdmin = isAdmin && !!req.user && hasGlobalCountryAdminScope(req.user);
-  const requestedCountry = typeof req.query.country === "string" ? req.query.country.trim() : "";
-  const forceAllCountries = ["1", "true", "yes"].includes(
-    String(req.query.allCountries ?? "").trim().toLowerCase(),
-  ) && (isSuperAdmin || isGlobalCountryAdmin);
-
-  let skipCountryFilter = false;
-  let allowedCountries: string[] = [];
-  if (isSuperAdmin || isGlobalCountryAdmin) {
-    if (forceAllCountries || !requestedCountry) {
-      skipCountryFilter = true;
-    } else {
-      allowedCountries = [requestedCountry];
-    }
-  } else if (isAdmin && req.user) {
-    const assigned = getAdminScopeCountries(req.user);
-    if (requestedCountry) {
-      const match = assigned.find(c => c.toLowerCase() === requestedCountry.toLowerCase());
-      allowedCountries = match ? [match] : [];
-    } else {
-      allowedCountries = assigned;
-    }
-  } else {
-    const viewerCountry = req.user?.country ?? null;
-    allowedCountries = viewerCountry ? [viewerCountry] : [];
-  }
-
-  const viewerState   = req.user?.state    ?? null;
-  const viewerCity    = req.user?.location ?? null;
+  const scope = resolveInterstitialViewerScope({
+    requestedCountry,
+    forceAllCountries,
+    cfIpCountry: String(req.headers["cf-ipcountry"] ?? ""),
+    user: req.user
+      ? {
+          country: req.user.country,
+          state: req.user.state,
+          location: req.user.location,
+          isSuperAdmin: !!req.user.isSuperAdmin,
+          isAdmin: !!req.user.isAdmin,
+          role,
+        }
+      : null,
+    assignedAdminCountries: isAdmin && req.user ? getAdminScopeCountries(req.user) : [],
+    isGlobalCountryAdmin,
+  });
+  const allowedCountries = scope.visibleCountries;
+  const skipCountryFilter = scope.globalCountryAccess;
+  const isAdminViewer = scope.isAdminViewer;
+  // Admin country preview must not use the admin's registered home geo.
+  // Regional filters apply for regular customers, or when preview state/city is set.
+  const viewerState = isAdminViewer
+    ? (previewState || null)
+    : (previewState || scope.state || null);
+  const viewerCity = isAdminViewer
+    ? (previewCity || null)
+    : (previewCity || scope.city || null);
+  const applyRegionalFilters = !isAdminViewer || !!previewState || !!previewCity;
   const viewerId = req.userId ?? -1;
-  const adminBypassGeo = skipCountryFilter;
 
   const now = new Date();
-  const conds = [
-    eq(listingsTable.isBoosted, true),
-    or(eq(listingsTable.status, "available"), eq(listingsTable.status, "hidden")),
-    // Available listings must be approved; hidden video-only promos stay owner-inventory only.
-    or(
-      and(eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved")),
-      eq(listingsTable.status, "hidden"),
-    ) as any,
-    sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived', 'rejected')`,
-    // Video OR image creative (Booster Pro image ads)
-    or(isNotNull(listingsTable.boostVideoUrl), isNotNull(listingsTable.boostImageUrl)) as any,
-    gt(listingsTable.boostExpiresAt, now),
-    // NULL boostStartAt is treated as "already started" for backward-compat with
-    // boosts that were activated before the boostStartAt column was added.
-    sql`(${listingsTable.boostStartAt} IS NULL OR ${listingsTable.boostStartAt} <= ${now.toISOString()})`,
-    ne(listingsTable.sellerId, viewerId),
-    ...(req.userId ? [sql`NOT EXISTS (SELECT 1 FROM user_blocks ub WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId})`] : []),
-    ...(req.userId ? [sql`NOT EXISTS (
-      SELECT 1 FROM user_blocks ub
-      WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId}
-    )`] : []),
-    // Country gate — SA/global All Countries skip; otherwise listing.country ∈ allowed.
-    ...(adminBypassGeo ? [] : [
-      allowedCountries.length > 0
-        ? sql`(
-            lower(${listingsTable.country}) in (${sql.join(
-              allowedCountries.map(c => sql`${c.toLowerCase()}`),
-              sql`, `,
-            )})
-            AND (
-              ${listingsTable.boostAudienceCountry} IS NULL
-              OR ${listingsTable.boostAudienceCountry} = 'ALL'
-              OR lower(COALESCE(NULLIF(${listingsTable.boostAudienceCountry}, ''), ${listingsTable.country})) in (${sql.join(
-                allowedCountries.map(c => sql`${c.toLowerCase()}`),
-                sql`, `,
-              )})
+  const excludeRaw = String(req.query.exclude ?? "");
+  const excludeIds = excludeRaw
+    .split(",")
+    .map((s) => parseInt(s, 10))
+    .filter((n) => Number.isFinite(n) && n > 0)
+    .slice(0, 20);
+
+  // Hard-exclude is only for dead-creative retries (extraExclude). Client
+  // `exclude` is a soft preference: never-seen first, then least-recently shown.
+  // Creator role (Seller / Admin / Super Admin) must not affect ranking.
+  const buildConds = (extraExclude: number[] = []) => {
+    const excluded = [...extraExclude];
+    return [
+      eq(listingsTable.isBoosted, true),
+      or(eq(listingsTable.status, "available"), eq(listingsTable.status, "hidden")),
+      or(
+        and(eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved")),
+        eq(listingsTable.status, "hidden"),
+      ) as any,
+      sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived', 'rejected')`,
+      or(isNotNull(listingsTable.boostVideoUrl), isNotNull(listingsTable.boostImageUrl)) as any,
+      gt(listingsTable.boostExpiresAt, now),
+      sql`(${listingsTable.boostStartAt} IS NULL OR ${listingsTable.boostStartAt} <= ${now.toISOString()})`,
+      ne(listingsTable.sellerId, viewerId),
+      ...(excluded.length > 0
+        ? [sql`${listingsTable.id} NOT IN (${sql.join(excluded.map((id) => sql`${id}`), sql`, `)})`]
+        : []),
+      ...(req.userId ? [sql`NOT EXISTS (
+        SELECT 1 FROM user_blocks ub
+        WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId}
+      )`] : []),
+      // Country gate — browsing country ∩ campaign target countries.
+      // - Audience null/empty/ALL → listing.country must match (ALL is never cross-border).
+      // - Explicit multi-country audience (comma/pipe) → eligible in each listed country.
+      // Guests get CF/browsing country via resolveInterstitialViewerScope.
+      ...(skipCountryFilter ? [] : [
+        allowedCountries.length > 0 && !allowedCountries.includes("__denied__")
+          ? sql`(
+              (
+                (
+                  ${listingsTable.boostAudienceCountry} IS NULL
+                  OR btrim(${listingsTable.boostAudienceCountry}) = ''
+                  OR upper(btrim(${listingsTable.boostAudienceCountry})) = 'ALL'
+                )
+                AND lower(${listingsTable.country}) in (${sql.join(
+                  allowedCountries.map(c => sql`${c.toLowerCase()}`),
+                  sql`, `,
+                )})
+              )
+              OR (
+                ${listingsTable.boostAudienceCountry} IS NOT NULL
+                AND btrim(${listingsTable.boostAudienceCountry}) <> ''
+                AND upper(btrim(${listingsTable.boostAudienceCountry})) <> 'ALL'
+                AND (
+                  lower(btrim(${listingsTable.boostAudienceCountry})) in (${sql.join(
+                    allowedCountries.map(c => sql`${c.toLowerCase()}`),
+                    sql`, `,
+                  )})
+                  OR EXISTS (
+                    SELECT 1
+                    FROM unnest(regexp_split_to_array(${listingsTable.boostAudienceCountry}, '[,|]')) AS audience_part
+                    WHERE lower(btrim(audience_part)) = 'all'
+                       OR lower(btrim(audience_part)) in (${sql.join(
+                         allowedCountries.map(c => sql`${c.toLowerCase()}`),
+                         sql`, `,
+                       )})
+                  )
+                )
+              )
+            )`
+          : sql`false`,
+      ]),
+      // Regional geo: only for Custom campaigns. Advantage+ / null type = country-wide
+      // (also heals older merchant campaigns that were wrongly pinned to seller home).
+      // Department + commune (city) targeting is respected when configured.
+      ...(applyRegionalFilters && viewerState
+        ? [sql`(
+            coalesce(${listingsTable.boostAudienceType}, 'advantage_plus') <> 'custom'
+            OR ${listingsTable.boostAudienceState} IS NULL
+            OR lower(btrim(${listingsTable.boostAudienceState})) = ${viewerState.toLowerCase()}
+            OR EXISTS (
+              SELECT 1
+              FROM unnest(string_to_array(${listingsTable.boostAudienceState}, ',')) AS s(val)
+              WHERE lower(btrim(s.val)) = ${viewerState.toLowerCase()}
             )
-          )`
-        : sql`false`,
-    ]),
-    // State isolation: support single department OR comma-separated multi-select.
-    // If viewer has no state, we cannot confirm mismatch → show all.
-    ...(!adminBypassGeo && !isAdmin && viewerState
-      ? [or(
-          isNull(listingsTable.boostAudienceState),
-          sql`lower(${listingsTable.boostAudienceState}) = ${viewerState.toLowerCase()}`,
-          sql`EXISTS (
-            SELECT 1
-            FROM unnest(string_to_array(${listingsTable.boostAudienceState}, ',')) AS s(val)
-            WHERE lower(trim(s.val)) = ${viewerState.toLowerCase()}
-          )`,
-        )]
-      : []),
-    // City isolation: same inclusive logic.
-    ...(!adminBypassGeo && !isAdmin && viewerCity
-      ? [or(
-          isNull(listingsTable.boostAudienceCity),
-          sql`lower(${listingsTable.boostAudienceCity}) = ${viewerCity.toLowerCase()}`,
-        )]
-      : []),
-  ];
+          )`]
+        : []),
+      ...(applyRegionalFilters && viewerCity
+        ? [sql`(
+            coalesce(${listingsTable.boostAudienceType}, 'advantage_plus') <> 'custom'
+            OR (
+              (lower(${listingsTable.boostAudienceCity}) = ${viewerCity.toLowerCase()})
+              OR EXISTS (
+                SELECT 1 FROM unnest(${listingsTable.boostAudienceCities}) AS target_city
+                WHERE lower(target_city) = ${viewerCity.toLowerCase()}
+              )
+              OR (
+                ${listingsTable.boostAudienceCity} IS NULL
+                AND COALESCE(cardinality(${listingsTable.boostAudienceCities}), 0) = 0
+              )
+            )
+          )`]
+        : []),
+    ];
+  };
 
-  const [row] = await db
-    .select({
-      id: listingsTable.id,
-      title: listingsTable.title,
-      price: listingsTable.price,
-      images: listingsTable.images,
-      boostVideoUrl: listingsTable.boostVideoUrl,
-      boostImageUrl: listingsTable.boostImageUrl,
-      boostAdFormat: listingsTable.boostAdFormat,
-      sellerId: listingsTable.sellerId,
-      sellerName: usersTable.name,
-      boostCtaType: listingsTable.boostCtaType,
-      boostExternalLink: listingsTable.boostExternalLink,
-      boostWhatsappNumber: listingsTable.boostWhatsappNumber,
-      boostCtaText: listingsTable.boostCtaText,
-      status: listingsTable.status,
-    })
-    .from(listingsTable)
-    .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
-    .where(and(...conds))
-    .orderBy(sql`random()`)
-    .limit(1);
+  // Soft-rank only when the client sent a non-empty exclude history.
+  // Ordering by a bare SQL literal `0` + random() throws in production
+  // (HTTP 500) and silently kills first-visit automatic boosts.
+  const rotationPreferSql =
+    excludeIds.length > 0
+      ? sql`CASE ${sql.join(
+          excludeIds.map(
+            (id, i) =>
+              // excludeIds are most-recent-first: newest gets the worst rank.
+              sql`WHEN ${listingsTable.id} = ${id} THEN ${excludeIds.length - i}`,
+          ),
+          sql` `,
+        )} ELSE 0 END`
+      : null;
 
-  if (!row) {
+  try {
+    const pickRow = async (extraExclude: number[] = []) => {
+      // One eligibility pool for Sellers, Admins, and Super Admins. Soft-rank by
+      // viewer rotation history (unseen → least recently shown), then random.
+      const base = db
+        .select({
+          id: listingsTable.id,
+          title: listingsTable.title,
+          price: listingsTable.price,
+          images: listingsTable.images,
+          boostVideoUrl: listingsTable.boostVideoUrl,
+          boostImageUrl: listingsTable.boostImageUrl,
+          boostAdFormat: listingsTable.boostAdFormat,
+          boostAudienceType: listingsTable.boostAudienceType,
+          sellerId: listingsTable.sellerId,
+          sellerName: usersTable.name,
+          boostCtaType: listingsTable.boostCtaType,
+          boostExternalLink: listingsTable.boostExternalLink,
+          boostWhatsappNumber: listingsTable.boostWhatsappNumber,
+          boostCtaText: listingsTable.boostCtaText,
+          status: listingsTable.status,
+        })
+        .from(listingsTable)
+        .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
+        .where(and(...buildConds(extraExclude)));
+
+      const ordered = rotationPreferSql
+        ? base.orderBy(rotationPreferSql, sql`random()`)
+        : base.orderBy(sql`random()`);
+
+      const [row] = await ordered.limit(1);
+      return row ?? null;
+    };
+
+    let row = await pickRow();
+    if (!row) {
+      res.set("Cache-Control", "no-store");
+      res.json({ listing: null });
+      return;
+    }
+
     res.set("Cache-Control", "no-store");
-    res.json({ listing: null });
-    return;
-  }
+    let resolvedBoostVideoUrl = await resolveBoostVideoUrl(row.boostVideoUrl);
+    let adFormat =
+      row.boostAdFormat === "image" || (!resolvedBoostVideoUrl && row.boostImageUrl)
+        ? "image"
+        : "video";
 
-  res.set("Cache-Control", "no-store");
-  const resolvedBoostVideoUrl = await resolveBoostVideoUrl(row.boostVideoUrl);
-  const adFormat =
-    row.boostAdFormat === "image" || (!resolvedBoostVideoUrl && row.boostImageUrl)
-      ? "image"
-      : "video";
-  // Image-only ads still need a video URL field for older clients — leave null.
-  if (adFormat === "video" && !resolvedBoostVideoUrl) {
-    res.json({ listing: null });
-    return;
+    // Creative URL dead → try one more eligible ad instead of returning empty.
+    if (adFormat === "video" && !resolvedBoostVideoUrl) {
+      const retry = await pickRow([row.id]);
+      if (!retry) {
+        res.json({ listing: null });
+        return;
+      }
+      row = retry;
+      resolvedBoostVideoUrl = await resolveBoostVideoUrl(row.boostVideoUrl);
+      adFormat =
+        row.boostAdFormat === "image" || (!resolvedBoostVideoUrl && row.boostImageUrl)
+          ? "image"
+          : "video";
+      if (adFormat === "video" && !resolvedBoostVideoUrl) {
+        res.json({ listing: null });
+        return;
+      }
+    }
+
+    res.json({
+      listing: {
+        id: row.id,
+        title: row.title,
+        price: row.price,
+        thumbnail: row.boostImageUrl || row.images?.[0] || null,
+        boostVideoUrl: resolvedBoostVideoUrl,
+        boostImageUrl: row.boostImageUrl ?? null,
+        adFormat,
+        sellerName: row.sellerName,
+        sellerId: row.sellerId,
+        boostCtaType: row.boostCtaType ?? null,
+        boostExternalLink: row.boostExternalLink ?? null,
+        boostWhatsappNumber: row.boostWhatsappNumber ?? null,
+        boostCtaText: row.boostCtaText ?? null,
+        status: row.status,
+        isVideoOnly: row.status === "hidden",
+      },
+    });
+  } catch (err) {
+    // Soft-fail: never 500 the interstitial path — Layout silently drops !ok.
+    req.log?.error?.({ err }, "boost/random-video failed");
+    logger.error({ err }, "boost/random-video failed");
+    res.set("Cache-Control", "no-store");
+    res.status(200).json({ listing: null });
   }
-  res.json({
-    listing: {
-      id: row.id,
-      title: row.title,
-      price: row.price,
-      thumbnail: row.boostImageUrl || row.images?.[0] || null,
-      boostVideoUrl: resolvedBoostVideoUrl,
-      boostImageUrl: row.boostImageUrl ?? null,
-      adFormat,
-      sellerName: row.sellerName,
-      sellerId: row.sellerId,
-      boostCtaType: row.boostCtaType ?? null,
-      boostExternalLink: row.boostExternalLink ?? null,
-      boostWhatsappNumber: row.boostWhatsappNumber ?? null,
-      boostCtaText: row.boostCtaText ?? null,
-      // Video-only boosts use a ghost listing (status=hidden) so the overlay
-      // knows not to show a "View Product" CTA that leads to a dead page.
-      status: row.status,
-      isVideoOnly: row.status === "hidden",
-    },
-  });
 });
 
 /**

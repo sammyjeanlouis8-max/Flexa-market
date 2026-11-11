@@ -1,7 +1,8 @@
-import { useRoute, useLocation, Link } from "wouter";
+import { useEffect, useState } from "react";
+import { useRoute, useLocation, Link, useSearch } from "wouter";
 import { useSEO } from "@/hooks/useSEO";
 import { useTranslation } from "react-i18next";
-import { Star, CheckCircle, MapPin, Package, UserPlus, UserMinus, Pencil, Globe, Calendar, ShoppingBag, Clock } from "lucide-react";
+import { Star, CheckCircle, MapPin, Package, UserPlus, UserMinus, Pencil, Globe, Calendar, ShoppingBag, Clock, ArrowLeft, Film } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,8 @@ import ListingCard from "@/components/ListingCard";
 import { AdminBlockButton } from "@/components/AdminBlockModal";
 
 import { COUNTRY_FLAGS } from "@/lib/countries";
+
+const VIDEO_PROFILE_RETURN_KEY = "flexa_video_profile_return";
 
 // ── Pickup schedule display ───────────────────────────────────────────────────
 type PickupSlot = { day: number; openTime: string; closeTime: string };
@@ -65,8 +68,26 @@ export default function ProfilePage() {
   const id = parseInt(params?.id ?? "0", 10);
   const { user: me, token } = useAuth();
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const [fromVideoProfile, setFromVideoProfile] = useState(false);
+
+  useEffect(() => {
+    const qs = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+    if (qs.get("from") === "video-profile") {
+      setFromVideoProfile(true);
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(VIDEO_PROFILE_RETURN_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { userId?: number };
+      if (parsed.userId === id) setFromVideoProfile(true);
+    } catch {
+      /* ok */
+    }
+  }, [search, id]);
 
   const { data: profile, isLoading } = useGetUser(id, { query: { enabled: !!id, queryKey: getGetUserQueryKey(id) } });
   const { data: listings } = useGetUserListings(id, { query: { enabled: !!id, queryKey: ["user-listings", id] } });
@@ -107,8 +128,23 @@ export default function ProfilePage() {
     }
   };
 
+  const returnToVideoProfile = () => {
+    setLocation(`/videos/profile/${id}`);
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      {fromVideoProfile && (
+        <button
+          type="button"
+          onClick={returnToVideoProfile}
+          className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-[#0B1F3A] shadow-sm"
+          data-testid="profile-back-to-video-profile"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t("videoProfile.backToVideoProfile", { defaultValue: "Back to video profile" })}
+        </button>
+      )}
       {/* Header */}
       <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 mb-4 shadow-sm dark:border-border dark:bg-card">
         <div className="flex items-start gap-3 sm:gap-4">
@@ -174,9 +210,20 @@ export default function ProfilePage() {
             {/* Action buttons — below stats, never competes with name for width */}
             <div className="flex gap-2 mt-3 flex-wrap">
               {isMe ? (
-                <Button variant="outline" size="sm" onClick={() => setLocation("/profile/edit")} data-testid="button-edit-profile">
-                  <Pencil className="h-4 w-4 mr-1" /> {t("buttons.edit")}
-                </Button>
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setLocation("/profile/edit")} data-testid="button-edit-profile">
+                    <Pencil className="h-4 w-4 mr-1" /> {t("buttons.edit")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setLocation(`/videos/profile/${id}`)}
+                    data-testid="button-video-profile-link"
+                  >
+                    <Film className="h-4 w-4 mr-1" />
+                    {t("videoProfile.openPromoProfile", { defaultValue: "Promotional Videos profile" })}
+                  </Button>
+                </>
               ) : (
                 <>
                   <Button variant={p.isFollowing ? "outline" : "default"} size="sm" onClick={toggleFollow} disabled={follow.isPending || unfollow.isPending} data-testid="button-follow">

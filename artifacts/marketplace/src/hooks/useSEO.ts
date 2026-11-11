@@ -1,9 +1,14 @@
 import { useEffect } from "react";
+import {
+  SEO_BASE_URL,
+  SEO_BRAND_NAME,
+  SEO_HOME_DESCRIPTION_EN,
+  SEO_HOME_TITLE_EN,
+} from "@/lib/seoBrand";
 
-const BASE_TITLE = "FLEXA MARKET";
-const BASE_URL = "https://flexamarket.com";
-const DEFAULT_DESC =
-  "FlexaMarket — premye marketplace achte & vann ann Ayiti. Jwenn bon pri sou elektwonik, rad, machin, meuble ak plis. Sekirize, lokal, fasil.";
+const BASE_TITLE = SEO_BRAND_NAME;
+const BASE_URL = SEO_BASE_URL;
+const DEFAULT_DESC = SEO_HOME_DESCRIPTION_EN;
 const DEFAULT_IMAGE = `${BASE_URL}/opengraph.jpg`;
 
 interface SEOOptions {
@@ -14,6 +19,11 @@ interface SEOOptions {
   type?: "website" | "article" | "product";
   noindex?: boolean;
   jsonLd?: object | null;
+  /**
+   * When true, `title` is used as document.title as-is (already includes brand).
+   * When false/omitted, non-empty titles become `${title} — Flexa Market`.
+   */
+  absoluteTitle?: boolean;
 }
 
 function setMeta(name: string, content: string, attr: "name" | "property" = "name") {
@@ -36,12 +46,27 @@ function setLink(rel: string, href: string) {
   el.href = href;
 }
 
-export function useSEO({ title, description, image, path, type = "website", noindex = false, jsonLd }: SEOOptions = {}) {
+export function useSEO({
+  title,
+  description,
+  image,
+  path,
+  type = "website",
+  noindex = false,
+  jsonLd,
+  absoluteTitle = false,
+}: SEOOptions = {}) {
   useEffect(() => {
-    const fullTitle = title ? `${title} — ${BASE_TITLE}` : `${BASE_TITLE} — Achte & Vann ann Ayiti`;
+    const fullTitle = !title
+      ? SEO_HOME_TITLE_EN
+      : absoluteTitle
+        ? title
+        : title.toLowerCase().includes("flexa market")
+          ? title
+          : `${title} — ${BASE_TITLE}`;
     const desc = description ?? DEFAULT_DESC;
     const img = image ?? DEFAULT_IMAGE;
-    const canonical = path ? `${BASE_URL}${path}` : BASE_URL;
+    const canonical = path ? `${BASE_URL}${path === "/" ? "/" : path}` : BASE_URL;
 
     document.title = fullTitle;
 
@@ -75,7 +100,7 @@ export function useSEO({ title, description, image, path, type = "website", noin
     } else {
       existing?.remove();
     }
-  }, [title, description, image, path, type, noindex, jsonLd]);
+  }, [title, description, image, path, type, noindex, jsonLd, absoluteTitle]);
 }
 
 export default useSEO;

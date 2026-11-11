@@ -67,9 +67,12 @@ export function AdminBlockModal({
     setLoading(true);
     try {
       if (banType === "full_ban") {
-        await apiCall(`/api/admin/users/${targetUserId}/ban`);
+        await apiCall(`/api/admin/users/${targetUserId}/ban`, { reason });
       } else {
-        const durationDays = duration === "0" ? null : parseInt(duration, 10);
+        const durationDays = parseInt(duration, 10);
+        if (!Number.isFinite(durationDays) || durationDays <= 0) {
+          throw new Error("Suspension requires a positive number of days");
+        }
         await apiCall(`/api/admin/users/${targetUserId}/restrict`, { reason, durationDays });
       }
       toast({ title: "Itilizatè a bloke avèk siksè." });

@@ -58,7 +58,13 @@ export function pathFromNotificationData(
   if (screen === "notifications" || screen === "system" || screen === "admin_broadcast") {
     return "/notifications";
   }
-  if (screen === "videos" || screen === "promo" || screen === "promotional") return "/videos";
+  if (screen === "videos" || screen === "promo" || screen === "promotional") {
+    return "/videos";
+  }
+  if (screen === "video_profile" || screen === "videoprofile") {
+    // Deep-link identity matches marketplace SPA video profile surface.
+    return "/videos";
+  }
   if (screen === "boost" || screen === "boosts" || screen === "my-boosts") return "/my-boosts";
   if (screen === "boost-create" || screen === "campaign") return "/boost";
   if (screen === "chatbot") return "/chatbot";
@@ -119,6 +125,8 @@ export function pathFromNotificationData(
       if (/\/saved|\/favorites/.test(path)) return "/favorites";
       if (/\/notifications/.test(path)) return "/notifications";
       if (/\/chatbot/.test(path)) return "/chatbot";
+      // Same /videos/profile/:id identity as marketplace SPA (Expo videos is placeholder).
+      if (/\/videos\/profile\/\d+/.test(path)) return "/videos";
       if (/\/videos/.test(path)) return "/videos";
       if (/\/boost|\/my-boosts/.test(path)) return "/my-boosts";
       if (/\/tv\b/.test(path)) return "/tv";

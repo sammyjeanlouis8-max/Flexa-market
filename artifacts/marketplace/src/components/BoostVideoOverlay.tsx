@@ -17,34 +17,34 @@ import {
   openWhatsAppWithPromoVideo,
   storePromoChatDraft,
 } from "@/lib/promoVideoContact";
+import {
+  resolveBoostAdCtaLabel,
+  resolveBoostAdSkipInLabel,
+  resolveBoostAdSkipLabel,
+} from "@/lib/boostAdControls";
+import {
+  clearBoostAdCooldown,
+  getBoostViewerScopeKey,
+  markBoostAdShown,
+  recordBoostPlaybackExposure,
+  shouldShowBoostAd,
+} from "@/lib/boostAdRotation";
 
 /**
  * Video Booster overlay — floating player, no dark background.
  *
- * Layout: fixed top-of-screen card (video + controls).
+ * Layout: fixed top-of-screen player with in-frame controls.
  *   - No full-screen dark overlay: page content visible below the player.
  *   - Video plays at natural aspect ratio (object-contain).
  *   - Sound locked ON; browser-forced mute unmutes on first user interaction.
  *   - No pause: video plays uninterrupted until skip or end.
- *   - Skip/countdown always visible BELOW the video.
+ *   - Message + Skip/countdown anchored INSIDE the video frame (no bottom banner).
  */
 
 const SKIP_AFTER_SEC = 10;
-const AD_INTERVAL_MS = 5 * 60_000;
-const STORAGE_KEY    = "flexamarket_boost_last_shown";
 
-// ─── Public helpers ───────────────────────────────────────────────────────────
-export function shouldShowBoostAd(): boolean {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return true;
-    return Date.now() - Number(raw) >= AD_INTERVAL_MS;
-  } catch { return true; }
-}
-
-export function markBoostAdShown(): void {
-  try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch { /* private */ }
-}
+// ─── Public helpers (re-exported from boostAdRotation for Layout / tests) ─────
+export { shouldShowBoostAd, markBoostAdShown, clearBoostAdCooldown };
 
 // ─── URL helper ──────────────────────────────────────────────────────────────
 function toFetchableUrl(stored: string): string {
@@ -102,14 +102,24 @@ function trackBoostEvent(listingId: number, type: "view" | "click" | "skip" | "v
 interface Props {
   listing: BoostListing;
   onClose: () => void;
+  /** Signed-in account id; omit/null scopes rotation history to a stable guest id. */
+  viewerUserId?: number | null;
+  /** Current browsing / preview country — history is persisted per market. */
+  browsingCountry?: string | null;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
-export default function BoostVideoOverlay({ listing, onClose }: Props) {
+export default function BoostVideoOverlay({
+  listing,
+  onClose,
+  viewerUserId = null,
+  browsingCountry = null,
+}: Props) {
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const skipHandledRef = useRef(false);
+  const exposureRecordedRef = useRef(false);
   const isImageAd =
     listing.adFormat === "image" ||
     (!listing.boostVideoUrl && !!listing.boostImageUrl);
@@ -123,9 +133,21 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const [videoPct, setVideoPct] = useState(0); // 0–100 for the progress bar
   const [videoFailed, setVideoFailed] = useState(false);
 
-  useEffect(() => {
+  const recordOnScreenExposure = useCallback(() => {
+    if (exposureRecordedRef.current) return;
+    exposureRecordedRef.current = true;
+    const scopeKey = getBoostViewerScopeKey(viewerUserId, browsingCountry);
+    // Persist rotation before any navigation / force-close can wipe in-memory state.
+    recordBoostPlaybackExposure(scopeKey, listing.id);
     trackBoostEvent(listing.id, isImageAd ? "view" : "video_view");
-  }, [listing.id, isImageAd]);
+  }, [viewerUserId, browsingCountry, listing.id, isImageAd]);
+  const recordOnScreenExposureRef = useRef(recordOnScreenExposure);
+  recordOnScreenExposureRef.current = recordOnScreenExposure;
+
+  // Image creatives are on-screen at mount — that counts as delivery exposure.
+  useEffect(() => {
+    if (isImageAd) recordOnScreenExposureRef.current();
+  }, [isImageAd]);
 
   // ── Video progress bar ────────────────────────────────────────────────────
   useEffect(() => {
@@ -191,6 +213,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
       try {
         await vid.play();
         if (cancelled) return;
+        // Playback actually started on screen — persist rotation + frequency.
+        recordOnScreenExposureRef.current();
         if (withSound) {
           setSoundLocked(false);
           setAudioUnlocked(true);
@@ -372,112 +396,195 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     onClose();
   }, [listing, onClose, setLocation, isVideoOnly]);
 
+  const ctaLabel = resolveBoostAdCtaLabel({
+    ctaType,
+    customText: listing.boostCtaText,
+    t,
+  });
+  const skipLabel = resolveBoostAdSkipLabel(t);
+  const skipInLabel = resolveBoostAdSkipInLabel(t, countdown);
+  const showInFrameCta = hasCta && ctaType !== "none";
+
   // ── Render ────────────────────────────────────────────────────────────────
-  // Split layout: video pinned to TOP, controls bar pinned to BOTTOM.
-  // Marketplace content stays visible in the middle.
-  // Escape app-shell's isolated stacking context so both fixed layers stay
-  // above body-level purchase bars and outside the shell's overflow clipping.
+  // Single fixed player at TOP. Message + Skip live INSIDE the video frame so
+  // they scroll with the ad and never cover marketplace content below.
+  // Escape app-shell's isolated stacking context so the player stays above
+  // body-level bars and outside the shell's overflow clipping.
   return createPortal(
-    <>
-      {/* ── VIDEO — fixed top of screen ─────────────────────────────────── */}
+    <div
+      className="fixed top-0 left-0 right-0 z-[100]"
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("boostAd.sponsored")}
+      data-testid="boost-video-overlay"
+    >
       <div
-        className="fixed top-0 left-0 right-0 z-[100]"
-        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("boostAd.sponsored")}
-        data-testid="boost-video-overlay"
+        className="relative w-full bg-black"
+        style={{ maxHeight: "55vh", overflow: "hidden" }}
+        data-testid="boost-ad-player-frame"
       >
-        <div className="relative w-full bg-black" style={{ maxHeight: "55vh", overflow: "hidden" }}>
-          {isImageAd ? (
-            <img
-              src={toFetchableUrl(listing.boostImageUrl || listing.thumbnail || "")}
-              alt={listing.title}
-              className="w-full"
-              style={{ display: "block", maxHeight: "55vh", objectFit: "contain" }}
-              data-testid="image-boost-ad"
-            />
-          ) : (
-            <>
-              {listing.thumbnail && (
-                <img
-                  src={listing.thumbnail}
-                  alt=""
-                  aria-hidden="true"
-                  className="absolute inset-0 h-full w-full object-contain"
-                />
-              )}
-              <video
-                ref={videoRef}
-                src={listing.boostVideoUrl ? toFetchableUrl(listing.boostVideoUrl) : undefined}
-                autoPlay
-                muted={muted}
-                playsInline
-                preload="auto"
-                loop={false}
-                onEnded={onClose}
-                onLoadedData={() => setVideoFailed(false)}
-                onError={() => setVideoFailed(true)}
-                className="w-full"
-                style={{
-                  display: "block",
-                  maxHeight: "55vh",
-                  objectFit: "contain",
-                  pointerEvents: "none",
-                  willChange: "transform",
-                }}
-                data-testid="video-boost-ad"
+        {isImageAd ? (
+          <img
+            src={toFetchableUrl(listing.boostImageUrl || listing.thumbnail || "")}
+            alt={listing.title}
+            className="w-full"
+            style={{ display: "block", maxHeight: "55vh", objectFit: "contain" }}
+            data-testid="image-boost-ad"
+          />
+        ) : (
+          <>
+            {listing.thumbnail && (
+              <img
+                src={listing.thumbnail}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 h-full w-full object-contain"
               />
-              {videoFailed && (
+            )}
+            <video
+              ref={videoRef}
+              src={listing.boostVideoUrl ? toFetchableUrl(listing.boostVideoUrl) : undefined}
+              autoPlay
+              muted={muted}
+              playsInline
+              preload="auto"
+              loop={false}
+              onEnded={onClose}
+              onLoadedData={() => setVideoFailed(false)}
+              onError={() => setVideoFailed(true)}
+              className="w-full"
+              style={{
+                display: "block",
+                maxHeight: "55vh",
+                objectFit: "contain",
+                pointerEvents: "none",
+                willChange: "transform",
+              }}
+              data-testid="video-boost-ad"
+            />
+            {videoFailed && (
+              <button
+                type="button"
+                onClick={retryVideo}
+                onTouchEnd={retryVideo}
+                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/65 text-white"
+                aria-label={t("boostAd.retryVideo", "Eseye videyo a ankò")}
+              >
+                <span className="rounded-full border border-white/70 px-4 py-2 text-sm font-semibold">
+                  {t("boostAd.retryVideo", "Eseye videyo a ankò")}
+                </span>
+              </button>
+            )}
+          </>
+        )}
+
+        {/* SPONSORED badge — overlaid top-left on the video */}
+        <div className="absolute top-3 left-3 z-10 flex items-center gap-2 pointer-events-none max-w-[70%]">
+          <span className="bg-yellow-400 text-black text-xs font-bold uppercase px-2 py-1 rounded">
+            {t("boostAd.sponsored")}
+          </span>
+          {listing.sellerName && (
+            <span
+              className="text-white text-xs font-medium truncate"
+              style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
+            >
+              {t("boostAd.sponsoredBy", { name: listing.sellerName })}
+            </span>
+          )}
+        </div>
+
+        {/* Mute / Unmute */}
+        {!isImageAd && (
+          <button
+            type="button"
+            onClick={toggleMute}
+            onTouchEnd={toggleMute}
+            className="absolute top-3 right-3 z-10 bg-black/60 text-white rounded-full px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 max-w-[42%]"
+            data-testid="button-boost-mute"
+            aria-label={muted ? t("boostAd.unmute", "Unmute") : t("boostAd.mute", "Mute")}
+          >
+            <span aria-hidden>{muted ? "🔇" : "🔊"}</span>
+            <span className="truncate">
+              {muted ? t("boostAd.unmute", "Unmute") : t("boostAd.mute", "Mute")}
+            </span>
+          </button>
+        )}
+
+        {/* Sound-locked hint — center of video, disappears on first touch */}
+        {!isImageAd && soundLocked && (
+          <div
+            className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
+            aria-live="polite"
+          >
+            <div
+              className="flex items-center gap-2 bg-black/70 rounded-full px-4 py-2"
+              style={{ animation: "pulse 1.8s ease-in-out infinite" }}
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current">
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+              </svg>
+              <span className="text-white text-sm font-semibold">{t("tr.tapForSound")}</span>
+            </div>
+          </div>
+        )}
+
+        {/* In-frame controls — same baseline above the progress strip */}
+        <div
+          data-testid="boost-controls-bar"
+          className="absolute inset-x-0 bottom-0 z-20 pointer-events-none"
+          style={{ touchAction: "manipulation" }}
+        >
+          <div className="flex items-end justify-between gap-2 px-2.5 pb-3 pt-8 bg-gradient-to-t from-black/55 via-black/15 to-transparent">
+            {showInFrameCta ? (
+              <button
+                type="button"
+                onClick={(e) => { void handleCta(e); }}
+                onTouchEnd={(e) => { e.preventDefault(); void handleCta(e); }}
+                className="pointer-events-auto min-h-11 max-w-[58%] shrink bg-[#2563eb] hover:bg-[#1d4ed8] active:scale-[0.98] text-white font-bold text-sm sm:text-[15px] leading-tight rounded-full px-3.5 py-2.5 shadow-lg transition-all"
+                style={{ WebkitTapHighlightColor: "transparent" }}
+                data-testid="button-boost-view-listing"
+                aria-label={ctaLabel}
+              >
+                <span className="block truncate">{ctaLabel}</span>
+              </button>
+            ) : (
+              <span className="min-w-0 flex-1" aria-hidden="true" />
+            )}
+
+            {/* Skip stays in the same bottom-right slot before and after countdown */}
+            <div className="pointer-events-auto flex justify-end min-w-0 max-w-[48%] shrink-0">
+              {skipReady ? (
                 <button
                   type="button"
-                  onClick={retryVideo}
-                  onTouchEnd={retryVideo}
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/65 text-white"
-                  aria-label={t("boostAd.retryVideo", "Eseye videyo a ankò")}
+                  onClick={handleSkip}
+                  onPointerUp={handleSkip}
+                  onTouchEnd={handleSkip}
+                  className="min-h-11 bg-white text-black rounded-full px-3.5 py-2.5 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1.5 shadow-lg transition-all max-w-full"
+                  style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
+                  data-testid="button-boost-skip"
+                  aria-label={skipLabel}
                 >
-                  <span className="rounded-full border border-white/70 px-4 py-2 text-sm font-semibold">
-                    {t("boostAd.retryVideo", "Eseye videyo a ankò")}
-                  </span>
+                  <span className="truncate">{skipLabel}</span>
+                  <X className="h-4 w-4 shrink-0" aria-hidden="true" />
                 </button>
+              ) : (
+                <div
+                  className="min-h-11 bg-white/20 backdrop-blur-[2px] text-white rounded-full px-3.5 py-2.5 text-sm font-bold flex items-center justify-center shadow-md max-w-full"
+                  data-testid="text-boost-skip-countdown"
+                  aria-live="polite"
+                  aria-label={skipInLabel}
+                >
+                  <span className="truncate">{skipInLabel}</span>
+                </div>
               )}
-            </>
-          )}
-
-          {/* SPONSORED badge — overlaid top-left on the video */}
-          <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
-            <span className="bg-yellow-400 text-black text-xs font-bold uppercase px-2 py-1 rounded">
-              {t("boostAd.sponsored")}
-            </span>
-            {listing.sellerName && (
-              <span
-                className="text-white text-xs font-medium"
-                style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
-              >
-                {t("boostAd.sponsoredBy", { name: listing.sellerName })}
-              </span>
-            )}
+            </div>
           </div>
 
-          {/* Mute / Unmute — Booster Pro requirement */}
-          {!isImageAd && (
-            <button
-              type="button"
-              onClick={toggleMute}
-              onTouchEnd={toggleMute}
-              className="absolute top-3 right-3 z-10 bg-black/60 text-white rounded-full px-3 py-1.5 text-xs font-bold flex items-center gap-1.5"
-              data-testid="button-boost-mute"
-              aria-label={muted ? t("boostAd.unmute", "Unmute") : t("boostAd.mute", "Mute")}
-            >
-              {muted ? "🔇" : "🔊"}
-              {muted ? t("boostAd.unmute", "Unmute") : t("boostAd.mute", "Mute")}
-            </button>
-          )}
-
-          {/* ── Video progress bar — thin strip at the very bottom of the video ── */}
+          {/* Progress strip — below the control baseline */}
           {!isImageAd && (
             <div
-              className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 pointer-events-none"
+              className="h-1 bg-white/20 pointer-events-none"
               aria-hidden="true"
             >
               <div
@@ -486,116 +593,9 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
               />
             </div>
           )}
-
-          {/* Sound-locked hint — center of video, disappears on first touch */}
-          {!isImageAd && soundLocked && (
-            <div
-              className="absolute inset-0 flex items-center justify-center pointer-events-none"
-              aria-live="polite"
-            >
-              <div
-                className="flex items-center gap-2 bg-black/70 rounded-full px-4 py-2"
-                style={{ animation: "pulse 1.8s ease-in-out infinite" }}
-              >
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current">
-                  <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-                </svg>
-                <span className="text-white text-sm font-semibold">{t("tr.tapForSound")}</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
-
-      {/* ── CONTROLS BAR — fixed bottom of screen ───────────────────────── */}
-      {/* CTA first, then Skip/countdown below — both pinned to bottom */}
-      <div
-        data-testid="boost-controls-bar"
-        className="fixed bottom-0 left-0 right-0 z-[100] bg-gray-900 px-4 pt-3"
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom, 12px), 12px)", touchAction: "manipulation" }}
-      >
-        {/* CTA button — hidden when advertiser chose No Button or video-only with no action */}
-        {hasCta && ctaType !== "none" && (
-          <button
-            type="button"
-            onClick={(e) => { void handleCta(e); }}
-            onTouchEnd={(e) => { e.preventDefault(); void handleCta(e); }}
-            className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between gap-3 transition-all"
-            data-testid="button-boost-view-listing"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              {listing.thumbnail && (
-                <img
-                  src={listing.thumbnail}
-                  alt=""
-                  loading="eager"
-                  className="h-10 w-10 rounded object-cover flex-shrink-0"
-                />
-              )}
-              <div className="text-left min-w-0">
-                <div className="text-sm font-bold truncate">{listing.title}</div>
-                {listing.price > 0 && (
-                  <div className="text-xs opacity-90">${listing.price.toFixed(2)}</div>
-                )}
-              </div>
-            </div>
-            <span className="text-sm whitespace-nowrap shrink-0">
-              {listing.boostCtaText
-                ? <>{listing.boostCtaText} →</>
-                : listing.boostCtaType === "link"
-                  ? <>{t("boostAd.visitLink")} →</>
-                  : listing.boostCtaType === "whatsapp"
-                    ? <>{t("boostAd.chatWhatsApp")} →</>
-                    : listing.boostCtaType === "message"
-                      ? <>{t("booster.cta.message", { defaultValue: "Message on Flexa" })} →</>
-                      : listing.boostCtaType === "buy_now"
-                        ? <>{t("buttons.buyNow", { defaultValue: "Buy Now" })} →</>
-                        : <>{t("boostAd.viewListing")} →</>}
-            </span>
-          </button>
-        )}
-
-        {/* Skip / countdown — right-aligned, below CTA */}
-        <div className="flex items-center justify-end mt-3 mb-1">
-          {skipReady ? (
-            <button
-              type="button"
-              onClick={handleSkip}
-              onPointerUp={handleSkip}
-              onTouchEnd={handleSkip}
-              className="relative z-10 bg-white text-black rounded-full px-5 py-2 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1.5 transition-all"
-              style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
-              data-testid="button-boost-skip"
-            >
-              {t("boostAd.skipAd", { defaultValue: t("boostAd.skip") })} <X className="h-4 w-4" />
-            </button>
-          ) : (
-            <div
-              className="relative bg-white/20 rounded-full px-3 h-11 flex items-center justify-center gap-2"
-              data-testid="text-boost-skip-countdown"
-              aria-label={t("boostAd.skipIn", { seconds: countdown })}
-            >
-              <svg className="absolute left-1 w-9 h-9 -rotate-90" viewBox="0 0 44 44">
-                <circle cx="22" cy="22" r="19" fill="none" stroke="white" strokeOpacity="0.25" strokeWidth="2.5" />
-                <circle
-                  cx="22" cy="22" r="19"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="2.5"
-                  strokeDasharray={`${2 * Math.PI * 19}`}
-                  strokeDashoffset={`${2 * Math.PI * 19 * (1 - countdown / SKIP_AFTER_SEC)}`}
-                  strokeLinecap="round"
-                  style={{ transition: "stroke-dashoffset 1s linear" }}
-                />
-              </svg>
-              <span className="text-white text-xs font-bold relative z-10 pl-8 pr-1">
-                {t("boostAd.skipInLabel", { seconds: countdown, defaultValue: `Skip in ${countdown}s` })}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    </>,
-    document.body
+    </div>,
+    document.body,
   );
 }

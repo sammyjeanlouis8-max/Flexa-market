@@ -63,6 +63,8 @@ const OrderDetail        = lazy(() => import("@/pages/OrderDetail"));
 const OrderDelivered     = lazy(() => import("@/pages/OrderDelivered"));
 const OrderLabel         = lazy(() => import("@/pages/OrderLabel"));
 const Admin              = lazy(() => import("@/pages/Admin"));
+const AdminUsers         = lazy(() => import("@/pages/AdminUsers"));
+const AdminMore          = lazy(() => import("@/pages/AdminMore"));
 const AdminLiveSupport   = lazy(() => import("@/pages/AdminLiveSupport"));
 const Settings           = lazy(() => import("@/pages/Settings"));
 const SettingsSecurity   = lazy(() => import("@/pages/SettingsSecurity"));
@@ -96,6 +98,7 @@ const SubscriptionPage   = lazy(() => import("@/pages/Subscription"));
 const VideoPost          = lazy(() => import("@/pages/VideoPost"));
 const VideoFeed          = lazy(() => import("@/pages/VideoFeed"));
 const VideoDiscover      = lazy(() => import("@/pages/VideoDiscover"));
+const VideoProfile       = lazy(() => import("@/pages/VideoProfile"));
 const VideoFavorites     = lazy(() => import("@/pages/VideoFavorites"));
 const MyBoosts           = lazy(() => import("@/pages/MyBoosts"));
 const BoosterMyBoosts    = lazy(() => import("@/pages/booster/BoosterMyBoosts"));
@@ -244,11 +247,13 @@ function LayoutRoutes() {
           <Route path="/dev/flexa-control-preview" component={FlexaControlPreview} />
           <Route path="/dev/checkout-redesign-preview" component={CheckoutRedesignPreview} />
           <Route path="/search" component={Search} />
+          <Route path="/categories/:slug" component={Search} />
           <Route path="/listings/create">
             {() => { setLocation("/sell"); return null; }}
           </Route>
           <Route path="/videos/watch" component={VideoFeed} />
           <Route path="/videos/favorites" component={VideoFavorites} />
+          <Route path="/videos/profile/:id" component={VideoProfile} />
           <Route path="/videos" component={VideoDiscover} />
           <Route path="/booster/create" component={BoosterCreate} />
           <Route path="/booster/analytics">
@@ -288,7 +293,9 @@ function LayoutRoutes() {
           {/* Flexa Control dedicated section routes (same Admin shell, path-driven panels) */}
           <Route path="/admin/operations" component={Admin} />
           <Route path="/admin/appeals" component={Admin} />
-          <Route path="/admin/users" component={Admin} />
+          <Route path="/admin/more" component={AdminMore} />
+          <Route path="/admin/users/:id" component={AdminUsers} />
+          <Route path="/admin/users" component={AdminUsers} />
           <Route path="/admin/team" component={Admin} />
           <Route path="/admin/support" component={Admin} />
           <Route path="/admin/live-support" component={AdminLiveSupport} />

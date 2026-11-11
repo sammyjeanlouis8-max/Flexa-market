@@ -390,37 +390,72 @@ export default function ListingDetail() {
     poor:           "https://schema.org/DamagedCondition",
   };
 
+  const listingCurrency = ((listing as any)?.currency as string | undefined) ?? "USD";
+  const listingPriceLabel = listing
+    ? (listingCurrency === "HTG"
+      ? `${Number(listing.price).toLocaleString("fr-HT")} HTG`
+      : `$${Number(listing.price).toLocaleString("en-US")} ${listingCurrency}`)
+    : "";
+  const listingPlace = listing
+    ? [listing.city || listing.location, (listing as any).country].filter(Boolean).join(", ")
+    : "";
+  const listingDescRaw = ((listing as any)?.description as string | undefined)?.trim() || "";
+  const listingMetaDescription = listing?.title
+    ? [
+        listing.title,
+        listingPriceLabel,
+        listingPlace || null,
+        listingDescRaw
+          ? listingDescRaw.replace(/\s+/g, " ").slice(0, 90)
+          : "Available on FLEXA MARKET.",
+      ].filter(Boolean).join(" — ").slice(0, 160)
+    : undefined;
+  const listingImages = Array.isArray((listing as any)?.images)
+    ? ((listing as any).images as string[]).filter(Boolean)
+    : [];
+
   useSEO({
     title: listing?.title ?? undefined,
-    description: listing?.title
-      ? `${listing.title}${listing.price ? ` — $${listing.price}` : ""}${listing.location ? ` — ${listing.location}` : ""}. Achte sekirize sou FLEXA MARKET ann Ayiti.`
-      : undefined,
-    image: (listing as any)?.images?.[0] ?? undefined,
+    description: listingMetaDescription,
+    image: listingImages[0] ?? undefined,
     path: id ? `/listings/${id}` : undefined,
     type: "product",
     jsonLd: listing ? {
       "@context": "https://schema.org",
       "@type": "Product",
       "name": listing.title,
-      "description": (listing as any).description
-        ?? `${listing.title} — disponib sou FLEXA MARKET ann Ayiti.`,
-      "image": (listing as any).images ?? [(listing as any).images?.[0]].filter(Boolean),
+      "description": listingDescRaw
+        || `${listing.title} — available on FLEXA MARKET.`,
+      "image": listingImages.length ? listingImages : undefined,
       "url": `https://flexamarket.com/listings/${listing.id}`,
+      "sku": `FM-${listing.id}`,
       "itemCondition": schemaCondition[listing.condition] ?? "https://schema.org/UsedCondition",
       "offers": {
         "@type": "Offer",
-        "priceCurrency": (listing as any).currency ?? "USD",
+        "priceCurrency": listingCurrency,
         "price": String(listing.price ?? 0),
         "availability": listing.status === "available"
           ? "https://schema.org/InStock"
           : "https://schema.org/SoldOut",
         "url": `https://flexamarket.com/listings/${listing.id}`,
         "seller": {
-          "@type": "Person",
-          "name": listing.sellerName ?? "Vandè FlexaMarket",
+          "@type": "Organization",
+          "name": listing.sellerName ?? "FLEXA MARKET seller",
         },
+        // Only include areaServed when the listing has a real geography.
+        ...((listing as any).country || listing.city || listing.location
+          ? {
+              areaServed: {
+                "@type": "Country",
+                name: (listing as any).country || listingPlace,
+              },
+            }
+          : {}),
       },
       "brand": { "@type": "Brand", "name": "FLEXA MARKET" },
+      ...((listing as any).categoryName
+        ? { category: (listing as any).categoryName }
+        : {}),
     } : null,
   });
 
@@ -1759,7 +1794,7 @@ export default function ListingDetail() {
         <Link href="/" className="hover:underline text-[#0066c0] shrink-0">{t("nav.home")}</Link>
         <span className="mx-1.5 text-muted-foreground shrink-0">›</span>
         <Link
-          href={`/search?category=${encodeURIComponent(listing.categorySlug || listing.category)}`}
+          href={`/categories/${encodeURIComponent(listing.categorySlug || listing.category)}`}
           className="hover:underline text-[#0066c0] shrink-0"
         >
           {listing.category}

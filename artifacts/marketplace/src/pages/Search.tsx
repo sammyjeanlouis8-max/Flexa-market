@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useSEO } from "@/hooks/useSEO";
 import {
+  categorySlugFromPath,
   getInitialSearchUrlState,
   SEARCH_DEFAULT_MAX_PRICE,
   useSearchUrlSync,
@@ -231,13 +232,8 @@ type VisualSearchStatus = "idle" | "analyzing" | "done" | "error";
 export default function SearchPage() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  useSEO({
-    title: "Search Listings",
-    description:
-      "Search Flexa Market listings — electronics, fashion, vehicles, furniture and more across Haiti and the Caribbean.",
-    path: "/search",
-  });
   const initialUrl = getInitialSearchUrlState();
+  const pathCategory = categorySlugFromPath();
 
   const [q, setQ] = useState(initialUrl.q);
   const [category, setCategory] = useState(initialUrl.category);
@@ -384,6 +380,14 @@ export default function SearchPage() {
     [categories, category],
   );
 
+  const categorySeoName = selectedParent?.name || category;
+  const isElectronics = pathCategory === "electronics" || category === "electronics";
+  const pageHeading = pathCategory
+    ? isElectronics
+      ? t("seo.electronicsHeading", { defaultValue: "Electronics & phones" })
+      : categorySeoName
+    : t("seo.searchHeading", { defaultValue: "Search listings" });
+
   const { data, isLoading } = useGetListings(
     {
       q: debouncedQ || undefined,
@@ -413,6 +417,24 @@ export default function SearchPage() {
       },
     },
   );
+
+  // Faceted /search is always noindex. Canonical category indexing is decided
+  // by bot SEO HTML + sitemap (empty categories → noindex / omitted).
+  useSEO({
+    title: pathCategory
+      ? isElectronics
+        ? t("seo.electronicsTitle")
+        : t("seo.categoryTitle", { name: categorySeoName })
+      : t("seo.searchTitle"),
+    description: pathCategory
+      ? isElectronics
+        ? t("seo.electronicsDescription")
+        : t("seo.categoryDescription", { name: categorySeoName })
+      : t("seo.searchDescription"),
+    path: pathCategory ? `/categories/${pathCategory}` : "/search",
+    absoluteTitle: true,
+    noindex: !pathCategory,
+  });
 
   const clearFilters = useCallback(() => {
     setQ(""); setCategory(""); setSubcategory(""); setCondition("");
@@ -683,8 +705,11 @@ export default function SearchPage() {
 
         {/* Results */}
         <div className="flex-1">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-muted-foreground">
+          <div className="mb-4">
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
+              {pageHeading}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
               {isLoading
                 ? t("search.searching")
                 : summaryCountry

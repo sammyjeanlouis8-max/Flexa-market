@@ -1,0 +1,12 @@
+export { ModeTabs } from "./components/ModeTabs";
+export { NormalMode } from "./components/NormalMode";
+export { ScientificMode } from "./components/ScientificMode";
+export { ScientificProMode } from "./components/ScientificProMode";
+export { GraphMode } from "./components/GraphMode";
+export { FormulasMode } from "./components/FormulasMode";
+export { evaluateExpression, compileFunction, math } from "./engine/evaluate";
+export { searchFormulas } from "./formulas/search";
+export { FORMULA_DATABASE, FORMULA_COUNT } from "./formulas/database";
+export { solveProblem } from "./solver/problemSolver";
+export { analyzeExpression } from "./graph/analyze";
+export type { CalculatorMode, FormulaRecord, HistoryEntry } from "./types";

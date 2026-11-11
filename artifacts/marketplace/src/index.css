@@ -164,6 +164,9 @@ html.video-feed-immersive #root {
   box-sizing: border-box;
   box-shadow: none !important;
   z-index: 70;
+  /* Paint through the home-indicator zone so a white page strip cannot show
+     under the tab row when padding-bottom uses the 34px safe-area floor. */
+  background-clip: border-box;
 }
 .promo-videos-bottom-nav[data-watch-transparent="false"] {
   background-color: #000 !important;

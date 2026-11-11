@@ -35,6 +35,7 @@ const GENDER_OPTIONS = [
 
 const schema = z.object({
   name: z.string().min(2, "Need at least 2 characters"),
+  phone: z.string().optional(),
   location: z.string().optional(),
   bio: z.string().max(200, "Keep it under 200 characters").optional(),
   avatar: z.string().optional(),
@@ -43,6 +44,37 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
+
+function normalizeGender(value: unknown): "" | "male" | "female" | "other" {
+  return value === "male" || value === "female" || value === "other" ? value : "";
+}
+
+/** API may return ISO datetimes; `<input type="date">` needs YYYY-MM-DD. */
+function normalizeDateOfBirth(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "";
+  const match = value.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] ?? "";
+}
+
+function formValuesFromUser(user: {
+  name?: string | null;
+  phone?: string | null;
+  location?: string | null;
+  bio?: string | null;
+  avatar?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+} | null | undefined): FormValues {
+  return {
+    name: user?.name ?? "",
+    phone: user?.phone ?? "",
+    location: user?.location ?? "",
+    bio: user?.bio ?? "",
+    avatar: user?.avatar ?? "",
+    dateOfBirth: normalizeDateOfBirth(user?.dateOfBirth),
+    gender: normalizeGender(user?.gender),
+  };
+}
 
 function getStorageUrl(objectPath: string): string {
   if (
@@ -364,6 +396,20 @@ function StoreManagerCard() {
 // ── Pickup Hours Card ─────────────────────────────────────────────────────────
 type PickupSlot = { day: number; openTime: string; closeTime: string };
 
+function pickupScheduleFromUser(user: { pickupSchedule?: unknown } | null | undefined): PickupSlot[] | null {
+  const raw = user?.pickupSchedule;
+  if (!Array.isArray(raw)) return null;
+  const slots = raw.filter(
+    (slot): slot is PickupSlot =>
+      !!slot &&
+      typeof slot === "object" &&
+      typeof (slot as PickupSlot).day === "number" &&
+      typeof (slot as PickupSlot).openTime === "string" &&
+      typeof (slot as PickupSlot).closeTime === "string",
+  );
+  return slots.length > 0 ? slots : null;
+}
+
 const DAY_LABEL_KEYS = [
   "editProfile.daySun", "editProfile.dayMon", "editProfile.dayTue",
   "editProfile.dayWed", "editProfile.dayThu", "editProfile.dayFri",
@@ -520,6 +566,21 @@ export default function EditProfile() {
   const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
   const authHeader = token ? `Bearer ${token}` : "";
 
+  useEffect(() => {
+    if (!isLoading && !user) setLocation("/auth/login");
+  }, [user, isLoading, setLocation]);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: formValuesFromUser(user),
+  });
+
+  // Populate fields once /auth/me resolves (defaultValues only apply on first mount).
+  useEffect(() => {
+    if (!user) return;
+    form.reset(formValuesFromUser(user));
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps -- reset only when identity loads
+
   const handlePhoneRequestCode = async () => {
     if (!newPhoneInput.trim() || newPhoneInput.trim().length < 6) {
       toast({ title: t("editProfile.enterValidPhone"), variant: "destructive" }); return;
@@ -556,6 +617,9 @@ export default function EditProfile() {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? "Erè");
+      if (typeof d?.phone === "string") {
+        form.setValue("phone", d.phone, { shouldDirty: false });
+      }
       toast({ title: t("editProfile.phoneUpdated") });
       queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
       setPhoneEditOpen(false);
@@ -568,28 +632,19 @@ export default function EditProfile() {
     }
   };
 
-  useEffect(() => { if (!isLoading && !user) setLocation("/auth/login"); }, [user, isLoading]);
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      name: user?.name ?? "",
-      location: user?.location ?? "",
-      bio: user?.bio ?? "",
-      avatar: user?.avatar ?? "",
-      dateOfBirth: (user as any)?.dateOfBirth ?? "",
-      gender: (user as any)?.gender ?? "",
-    },
-  });
-
   const persistSave = useCallback((values: FormValues) => {
     if (!user) return;
+    const phone = values.phone?.trim() || undefined;
     _triggerAutoSaveStatus?.("saving");
     updateUser.mutate(
       {
         id: user.id,
         data: {
-          ...values,
+          name: values.name,
+          phone,
+          location: values.location,
+          bio: values.bio,
+          avatar: values.avatar,
           dateOfBirth: values.dateOfBirth || null,
           gender: values.gender || null,
         },
@@ -611,7 +666,7 @@ export default function EditProfile() {
         },
       }
     );
-  }, [user, updateUser, queryClient, toast]);
+  }, [user, updateUser, queryClient, toast, t]);
 
   const persistSaveRef = useRef(persistSave);
   useEffect(() => { persistSaveRef.current = persistSave; });
@@ -740,17 +795,26 @@ export default function EditProfile() {
     if (!open) { setChangeStep("select"); setNewPhone(""); setOtp(""); setDevCode(null); setNewPhoneIso(null); }
   };
 
+  // Wait for auth before rendering editor chrome — avoids empty autosave races
+  // and crashes from optional profile fields that arrive only after /auth/me.
+  if (isLoading || !user) {
+    return (
+      <div className="max-w-md mx-auto px-3 sm:px-4 py-16 flex flex-col items-center gap-3 text-muted-foreground">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <p className="text-sm">{t("common.loading")}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto px-3 sm:px-4 py-4 sm:py-5 pb-16">
       <AutoSaveIndicator />
-      {user && (
-        <button
-          onClick={() => setLocation(`/profile/${user.id}`)}
-          className="text-sm text-muted-foreground hover:text-primary mb-4 flex items-center gap-1 transition-colors"
-        >
-          {t("editProfile.backToProfile")}
-        </button>
-      )}
+      <button
+        onClick={() => setLocation(`/profile/${user.id}`)}
+        className="text-sm text-muted-foreground hover:text-primary mb-4 flex items-center gap-1 transition-colors"
+      >
+        {t("editProfile.backToProfile")}
+      </button>
 
       {/* ── Hero: Avatar ── */}
       <div className="flex flex-col items-center mb-5">
@@ -961,92 +1025,123 @@ export default function EditProfile() {
 
       {/* ── Phone Number card ── */}
       <div className="bg-card border border-border rounded-xl p-4 mb-4 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <h2 className="font-bold text-foreground text-base">📱 {t("editProfile.phoneNumber")}</h2>
-            </div>
-            {user?.phone ? (
-              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                <Phone className="h-3.5 w-3.5 shrink-0" />
-                {user.phone}
-                {user.isPhoneVerified && (
-                  <span className="ml-1 flex items-center gap-0.5 text-green-500 text-xs font-medium">
-                    <CheckCircle className="h-3 w-3" /> {t("editProfile.countryVerified")}
-                  </span>
-                )}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">{t("editProfile.noPhone")}</p>
-            )}
-          </div>
-          {!phoneEditOpen && (
-            <Button variant="outline" size="sm" onClick={() => setPhoneEditOpen(true)} className="rounded-xl shrink-0">
-              <Phone className="h-3.5 w-3.5 mr-1.5" />
-              {user?.phone ? t("editProfile.change") : t("editProfile.add")}
-            </Button>
+        <div className="flex items-center gap-2 mb-1">
+          <h2 className="font-bold text-foreground text-base">{t("editProfile.phoneNumber")}</h2>
+          {user.isPhoneVerified && (
+            <span className="flex items-center gap-0.5 text-green-500 text-xs font-medium">
+              <CheckCircle className="h-3 w-3" /> {t("editProfile.countryVerified")}
+            </span>
           )}
         </div>
+        <p className="text-xs text-muted-foreground mb-2">
+          {t("editProfile.phoneEditHint", {
+            defaultValue: "Edit your number here — it saves automatically, same as on your phone.",
+          })}
+        </p>
+        <Input
+          id="phone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          {...form.register("phone")}
+          placeholder="+50912345678"
+          data-testid="input-phone"
+          className="rounded-xl"
+        />
 
-        {phoneEditOpen && (
-          <div className="mt-4 space-y-3 border-t border-border pt-4">
-            {phoneStep === "input" ? (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  {t("editProfile.phoneChangeInstructions")}
-                </p>
-                <div className="flex gap-2">
-                  <Input
-                    value={newPhoneInput}
-                    onChange={e => setNewPhoneInput(e.target.value)}
-                    placeholder="+50912345678"
-                    type="tel"
-                    className="h-9 rounded-xl"
-                  />
-                  <Button
-                    size="sm" className="h-9 shrink-0 rounded-xl"
-                    onClick={handlePhoneRequestCode}
-                    disabled={phoneSending || !newPhoneInput.trim()}
-                  >
-                    {phoneSending ? <Loader2 className="h-4 w-4 animate-spin" /> : t("editProfile.sendCode")}
-                  </Button>
-                </div>
-                <button onClick={() => setPhoneEditOpen(false)} className="text-xs text-muted-foreground hover:underline">{t("common.cancel")}</button>
-              </>
+        {/* Optional email OTP verification (when the account has an email). */}
+        {!!user.email && (
+          <div className="mt-3">
+            {!phoneEditOpen ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setNewPhoneInput(form.getValues("phone") || user.phone || "");
+                  setPhoneEditOpen(true);
+                  setPhoneStep("input");
+                }}
+                className="text-xs text-primary hover:underline font-medium"
+                data-testid="button-verify-phone-email"
+              >
+                {t("editProfile.verifyPhoneByEmail", {
+                  defaultValue: "Verify this number by email code",
+                })}
+              </button>
             ) : (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  {t("editProfile.emailCodeInstructions", { email: maskedEmail })}
-                </p>
-                <div className="flex gap-2">
-                  <Input
-                    value={phoneOtp}
-                    onChange={e => setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="123456"
-                    maxLength={6}
-                    inputMode="numeric"
-                    className="h-9 rounded-xl font-mono tracking-widest text-center"
-                  />
-                  <Button
-                    size="sm" className="h-9 shrink-0 rounded-xl"
-                    onClick={handlePhoneConfirm}
-                    disabled={phoneConfirming || phoneOtp.length < 6}
-                  >
-                    {phoneConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => { setPhoneStep("input"); setPhoneOtp(""); }}
-                    className="text-xs text-muted-foreground hover:underline"
-                  >{t("editProfile.back")}</button>
-                  <button
-                    onClick={handlePhoneRequestCode}
-                    disabled={phoneSending}
-                    className="text-xs text-primary hover:underline disabled:opacity-50"
-                  >{t("editProfile.resendCode")}</button>
-                </div>
-              </>
+              <div className="space-y-3 border-t border-border pt-3">
+                {phoneStep === "input" ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      {t("editProfile.phoneChangeInstructions")}
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newPhoneInput}
+                        onChange={(e) => setNewPhoneInput(e.target.value)}
+                        placeholder="+50912345678"
+                        type="tel"
+                        className="h-9 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-9 shrink-0 rounded-xl"
+                        onClick={handlePhoneRequestCode}
+                        disabled={phoneSending || !newPhoneInput.trim()}
+                      >
+                        {phoneSending ? <Loader2 className="h-4 w-4 animate-spin" /> : t("editProfile.sendCode")}
+                      </Button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPhoneEditOpen(false)}
+                      className="text-xs text-muted-foreground hover:underline"
+                    >
+                      {t("common.cancel")}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      {t("editProfile.emailCodeInstructions", { email: maskedEmail })}
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        value={phoneOtp}
+                        onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="123456"
+                        maxLength={6}
+                        inputMode="numeric"
+                        className="h-9 rounded-xl font-mono tracking-widest text-center"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-9 shrink-0 rounded-xl"
+                        onClick={handlePhoneConfirm}
+                        disabled={phoneConfirming || phoneOtp.length < 6}
+                      >
+                        {phoneConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => { setPhoneStep("input"); setPhoneOtp(""); }}
+                        className="text-xs text-muted-foreground hover:underline"
+                      >
+                        {t("editProfile.back")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePhoneRequestCode}
+                        disabled={phoneSending}
+                        className="text-xs text-primary hover:underline disabled:opacity-50"
+                      >
+                        {t("editProfile.resendCode")}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -1067,7 +1162,7 @@ export default function EditProfile() {
       </div>
 
       {/* ── Pickup Hours card ── */}
-      <PickupHoursCard initialSchedule={(user as any)?.pickupSchedule ?? null} />
+      <PickupHoursCard initialSchedule={pickupScheduleFromUser(user as { pickupSchedule?: unknown })} />
 
       {/* ── Store Manager card ── */}
       <StoreManagerCard />

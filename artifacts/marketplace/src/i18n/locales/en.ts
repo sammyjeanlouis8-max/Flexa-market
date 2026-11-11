@@ -2959,6 +2959,8 @@ export default {
     genderOther: "Other",
     phoneNumber: "Phone number",
     noPhone: "No phone number. Add one to receive SMS notifications.",
+    phoneEditHint: "Edit your number here — it saves automatically, same as on your phone.",
+    verifyPhoneByEmail: "Verify this number by email code",
     add: "Add",
     phoneChangeInstructions: "Enter your phone number. A 6-digit code will be sent to your email to confirm.",
     emailCodeInstructions: "A 6-digit code was sent to {{email}}. Enter it below to confirm.",

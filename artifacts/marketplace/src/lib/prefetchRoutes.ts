@@ -42,6 +42,7 @@ const ROUTE_IMPORTERS: Record<string, () => Promise<unknown>> = {
   "/bouillon": () => import("@/pages/MyDrafts"),
   "/my-drafts": () => import("@/pages/MyDrafts"),
   "/settings": () => import("@/pages/Settings"),
+  "/profile/edit": () => import("@/pages/EditProfile"),
   "/subscription": () => import("@/pages/Subscription"),
   "/videos": () =>
     Promise.all([
@@ -104,5 +105,9 @@ export function prefetchCriticalRoutes() {
     prefetchRoute("/messages");
     prefetchRoute("/wallet");
     prefetchRoute("/cart");
+  });
+  whenIdle(() => {
+    prefetchRoute("/profile/edit");
+    prefetchRoute("/settings");
   });
 }

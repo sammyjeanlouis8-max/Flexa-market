@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import ListingCard from "@/components/ListingCard";
 import { AdminBlockButton } from "@/components/AdminBlockModal";
+import { prefetchRoute } from "@/lib/prefetchRoutes";
 
 import { COUNTRY_FLAGS } from "@/lib/countries";
 
@@ -211,7 +212,14 @@ export default function ProfilePage() {
             <div className="flex gap-2 mt-3 flex-wrap">
               {isMe ? (
                 <>
-                  <Button variant="outline" size="sm" onClick={() => setLocation("/profile/edit")} data-testid="button-edit-profile">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onMouseEnter={() => prefetchRoute("/profile/edit")}
+                    onFocus={() => prefetchRoute("/profile/edit")}
+                    onClick={() => setLocation("/profile/edit")}
+                    data-testid="button-edit-profile"
+                  >
                     <Pencil className="h-4 w-4 mr-1" /> {t("buttons.edit")}
                   </Button>
                   <Button

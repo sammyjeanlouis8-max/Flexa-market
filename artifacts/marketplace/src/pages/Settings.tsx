@@ -28,6 +28,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { COUNTRY_FLAGS } from "@/lib/countries";
 import { cn } from "@/lib/utils";
+import { prefetchRoute } from "@/lib/prefetchRoutes";
 
 interface SettingsRow {
   icon: React.ComponentType<{ className?: string }>;
@@ -188,6 +189,8 @@ export default function Settings() {
           </div>
           <Link
             href="/profile/edit"
+            onMouseEnter={() => prefetchRoute("/profile/edit")}
+            onFocus={() => prefetchRoute("/profile/edit")}
             className="h-11 w-11 rounded-full border border-border flex items-center justify-center hover:bg-accent"
             aria-label={t("settings.editProfile")}
             data-testid="button-edit-profile"

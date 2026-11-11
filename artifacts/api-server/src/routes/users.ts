@@ -352,9 +352,30 @@ router.put("/users/:id", requireAuth, async (req, res): Promise<void> => {
   const parsed = UpdateUserBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const [user] = await db.update(usersTable).set(parsed.data).where(eq(usersTable.id, id)).returning();
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  res.json(formatUser(user));
+  // Match phone-change OTP: reject numbers already claimed by another account.
+  const nextPhone = typeof parsed.data.phone === "string" ? parsed.data.phone.trim() : undefined;
+  if (nextPhone) {
+    parsed.data.phone = nextPhone;
+    const [existing] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(eq(usersTable.phone, nextPhone));
+    if (existing && existing.id !== id) {
+      res.status(409).json({ error: "Nimewo sa a deja itilize pa yon lòt kont" });
+      return;
+    }
+  }
+
+  try {
+    const [user] = await db.update(usersTable).set(parsed.data).where(eq(usersTable.id, id)).returning();
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    res.json(formatUser(user));
+  } catch (err: any) {
+    // Unique index race / legacy DB constraint on phone
+    if (err?.code === "23505") {
+      res.status(409).json({ error: "Nimewo sa a deja itilize pa yon lòt kont" });
+      return;
+    }
+    throw err;
+  }
 });
 
 router.get("/users/:id/listings", optionalAuth, async (req, res): Promise<void> => {

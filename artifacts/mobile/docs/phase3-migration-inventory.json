@@ -6,7 +6,7 @@
   "pr": null,
   "branch": "cursor/ios-all-pages-native-e34a",
   "auditedAt": "2026-11-10T23:47:18.024Z",
-  "auditCommit": "pending",
+  "auditCommit": "7cfb5716",
   "stackedOnPr": 199,
   "verification": {
     "phase1_2_intact": true,

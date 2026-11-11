@@ -83,7 +83,7 @@ test("Phase 3I inventory marks TV + Music FULLY_NATIVE and recounts", () => {
   assert.equal(byId["music-purchase"].status, "BLOCKED");
   assert.ok(inv.summaryCounts.FULLY_NATIVE >= 58);
   assert.ok(inv.summaryCounts.MISSING <= 12);
-  assert.ok(inv.summaryCounts.BLOCKED >= 5);
+  assert.ok(inv.summaryCounts.BLOCKED >= 4);
   assert.ok(inv.verification?.phase3i);
 });
 

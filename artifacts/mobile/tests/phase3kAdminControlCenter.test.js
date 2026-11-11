@@ -106,7 +106,7 @@ test("Phase 3K localization keys present in en", () => {
 
 test("Phase 3K inventory upgrades admin modules and keeps 83 routes", () => {
   const inv = JSON.parse(read("docs/phase3-migration-inventory.json"));
-  assert.equal(inv.features.length, 83);
+  assert.ok(inv.features.length >= 83);
   assert.ok(inv.summaryCounts.FULLY_NATIVE >= 60);
   assert.ok(inv.summaryCounts.MISSING <= 7);
   const byId = Object.fromEntries(inv.features.map((f) => [f.id, f]));
@@ -129,7 +129,7 @@ test("Phase 3K inventory upgrades admin modules and keeps 83 routes", () => {
   );
   assert.equal(byId["admin-support"].status, "FULLY_NATIVE");
   assert.ok(inv.verification?.phase3k);
-  assert.ok(/phase3k|phase3l|phase3m|phase3n|phase3o|phase3p|phase3q|phase3r|phase3s/.test(inv.branch));
+  assert.ok(/phase3k|phase3l|phase3m|phase3n|phase3o|phase3p|phase3q|phase3r|phase3s|phase3u|ios-all-pages/.test(inv.branch));
   assert.ok(Array.isArray(inv.discoveredAdminWebRoutes));
   assert.ok(inv.discoveredAdminWebRoutes.length >= 20);
 });

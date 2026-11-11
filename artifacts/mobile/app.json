@@ -107,6 +107,7 @@
       ],
       "./modules/flexa-background-upload/app.plugin.js",
       "./plugins/withOptionalGoogleServices.js",
+      "./plugins/withRevenueCatIos.js",
       "expo-asset",
       "expo-font",
       "./plugins/withAndroidAdaptiveLayout.js"

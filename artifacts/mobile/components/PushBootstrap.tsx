@@ -2,10 +2,15 @@
  * Registers Expo push token after auth and routes notification taps
  * into native Expo Router screens. Syncs in-app inbox marks on tap when
  * a notificationId is present — does not invent inbox rows (server is SoT).
+ *
+ * Cold start: getLastNotificationResponseAsync opens the correct screen.
+ * Pending path waits for auth restore so protected routes do not bounce
+ * to login incorrectly.
  */
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
+import { Platform } from "react-native";
 import { useAuth } from "@/context/AuthContext";
 import {
   notificationIdFromPushData,
@@ -15,10 +20,11 @@ import { markNotificationRead } from "@/lib/notificationsApi";
 import { registerExpoPushToken } from "@/lib/pushPrep";
 
 export function PushBootstrap() {
-  const { token } = useAuth();
+  const { token, isLoading } = useAuth();
   const router = useRouter();
   const lastJwt = useRef<string | null>(null);
   const handledResponseIds = useRef<Set<string>>(new Set());
+  const pendingPath = useRef<string | null>(null);
 
   useEffect(() => {
     if (!token || token === lastJwt.current) return;
@@ -27,6 +33,9 @@ export function PushBootstrap() {
   }, [token]);
 
   useEffect(() => {
+    // Push APIs are native-only; skip listeners on web so Expo web smoke tests work.
+    if (Platform.OS === "web") return;
+
     const go = async (
       data: Record<string, unknown> | undefined,
       responseKey?: string,
@@ -34,28 +43,30 @@ export function PushBootstrap() {
       if (responseKey) {
         if (handledResponseIds.current.has(responseKey)) return;
         handledResponseIds.current.add(responseKey);
-        // Bound memory for long sessions
         if (handledResponseIds.current.size > 40) {
           const first = handledResponseIds.current.values().next().value;
           if (first) handledResponseIds.current.delete(first);
         }
       }
 
-      // Inbox sync: mark server notification read when push carries its id.
-      // Never insert a local duplicate — inbox remains API-backed only.
       const notifId = notificationIdFromPushData(data);
       if (notifId && token) {
         void markNotificationRead(notifId, { token }).catch(() => {});
       }
 
       const path = pathFromNotificationData(data);
-      if (path) router.push(path as any);
+      if (!path) return;
+
+      // Wait for auth restore so protected routes do not bounce to login incorrectly.
+      if (isLoading) {
+        pendingPath.current = path;
+        return;
+      }
+      router.push(path as any);
     };
 
     const subRecv = Notifications.addNotificationReceivedListener(() => {
-      /* Foreground display: setNotificationHandler in pushPrep.
-         Do not insert local inbox rows — Notifications screen refreshes
-         from GET /api/notifications on focus / pull-to-refresh. */
+      /* Foreground display only — inbox remains API-backed. */
     });
 
     const subResp = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -83,7 +94,15 @@ export function PushBootstrap() {
       subRecv.remove();
       subResp.remove();
     };
-  }, [router, token]);
+  }, [router, token, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!pendingPath.current) return;
+    const path = pendingPath.current;
+    pendingPath.current = null;
+    router.push(path as any);
+  }, [isLoading, router]);
 
   return null;
 }

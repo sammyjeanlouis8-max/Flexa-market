@@ -101,7 +101,7 @@ test("Phase 3J inventory marks admin-support FULLY_NATIVE and recounts", () => {
   );
   assert.ok(inv.summaryCounts.FULLY_NATIVE >= 59);
   assert.ok(inv.verification?.phase3j);
-  assert.ok(/phase3j|phase3k|phase3l|phase3m|phase3n|phase3o|phase3p|phase3q|phase3r|phase3s/.test(inv.branch));
+  assert.ok(/phase3j|phase3k|phase3l|phase3m|phase3n|phase3o|phase3p|phase3q|phase3r|phase3s|phase3u|ios-all-pages/.test(inv.branch));
 });
 
 test("Phase 3J deep links still cover support and chatbot", () => {

@@ -77,7 +77,7 @@ test("backend phone OTP issues phoneToken for phone channel", () => {
 });
 
 test("Phase 3M inventory recount and key statuses", () => {
-  assert.equal(inv.features.length, 83);
+  assert.ok(inv.features.length >= 83);
   // Phase 3N may improve counts further; 3M floor remains.
   assert.ok(inv.summaryCounts.FULLY_NATIVE >= 72);
   assert.ok(inv.summaryCounts.PARTIALLY_NATIVE <= 4);

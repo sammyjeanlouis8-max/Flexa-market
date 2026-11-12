@@ -26,6 +26,7 @@ import { startBoostVideoUploadProcessingWorker } from "./routes/storage";
 import { startAfterShipPollingWorker } from "./lib/shipmentTracking";
 import { startSettlementRecoveryWorker } from "./lib/settlementRecovery";
 import { startPromaxRotationWorker } from "./lib/promaxRotation";
+import { sweepMediaReviews } from "./lib/mediaReviewService";
 
 registerProcessErrorHandlers();
 validateEmailConfig();
@@ -134,6 +135,9 @@ httpServer.listen(port, () => {
     // Music monthly reminder — fires once on the 1st of each month
     setInterval(() => { runMusicMonthlyReminder().catch(() => {}); }, 60 * 60 * 1000);
     runMusicMonthlyReminder().catch(() => {});
+    // Media moderation: retry stuck analyses + notify creators after 15 min delays
+    setInterval(() => { sweepMediaReviews().catch(() => {}); }, 2 * 60 * 1000);
+    sweepMediaReviews().catch(() => {});
     logger.info("API server ready");
       startAfterShipPollingWorker();
       startSettlementRecoveryWorker();

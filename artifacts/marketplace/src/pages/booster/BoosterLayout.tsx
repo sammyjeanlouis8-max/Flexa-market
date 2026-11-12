@@ -2,7 +2,7 @@ import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
-  Home, PlusCircle, Zap, BarChart3, Users, HelpCircle, Menu, X,
+  Home, PlusCircle, Zap, BarChart3, Users, HelpCircle, Menu, X, ShieldAlert,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import "./booster.css";
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/", labelKey: "booster.nav.home", icon: Home, exact: true, external: true },
   { href: "/booster/create", labelKey: "booster.nav.create", icon: PlusCircle },
   { href: "/booster", labelKey: "booster.nav.myBoosts", icon: Zap, exact: true },
+  { href: "/booster/media", labelKey: "booster.nav.mediaReview", icon: ShieldAlert },
   { href: "/boost-analytics", labelKey: "booster.nav.analytics", icon: BarChart3 },
   { href: "/booster/audiences", labelKey: "booster.nav.audiences", icon: Users },
   { href: "/booster/help", labelKey: "booster.nav.help", icon: HelpCircle },

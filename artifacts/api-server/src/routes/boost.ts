@@ -20,14 +20,22 @@ import {
   resolveBoostInitiateGeo,
   resolveInterstitialViewerScope,
 } from "../lib/boostDelivery";
+import {
+  enqueueMediaReview,
+  isMediaPubliclyAllowed,
+} from "../lib/mediaReviewService";
 
 /**
  * Resolve a stored boostVideoUrl to a playable URL.
  * Wasabi URLs are routed through the same-origin Range endpoint.
  * Unresolvable objectPath session IDs (/objects/uploads/…) return null.
  */
-async function resolveBoostVideoUrl(raw: string | null): Promise<string | null> {
+async function resolveBoostVideoUrl(
+  raw: string | null,
+  opts: { bypassPublicGate?: boolean } = {},
+): Promise<string | null> {
     if (!raw) return null;
+    if (!opts.bypassPublicGate && !(await isMediaPubliclyAllowed(raw))) return null;
     if (raw.startsWith("/objects/") || raw.startsWith("/api/storage/objects/")) {
       return null;
     }
@@ -37,6 +45,17 @@ async function resolveBoostVideoUrl(raw: string | null): Promise<string | null> 
     }
     return raw;
     }
+
+async function enqueueBoostVideo(ownerId: number, listingId: number, videoUrl: string | null) {
+  if (!videoUrl) return;
+  void enqueueMediaReview({
+    ownerId,
+    scope: "boost_video",
+    entityId: listingId,
+    assetUrl: videoUrl,
+    mediaType: "video",
+  }).catch((err) => logger.warn({ err, listingId }, "enqueue boost video failed"));
+}
 
 const BOOST_BASE_URL = (() => {
   if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
@@ -232,6 +251,7 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
   await db.update(listingsTable)
     .set({ boostVideoUrl: videoUrl })
     .where(eq(listingsTable.id, listingId));
+  await enqueueBoostVideo(req.userId!, listingId, videoUrl);
 
   const [boost] = await db.insert(boostsTable).values({
     listingId,
@@ -809,6 +829,7 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
     boostWhatsappNumber: whatsappNumber,
     boostCtaText: ctaText,
   }).returning();
+  await enqueueBoostVideo(req.userId!, listing.id, videoUrl);
 
   // Create boost record
   const [boost] = await db.insert(boostsTable).values({
@@ -1038,7 +1059,9 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
 
   // Delivery pacing uses ~200 impressions per $1 of budget.
   const IMPRESSIONS_PER_USD = 200;
-  const boostVideoUrls = await Promise.all(ownerRows.map(r => resolveBoostVideoUrl(r.boostVideoUrl)));
+  const boostVideoUrls = await Promise.all(
+    ownerRows.map((r) => resolveBoostVideoUrl(r.boostVideoUrl, { bypassPublicGate: true })),
+  );
   const boosts = ownerRows.map((r, i) => {
     const budget = Number(r.budget ?? 0);
     const impressions = r.impressions ?? 0;
@@ -1106,8 +1129,17 @@ router.patch("/boost/:boostId/video", requireAuth, async (req, res): Promise<voi
   await db.update(listingsTable)
     .set({ boostVideoUrl: videoUrl })
     .where(eq(listingsTable.id, boost.listingId));
+  await enqueueBoostVideo(userId, boost.listingId, videoUrl);
 
-  res.json({ ok: true, boostVideoUrl: videoUrl });
+  // Public clients only receive the URL once the exact version is approved.
+  const publicUrl = videoUrl && (await isMediaPubliclyAllowed(videoUrl))
+    ? await resolveBoostVideoUrl(videoUrl)
+    : null;
+  res.json({
+    ok: true,
+    boostVideoUrl: publicUrl,
+    mediaReviewStatus: videoUrl ? "pending" : null,
+  });
 });
 
 /**

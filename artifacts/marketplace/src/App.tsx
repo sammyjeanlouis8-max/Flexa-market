@@ -102,6 +102,7 @@ const VideoProfile       = lazy(() => import("@/pages/VideoProfile"));
 const VideoFavorites     = lazy(() => import("@/pages/VideoFavorites"));
 const MyBoosts           = lazy(() => import("@/pages/MyBoosts"));
 const BoosterMyBoosts    = lazy(() => import("@/pages/booster/BoosterMyBoosts"));
+const BoosterMediaReviews = lazy(() => import("@/pages/booster/BoosterMediaReviews"));
 const BoosterCreate      = lazy(() => import("@/pages/booster/BoosterCreate"));
 const BoostAnalytics     = lazy(() => import("@/pages/BoostAnalytics"));
 const BoostAnalyticsDetail = lazy(() => import("@/pages/BoostAnalyticsDetail"));
@@ -256,6 +257,7 @@ function LayoutRoutes() {
           <Route path="/videos/profile/:id" component={VideoProfile} />
           <Route path="/videos" component={VideoDiscover} />
           <Route path="/booster/create" component={BoosterCreate} />
+          <Route path="/booster/media" component={BoosterMediaReviews} />
           <Route path="/booster/analytics">
             {() => { setLocation("/boost-analytics"); return null; }}
           </Route>

@@ -32,7 +32,7 @@ export function createVideoAssetProof(key: string, ownerId: number): string {
   return `${payload}.${signature(payload)}`;
 }
 
-function parseAndVerifyProof(token: string): VideoAssetProof | null {
+export function parseAndVerifyProof(token: string): VideoAssetProof | null {
   const [payload, suppliedSignature, extra] = token.split(".");
   if (!payload || !suppliedSignature || extra) return null;
   const expectedSignature = signature(payload);

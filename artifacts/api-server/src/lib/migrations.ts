@@ -3347,6 +3347,65 @@ export async function runStartupMigrations(): Promise<void> {
     sql: `ALTER TABLE listings ADD COLUMN IF NOT EXISTS video_pinned_at timestamptz`,
   });
 
+  // ── Automatic photo/video moderation reviews ───────────────────────────────
+  migrations.push({
+    name: "media_reviews.create",
+    sql: `CREATE TABLE IF NOT EXISTS media_reviews (
+      id serial PRIMARY KEY,
+      owner_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      scope text NOT NULL,
+      entity_id integer,
+      asset_url text NOT NULL,
+      content_sha256 text,
+      media_type text NOT NULL,
+      status text NOT NULL DEFAULT 'pending',
+      progress_step integer NOT NULL DEFAULT 1,
+      progress_label text NOT NULL DEFAULT 'analysis',
+      violation_category text,
+      formal_reason text,
+      confidence real,
+      evidence_timestamp_sec real,
+      evidence_image_url text,
+      evidence_blurred boolean NOT NULL DEFAULT true,
+      analysis_json jsonb,
+      analysis_attempts integer NOT NULL DEFAULT 0,
+      last_error text,
+      delay_notified_at timestamptz,
+      analyzed_at timestamptz,
+      decided_at timestamptz,
+      decided_by text,
+      appeal_status text NOT NULL DEFAULT 'none',
+      appeal_note text,
+      appeal_at timestamptz,
+      appeal_analysis_json jsonb,
+      appeal_decided_at timestamptz,
+      appeal_decided_by_id integer REFERENCES users(id),
+      appeal_finalized_by_moderator boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+  });
+  migrations.push({
+    name: "media_reviews.owner_idx",
+    sql: `CREATE INDEX IF NOT EXISTS media_reviews_owner_idx ON media_reviews(owner_id)`,
+  });
+  migrations.push({
+    name: "media_reviews.status_idx",
+    sql: `CREATE INDEX IF NOT EXISTS media_reviews_status_idx ON media_reviews(status)`,
+  });
+  migrations.push({
+    name: "media_reviews.scope_entity_idx",
+    sql: `CREATE INDEX IF NOT EXISTS media_reviews_scope_entity_idx ON media_reviews(scope, entity_id)`,
+  });
+  migrations.push({
+    name: "media_reviews.owner_asset_unique",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS media_reviews_owner_asset_idx ON media_reviews(owner_id, asset_url)`,
+  });
+  migrations.push({
+    name: "media_reviews.appeal_status_idx",
+    sql: `CREATE INDEX IF NOT EXISTS media_reviews_appeal_status_idx ON media_reviews(appeal_status)`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

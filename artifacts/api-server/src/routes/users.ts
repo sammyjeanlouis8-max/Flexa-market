@@ -352,8 +352,20 @@ router.put("/users/:id", requireAuth, async (req, res): Promise<void> => {
   const parsed = UpdateUserBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
+  const [existingUser] = await db.select({ avatar: usersTable.avatar }).from(usersTable).where(eq(usersTable.id, id)).limit(1);
   const [user] = await db.update(usersTable).set(parsed.data).where(eq(usersTable.id, id)).returning();
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (parsed.data.avatar && parsed.data.avatar !== existingUser?.avatar) {
+    void import("../lib/mediaReviewService").then(({ enqueueMediaReview }) =>
+      enqueueMediaReview({
+        ownerId: id,
+        scope: "profile_avatar",
+        entityId: id,
+        assetUrl: parsed.data.avatar!,
+        mediaType: "image",
+      }),
+    ).catch(() => {});
+  }
   res.json(formatUser(user));
 });
 

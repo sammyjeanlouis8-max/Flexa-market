@@ -48,7 +48,19 @@ router.post("/upload", requireAuth, upload.single("file"), async (req: Request, 
     validateMimeType(mimetype);
     const { url, backend } = await uploadToStorage(buffer, mimetype);
     req.log.info({ mimetype, url, backend }, "Multipart upload complete");
-    res.status(201).json({ url });
+    const isVideo = mimetype.startsWith("video/");
+    const isImage = mimetype.startsWith("image/");
+    if (isVideo || isImage) {
+      void import("../lib/mediaReviewService").then(({ enqueueMediaReview }) =>
+        enqueueMediaReview({
+          ownerId: req.userId!,
+          scope: isVideo ? "listing_video" : "listing_image",
+          assetUrl: url,
+          mediaType: isVideo ? "video" : "image",
+        }),
+      ).catch(() => {});
+    }
+    res.status(201).json({ url, mediaReviewStatus: (isVideo || isImage) ? "pending" : undefined });
   } catch (err: any) {
     req.log.error({ err }, "Object storage multipart upload failed");
     const msg: string = err?.message ?? "Upload failed";

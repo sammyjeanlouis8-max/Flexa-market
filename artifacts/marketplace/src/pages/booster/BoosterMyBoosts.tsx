@@ -215,10 +215,13 @@ export default function BoosterMyBoosts() {
         )}
       </div>
 
-      <div style={{ marginTop: "1rem" }}>
+      <div style={{ marginTop: "1rem", display: "flex", gap: 8, flexWrap: "wrap" }}>
         <Link href="/booster/create" className="bp-btn bp-btn-primary" style={{ display: "inline-flex", gap: 8 }}>
           <Plus className="h-4 w-4" />
           {t("booster.myBoosts.createAnother", { defaultValue: "Create another campaign" })}
+        </Link>
+        <Link href="/booster/media" className="bp-btn bp-btn-ghost" style={{ display: "inline-flex", gap: 8 }}>
+          {t("booster.nav.mediaReview", { defaultValue: "Video review" })}
         </Link>
       </div>
     </BoosterLayout>

@@ -49,6 +49,11 @@ import {
 } from "../lib/personalizedFeed";
 import { logger } from "../lib/logger";
 import {
+  enqueueListingMedia,
+  filterPublicMediaUrls,
+  isMediaPubliclyAllowed,
+} from "../lib/mediaReviewService";
+import {
   getAdminScopeCities,
   hasGlobalCountryAdminScope,
   listingInAdminScope,
@@ -219,6 +224,8 @@ async function formatListing(
     proximityLevel?: string | null;
     promaxGroup?: PromaxGroup | null;
     promaxPosition?: number | null;
+    /** When true, return unapproved media (owner/staff preview). */
+    includeUnapprovedMedia?: boolean;
   } | null,
 ) {
   let distanceKm: number | null = precomputed?.distanceKm ?? null;
@@ -231,17 +238,41 @@ async function formatListing(
   const nearYou = proximityLevel === "neighborhood" || proximityLevel === "city" ||
     (distanceKm !== null && distanceKm <= 15);
 
+  const includeUnapproved = !!precomputed?.includeUnapprovedMedia;
+
   let resolvedBoostVideoUrl: string | null = null;
     if (listing.boostVideoUrl) {
-      const _vRaw = listing.boostVideoUrl.startsWith("http")
-        ? listing.boostVideoUrl
-        : ("/api/storage/objects/" + listing.boostVideoUrl.replace(/^\/objects\//, ""));
-      const _vKey = extractWasabiKey(_vRaw);
-      if (_vKey) {
-        resolvedBoostVideoUrl = `/api/storage/video-stream?key=${encodeURIComponent(_vKey)}`;
+      const boostAllowed = includeUnapproved || await isMediaPubliclyAllowed(listing.boostVideoUrl);
+      if (boostAllowed) {
+        const _vRaw = listing.boostVideoUrl.startsWith("http")
+          ? listing.boostVideoUrl
+          : ("/api/storage/objects/" + listing.boostVideoUrl.replace(/^\/objects\//, ""));
+        const _vKey = extractWasabiKey(_vRaw);
+        if (_vKey) {
+          resolvedBoostVideoUrl = `/api/storage/video-stream?key=${encodeURIComponent(_vKey)}`;
+        }
+        if (!resolvedBoostVideoUrl) resolvedBoostVideoUrl = toStreamingVideoUrl(_vRaw);
       }
-      if (!resolvedBoostVideoUrl) resolvedBoostVideoUrl = toStreamingVideoUrl(_vRaw);
     }
+  const cleanedImages = cleanListingImages(listing.images);
+  const publicImages = includeUnapproved
+    ? cleanedImages
+    : await filterPublicMediaUrls(cleanedImages);
+  let publicListingVideoUrl: string | null = null;
+  if (listing.listingVideoUrl && (includeUnapproved || await isMediaPubliclyAllowed(listing.listingVideoUrl))) {
+    const raw = listing.listingVideoUrl.startsWith("http") || listing.listingVideoUrl.startsWith("/api/")
+      ? listing.listingVideoUrl
+      : `/api/storage/objects/${listing.listingVideoUrl.replace(/^\/objects\//, "")}`;
+    const key = extractWasabiKey(raw);
+    publicListingVideoUrl = key
+      ? `/api/storage/video-stream?key=${encodeURIComponent(key)}`
+      : toStreamingVideoUrl(raw);
+  }
+  let sellerAvatarOut: string | null = seller.avatar ?? null;
+  if (sellerAvatarOut && !includeUnapproved) {
+    const avatarOk = await isMediaPubliclyAllowed(sellerAvatarOut);
+    if (!avatarOk) sellerAvatarOut = null;
+  }
       return {
     id: listing.id,
     title: listing.title,
@@ -267,7 +298,8 @@ async function formatListing(
     // Strip known external placeholder service URLs that return orange/styled
     // "No Image" images — these load successfully so onError never fires,
     // leaving them visible in the gallery instead of our neutral fallback.
-    images: cleanListingImages(listing.images),
+    // Unapproved media versions are also stripped until review completes.
+    images: publicImages,
     status: listing.status,
     isBoosted: listing.isBoosted,
     isFeatured: listing.isFeatured,
@@ -287,25 +319,13 @@ async function formatListing(
       : null,
     stockQuantity: listing.stockQuantity ?? null,
     itemSize: listing.itemSize ?? null,
-    listingVideoUrl: (() => {
-      if (!listing.listingVideoUrl) return null;
-      const raw = listing.listingVideoUrl.startsWith("http") || listing.listingVideoUrl.startsWith("/api/")
-        ? listing.listingVideoUrl
-        : `/api/storage/objects/${listing.listingVideoUrl.replace(/^\/objects\//, "")}`;
-      const key = extractWasabiKey(raw);
-      // Durable normalized uploads are persisted as the canonical Wasabi
-      // proxy path after their owner proof is verified. Resolve that path just
-      // like Boost media instead of incorrectly treating it as object storage.
-      return key
-        ? `/api/storage/video-stream?key=${encodeURIComponent(key)}`
-        : toStreamingVideoUrl(raw);
-    })(),
+    listingVideoUrl: publicListingVideoUrl,
     viewCount: listing.viewCount,
     favoriteCount: listing.favoriteCount,
     sharesCount: listing.sharesCount,
     sellerId: listing.sellerId,
     sellerName: seller.name,
-    sellerAvatar: seller.avatar ?? null,
+    sellerAvatar: sellerAvatarOut,
     sellerRating: seller.rating,
     sellerIsVerified: seller.isVerified,
     sellerPhone: seller.phone ?? null,
@@ -1291,6 +1311,14 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
     );
   });
 
+  // Per-asset visual moderation — keep new media private until approved.
+  void enqueueListingMedia({
+    ownerId: req.userId!,
+    listingId: listing.id,
+    imageUrls,
+    listingVideoUrl: listing.listingVideoUrl,
+  }).catch((err) => logger.warn({ err, listingId: listing.id }, "enqueue listing media failed"));
+
   if (moderationStatus === "approved") {
     await db.update(categoriesTable).set({ listingCount: sql`${categoriesTable.listingCount} + 1` }).where(eq(categoriesTable.id, cat.id));
     if (listing.subcategoryId) {
@@ -1359,7 +1387,7 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
     subcat = sc ? { name: sc.name, slug: sc.slug } : null;
   }
 
-  res.status(201).json(await formatListing(listing, seller, cat, subcat));
+  res.status(201).json(await formatListing(listing, seller, cat, subcat, null, { includeUnapprovedMedia: true }));
   } catch (err: any) {
     req.log.error({ err }, "CREATE LISTING ERROR");
     const isSchemaError =
@@ -1469,8 +1497,12 @@ router.get("/listings/:id", optionalAuth, async (req, res): Promise<void> => {
     .where(eq(sellerPayoutAccountsTable.userId, row.listings.sellerId));
   const sellerMonCashNumber = (payoutAccount?.moncashVerified && payoutAccount?.moncashNumber) ? payoutAccount.moncashNumber : null;
 
-  const base = await formatListing(row.listings, row.users!, row.categories, row.subcategories, geoUserD);
-  res.json({ ...base, isFavorited, isOwner: req.userId === row.listings.sellerId, sellerMonCashNumber });
+  const isOwnerDetail = req.userId === row.listings.sellerId;
+  const isStaffDetail = hasRole(req.user, "moderator");
+  const base = await formatListing(row.listings, row.users!, row.categories, row.subcategories, geoUserD, {
+    includeUnapprovedMedia: isOwnerDetail || isStaffDetail,
+  });
+  res.json({ ...base, isFavorited, isOwner: isOwnerDetail, sellerMonCashNumber });
   } catch (err: any) {
     req.log.error({ err }, "GET LISTING BY ID ERROR");
     if (!res.headersSent) res.status(500).json({ error: "Failed to load listing. Please try again." });
@@ -1604,8 +1636,21 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     deliveryMethod: listingDeliveryMethod,
     ...eligibilityPatch,
   }).where(eq(listingsTable.id, id)).returning();
+
+  // Re-review any newly attached / replaced media versions.
+  const imagesChanged = parsed.data.images !== undefined;
+  const videoChanged = !!canonicalListingVideoUrl && canonicalListingVideoUrl !== existing.listingVideoUrl;
+  if (imagesChanged || videoChanged) {
+    void enqueueListingMedia({
+      ownerId: req.userId!,
+      listingId: listing.id,
+      imageUrls: imagesChanged ? updatedImages : undefined,
+      listingVideoUrl: videoChanged ? listing.listingVideoUrl : undefined,
+    }).catch((err) => logger.warn({ err, listingId: listing.id }, "enqueue listing media failed"));
+  }
+
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, listing.sellerId));
-  res.json(await formatListing(listing, seller, cat ?? null, subcat));
+  res.json(await formatListing(listing, seller, cat ?? null, subcat, null, { includeUnapprovedMedia: true }));
 });
 
 /** Seller appeal / correction request for a rejected or pending listing. */

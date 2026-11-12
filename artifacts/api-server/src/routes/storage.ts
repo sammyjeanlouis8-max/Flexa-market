@@ -65,7 +65,7 @@ const USE_WASABI     = isWasabiConfigured();
 // the browser's Range requests (seek/buffer) reach Wasabi with the correct
 // headers — some mobile Safari builds silently drop Range when following a
 // cross-origin redirect, causing a black/stuck video player.
-router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
+router.get("/storage/wasabi-image", optionalAuth, async (req: Request, res: Response) => {
     const key = req.query["key"];
     if (!key || typeof key !== "string") {
       res.status(400).json({ error: "Missing or invalid 'key' query parameter." });
@@ -76,6 +76,27 @@ router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
       return;
     }
     try {
+      const { canViewerAccessMedia } = await import("../lib/mediaReviewService");
+      const { hasRole } = await import("../middlewares/auth");
+      const { parseAndVerifyProof } = await import("../lib/boostVideoAsset");
+      const isStaff = hasRole(req.user, "moderator");
+      const assetToken = typeof req.query["asset"] === "string" ? req.query["asset"] : "";
+      const proof = assetToken ? parseAndVerifyProof(assetToken) : null;
+      const proofOk = !!(proof && proof.key === key);
+      // Blurred rejection evidence is never public.
+      if (key.startsWith("media-evidence/") && !isStaff && !req.userId && !proofOk) {
+        res.status(403).json({ error: "Evidence media requires authentication" });
+        return;
+      }
+      const allowed = proofOk || await canViewerAccessMedia({
+        storageKey: key,
+        viewerId: req.userId ?? (proof?.ownerId ?? null),
+        isStaff,
+      });
+      if (!allowed) {
+        res.status(403).json({ error: "Media is private until approved" });
+        return;
+      }
       // Stream the object directly through the server with Range passthrough.
       // A 307 redirect to a presigned Wasabi URL breaks audio/video on iOS
       // WebView/Safari: those builds silently drop the Range header when
@@ -996,7 +1017,7 @@ router.get("/storage/uploads/chunk-status/:uploadId", requireAuth, async (req: R
 // the audio track while never presenting a decoded video frame. New Boost
 // uploads are H.264/AAC MP4 derivatives; legacy MOV bytes retain QuickTime MIME
 // rather than being mislabeled as MP4.
-router.get("/storage/video-stream", async (req: Request, res: Response) => {
+router.get("/storage/video-stream", optionalAuth, async (req: Request, res: Response) => {
   const key = req.query["key"];
   if (!key || typeof key !== "string") {
     res.status(400).json({ error: "Missing key" }); return;
@@ -1006,6 +1027,22 @@ router.get("/storage/video-stream", async (req: Request, res: Response) => {
   }
 
   try {
+    const { canViewerAccessMedia } = await import("../lib/mediaReviewService");
+    const { hasRole } = await import("../middlewares/auth");
+    const { parseAndVerifyProof } = await import("../lib/boostVideoAsset");
+    const assetToken = typeof req.query["asset"] === "string" ? req.query["asset"] : "";
+    const proof = assetToken ? parseAndVerifyProof(assetToken) : null;
+    const proofOk = !!(proof && proof.key === key);
+    const allowed = proofOk || await canViewerAccessMedia({
+      storageKey: key,
+      viewerId: req.userId ?? (proof?.ownerId ?? null),
+      isStaff: hasRole(req.user, "moderator"),
+    });
+    if (!allowed) {
+      res.status(403).json({ error: "Media is private until approved" });
+      return;
+    }
+
     const range = typeof req.headers.range === "string" ? req.headers.range : undefined;
     if (range && (!/^bytes=\d*-\d*$/.test(range) || range.includes(","))) {
       const size = await getWasabiObjectSize(key).catch(() => undefined);

@@ -221,7 +221,15 @@ router.post("/admin/tv/upload-video", requireAdmin, uploadMiddleware.single("vid
     const file = req.file;
     if (!file) return void res.status(400).json({ error: "No file uploaded" });
     const { url: videoUrl } = await uploadToStorage(file.buffer, file.mimetype, "tv-videos");
-    return void res.json({ videoUrl });
+    void import("../lib/mediaReviewService").then(({ enqueueMediaReview }) =>
+      enqueueMediaReview({
+        ownerId: req.userId!,
+        scope: "tv_video",
+        assetUrl: videoUrl,
+        mediaType: "video",
+      }),
+    ).catch(() => {});
+    return void res.json({ videoUrl, mediaReviewStatus: "pending" });
   } catch (err) {
     return void res.status(500).json({ error: "Video upload failed" });
   }
@@ -288,9 +296,29 @@ router.get("/tv/now-playing", async (_req, res): Promise<void> => {
         .where(and(eq(tvProgramsTable.isActive, true), eq(tvProgramsTable.isFeatured, true)))
         .orderBy(desc(tvProgramsTable.viewCount))
         .limit(1);
+      if (featured) {
+        const { isMediaPubliclyAllowed } = await import("../lib/mediaReviewService");
+        if (featured.videoUrl && !(await isMediaPubliclyAllowed(featured.videoUrl))) {
+          featured.videoUrl = null as any;
+          featured.videoKey = null as any;
+        }
+        if (featured.thumbnailUrl && !(await isMediaPubliclyAllowed(featured.thumbnailUrl))) {
+          featured.thumbnailUrl = null as any;
+        }
+      }
       return void res.json({ program: featured ?? null });
     }
 
+    if (program?.videoUrl) {
+      const { isMediaPubliclyAllowed } = await import("../lib/mediaReviewService");
+      if (!(await isMediaPubliclyAllowed(program.videoUrl))) {
+        program.videoUrl = null as any;
+        program.videoKey = null as any;
+      }
+      if (program.thumbnailUrl && !(await isMediaPubliclyAllowed(program.thumbnailUrl))) {
+        program.thumbnailUrl = null as any;
+      }
+    }
     return void res.json({ program });
   } catch (err) {
     return void res.status(500).json({ error: "Failed to fetch now-playing" });

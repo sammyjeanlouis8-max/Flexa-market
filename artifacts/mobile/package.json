@@ -51,7 +51,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-web": "^0.21.0",
     "react-native-webview": "13.15.0",
-    "typescript": "~5.9.2",
+    "typescript": "~5.9.3",
     "zod": "catalog:",
     "zod-validation-error": "^3.4.0"
   },

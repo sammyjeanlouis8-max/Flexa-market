@@ -196,17 +196,8 @@ export default function CartScreen() {
   return (
     <View style={styles.root}>
       <AppHeader title="Cart" showBrand={false} />
-      <View style={[styles.rootInner, { paddingTop: 0 }]}>
       <View style={styles.topBar}>
-        <Pressable
-          style={styles.iconBtn}
-          onPress={() =>
-            router.canGoBack() ? router.back() : router.replace("/")
-          }
-        >
-          <Feather name="arrow-left" size={22} color="#0F172A" />
-        </Pressable>
-        <Text style={styles.topTitle}>Cart</Text>
+        <Text style={styles.topTitle}>Your cart</Text>
         {items.length > 0 ? (
           <Pressable onPress={onClear} hitSlop={8}>
             <Text style={styles.clearText}>Clear</Text>

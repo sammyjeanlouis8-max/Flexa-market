@@ -867,6 +867,8 @@ export default {
     fromProfile: "Soti nan pwofil ou",
     location: "Kote",
     locationPlaceholder: "Katye, zòn...",
+    locationPrivacyNotice:
+      "Adrès egzak ou prive epi achtè yo pap wè li. Se sèlman vil, eta/depatman, ak peyi ou ki ka parèt.",
     photos: "Foto",
     camera: "Kamera",
     gallery: "Galri",

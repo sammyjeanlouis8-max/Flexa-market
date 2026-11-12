@@ -101,6 +101,145 @@ export async function loginWithEmail(input: {
   }
 }
 
+export type RecoveryStartSuccess = {
+  sent: boolean;
+  sessionToken: string;
+  sentVia: "email";
+  maskedDestination?: string;
+  devCode?: string;
+};
+
+export type RecoveryQuestion = { key: string; text: string };
+
+async function recoveryPost<T>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: true; data: T } | { ok: false; error: AuthFailure & Record<string, unknown> }> {
+  try {
+    const res = await fetch(`${getBaseUrl()}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: {
+          status: res.status,
+          error: typeof data?.error === "string" ? data.error : "Request failed",
+          field: typeof data?.field === "string" ? data.field : undefined,
+          code: typeof data?.code === "string" ? data.code : undefined,
+          ...data,
+        },
+      };
+    }
+    return { ok: true, data: data as T };
+  } catch {
+    return {
+      ok: false,
+      error: { status: 0, error: "Could not connect to server" },
+    };
+  }
+}
+
+export function startRecovery(identifier: string) {
+  return recoveryPost<RecoveryStartSuccess>("/recovery/start", {
+    identifier: identifier.trim(),
+  });
+}
+
+export function verifyRecoveryOtp(sessionToken: string, code: string) {
+  return recoveryPost<{ verified: boolean; hasSecurityQuestions?: boolean }>(
+    "/recovery/verify-otp",
+    { sessionToken, code: code.trim() },
+  );
+}
+
+export function resendRecoveryOtp(sessionToken: string) {
+  return recoveryPost<{
+    sent: boolean;
+    sentVia?: string;
+    maskedDestination?: string;
+  }>("/recovery/resend-otp", { sessionToken });
+}
+
+export function getRecoveryQuestions(sessionToken: string) {
+  return recoveryPost<{ questions: RecoveryQuestion[]; noQuestions?: boolean }>(
+    "/recovery/get-questions",
+    { sessionToken },
+  );
+}
+
+export function verifyRecoverySecurity(
+  sessionToken: string,
+  answers: { key: string; answer: string }[],
+) {
+  return recoveryPost<{ verified: boolean }>("/recovery/verify-security", {
+    sessionToken,
+    answers,
+  });
+}
+
+export function resetRecoveryPassword(sessionToken: string, password: string) {
+  return recoveryPost<{ success: boolean; message?: string }>(
+    "/recovery/reset-password",
+    { sessionToken, password },
+  );
+}
+
+export function loginWithTempPassword(input: {
+  identifier: string;
+  password: string;
+}): Promise<{ ok: true; data: AuthSuccess & { mustChangePassword?: boolean } } | { ok: false; error: AuthFailure }> {
+  return recoveryPost<AuthSuccess & { mustChangePassword?: boolean }>("/auth/login-temp", {
+    identifier: input.identifier.trim(),
+    password: input.password,
+  }) as Promise<
+    | { ok: true; data: AuthSuccess & { mustChangePassword?: boolean } }
+    | { ok: false; error: AuthFailure }
+  >;
+}
+
+export async function setNewPassword(
+  token: string,
+  newPassword: string,
+): Promise<{ ok: true; data: AuthSuccess } | { ok: false; error: AuthFailure }> {
+  try {
+    const res = await fetch(`${getBaseUrl()}/auth/set-new-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ newPassword }),
+    });
+    if (!res.ok) return { ok: false, error: await parseError(res) };
+    const data = (await res.json()) as AuthSuccess;
+    if (!data?.token) {
+      return {
+        ok: false,
+        error: { status: res.status, error: "Password update failed" },
+      };
+    }
+    return { ok: true, data };
+  } catch {
+    return {
+      ok: false,
+      error: { status: 0, error: "Could not connect to server" },
+    };
+  }
+}
+
 export async function registerAccount(input: {
   name: string;
   email: string;

@@ -263,6 +263,29 @@ export default function ListingDetailScreen() {
                   <Text style={styles.boostText}>Boosted listing</Text>
                 </View>
               ) : null}
+              {isOwnListing ? (
+                <View style={styles.ownerActions}>
+                  <Pressable
+                    style={styles.ownerBtn}
+                    onPress={() => router.push(`/edit-listing/${listingId}`)}
+                  >
+                    <Text style={styles.ownerBtnText}>Edit</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.ownerBtn, styles.ownerBtnAccent]}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/boost",
+                        params: { listingId: String(listingId) },
+                      })
+                    }
+                  >
+                    <Text style={[styles.ownerBtnText, styles.ownerBtnTextAccent]}>
+                      Boost
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
               {listing.sellerName ? (
                 <View style={styles.seller}>
                   <Feather name="user" size={16} color="#475569" />
@@ -395,6 +418,18 @@ const styles = StyleSheet.create({
   price: { fontSize: 26, fontWeight: "800", color: "#0F172A" },
   title: { fontSize: 20, fontWeight: "700", color: "#0F172A", lineHeight: 26 },
   meta: { fontSize: 13, color: "#64748B" },
+  ownerActions: { flexDirection: "row", gap: 8, marginTop: 10 },
+  ownerBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#fff",
+  },
+  ownerBtnAccent: { borderColor: "#FDBA74", backgroundColor: "#FFF7ED" },
+  ownerBtnText: { fontWeight: "800", color: "#0F172A", fontSize: 13 },
+  ownerBtnTextAccent: { color: "#C2410C" },
   boost: {
     alignSelf: "flex-start",
     backgroundColor: "#FFF7ED",

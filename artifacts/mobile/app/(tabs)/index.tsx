@@ -3,6 +3,7 @@
  * Loads country-scoped feeds from DigitalOcean via /api/stats/home + /api/listings.
  */
 import { Feather } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -26,6 +27,7 @@ import {
   fetchListings,
   type Listing,
 } from "@/lib/api";
+import { fetchHomePromoVideos, type PromoVideo } from "@/lib/videosApi";
 
 type Section = "featured" | "recent" | "all";
 
@@ -47,6 +49,7 @@ export default function HomeTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [promoVideos, setPromoVideos] = useState<PromoVideo[]>([]);
 
   const loadHome = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -55,15 +58,17 @@ export default function HomeTab() {
       else setLoading(true);
       setError(null);
       try {
-        const [stats, page1] = await Promise.all([
+        const [stats, page1, videos] = await Promise.all([
           fetchHomeStats(country, { token }),
           fetchListings({ country, page: 1, limit: 20 }, { token }),
+          fetchHomePromoVideos(country, { token }).catch(() => [] as PromoVideo[]),
         ]);
         setFeatured(stats.featuredListings ?? []);
         setRecent(stats.recentListings ?? []);
         setListings(page1.listings ?? []);
         setPage(page1.page ?? 1);
         setTotalPages(page1.totalPages ?? 1);
+        setPromoVideos(videos.slice(0, 2));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load marketplace");
       } finally {
@@ -225,6 +230,42 @@ export default function HomeTab() {
               </Text>
             </View>
           }
+          ListHeaderComponent={
+            promoVideos.length ? (
+              <View style={styles.promoBlock}>
+                <View style={styles.promoHeader}>
+                  <Text style={styles.promoTitle}>Promo videos</Text>
+                  <Pressable onPress={() => router.push("/videos")}>
+                    <Text style={styles.promoLink}>See all</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.promoRow}>
+                  {promoVideos.slice(0, 2).map((v) => (
+                    <Pressable
+                      key={v.id}
+                      style={styles.promoCard}
+                      onPress={() => router.push(`/videos?video=${v.id}`)}
+                    >
+                      {v.thumbnailUrl ? (
+                        <Image
+                          source={{ uri: v.thumbnailUrl }}
+                          style={styles.promoThumb}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <View style={[styles.promoThumb, styles.promoThumbEmpty]}>
+                          <Feather name="play" size={22} color="#F97316" />
+                        </View>
+                      )}
+                      <Text style={styles.promoCardTitle} numberOfLines={2}>
+                        {v.title}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null
+          }
           ListFooterComponent={
             loadingMore ? (
               <ActivityIndicator color="#F97316" style={{ marginVertical: 16 }} />
@@ -325,4 +366,22 @@ const styles = StyleSheet.create({
   retryText: { color: "#fff", fontWeight: "800" },
   emptyTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
   emptyBody: { fontSize: 14, color: "#64748B", textAlign: "center" },
+  promoBlock: { marginBottom: 14, gap: 8 },
+  promoHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  promoTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
+  promoLink: { color: "#F97316", fontWeight: "800", fontSize: 13 },
+  promoRow: { flexDirection: "row", gap: 10 },
+  promoCard: { flex: 1, gap: 6 },
+  promoThumb: {
+    width: "100%",
+    aspectRatio: 9 / 14,
+    borderRadius: 14,
+    backgroundColor: "#E2E8F0",
+  },
+  promoThumbEmpty: { alignItems: "center", justifyContent: "center" },
+  promoCardTitle: { fontSize: 12, fontWeight: "700", color: "#334155" },
 });

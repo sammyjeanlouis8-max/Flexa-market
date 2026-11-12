@@ -1,8 +1,8 @@
 import { Feather } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
 import React, { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import {
   FlatList,
-  Linking,
   Modal,
   Pressable,
   StyleSheet,
@@ -20,14 +20,14 @@ import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES } from "../../lib/countries";
 type RegisterScreenProps = {
   onSuccess: (token: string) => Promise<void> | void;
   onGoLogin: () => void;
-  onOpenWebsite?: (path: string) => void;
+  onOpenLegal?: (path: "/eula" | "/terms") => void;
   initialPromoCode?: string;
 };
 
 export default function RegisterScreen({
   onSuccess,
   onGoLogin,
-  onOpenWebsite,
+  onOpenLegal,
   initialPromoCode = "",
 }: RegisterScreenProps) {
   const [name, setName] = useState("");
@@ -53,12 +53,12 @@ export default function RegisterScreen({
     [],
   );
 
-  const openPath = (path: string) => {
-    if (onOpenWebsite) {
-      onOpenWebsite(path);
+  const openLegal = (path: "/eula" | "/terms") => {
+    if (onOpenLegal) {
+      onOpenLegal(path);
       return;
     }
-    Linking.openURL(`https://flexamarket.com${path}`).catch(() => {});
+    void WebBrowser.openBrowserAsync(`https://flexamarket.com${path}`);
   };
 
   const submit = async () => {
@@ -267,11 +267,11 @@ export default function RegisterScreen({
         </View>
         <Text style={styles.eulaText}>
           I agree to the{" "}
-          <Text style={styles.inlineLink} onPress={() => openPath("/eula")}>
+          <Text style={styles.inlineLink} onPress={() => openLegal("/eula")}>
             EULA
           </Text>{" "}
           and{" "}
-          <Text style={styles.inlineLink} onPress={() => openPath("/terms")}>
+          <Text style={styles.inlineLink} onPress={() => openLegal("/terms")}>
             Terms of Service
           </Text>
           .

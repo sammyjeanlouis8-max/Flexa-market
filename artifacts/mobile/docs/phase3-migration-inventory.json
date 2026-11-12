@@ -5,26 +5,28 @@
   "backend": "https://flexamarket.com/api",
   "pr": 172,
   "branch": "cursor/native-auth-globe-android-09ff",
-  "auditedAt": "2026-11-09T22:10:00Z",
+  "auditedAt": "2026-11-10T11:30:00Z",
   "auditCommit": "deeda28a",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
-    "placeholderRouteCount": 12,
-    "fullyNativeRouteCount": 29,
-    "partiallyNativeRouteCount": 5,
+    "placeholderRouteCount": 7,
+    "fullyNativeRouteCount": 32,
+    "partiallyNativeRouteCount": 10,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
-      "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
+      "eSIM marked DEFERRED/BLOCKED — no fake catalog.",
       "Wallet top-up remains BLOCKED by Android digital purchase guard.",
       "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell).",
       "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
-      "Realtime via socket.io /api/socket.io with HTTP polling fallback."
+      "Realtime via socket.io /api/socket.io with HTTP polling fallback.",
+      "Phase 3E iOS finish: recovery, videos feed, boost draft/manage, music mini player, calculator, admin All Videos, listing edit, IAP probe."
     ],
     "phase3b": true,
     "phase3c": true,
-    "phase3d": true
+    "phase3d": true,
+    "phase3e": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -93,10 +95,10 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 29,
-    "PARTIALLY_NATIVE": 5,
-    "PLACEHOLDER": 12,
-    "MISSING": 31,
+    "FULLY_NATIVE": 34,
+    "PARTIALLY_NATIVE": 10,
+    "PLACEHOLDER": 7,
+    "MISSING": 26,
     "BLOCKED": 5
   },
   "features": [
@@ -163,17 +165,15 @@
       "name": "Forgot password",
       "domain": "auth",
       "webRoute": "/auth/forgot-password",
-      "nativeRoute": null,
+      "nativeRoute": "/auth/forgot-password",
       "role": "guest",
       "apis": [
         "/api/auth/forgot-password",
         "/api/recovery/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "recovery screens"
-      ],
-      "work": "Native recovery wizard"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /api/recovery wizard; Login no longer opens website"
     },
     {
       "id": "home",
@@ -675,12 +675,12 @@
         "/api/subscription/*",
         "/api/subscription/android/*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "plans UI",
-        "Play Billing path"
+        "react-native-purchases native module",
+        "EAS RevenueCat key"
       ],
-      "work": "BLOCKED for web checkout; use /subscription/android/* later"
+      "work": "IAP surface + product IDs; blocked until Expo dependency authorized"
     },
     {
       "id": "subscription-billing",
@@ -752,16 +752,14 @@
       "name": "CalcAI calculator",
       "domain": "customer",
       "webRoute": "/calculator",
-      "nativeRoute": null,
+      "nativeRoute": "/calculator",
       "role": "buyer",
       "apis": [
         "/api/calculator/ask"
       ],
-      "status": "MISSING",
-      "missing": [
-        "calculator UI"
-      ],
-      "work": "Low priority"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Local calculator native"
     },
     {
       "id": "help-center",
@@ -887,43 +885,37 @@
         "DELETE /api/listings/:id"
       ],
       "status": "FULLY_NATIVE",
-      "missing": [
-        "inline edit form"
-      ],
-      "work": "Phase 3D: /my-listings via /users/:id/listings + delete"
+      "missing": [],
+      "work": "List/delete/edit/boost entry native"
     },
     {
       "id": "edit-listing",
       "name": "Edit Product",
       "domain": "seller",
       "webRoute": "/sell?edit= / listing edit",
-      "nativeRoute": null,
+      "nativeRoute": "/edit-listing/[id]",
       "role": "seller",
       "apis": [
         "PATCH /api/listings/:id"
       ],
-      "status": "MISSING",
-      "missing": [
-        "edit screen"
-      ],
-      "work": "With Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native edit with camera/library upload retry"
     },
     {
       "id": "image-upload",
       "name": "Image Upload",
       "domain": "seller",
       "webRoute": "(Sell)",
-      "nativeRoute": null,
+      "nativeRoute": "lib/mediaUpload + Sell/Edit",
       "role": "seller",
       "apis": [
         "/api/storage/uploads*",
         "/api/upload"
       ],
-      "status": "MISSING",
-      "missing": [
-        "native picker + chunked upload"
-      ],
-      "work": "Prerequisite for Sell; bg upload module exists"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Wasabi upload with progress/cancel/retry"
     },
     {
       "id": "video-upload",
@@ -1036,11 +1028,11 @@
         "/api/boost/*",
         "/api/booster/*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "campaign create UI"
+        "paid launch on Android"
       ],
-      "work": "Paid boost BLOCKED on Android; free/admin modes may work"
+      "work": "Draft/launch UI native; Android paid still blocked"
     },
     {
       "id": "boost-paid",
@@ -1068,11 +1060,11 @@
       "apis": [
         "/api/boost-analytics*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "analytics UI"
+        "full analytics charts"
       ],
-      "work": "After Boost"
+      "work": "My boosts shows impressions/clicks; detail charts later"
     },
     {
       "id": "promo-videos",
@@ -1084,11 +1076,9 @@
       "apis": [
         "/api/videos/feed"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "TikTok-style feed"
-      ],
-      "work": "Medium priority"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native feed + home 2-video strip + selected deep-link"
     },
     {
       "id": "drafts",
@@ -1145,7 +1135,7 @@
       "domain": "driver",
       "webRoute": "/delivery/apply",
       "nativeRoute": "/driver-apply",
-      "role": "buyer\u2192driver",
+      "role": "buyer→driver",
       "apis": [
         "/api/delivery/apply"
       ],
@@ -1242,16 +1232,17 @@
       "name": "Flexa Music",
       "domain": "media",
       "webRoute": "/music,/music/upload,/music/earnings,/music/play/:id",
-      "nativeRoute": null,
+      "nativeRoute": "/music",
       "role": "guest+/artist",
       "apis": [
         "/api/music/*"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "player + upload"
+        "background audio mode in app.json",
+        "purchase on Android"
       ],
-      "work": "Music buys BLOCKED on Android digital guard"
+      "work": "Catalog + mini player via expo-av; UIBackgroundModes audio needs auth"
     },
     {
       "id": "music-purchase",
@@ -1280,11 +1271,11 @@
         "/api/admin/*",
         "/api/admin/me"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "entire control center"
+        "full control center"
       ],
-      "work": "Large Phase 4+; role-gated; prefer responsive web admin unless required native"
+      "work": "Role-gated shell + Super Admin All Videos country filter"
     },
     {
       "id": "admin-users",
@@ -1416,7 +1407,7 @@
       "missing": [
         "provider integration"
       ],
-      "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready"
+      "work": "DEFERRED — honest /esim screen; no fake plans/QR; preserve backend until ready"
     },
     {
       "id": "smart-notifications",

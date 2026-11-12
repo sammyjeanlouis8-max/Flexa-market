@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
 import {
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -18,13 +18,15 @@ import { loginWithEmail } from "../../lib/authApi";
 type LoginScreenProps = {
   onSuccess: (token: string) => Promise<void> | void;
   onGoRegister: () => void;
-  onOpenWebsite?: (path: string) => void;
+  onForgotPassword?: () => void;
+  onOpenLegal?: (path: "/eula" | "/terms") => void;
 };
 
 export default function LoginScreen({
   onSuccess,
   onGoRegister,
-  onOpenWebsite,
+  onForgotPassword,
+  onOpenLegal,
 }: LoginScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,12 +40,13 @@ export default function LoginScreen({
     eula?: string;
   }>({});
 
-  const openPath = (path: string) => {
-    if (onOpenWebsite) {
-      onOpenWebsite(path);
+  const openLegal = (path: "/eula" | "/terms") => {
+    if (onOpenLegal) {
+      onOpenLegal(path);
       return;
     }
-    Linking.openURL(`https://flexamarket.com${path}`).catch(() => {});
+    // In-app browser for legal docs only — not an internal marketplace WebView route.
+    void WebBrowser.openBrowserAsync(`https://flexamarket.com${path}`);
   };
 
   const submit = async () => {
@@ -138,7 +141,7 @@ export default function LoginScreen({
           <Text style={styles.label}>Password</Text>
           <AuthLink
             label="Forgot password?"
-            onPress={() => openPath("/auth/forgot-password")}
+            onPress={() => onForgotPassword?.()}
             testID="link-forgot-password"
           />
         </View>
@@ -201,11 +204,11 @@ export default function LoginScreen({
         </View>
         <Text style={styles.eulaText}>
           I agree to the{" "}
-          <Text style={styles.inlineLink} onPress={() => openPath("/eula")}>
+          <Text style={styles.inlineLink} onPress={() => openLegal("/eula")}>
             EULA
           </Text>{" "}
           and{" "}
-          <Text style={styles.inlineLink} onPress={() => openPath("/terms")}>
+          <Text style={styles.inlineLink} onPress={() => openLegal("/terms")}>
             Terms of Service
           </Text>
           .

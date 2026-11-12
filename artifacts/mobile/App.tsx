@@ -476,7 +476,14 @@ function MarketplaceShell() {
             <LoginScreen
               onSuccess={finishNativeAuth}
               onGoRegister={() => setAuthMode("register")}
-              onOpenWebsite={(path) => {
+              onForgotPassword={() => {
+                // Legacy WebView shell is not the Expo entry; send recovery to trusted host.
+                setAuthMode(null);
+                webRef.current?.injectJavaScript(
+                  `window.location.href=${JSON.stringify("https://flexamarket.com/auth/forgot-password")};true;`,
+                );
+              }}
+              onOpenLegal={(path) => {
                 setAuthMode(null);
                 webRef.current?.injectJavaScript(
                   `window.location.href=${JSON.stringify(`https://flexamarket.com${path}`)};true;`,
@@ -491,7 +498,7 @@ function MarketplaceShell() {
             <RegisterScreen
               onSuccess={finishNativeAuth}
               onGoLogin={() => setAuthMode("login")}
-              onOpenWebsite={(path) => {
+              onOpenLegal={(path) => {
                 setAuthMode(null);
                 webRef.current?.injectJavaScript(
                   `window.location.href=${JSON.stringify(`https://flexamarket.com${path}`)};true;`,

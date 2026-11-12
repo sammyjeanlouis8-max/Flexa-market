@@ -113,30 +113,50 @@ export default function MyListingsScreen() {
             const img = item.images?.[0];
             const price = Number(item.price || 0);
             return (
-              <Pressable
-                style={styles.card}
-                onPress={() => router.push(`/listing/${item.id}`)}
-              >
-                {img ? (
-                  <Image source={{ uri: img }} style={styles.thumb} contentFit="cover" />
-                ) : (
-                  <View style={[styles.thumb, styles.thumbEmpty]}>
-                    <Feather name="image" size={18} color="#94A3B8" />
-                  </View>
-                )}
+              <View style={styles.card}>
+                <Pressable onPress={() => router.push(`/listing/${item.id}`)}>
+                  {img ? (
+                    <Image source={{ uri: img }} style={styles.thumb} contentFit="cover" />
+                  ) : (
+                    <View style={[styles.thumb, styles.thumbEmpty]}>
+                      <Feather name="image" size={18} color="#94A3B8" />
+                    </View>
+                  )}
+                </Pressable>
                 <View style={styles.meta}>
-                  <Text style={styles.cardTitle} numberOfLines={2}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.price}>${price.toFixed(2)}</Text>
-                  <Text style={styles.status}>
-                    {(item as any).moderationStatus || item.status || "listed"}
-                  </Text>
+                  <Pressable onPress={() => router.push(`/listing/${item.id}`)}>
+                    <Text style={styles.cardTitle} numberOfLines={2}>
+                      {item.title}
+                    </Text>
+                    <Text style={styles.price}>${price.toFixed(2)}</Text>
+                    <Text style={styles.status}>
+                      {(item as any).moderationStatus || item.status || "listed"}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.rowActions}>
+                    <Pressable
+                      onPress={() => router.push(`/edit-listing/${item.id}`)}
+                      hitSlop={6}
+                    >
+                      <Text style={styles.actionLink}>Edit</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() =>
+                        router.push({
+                          pathname: "/boost",
+                          params: { listingId: String(item.id) },
+                        })
+                      }
+                      hitSlop={6}
+                    >
+                      <Text style={styles.actionLink}>Boost</Text>
+                    </Pressable>
+                  </View>
                 </View>
                 <Pressable onPress={() => onDelete(item)} hitSlop={8}>
                   <Feather name="trash-2" size={18} color="#B91C1C" />
                 </Pressable>
-              </Pressable>
+              </View>
             );
           }}
         />
@@ -195,4 +215,6 @@ const styles = StyleSheet.create({
   cardTitle: { fontWeight: "700", color: "#0F172A" },
   price: { fontWeight: "800", color: "#F97316", marginTop: 2 },
   status: { fontSize: 12, color: "#64748B", marginTop: 2, textTransform: "capitalize" },
+  rowActions: { flexDirection: "row", gap: 14, marginTop: 6 },
+  actionLink: { color: "#F97316", fontWeight: "800", fontSize: 12 },
 });

@@ -34,7 +34,8 @@ import {
 import { getFlagAtlasAsset } from "../../lib/globeAssetCache";
 import AuthGlobeLite from "./AuthGlobeLite";
 
-const REVOLUTION_MS = 12_000;
+/** Slightly slower orbit keeps the auth brand calm while still readable. */
+const REVOLUTION_MS = 16_000;
 /** Downgrade after this many consecutive slow frames. */
 const JANK_STREAK = 18;
 /** Frame considered slow if it exceeds target interval by this factor. */

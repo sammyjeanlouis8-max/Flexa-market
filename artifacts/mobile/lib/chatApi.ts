@@ -93,7 +93,11 @@ export async function createConversation(
     body: input,
   });
   const data = await readJson(res);
-  if (!res.ok) throw new Error(data.error || `Could not start chat (${res.status})`);
+  if (!res.ok) {
+    const err = new Error(data.error || `Could not start chat (${res.status})`) as Error & { code?: string };
+    if (data.code) err.code = String(data.code);
+    throw err;
+  }
   return data as Conversation;
 }
 
@@ -132,7 +136,11 @@ export async function sendMessage(
     },
   });
   const data = await readJson(res);
-  if (!res.ok) throw new Error(data.error || `Send failed (${res.status})`);
+  if (!res.ok) {
+    const err = new Error(data.error || `Send failed (${res.status})`) as Error & { code?: string };
+    if (data.code) err.code = String(data.code);
+    throw err;
+  }
   return data as ChatMessage;
 }
 

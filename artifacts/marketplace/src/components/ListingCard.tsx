@@ -1,9 +1,15 @@
 import { Link, useLocation } from "wouter";
-import { Heart, MapPin, Zap, BadgeCheck, Crown, Play, Eye, ImageIcon, ShoppingCart, Star } from "lucide-react";
+import { Heart, MapPin, Zap, BadgeCheck, Crown, Play, Eye, ImageIcon, ShoppingCart, Star, MoreVertical, EyeOff, Store } from "lucide-react";
 import { formatViewCount } from "@/hooks/useViewTracker";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/auth";
 import { useCart } from "@/contexts/cart";
 import { useAuthRequired } from "@/components/auth/AuthRequiredModal";
@@ -130,7 +136,7 @@ export default function ListingCard({
   showAddToCart?: boolean;
 }) {
   const [, setLocation] = useLocation();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { requireAuth } = useAuthRequired();
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -142,6 +148,86 @@ export default function ListingCard({
   const flag = listing.country ? COUNTRY_FLAGS[listing.country] : null;
   const displayLocation = listing.city ?? listing.location;
   const isOwner = user && listing.sellerId ? user.id === listing.sellerId : false;
+  const [hiding, setHiding] = useState(false);
+
+  const purgeListingFromCaches = (opts: { listingId?: number; sellerId?: number }) => {
+    queryClient.getQueryCache().getAll().forEach((q) => {
+      queryClient.setQueryData(q.queryKey, (d: any) => {
+        if (!d) return d;
+        const filterArr = (arr: any[]) => arr.filter((x: any) => {
+          if (opts.listingId != null && x?.id === opts.listingId) return false;
+          if (opts.sellerId != null && x?.sellerId === opts.sellerId) return false;
+          return true;
+        });
+        if (Array.isArray(d)) return filterArr(d);
+        if (d?.listings && Array.isArray(d.listings)) return { ...d, listings: filterArr(d.listings) };
+        if (d?.recentListings || d?.featuredListings || d?.flexaFamilyListings) {
+          return {
+            ...d,
+            recentListings: Array.isArray(d.recentListings) ? filterArr(d.recentListings) : d.recentListings,
+            featuredListings: Array.isArray(d.featuredListings) ? filterArr(d.featuredListings) : d.featuredListings,
+            flexaFamilyListings: Array.isArray(d.flexaFamilyListings) ? filterArr(d.flexaFamilyListings) : d.flexaFamilyListings,
+          };
+        }
+        return d;
+      });
+    });
+  };
+
+  const hideListing = async () => {
+    if (!user || !token) {
+      requireAuth({ action: "hide", next: `/listings/${listing.id}`, listingId: listing.id });
+      return;
+    }
+    setHiding(true);
+    try {
+      const res = await fetch(`/api/listings/${listing.id}/hide`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("hide failed");
+      purgeListingFromCaches({ listingId: listing.id });
+      toast({ title: t("safety.listingHidden", { defaultValue: "Product hidden" }) });
+      await queryClient.invalidateQueries({
+        predicate: (q) => q.queryKey.some((x) => typeof x === "string" && x.toLowerCase().includes("listing")),
+      });
+    } catch {
+      toast({
+        title: t("safety.hideFailed", { defaultValue: "Could not hide this product" }),
+        variant: "destructive",
+      });
+    } finally {
+      setHiding(false);
+    }
+  };
+
+  const hideSeller = async () => {
+    if (!listing.sellerId) return;
+    if (!user || !token) {
+      requireAuth({ action: "hide", next: `/listings/${listing.id}`, listingId: listing.id });
+      return;
+    }
+    setHiding(true);
+    try {
+      const res = await fetch(`/api/users/${listing.sellerId}/hide-listings`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("hide seller failed");
+      purgeListingFromCaches({ sellerId: listing.sellerId });
+      toast({ title: t("safety.sellerHidden", { defaultValue: "Seller products hidden" }) });
+      await queryClient.invalidateQueries({
+        predicate: (q) => q.queryKey.some((x) => typeof x === "string" && x.toLowerCase().includes("listing")),
+      });
+    } catch {
+      toast({
+        title: t("safety.hideFailed", { defaultValue: "Could not hide this product" }),
+        variant: "destructive",
+      });
+    } finally {
+      setHiding(false);
+    }
+  };
 
   // Use context (persists across remounts) — fall back to listing.isFavorited for detail page
   const liked = isFavorited(listing.id) || (listing.isFavorited ?? false);
@@ -408,6 +494,51 @@ export default function ListingCard({
                 <span className="text-[11px] font-bold leading-none">{likeCount}</span>
               )}
             </button>
+          )}
+
+          {/* Three-dot safety menu — hide product / hide seller */}
+          {!preview && !isOwner && (
+            <div
+              className={cn(
+                "absolute z-10",
+                showAddToCart ? "top-12 right-2" : "top-2 right-2",
+              )}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            >
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={hiding}
+                    className="h-9 w-9 rounded-full bg-black/60 backdrop-blur-sm text-white shadow-md flex items-center justify-center hover:bg-black/75"
+                    aria-label={t("safety.listingMenu", { defaultValue: "Listing options" })}
+                    data-testid={`button-listing-menu-${listing.id}`}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 z-[80]">
+                  <DropdownMenuItem
+                    disabled={hiding}
+                    onSelect={(e) => { e.preventDefault(); void hideListing(); }}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <EyeOff className="h-4 w-4" />
+                    {t("safety.hideProduct", { defaultValue: "Hide this product" })}
+                  </DropdownMenuItem>
+                  {listing.sellerId != null && (
+                    <DropdownMenuItem
+                      disabled={hiding}
+                      onSelect={(e) => { e.preventDefault(); void hideSeller(); }}
+                      className="gap-2 cursor-pointer"
+                    >
+                      <Store className="h-4 w-4" />
+                      {t("safety.hideSellerProducts", { defaultValue: "Hide all products from this seller" })}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
 

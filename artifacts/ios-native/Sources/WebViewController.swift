@@ -5,6 +5,10 @@ import AVFoundation
 
 private let kWebsite = URL(string: "https://flexamarket.com")!
 
+// Safety controls (hide product / hide seller, chat Block, Block and report,
+// Settings blocked + hidden lists) ship in the marketplace web app loaded here.
+// New iOS builds pick them up after the DigitalOcean web deploy; no native UI fork.
+
 /// Weak proxy to break the retain cycle WKUserContentController creates
 /// when holding a WKScriptMessageHandler strongly.
 final class ScriptMessageProxy: NSObject, WKScriptMessageHandler {

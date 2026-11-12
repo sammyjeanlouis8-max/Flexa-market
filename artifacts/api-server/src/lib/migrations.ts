@@ -3347,6 +3347,34 @@ export async function runStartupMigrations(): Promise<void> {
     sql: `ALTER TABLE listings ADD COLUMN IF NOT EXISTS video_pinned_at timestamptz`,
   });
 
+  // Viewer preferences: hide a listing or every listing from a seller (synced across devices).
+  migrations.push({
+    name: "listing_hides.create",
+    sql: `CREATE TABLE IF NOT EXISTS listing_hides (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      listing_id INTEGER REFERENCES listings(id) ON DELETE CASCADE,
+      seller_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT listing_hides_exactly_one_target
+        CHECK (((listing_id IS NOT NULL)::int + (seller_id IS NOT NULL)::int) = 1)
+    )`,
+  });
+  migrations.push({
+    name: "listing_hides.user_listing_unique",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS listing_hides_user_listing_idx
+      ON listing_hides(user_id, listing_id) WHERE listing_id IS NOT NULL`,
+  });
+  migrations.push({
+    name: "listing_hides.user_seller_unique",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS listing_hides_user_seller_idx
+      ON listing_hides(user_id, seller_id) WHERE seller_id IS NOT NULL`,
+  });
+  migrations.push({
+    name: "listing_hides.user_id_idx",
+    sql: `CREATE INDEX IF NOT EXISTS listing_hides_user_id_idx ON listing_hides(user_id)`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

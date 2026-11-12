@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
-import { ArrowLeft, Eye, EyeOff, Ban, Loader2, UserX } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Ban, Loader2, UserX, Package, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -16,6 +16,24 @@ interface BlockedUser {
   blockedAt: string | null;
 }
 
+interface HiddenListing {
+  id: number;
+  listingId: number;
+  title: string;
+  image: string | null;
+  sellerId: number;
+  sellerName: string | null;
+  createdAt: string;
+}
+
+interface HiddenSeller {
+  id: number;
+  sellerId: number;
+  sellerName: string;
+  sellerAvatar: string | null;
+  createdAt: string;
+}
+
 const PROFILE_VISIBILITY_KEY = "fm_privacy_profile_visible";
 const ONLINE_STATUS_KEY = "fm_privacy_show_online";
 
@@ -26,8 +44,12 @@ export default function SettingsPrivacy() {
   const [profileVisible, setProfileVisible] = useState(() => localStorage.getItem(PROFILE_VISIBILITY_KEY) !== "0");
   const [showOnline, setShowOnline] = useState(() => localStorage.getItem(ONLINE_STATUS_KEY) !== "0");
   const [blocked, setBlocked] = useState<BlockedUser[]>([]);
+  const [hiddenListings, setHiddenListings] = useState<HiddenListing[]>([]);
+  const [hiddenSellers, setHiddenSellers] = useState<HiddenSeller[]>([]);
   const [loadingBlocks, setLoadingBlocks] = useState(true);
+  const [loadingHides, setLoadingHides] = useState(true);
   const [unblockingId, setUnblockingId] = useState<number | null>(null);
+  const [unhidingKey, setUnhidingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -47,6 +69,32 @@ export default function SettingsPrivacy() {
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoadingBlocks(false);
+      });
+    return () => controller.abort();
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    setLoadingHides(true);
+    fetch("/api/users/me/hides", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("failed");
+        const data = await res.json();
+        setHiddenListings(Array.isArray(data.listings) ? data.listings : []);
+        setHiddenSellers(Array.isArray(data.sellers) ? data.sellers : []);
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setHiddenListings([]);
+          setHiddenSellers([]);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingHides(false);
       });
     return () => controller.abort();
   }, [token]);
@@ -87,6 +135,44 @@ export default function SettingsPrivacy() {
       toast({ title: t("settings.requestFailed"), variant: "destructive" });
     } finally {
       setUnblockingId(null);
+    }
+  };
+
+  const unhideListing = async (listingId: number) => {
+    if (!token) return;
+    const key = `listing:${listingId}`;
+    setUnhidingKey(key);
+    try {
+      const res = await fetch(`/api/listings/${listingId}/hide`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("failed");
+      setHiddenListings((prev) => prev.filter((h) => h.listingId !== listingId));
+      toast({ title: t("safety.listingRestored", { defaultValue: "Product visible again" }) });
+    } catch {
+      toast({ title: t("settings.requestFailed"), variant: "destructive" });
+    } finally {
+      setUnhidingKey(null);
+    }
+  };
+
+  const unhideSeller = async (sellerId: number) => {
+    if (!token) return;
+    const key = `seller:${sellerId}`;
+    setUnhidingKey(key);
+    try {
+      const res = await fetch(`/api/users/${sellerId}/hide-listings`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("failed");
+      setHiddenSellers((prev) => prev.filter((h) => h.sellerId !== sellerId));
+      toast({ title: t("safety.sellerRestored", { defaultValue: "Seller products visible again" }) });
+    } catch {
+      toast({ title: t("settings.requestFailed"), variant: "destructive" });
+    } finally {
+      setUnhidingKey(null);
     }
   };
 
@@ -163,6 +249,78 @@ export default function SettingsPrivacy() {
                     onClick={() => unblock(b.id)}
                   >
                     {unblockingId === b.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t("accountCenter.unblock")}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+      <div className="space-y-2">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-1 flex items-center gap-1.5">
+          <EyeOff className="h-3.5 w-3.5" />
+          {t("safety.hiddenProducts", { defaultValue: "Hidden products" })}
+        </h2>
+        <Card className="rounded-2xl overflow-hidden">
+          {loadingHides ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t("profile.loading")}
+            </div>
+          ) : hiddenListings.length === 0 && hiddenSellers.length === 0 ? (
+            <div className="py-10 px-4 text-center text-sm text-muted-foreground">
+              <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              {t("safety.noHiddenProducts", { defaultValue: "You have not hidden any products." })}
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {hiddenListings.map((h) => (
+                <li key={`l-${h.id}`} className="flex items-center gap-3 px-4 py-3">
+                  <div className="h-10 w-10 rounded-lg overflow-hidden bg-muted flex items-center justify-center shrink-0">
+                    {h.image ? (
+                      <img src={h.image} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{h.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">{h.sellerName ?? ""}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={unhidingKey === `listing:${h.listingId}`}
+                    onClick={() => void unhideListing(h.listingId)}
+                  >
+                    {unhidingKey === `listing:${h.listingId}`
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : t("safety.unhide", { defaultValue: "Show again" })}
+                  </Button>
+                </li>
+              ))}
+              {hiddenSellers.map((h) => (
+                <li key={`s-${h.id}`} className="flex items-center gap-3 px-4 py-3">
+                  <Avatar className="h-9 w-9">
+                    <AvatarImage src={h.sellerAvatar ?? undefined} alt="" />
+                    <AvatarFallback><Store className="h-4 w-4" /></AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{h.sellerName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("safety.hiddenSellerHint", { defaultValue: "All products from this seller" })}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={unhidingKey === `seller:${h.sellerId}`}
+                    onClick={() => void unhideSeller(h.sellerId)}
+                  >
+                    {unhidingKey === `seller:${h.sellerId}`
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : t("safety.unhide", { defaultValue: "Show again" })}
                   </Button>
                 </li>
               ))}

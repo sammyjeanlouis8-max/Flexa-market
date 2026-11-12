@@ -25,6 +25,7 @@ export * from "./vendor_subscriptions";
 export * from "./recovery";
 export * from "./user_restrictions";
 export * from "./user_blocks";
+export * from "./listing_hides";
 export * from "./drivers";
 export * from "./financial";
 export * from "./audit_logs";

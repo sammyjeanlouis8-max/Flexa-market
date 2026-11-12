@@ -369,6 +369,11 @@ router.get("/users/:id/listings", optionalAuth, async (req, res): Promise<void> 
       SELECT 1 FROM user_blocks ub
       WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${id}
     )` as any);
+    conditions.push(sql`NOT EXISTS (
+      SELECT 1 FROM listing_hides lh
+      WHERE lh.user_id = ${req.userId}
+        AND (lh.listing_id = ${listingsTable.id} OR lh.seller_id = ${id})
+    )` as any);
   }
   if (!isOwner && !isAdmin) {
     conditions.push(eq(listingsTable.moderationStatus, "approved"));

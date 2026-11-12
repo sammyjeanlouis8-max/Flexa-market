@@ -230,7 +230,22 @@ export default function HomeTab() {
               <ActivityIndicator color="#F97316" style={{ marginVertical: 16 }} />
             ) : null
           }
-          renderItem={({ item }) => <ListingCard item={item} />}
+          renderItem={({ item }) => (
+            <ListingCard
+              item={item}
+              onHidden={({ listingId, sellerId }) => {
+                const drop = (rows: Listing[]) =>
+                  rows.filter((l) => {
+                    if (listingId != null && l.id === listingId) return false;
+                    if (sellerId != null && l.sellerId === sellerId) return false;
+                    return true;
+                  });
+                setFeatured((prev) => drop(prev));
+                setRecent((prev) => drop(prev));
+                setListings((prev) => drop(prev));
+              }}
+            />
+          )}
           removeClippedSubviews
           windowSize={7}
           maxToRenderPerBatch={8}

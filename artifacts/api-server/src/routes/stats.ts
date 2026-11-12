@@ -3,6 +3,7 @@ import { db, listingsTable, usersTable, categoriesTable } from "@workspace/db";
 import { eq, desc, count, and, or, isNull, gt, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { optionalAuth } from "../middlewares/auth";
+import { appendViewerCatalogFilters } from "../lib/catalogVisibility";
 
 const router = Router();
 
@@ -59,13 +60,15 @@ router.get("/stats/home", optionalAuth, async (req, res): Promise<void> => {
     explicitCountry ??
     (req.userId && req.user?.country && !isAdmin ? req.user.country : null);
 
-  const baseWhere = and(
+  const homeConditions: any[] = [
     eq(listingsTable.status, "available"),
     eq(listingsTable.moderationStatus, "approved"),
     // Hide zero-stock listings from Home feeds
     or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)),
-    ...(country ? [eq(listingsTable.country, country)] : []),
-  );
+  ];
+  if (country) homeConditions.push(eq(listingsTable.country, country));
+  appendViewerCatalogFilters(homeConditions, req.userId);
+  const baseWhere = and(...homeConditions);
 
   const [totalListingsResult] = await db.select({ count: count() }).from(listingsTable).where(baseWhere);
   const [totalUsersResult] = await db.select({ count: count() }).from(usersTable);
@@ -96,14 +99,16 @@ router.get("/stats/home", optionalAuth, async (req, res): Promise<void> => {
   END)`;
 
   // Flexa VIP: country-scoped — each user sees VIP sellers from their own country only.
-  const familyOnlyWhere = and(
+  const familyConditions: any[] = [
     eq(listingsTable.status, "available"),
     eq(listingsTable.moderationStatus, "approved"),
     or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)),
     inArray(usersTable.subscriptionPlan, ['standard', 'premium', 'vip']),
     gt(usersTable.subscriptionExpiresAt, new Date()),
-    ...(country ? [eq(listingsTable.country, country)] : []),
-  );
+  ];
+  if (country) familyConditions.push(eq(listingsTable.country, country));
+  appendViewerCatalogFilters(familyConditions, req.userId);
+  const familyOnlyWhere = and(...familyConditions);
 
   const flexaFamilyRows = await db.select().from(listingsTable)
     .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))

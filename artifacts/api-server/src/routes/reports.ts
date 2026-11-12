@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, listingsTable, notificationsTable, reportsTable, usersTable } from "@workspace/db";
-import { eq, desc, inArray, sql } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { hasRole, isAdminAccessSuspended, requireAuth, requireRole } from "../middlewares/auth";
 import { CreateReportBody } from "@workspace/api-zod";
 import { userInAdminScope } from "../lib/adminScope";
@@ -10,6 +10,25 @@ const router = Router();
 router.post("/reports", requireAuth, async (req, res): Promise<void> => {
   const parsed = CreateReportBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  // Idempotent retry: reuse a pending report with the same reporter/target/reason
+  // so a failed client submit can retry without creating duplicates.
+  const [existing] = await db
+    .select()
+    .from(reportsTable)
+    .where(and(
+      eq(reportsTable.reporterId, req.userId!),
+      eq(reportsTable.targetType, parsed.data.targetType),
+      eq(reportsTable.targetId, parsed.data.targetId),
+      eq(reportsTable.reason, parsed.data.reason),
+      eq(reportsTable.status, "pending"),
+    ))
+    .limit(1);
+  if (existing) {
+    res.status(200).json({ message: "Report submitted", reportId: existing.id, duplicate: true });
+    return;
+  }
+
   const [report] = await db.insert(reportsTable).values({ reporterId: req.userId!, ...parsed.data }).returning();
   // Staff recipients are computed from the target geography, not reporter geography.
   let target: typeof usersTable.$inferSelect | undefined;
@@ -23,7 +42,7 @@ router.post("/reports", requireAuth, async (req, res): Promise<void> => {
     const recipients = staff.filter(s => hasRole(s, "moderator") && !s.isBanned && !isAdminAccessSuspended(s) && userInAdminScope(s, target!)).map(s => s.id);
     if (recipients.length) await db.insert(notificationsTable).values(recipients.map(userId => ({ userId, actorId: req.userId!, type: "report_new", message: "A new report needs review" }))).catch(() => {});
   }
-  res.status(201).json({ message: "Report submitted" });
+  res.status(201).json({ message: "Report submitted", reportId: report.id });
 });
 
 router.get("/admin/reports", requireRole("moderator"), async (req, res): Promise<void> => {

@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
-import type { Listing } from "@/lib/api";
+import { resolveMediaUrl, type Listing } from "@/lib/api";
 
 const CARD_WIDTH = (Dimensions.get("window").width - 12 * 3) / 2;
 
@@ -24,7 +24,7 @@ export function ListingCard({
   onFavoriteToggle,
   isFavorited = false,
 }: ListingCardProps) {
-  const imageUri = item.images?.[0];
+  const imageUri = resolveMediaUrl(item.images?.[0]);
   const price = Number(item.price || 0);
   const currency = item.currency === "HTG" ? "G" : "$";
 

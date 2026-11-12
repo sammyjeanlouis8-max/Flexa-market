@@ -8,6 +8,18 @@ export function getApiBase(): string {
   return authBaseUrl();
 }
 
+/** Absolute CDN / API media URLs — listings sometimes return `/api/storage/...` paths. */
+export function resolveMediaUrl(uri?: string | null): string | undefined {
+  if (!uri) return undefined;
+  if (/^https?:\/\//i.test(uri) || uri.startsWith("data:") || uri.startsWith("file:")) {
+    return uri;
+  }
+  if (uri.startsWith("//")) return `https:${uri}`;
+  const origin = getApiBase().replace(/\/api\/?$/, "");
+  if (uri.startsWith("/")) return `${origin}${uri}`;
+  return `${origin}/${uri}`;
+}
+
 export type Listing = {
   id: number;
   title: string;
@@ -65,6 +77,21 @@ async function apiFetch(path: string, opts: FetchOpts = {}) {
   return res;
 }
 
+function normalizeListing(listing: Listing): Listing {
+  const images = (listing.images ?? [])
+    .map((u) => resolveMediaUrl(u))
+    .filter((u): u is string => Boolean(u));
+  return {
+    ...listing,
+    images,
+    sellerAvatar: resolveMediaUrl(listing.sellerAvatar) ?? listing.sellerAvatar,
+  };
+}
+
+function normalizeListings(listings: Listing[] | undefined): Listing[] {
+  return (listings ?? []).map(normalizeListing);
+}
+
 export async function fetchHomeStats(
   country: string,
   opts: FetchOpts = {},
@@ -72,7 +99,13 @@ export async function fetchHomeStats(
   const q = new URLSearchParams({ country });
   const res = await apiFetch(`/stats/home?${q}`, opts);
   if (!res.ok) throw new Error(`Home stats failed (${res.status})`);
-  return res.json();
+  const data = (await res.json()) as HomeStats;
+  return {
+    ...data,
+    recentListings: normalizeListings(data.recentListings),
+    featuredListings: normalizeListings(data.featuredListings),
+    flexaFamilyListings: normalizeListings(data.flexaFamilyListings),
+  };
 }
 
 export async function fetchListings(
@@ -94,7 +127,8 @@ export async function fetchListings(
   if (params.category) q.set("category", params.category);
   const res = await apiFetch(`/listings?${q}`, opts);
   if (!res.ok) throw new Error(`Listings failed (${res.status})`);
-  return res.json();
+  const data = (await res.json()) as ListingsPage;
+  return { ...data, listings: normalizeListings(data.listings) };
 }
 
 export async function fetchListing(
@@ -103,7 +137,7 @@ export async function fetchListing(
 ): Promise<Listing> {
   const res = await apiFetch(`/listings/${id}`, opts);
   if (!res.ok) throw new Error(`Listing ${id} failed (${res.status})`);
-  return res.json();
+  return normalizeListing((await res.json()) as Listing);
 }
 
 export async function fetchCategories(opts: FetchOpts = {}) {

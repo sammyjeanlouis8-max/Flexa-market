@@ -35,7 +35,10 @@ function buildSchema(t: (key: string) => string) {
         .optional()
         .refine((v) => !v || /^[0-9]{6,15}$/.test(v), t("auth.phoneDigitsOnly")),
       country: z.string().min(1, t("auth.countryRequired")),
-      location: z.string().optional(),
+      location: z
+        .string()
+        .trim()
+        .min(2, t("auth.cityRequired") || "City is required"),
       eulaAccepted: z.boolean().refine((v) => v === true, t("auth.eulaRequired")),
     })
     .refine((data) => data.password.trim() === data.confirmPassword.trim(), {
@@ -330,9 +333,7 @@ export default function Register() {
                 <FormItem>
                   <FormLabel>
                     {t("auth.city", { defaultValue: "City" })}
-                    <span className="ml-1 text-xs font-normal text-[var(--auth-muted)]">
-                      {t("auth.optional", "(Optional)")}
-                    </span>
+                    <span className="ml-1 text-red-400">*</span>
                   </FormLabel>
                   <FormControl>
                     <Input

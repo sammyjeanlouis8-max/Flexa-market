@@ -2,11 +2,14 @@ import { Feather } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
+import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
 import { fetchUnreadCount } from "@/lib/chatApi";
 
 export default function TabLayout() {
   const { token } = useAuth();
+  const { count: cartCount } = useCart();
   const [unread, setUnread] = useState(0);
 
   useEffect(() => {
@@ -35,7 +38,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#F97316",
+        tabBarActiveTintColor: colors.flexaGreen,
         tabBarInactiveTintColor: "#94A3B8",
         tabBarStyle: {
           backgroundColor: "#FFFFFF",
@@ -62,28 +65,19 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{
-          title: "Search",
+          title: "Categories",
           tabBarIcon: ({ color, size }) => (
-            <Feather name="search" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="sell"
-        options={{
-          title: "Sell",
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="plus-circle" color={color} size={size} />
+            <Feather name="grid" color={color} size={size} />
           ),
         }}
       />
       <Tabs.Screen
         name="inbox"
         options={{
-          title: "Chat",
+          title: "Messages",
           tabBarBadge: unread > 0 ? (unread > 99 ? "99+" : unread) : undefined,
           tabBarBadgeStyle: {
-            backgroundColor: "#F97316",
+            backgroundColor: colors.flexaOrange,
             color: "#FFFFFF",
             fontSize: 10,
             fontWeight: "800",
@@ -96,9 +90,25 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="cart"
+        options={{
+          title: "Cart",
+          tabBarBadge: cartCount > 0 ? (cartCount > 99 ? "99+" : cartCount) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.flexaOrange,
+            color: "#FFFFFF",
+            fontSize: 10,
+            fontWeight: "800",
+          },
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="shopping-cart" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
-          title: "Account",
+          title: "My Account",
           tabBarIcon: ({ color, size }) => (
             <Feather name="user" color={color} size={size} />
           ),

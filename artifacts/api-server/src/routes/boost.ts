@@ -540,10 +540,17 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       ...(excluded.length > 0
         ? [sql`${listingsTable.id} NOT IN (${sql.join(excluded.map((id) => sql`${id}`), sql`, `)})`]
         : []),
-      ...(req.userId ? [sql`NOT EXISTS (
-        SELECT 1 FROM user_blocks ub
-        WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId}
-      )`] : []),
+      ...(req.userId ? [
+        sql`NOT EXISTS (
+          SELECT 1 FROM user_blocks ub
+          WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId}
+        )`,
+        sql`NOT EXISTS (
+          SELECT 1 FROM listing_hides lh
+          WHERE lh.user_id = ${req.userId}
+            AND (lh.listing_id = ${listingsTable.id} OR lh.seller_id = ${listingsTable.sellerId})
+        )`,
+      ] : []),
       // Country gate — browsing country ∩ campaign target countries.
       // - Audience null/empty/ALL → listing.country must match (ALL is never cross-border).
       // - Explicit multi-country audience (comma/pipe) → eligible in each listed country.

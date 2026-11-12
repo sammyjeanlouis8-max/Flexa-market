@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, type ReactNode } from 
 import { useRestriction } from "@/hooks/useRestriction";
 import { RestrictionBanner } from "@/components/RestrictionBanner";
 import { AdminBlockButton } from "@/components/AdminBlockModal";
+import { ReportAbuseForm } from "@/components/ReportAbuseForm";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
@@ -1015,6 +1016,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     setText((prev) => (prev.trim() ? prev : draft.text));
   }, [convId]);
   const [blockingUser, setBlockingUser] = useState(false);
+  const [showReportAfterBlock, setShowReportAfterBlock] = useState(false);
+  const [messagingBlocked, setMessagingBlocked] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [typingOther, setTypingOther] = useState(false);
   const [otherOnline, setOtherOnline] = useState<boolean | null>(null);
@@ -1388,7 +1391,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   }, [convId, flushPendingTexts]);
 
   const sendText = async () => {
-    if (!text.trim() || isRestricted) return;
+    if (!text.trim() || isRestricted || messagingBlocked) return;
     const content = text.trim();
     const clientMessageId = newClientMessageId();
     setText("");
@@ -2045,19 +2048,6 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={() => { setShowHeaderMenu(false); setLocation("/report-abuse"); }}
-                  style={{
-                    width: "100%", display: "flex", alignItems: "center", gap: 10,
-                    padding: "11px 12px", border: "none", background: "transparent",
-                    borderRadius: 10, cursor: "pointer", color: c.contextText, fontSize: 13, fontWeight: 600,
-                  }}
-                >
-                  <Flag style={{ width: 16, height: 16 }} />
-                  {t("messages.reportUser", { defaultValue: "Report user" })}
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
                   disabled={blockingUser}
                   onClick={async () => {
                     if (!token || !conv) return;
@@ -2072,12 +2062,16 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                     try {
                       const res = await fetch(`/api/users/${conv.otherUserId}/block`, {
                         method: "POST",
-                        headers: { Authorization: `Bearer ${token}` },
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ report: false }),
                       });
                       if (!res.ok) throw new Error("block failed");
+                      setMessagingBlocked(true);
                       toast({ title: t("messages.userBlocked", { defaultValue: "User blocked" }) });
                       setShowHeaderMenu(false);
-                      setLocation("/messages");
                     } catch {
                       toast({
                         title: t("messages.blockFailed", { defaultValue: "Could not block user" }),
@@ -2096,7 +2090,48 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   }}
                 >
                   <Ban style={{ width: 16, height: 16 }} />
-                  {t("listing.blockUser", { defaultValue: "Block user" })}
+                  {t("safety.block", { defaultValue: "Block" })}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={blockingUser}
+                  onClick={async () => {
+                    if (!token || !conv) return;
+                    setBlockingUser(true);
+                    try {
+                      const res = await fetch(`/api/users/${conv.otherUserId}/block`, {
+                        method: "POST",
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({ report: false }),
+                      });
+                      if (!res.ok) throw new Error("block failed");
+                      setMessagingBlocked(true);
+                      toast({ title: t("messages.userBlocked", { defaultValue: "User blocked" }) });
+                      setShowHeaderMenu(false);
+                      setShowReportAfterBlock(true);
+                    } catch {
+                      toast({
+                        title: t("messages.blockFailed", { defaultValue: "Could not block user" }),
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setBlockingUser(false);
+                    }
+                  }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10,
+                    padding: "11px 12px", border: "none", background: "transparent",
+                    borderRadius: 10, cursor: blockingUser ? "wait" : "pointer",
+                    color: c.contextDestructive, fontSize: 13, fontWeight: 600,
+                    opacity: blockingUser ? 0.6 : 1,
+                  }}
+                >
+                  <Flag style={{ width: 16, height: 16 }} />
+                  {t("safety.blockAndReport", { defaultValue: "Block and report" })}
                 </button>
                 {(!!(user as any)?.isAdmin || !!(user as any)?.isSuperAdmin) && (
                   <div style={{ padding: "4px 6px 6px" }}>
@@ -2438,6 +2473,19 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           </div>
         ) : isRestricted ? (
           <div style={{ padding: "4px 0" }}><RestrictionBanner action="message" /></div>
+        ) : messagingBlocked ? (
+          <div style={{
+            padding: "12px 14px 14px",
+            textAlign: "center",
+            fontSize: 13,
+            lineHeight: 1.45,
+            color: c.listSub,
+            fontWeight: 600,
+          }}>
+            {t("safety.messagingBlockedBanner", {
+              defaultValue: "You blocked this user. Previous messages stay visible. Unblock in Settings to message again.",
+            })}
+          </div>
         ) : isRecording ? (
           <div style={{
             width: "100%", boxSizing: "border-box",
@@ -2710,6 +2758,32 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       {mediaModal && (
         <MediaModal url={mediaModal.url} type={mediaModal.type} onClose={() => setMediaModal(null)} />
       )}
+
+      <ReportAbuseForm
+        open={showReportAfterBlock}
+        onClose={() => setShowReportAfterBlock(false)}
+        title={t("safety.reportTitle", { defaultValue: "Report abuse" })}
+        subtitle={t("safety.reportAfterBlockSubtitle", {
+          defaultValue: "Block is already active. Submit a report only if you want moderation to review.",
+        })}
+        onSubmit={async ({ reason }) => {
+          if (!token || !conv) throw new Error("missing auth");
+          const res = await fetch("/api/reports", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              targetType: "user",
+              targetId: conv.otherUserId,
+              reason,
+            }),
+          });
+          if (!res.ok) throw new Error("report failed");
+          toast({ title: t("safety.reportSubmitted", { defaultValue: "Report submitted" }) });
+        }}
+      />
     </ChatViewport>
   );
 }

@@ -2398,7 +2398,11 @@ export default function ListingDetail() {
             onClick={async () => {
               setBlockLoading(true);
               try {
-                const r = await fetch(`/api/users/${listing.sellerId}/block`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+                const r = await fetch(`/api/users/${listing.sellerId}/block`, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({ report: false }),
+                });
                 if (!r.ok) throw new Error();
                 queryClient.getQueryCache().getAll().forEach((q) => queryClient.setQueryData(q.queryKey, (d: any) => {
                   if (Array.isArray(d)) return d.filter((x: any) => x?.sellerId !== listing.sellerId);

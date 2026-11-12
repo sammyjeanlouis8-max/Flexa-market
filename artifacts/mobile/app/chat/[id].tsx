@@ -37,6 +37,11 @@ import {
   type Conversation,
 } from "@/lib/chatApi";
 import {
+  ABUSE_REASONS,
+  blockUser,
+  submitAbuseReport,
+} from "@/lib/safetyApi";
+import {
   emitStopTyping,
   emitTyping,
   getChatSocket,
@@ -76,6 +81,10 @@ export default function ChatThreadScreen() {
   const [recordingBusy, setRecordingBusy] = useState(false);
   const [offerAmount, setOfferAmount] = useState("");
   const [showOffer, setShowOffer] = useState(false);
+  const [messagingBlocked, setMessagingBlocked] = useState(false);
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [reportReason, setReportReason] = useState<(typeof ABUSE_REASONS)[number]["key"]>("harassment");
+  const [reportBusy, setReportBusy] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -179,8 +188,41 @@ export default function ChatThreadScreen() {
     }, 1200);
   };
 
+  const runBlock = async (openReport: boolean) => {
+    if (!token || !meta?.otherUserId) return;
+    try {
+      await blockUser(meta.otherUserId, { token, report: false });
+      setMessagingBlocked(true);
+      Alert.alert("Blocked", "You will no longer be able to message each other.");
+      if (openReport) setShowReportForm(true);
+    } catch (e) {
+      Alert.alert("Block failed", e instanceof Error ? e.message : "Could not block user");
+    }
+  };
+
+  const openSafetyMenu = () => {
+    if (!meta?.otherUserId) return;
+    Alert.alert(
+      meta.otherUserName || "User",
+      "Safety options",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Block",
+          style: "destructive",
+          onPress: () => void runBlock(false),
+        },
+        {
+          text: "Block and report",
+          style: "destructive",
+          onPress: () => void runBlock(true),
+        },
+      ],
+    );
+  };
+
   const onSend = async () => {
-    if (!token || !user || !Number.isFinite(convId)) return;
+    if (!token || !user || !Number.isFinite(convId) || messagingBlocked) return;
     const content = draft.trim();
     if (!content || sending) return;
     const clientMessageId = `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -236,7 +278,7 @@ export default function ChatThreadScreen() {
     contentType: string,
     fileName: string,
   ) => {
-    if (!token || !user || !Number.isFinite(convId)) return;
+    if (!token || !user || !Number.isFinite(convId) || messagingBlocked) return;
     setSending(true);
     try {
       const url = await uploadChatMedia(localUri, {
@@ -362,6 +404,10 @@ export default function ChatThreadScreen() {
   };
 
   const onSendOffer = async () => {
+    if (messagingBlocked) {
+      Alert.alert("Blocked", "Messaging is blocked between these users.");
+      return;
+    }
     if (!token || !meta?.listingId) {
       Alert.alert("Offer", "This chat is not linked to a product listing.");
       return;
@@ -453,6 +499,11 @@ export default function ChatThreadScreen() {
             onPress={() => router.push(`/listing/${meta.listingId}`)}
           >
             <Feather name="shopping-bag" size={18} color="#0F172A" />
+          </Pressable>
+        ) : null}
+        {meta?.otherUserId ? (
+          <Pressable style={styles.back} onPress={openSafetyMenu} accessibilityLabel="More options">
+            <Feather name="more-vertical" size={18} color="#0F172A" />
           </Pressable>
         ) : (
           <View style={{ width: 40 }} />
@@ -583,51 +634,169 @@ export default function ChatThreadScreen() {
         </View>
       ) : null}
 
-      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-        <Pressable style={styles.attach} onPress={() => void onPickImage()} disabled={sending}>
-          <Feather name="image" size={18} color="#0F172A" />
-        </Pressable>
-        <Pressable style={styles.attach} onPress={() => void onPickVideo()} disabled={sending}>
-          <Feather name="video" size={18} color="#0F172A" />
-        </Pressable>
-        <Pressable
-          style={[styles.attach, recording && styles.attachRec]}
-          onPress={() => void toggleRecording()}
-          disabled={sending || recordingBusy}
-        >
-          <Feather name="mic" size={18} color={recording ? "#fff" : "#0F172A"} />
-        </Pressable>
-        <Pressable style={styles.attach} onPress={() => setShowOffer(true)} disabled={sending}>
-          <Feather name="tag" size={18} color="#0F172A" />
-        </Pressable>
-        <TextInput
-          style={styles.input}
-          value={draft}
-          onChangeText={onChangeDraft}
-          placeholder={recording ? "Recording… tap mic to send" : "Type a message"}
-          placeholderTextColor="#94A3B8"
-          multiline
-          maxLength={4000}
-          editable={!recording}
-        />
-        <Pressable
-          style={[styles.send, (!draft.trim() || sending) && styles.sendDisabled]}
-          onPress={() => void onSend()}
-          disabled={!draft.trim() || sending}
-        >
-          {sending ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Feather name="send" size={18} color="#fff" />
-          )}
-        </Pressable>
-      </View>
+      {messagingBlocked ? (
+        <View style={[styles.blockedBanner, { paddingBottom: Math.max(insets.bottom, 14) }]}>
+          <Text style={styles.blockedText}>
+            You blocked this user. Previous messages stay visible. Unblock in Settings to message again.
+          </Text>
+        </View>
+      ) : (
+        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+          <Pressable style={styles.attach} onPress={() => void onPickImage()} disabled={sending}>
+            <Feather name="image" size={18} color="#0F172A" />
+          </Pressable>
+          <Pressable style={styles.attach} onPress={() => void onPickVideo()} disabled={sending}>
+            <Feather name="video" size={18} color="#0F172A" />
+          </Pressable>
+          <Pressable
+            style={[styles.attach, recording && styles.attachRec]}
+            onPress={() => void toggleRecording()}
+            disabled={sending || recordingBusy}
+          >
+            <Feather name="mic" size={18} color={recording ? "#fff" : "#0F172A"} />
+          </Pressable>
+          <Pressable style={styles.attach} onPress={() => setShowOffer(true)} disabled={sending}>
+            <Feather name="tag" size={18} color="#0F172A" />
+          </Pressable>
+          <TextInput
+            style={styles.input}
+            value={draft}
+            onChangeText={onChangeDraft}
+            placeholder={recording ? "Recording… tap mic to send" : "Type a message"}
+            placeholderTextColor="#94A3B8"
+            multiline
+            maxLength={4000}
+            editable={!recording}
+          />
+          <Pressable
+            style={[styles.send, (!draft.trim() || sending) && styles.sendDisabled]}
+            onPress={() => void onSend()}
+            disabled={!draft.trim() || sending}
+          >
+            {sending ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Feather name="send" size={18} color="#fff" />
+            )}
+          </Pressable>
+        </View>
+      )}
+
+      {showReportForm && meta?.otherUserId ? (
+        <View style={styles.reportOverlay}>
+          <View style={styles.reportCard}>
+            <Text style={styles.reportTitle}>Report abuse</Text>
+            <Text style={styles.reportSub}>
+              Block is already active. Submit only if you want moderation to review.
+            </Text>
+            {ABUSE_REASONS.map((r) => (
+              <Pressable
+                key={r.key}
+                style={styles.reportReason}
+                onPress={() => setReportReason(r.key)}
+              >
+                <Feather
+                  name={reportReason === r.key ? "check-circle" : "circle"}
+                  size={18}
+                  color={reportReason === r.key ? "#F97316" : "#94A3B8"}
+                />
+                <Text style={styles.reportReasonText}>{r.label}</Text>
+              </Pressable>
+            ))}
+            <View style={styles.reportActions}>
+              <Pressable style={styles.reportCancel} onPress={() => setShowReportForm(false)}>
+                <Text style={styles.reportCancelText}>Close</Text>
+              </Pressable>
+              <Pressable
+                style={styles.reportSubmit}
+                disabled={reportBusy}
+                onPress={() => {
+                  if (!token || !meta.otherUserId) return;
+                  setReportBusy(true);
+                  const label = ABUSE_REASONS.find((r) => r.key === reportReason)?.label ?? "Other";
+                  void submitAbuseReport(
+                    { targetType: "user", targetId: meta.otherUserId, reason: label },
+                    { token },
+                  )
+                    .then(() => {
+                      setShowReportForm(false);
+                      Alert.alert("Report submitted", "Moderation will review this report.");
+                    })
+                    .catch((e) => {
+                      Alert.alert(
+                        "Report failed",
+                        e instanceof Error
+                          ? `${e.message}. You can try again without creating a duplicate.`
+                          : "Could not submit. Try again.",
+                      );
+                    })
+                    .finally(() => setReportBusy(false));
+                }}
+              >
+                {reportBusy ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.reportSubmitText}>Submit report</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#F1F5F9" },
+  blockedBanner: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: "#FFFFFF",
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+  },
+  blockedText: {
+    textAlign: "center",
+    color: "#64748B",
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
+  },
+  reportOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(15,23,42,0.45)",
+    justifyContent: "flex-end",
+  },
+  reportCard: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 16,
+    gap: 8,
+  },
+  reportTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
+  reportSub: { fontSize: 12, color: "#64748B", marginBottom: 6, lineHeight: 17 },
+  reportReason: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 },
+  reportReasonText: { fontSize: 15, fontWeight: "600", color: "#0F172A" },
+  reportActions: { flexDirection: "row", gap: 10, marginTop: 8 },
+  reportCancel: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  reportCancelText: { fontWeight: "700", color: "#475569" },
+  reportSubmit: {
+    flex: 1,
+    backgroundColor: "#F97316",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  reportSubmitText: { fontWeight: "700", color: "#FFFFFF" },
   topBar: {
     flexDirection: "row",
     alignItems: "center",

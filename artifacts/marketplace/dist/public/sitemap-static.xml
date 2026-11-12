@@ -10,12 +10,7 @@
     <priority>1.0</priority>
   </url>
 
-  <url>
-    <loc>https://flexamarket.com/search</loc>
-    <lastmod>2026-05-13</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
+  <!-- /search is intentionally omitted: faceted search is noindex; use /categories/{slug} -->
 
   <url>
     <loc>https://flexamarket.com/videos</loc>

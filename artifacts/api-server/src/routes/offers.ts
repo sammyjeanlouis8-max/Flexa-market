@@ -5,6 +5,7 @@ import { requireAuth } from "../middlewares/auth";
 import { CreateOfferBody } from "@workspace/api-zod";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser } from "../lib/expo-push";
+import { isDirectMessagingBlocked } from "../lib/catalogVisibility";
 import { z } from "zod";
 
 const router = Router();
@@ -113,6 +114,11 @@ router.post("/offers", requireAuth, async (req, res): Promise<void> => {
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, listingId));
   if (!listing) { res.status(404).json({ error: "Lis sa a pa jwenn" }); return; }
   if (listing.sellerId === req.userId) { res.status(400).json({ error: "Ou pa ka fè yon òf sou pwòp lis ou" }); return; }
+
+  if (await isDirectMessagingBlocked(req.userId!, listing.sellerId)) {
+    res.status(403).json({ error: "Messaging is blocked between these users", code: "MESSAGING_BLOCKED" });
+    return;
+  }
 
   req.log.info({ listingId, amount, userId: req.userId }, "Offer submission received");
 

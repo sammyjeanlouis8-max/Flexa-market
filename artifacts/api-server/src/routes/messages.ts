@@ -8,6 +8,7 @@ import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser } from "../lib/expo-push";
 import { emitNewMessage, emitConvUpdate, emitAudioListened, emitMsgDeleted } from "../lib/socketServer";
 import { publicDisplayName } from "../lib/publicDisplayName";
+import { isDirectMessagingBlocked } from "../lib/catalogVisibility";
 import { z } from "zod";
 
 const SITE_BASE_URL = process.env["PUBLIC_BASE_URL"] ?? "https://flexamarket.com";
@@ -197,6 +198,11 @@ router.post("/conversations", requireAuth, requireNotRestricted, async (req, res
 
   if (req.userId === sellerId) { res.status(400).json({ error: "Cannot chat with yourself" }); return; }
 
+  if (await isDirectMessagingBlocked(req.userId!, sellerId)) {
+    res.status(403).json({ error: "Messaging is blocked between these users", code: "MESSAGING_BLOCKED" });
+    return;
+  }
+
   const [existing] = await db.select().from(conversationsTable)
     .where(sql`${conversationsTable.listingId} = ${listingId} AND ${conversationsTable.buyerId} = ${Number(req.userId)} AND ${conversationsTable.sellerId} = ${sellerId}`);
 
@@ -283,6 +289,12 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
   const [conv] = await db.select().from(conversationsTable).where(eq(conversationsTable.id, id));
   if (!conv) { res.status(404).json({ error: "Not found" }); return; }
   if (conv.buyerId !== req.userId && conv.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const peerId = conv.buyerId === req.userId ? conv.sellerId : conv.buyerId;
+  if (await isDirectMessagingBlocked(req.userId!, peerId)) {
+    res.status(403).json({ error: "Messaging is blocked between these users", code: "MESSAGING_BLOCKED" });
+    return;
+  }
 
   const parsed = SendMessageBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }

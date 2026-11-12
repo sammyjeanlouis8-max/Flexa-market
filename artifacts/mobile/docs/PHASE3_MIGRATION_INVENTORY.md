@@ -1,38 +1,28 @@
-# Flexa Market — Phase 3 Native Migration Inventory
+# Phase 3 migration inventory (Android)
 
-**PR #172 (Phases 1–3C):** `cursor/native-auth-globe-android-09ff` — OPEN, not merged  
-**Phase 3D branch:** `cursor/native-seller-phase3d-09ff`  
-**Backend:** `https://flexamarket.com/api`  
-**Machine-readable:** [`phase3-migration-inventory.json`](./phase3-migration-inventory.json)  
-**Admin audit:** [`PHASE3D_ADMIN_PANEL_INVENTORY.md`](./PHASE3D_ADMIN_PANEL_INVENTORY.md)
-
-## Snapshot counts (after Phase 3D)
+## Snapshot counts (after iOS-all-pages / Phase 3U base)
 
 | Status | Count |
 |---|---|
-| FULLY_NATIVE | 29 |
-| PARTIALLY_NATIVE | 5 |
-| PLACEHOLDER | 12 |
-| MISSING | 31 |
+| FULLY_NATIVE | 79 |
+| PARTIALLY_NATIVE | 2 |
+| PLACEHOLDER | 0 |
+| MISSING | 0 |
+| BLOCKED | 3 |
+
+iOS RevenueCat + free Music. Remaining BLOCKED: wallet-topup, boost-paid, esim. PARTIAL: push-fcm, product-variations (test DB OK; prod SQL pending). **Not 100%**. See `IOS_VARIANTS_PUSH_REPORT.md`.
+
+
+Source of truth: `phase3-migration-inventory.json` (83 routes).
+
+## Summary — Phase 3R
+
+| Status | Count |
+|--------|------:|
+| FULLY_NATIVE | 75 |
+| PARTIALLY_NATIVE | 2 |
+| PLACEHOLDER | 1 |
+| MISSING | 0 |
 | BLOCKED | 5 |
 
-## Phase 3D completed (this branch)
-
-- Seller: Sell (Wasabi multi-image progress/cancel/retry), My Listings, Sales dashboard, Offers
-- Chat Pro Max: voice/video/reply/read receipts/offer-from-chat
-- Support + FlexaBot (voice **prohibited** in support)
-- Smart notification deep-links expanded
-- Admin panel: **inventory only** (native deferred)
-
-## Preserved
-
-Phases 1–3C on PR #172 tip (`b08b461f`) — this branch forks from that commit.
-
-## Deferred / blocked
-
-- eSIM DEFERRED · Wallet top-up BLOCKED · Admin native DEFERRED  
-- Listing video composer, link unfurling, full public shop polish
-
-## Recommended next (do not auto-start)
-
-Phase 3E: seller shop polish, listing edit form, remaining settings, selective admin tools if authorized.
+Honest ceiling: **not 83/83 FULLY_NATIVE**. Remaining non-FULLY: FCM device proof, intentional website PLACEHOLDER, itemSize-only variations (PARTIAL), Play digital goods ×4 + eSIM. See `PHASE3R_NATIVE_COMPLETION.md`.

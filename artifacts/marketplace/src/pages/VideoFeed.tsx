@@ -851,10 +851,24 @@ function CommentPanel({ listingId, sellerId, onClose }: { listingId: number; sel
 
 // ── Single video card — TikTok style ──────────────────────────────────────────
 
+/** Hard-stop media so scrolling Video A → B cannot leave overlapping audio. */
+function hardStopVideoElement(el: HTMLVideoElement | null | undefined) {
+  if (!el) return;
+  try {
+    el.pause();
+  } catch { /* ignore */ }
+  el.muted = true;
+  try {
+    el.removeAttribute("src");
+    el.load();
+  } catch { /* ignore */ }
+}
+
 function VideoCard({
   video,
   isActive,
   isNext,
+  isPrev = false,
   onCommentOpen,
   onNext,
   showCountryFlag = false,
@@ -862,6 +876,7 @@ function VideoCard({
   video: VideoItem;
   isActive: boolean;
   isNext: boolean;
+  isPrev?: boolean;
   onCommentOpen: (id: number) => void;
   onNext: () => void;
   showCountryFlag?: boolean;
@@ -934,12 +949,31 @@ function VideoCard({
   const [hasVisibleFrame, setHasVisibleFrame] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   isActiveRef.current = isActive;
+  const keepMediaWarm = isActive || isNext || isPrev;
+
+  // Layout-phase stop: runs before paint so Video A audio dies as soon as
+  // IntersectionObserver flips activeIdx to Video B (avoids effect-delay overlap).
+  useLayoutEffect(() => {
+    if (isActive) return;
+    const el = videoRef.current;
+    if (!el) return;
+    activationGenerationRef.current += 1;
+    isActiveRef.current = false;
+    try {
+      el.pause();
+    } catch { /* ignore */ }
+    el.muted = true;
+    if (!keepMediaWarm) {
+      hardStopVideoElement(el);
+    }
+    setPlaying(false);
+  }, [isActive, keepMediaWarm]);
 
   useEffect(() => {
-    if (!isActive && !isNext && !video.thumbnailUrl) {
+    if (!isActive && !isNext && !isPrev && !video.thumbnailUrl) {
       setGeneratedThumbnail(null);
     }
-  }, [isActive, isNext, video.thumbnailUrl]);
+  }, [isActive, isNext, isPrev, video.thumbnailUrl]);
 
   // Sync muted state across cards when unlock / user-mute preference changes.
   useEffect(() => {
@@ -1162,7 +1196,12 @@ function VideoCard({
     isActiveRef.current = isActive;
     activationGenerationRef.current += 1;
     cancelPendingReloadResume();
+    const impressionAbort = new AbortController();
     if (isActive) {
+      // Restore src if a prior hard-stop cleared it for an inactive far card.
+      if (video.videoUrl && el.getAttribute("src") !== video.videoUrl) {
+        el.src = video.videoUrl;
+      }
       // A newly visible card always starts in autoplay mode. Do not carry the
       // previous card's paused UI into this one while its first frame buffers.
       setPausedByUser(false);
@@ -1231,6 +1270,7 @@ function VideoCard({
       overlayTimerRef.current = setTimeout(() => setShowWhatsAppBtn(true), 1500);
       fetch(`/api/videos/${video.id}/impression`, {
         method: "POST",
+        signal: impressionAbort.signal,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -1246,6 +1286,7 @@ function VideoCard({
         if (!isActiveRef.current) return;
         fetch("/api/boost-analytics/events", {
           method: "POST",
+          signal: impressionAbort.signal,
           headers: {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -1279,6 +1320,7 @@ function VideoCard({
       el.addEventListener("timeupdate", onTimeUpdate);
 
       return () => {
+        impressionAbort.abort();
         window.clearTimeout(viewTimer);
         window.clearTimeout(retain5Timer);
         el.removeEventListener("timeupdate", onTimeUpdate);
@@ -1288,12 +1330,20 @@ function VideoCard({
         isActiveRef.current = false;
         cancelPendingReloadResume();
         cancelVisualReadinessChecks();
+        try {
+          el.pause();
+        } catch { /* ignore */ }
+        el.muted = true;
         if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
       };
     } else {
+      impressionAbort.abort();
       cancelPendingReloadResume();
       cancelVisualReadinessChecks();
-      el.pause();
+      try {
+        el.pause();
+      } catch { /* ignore */ }
+      el.muted = true;
       setPlaying(false);
       setShowComments(false);
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
@@ -1301,9 +1351,10 @@ function VideoCard({
       setWhatsAppDismissed(false);
     }
     return () => {
+      impressionAbort.abort();
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
     };
-  }, [armVisualReadinessCheck, cancelPendingReloadResume, cancelVisualReadinessChecks, isActive]);
+  }, [armVisualReadinessCheck, cancelPendingReloadResume, cancelVisualReadinessChecks, isActive, video.id, video.videoUrl, token]);
 
   // Touch handlers: hold-to-pause + double-tap like + single-tap mute
   const handleTouchStart = useCallback(() => {
@@ -1651,10 +1702,10 @@ function VideoCard({
           // Prefer unmuted; tryPlay() falls back to muted if the browser blocks it.
           if (el) el.muted = muted;
         }}
-        src={video.videoUrl ?? undefined}
+        src={keepMediaWarm ? (video.videoUrl ?? undefined) : undefined}
         playsInline
         muted={muted}
-        preload={isActive ? "auto" : isNext ? "metadata" : "none"}
+        preload={isActive ? "auto" : keepMediaWarm ? "metadata" : "none"}
         poster={video.thumbnailUrl ?? generatedThumbnail ?? undefined}
         className={`absolute inset-0 w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
         style={{
@@ -2905,6 +2956,7 @@ export default function VideoFeed() {
                 video={video}
                 isActive={activeIdx === idx}
                 isNext={activeIdx + 1 === idx}
+                isPrev={activeIdx - 1 === idx}
                 onCommentOpen={() => {}}
                 onNext={() => scrollTo(idx + 1)}
                 showCountryFlag={showCountryFlags || isAdminViewer}

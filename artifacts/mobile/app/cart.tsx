@@ -165,6 +165,9 @@ export default function CartScreen() {
               {item.title}
             </Text>
           </Pressable>
+          {item.variantLabel ? (
+            <Text style={styles.warnText}>{item.variantLabel}</Text>
+          ) : null}
           <Text style={styles.price}>
             {formatMoney(item.price, item.currency)}
           </Text>
@@ -180,7 +183,7 @@ export default function CartScreen() {
               <Feather name="chevron-down" size={14} color="#475569" />
             </Pressable>
             <Pressable
-              onPress={() => removeItem(item.listingId)}
+              onPress={() => removeItem(item.listingId, item.variantId)}
               hitSlop={8}
               accessibilityLabel="Remove from cart"
             >
@@ -238,7 +241,9 @@ export default function CartScreen() {
           ) : null}
           <FlatList
             data={visibleItems}
-            keyExtractor={(item) => String(item.listingId)}
+            keyExtractor={(item) =>
+              `${item.listingId}:${item.variantId ?? "base"}`
+            }
             renderItem={renderItem}
             contentContainerStyle={{ paddingBottom: 140, paddingHorizontal: 12 }}
             ItemSeparatorComponent={() => <View style={{ height: 10 }} />}

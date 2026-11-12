@@ -18,7 +18,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import type { Listing } from "@/lib/api";
-import { deleteListing, fetchUserListings } from "@/lib/sellerApi";
+import {
+  deleteListing,
+  fetchUserListings,
+  restockListing,
+} from "@/lib/sellerApi";
 
 export default function MyListingsScreen() {
   const insets = useSafeAreaInsets();
@@ -70,6 +74,36 @@ export default function MyListingsScreen() {
             await load("refresh");
           } catch (e) {
             Alert.alert("Delete failed", e instanceof Error ? e.message : "Error");
+          }
+        },
+      },
+    ]);
+  };
+
+  const onRestock = (item: Listing) => {
+    Alert.alert("Add stock", `Add inventory to “${item.title}”?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "+1",
+        onPress: async () => {
+          if (!token) return;
+          try {
+            await restockListing(item.id, 1, { token });
+            await load("refresh");
+          } catch (e) {
+            Alert.alert("Restock failed", e instanceof Error ? e.message : "Error");
+          }
+        },
+      },
+      {
+        text: "+5",
+        onPress: async () => {
+          if (!token) return;
+          try {
+            await restockListing(item.id, 5, { token });
+            await load("refresh");
+          } catch (e) {
+            Alert.alert("Restock failed", e instanceof Error ? e.message : "Error");
           }
         },
       },
@@ -131,7 +165,26 @@ export default function MyListingsScreen() {
                   <Text style={styles.price}>${price.toFixed(2)}</Text>
                   <Text style={styles.status}>
                     {(item as any).moderationStatus || item.status || "listed"}
+                    {item.stockQuantity != null ? ` · stock ${item.stockQuantity}` : ""}
                   </Text>
+                  <View style={styles.actions}>
+                    <Pressable
+                      style={styles.actionBtn}
+                      onPress={() => router.push(`/edit-listing/${item.id}`)}
+                      testID={`btn-edit-listing-${item.id}`}
+                    >
+                      <Feather name="edit-2" size={14} color="#EA580C" />
+                      <Text style={styles.actionText}>Edit</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.actionBtn}
+                      onPress={() => onRestock(item)}
+                      testID={`btn-restock-${item.id}`}
+                    >
+                      <Feather name="plus-square" size={14} color="#0F172A" />
+                      <Text style={styles.actionTextDark}>Stock</Text>
+                    </Pressable>
+                  </View>
                 </View>
                 <Pressable onPress={() => onDelete(item)} hitSlop={8}>
                   <Feather name="trash-2" size={18} color="#B91C1C" />
@@ -195,4 +248,8 @@ const styles = StyleSheet.create({
   cardTitle: { fontWeight: "700", color: "#0F172A" },
   price: { fontWeight: "800", color: "#F97316", marginTop: 2 },
   status: { fontSize: 12, color: "#64748B", marginTop: 2, textTransform: "capitalize" },
+  actions: { flexDirection: "row", gap: 10, marginTop: 8 },
+  actionBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  actionText: { color: "#EA580C", fontWeight: "700", fontSize: 12 },
+  actionTextDark: { color: "#0F172A", fontWeight: "700", fontSize: 12 },
 });

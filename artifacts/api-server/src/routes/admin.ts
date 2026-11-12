@@ -13,6 +13,11 @@ import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
 import { listingAudienceFieldsForActivation } from "../lib/boostDelivery";
 import { SCOPE_OPTIONS, userInAdminScope } from "../lib/adminScope";
 import { hasUsableListingImage } from "../lib/listingMedia";
+import {
+  diagnoseCampaignFeedEligibility,
+  type CampaignFeedSnapshot,
+} from "../lib/boostFeedEligibility";
+import { isAdvantagePlusGeoOverconstrained } from "../lib/boostTargeting";
 import { parseAdminUserSearchQuery } from "../lib/adminUserSearch";
 import {
   MESSAGE_SYSTEM_AVATAR,
@@ -2467,6 +2472,317 @@ router.get("/admin/boosts", requireAdmin, async (req, res): Promise<void> => {
     isExpired: r.expiresAt < new Date(),
     listingImage: (r.listingImage as string[])?.[0] ?? null,
   })));
+});
+
+/**
+ * GET /api/admin/boosts/feed-delivery-audit
+ * Super Admin only — read-only list of campaigns that look active/paid but are
+ * excluded from the automatic promo video feed (or over-constrained Advantage+).
+ * Does not mutate budgets, dates, or payment state.
+ */
+router.get("/admin/boosts/feed-delivery-audit", requireSuperAdmin, async (req, res): Promise<void> => {
+  const now = new Date();
+  const limitRaw = parseInt(String(req.query.limit ?? "100"), 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 100;
+
+  const rows = await db
+    .select({
+      boostId: boostsTable.id,
+      listingId: listingsTable.id,
+      advertiserId: usersTable.id,
+      advertiserName: usersTable.name,
+      advertiserRole: usersTable.role,
+      paymentStatus: boostsTable.paymentStatus,
+      campaignStatus: boostsTable.campaignStatus,
+      moderationStatus: listingsTable.moderationStatus,
+      listingStatus: listingsTable.status,
+      stockQuantity: listingsTable.stockQuantity,
+      price: listingsTable.price,
+      isBoosted: listingsTable.isBoosted,
+      boostVideoUrl: listingsTable.boostVideoUrl,
+      startsAt: boostsTable.startsAt,
+      expiresAt: boostsTable.expiresAt,
+      boostStartAt: listingsTable.boostStartAt,
+      boostExpiresAt: listingsTable.boostExpiresAt,
+      audienceType: boostsTable.audienceType,
+      audienceCountry: boostsTable.audienceCountry,
+      audienceState: boostsTable.audienceState,
+      audienceCity: boostsTable.audienceCity,
+      audienceCities: boostsTable.audienceCities,
+      boostAudienceCountry: listingsTable.boostAudienceCountry,
+      boostAudienceState: listingsTable.boostAudienceState,
+      boostAudienceCity: listingsTable.boostAudienceCity,
+      boostAudienceCities: listingsTable.boostAudienceCities,
+      impressions: boostsTable.impressions,
+      videoViews: boostsTable.videoViews,
+    })
+    .from(boostsTable)
+    .innerJoin(listingsTable, eq(boostsTable.listingId, listingsTable.id))
+    .innerJoin(usersTable, eq(boostsTable.userId, usersTable.id))
+    .where(eq(boostsTable.paymentStatus, "paid"))
+    .orderBy(desc(boostsTable.createdAt))
+    .limit(limit);
+
+  const diagnostics = rows.map((r) => {
+    const snap: CampaignFeedSnapshot = {
+      ...r,
+      deliveryError: null,
+    };
+    return diagnoseCampaignFeedEligibility(snap, now);
+  });
+
+  const affected = diagnostics.filter(
+    (d) =>
+      !d.eligibleForAutomaticFeed
+      || d.exclusionReasons.includes("advantage_plus_geo_overconstrained")
+      || (d.recordedImpressions === 0 && d.campaignStatus === "active"),
+  );
+
+  const geoOverconstrained = affected.filter((d) =>
+    d.exclusionReasons.includes("advantage_plus_geo_overconstrained"),
+  );
+
+  const recoveryPreview = geoOverconstrained.map((d) => ({
+    boostId: d.boostId,
+    listingId: d.listingId,
+    advertiserId: d.advertiser.id,
+    targetingMode: d.audienceType,
+    country: d.targetAudience.country,
+    before: {
+      department: d.targetAudience.state,
+      commune: d.targetAudience.city,
+      cities: d.targetAudience.cities,
+    },
+    after: {
+      department: null,
+      commune: null,
+      cities: null,
+    },
+    campaignStatus: d.campaignStatus,
+    paymentStatus: d.paymentStatus,
+    startsAt: d.startsAt,
+    expiresAt: d.expiresAt,
+    impressions: d.recordedImpressions,
+    exclusionReasons: d.exclusionReasons,
+    proposedChanges: [
+      "listings.boost_audience_state → NULL",
+      "listings.boost_audience_city → NULL",
+      "listings.boost_audience_cities → NULL",
+      "boosts.audience_state → NULL",
+      "boosts.audience_city → NULL",
+      "boosts.audience_cities → NULL",
+    ],
+    preserved: [
+      "country",
+      "ownership",
+      "moderation",
+      "payment",
+      "budget",
+      "impressions",
+      "startsAt/expiresAt",
+      "analytics",
+    ],
+    expiredWithoutDelivery:
+      d.exclusionReasons.includes("boost_expired") && d.recordedImpressions === 0,
+  }));
+
+  const expiredPaidNeedsBusinessReview = recoveryPreview.filter((r) => r.expiredWithoutDelivery);
+
+  res.json({
+    generatedAt: now.toISOString(),
+    scannedPaidCampaigns: rows.length,
+    affectedCount: affected.length,
+    advantagePlusGeoOverconstrainedCount: geoOverconstrained.length,
+    expiredPaidNeedsBusinessReviewCount: expiredPaidNeedsBusinessReview.length,
+    recoveryPlan: {
+      mode: "read_only_preview",
+      executesMutations: false,
+      note:
+        "Do not auto-mutate production. After explicit approval of recoveryPreview rows, "
+        + "run scripts/boost-recovery/02_apply.sql inside a transaction. Never alter budgets "
+        + "or extend expiresAt here — flag expiredPaidNeedsBusinessReview for authorized review.",
+      recommendedSqlPreview:
+        "UPDATE listings SET boost_audience_state=NULL, boost_audience_city=NULL, "
+        + "boost_audience_cities=NULL WHERE id IN (...listingIds...) AND boost_audience_type='advantage_plus'; "
+        + "UPDATE boosts SET audience_state=NULL, audience_city=NULL, audience_cities=NULL "
+        + "WHERE id IN (...boostIds...) AND audience_type='advantage_plus';",
+      scripts: [
+        "scripts/boost-recovery/01_preview.sql",
+        "scripts/boost-recovery/02_apply.sql",
+        "scripts/boost-recovery/03_rollback.sql",
+      ],
+    },
+    recoveryPreview,
+    campaigns: affected,
+  });
+});
+
+/**
+ * GET /api/admin/boosts/advantage-plus-geo-recovery-preview
+ * Super Admin only — exact proposed geo clears (read-only; never mutates).
+ */
+router.get("/admin/boosts/advantage-plus-geo-recovery-preview", requireSuperAdmin, async (_req, res): Promise<void> => {
+  const now = new Date();
+  const rows = await db
+    .select({
+      boostId: boostsTable.id,
+      listingId: listingsTable.id,
+      advertiserId: usersTable.id,
+      paymentStatus: boostsTable.paymentStatus,
+      campaignStatus: boostsTable.campaignStatus,
+      moderationStatus: listingsTable.moderationStatus,
+      listingStatus: listingsTable.status,
+      stockQuantity: listingsTable.stockQuantity,
+      price: listingsTable.price,
+      isBoosted: listingsTable.isBoosted,
+      boostVideoUrl: listingsTable.boostVideoUrl,
+      startsAt: boostsTable.startsAt,
+      expiresAt: boostsTable.expiresAt,
+      boostStartAt: listingsTable.boostStartAt,
+      boostExpiresAt: listingsTable.boostExpiresAt,
+      audienceType: boostsTable.audienceType,
+      audienceCountry: boostsTable.audienceCountry,
+      audienceState: boostsTable.audienceState,
+      audienceCity: boostsTable.audienceCity,
+      audienceCities: boostsTable.audienceCities,
+      boostAudienceCountry: listingsTable.boostAudienceCountry,
+      boostAudienceState: listingsTable.boostAudienceState,
+      boostAudienceCity: listingsTable.boostAudienceCity,
+      boostAudienceCities: listingsTable.boostAudienceCities,
+      impressions: boostsTable.impressions,
+      videoViews: boostsTable.videoViews,
+      advertiserName: usersTable.name,
+      advertiserRole: usersTable.role,
+    })
+    .from(boostsTable)
+    .innerJoin(listingsTable, eq(boostsTable.listingId, listingsTable.id))
+    .innerJoin(usersTable, eq(boostsTable.userId, usersTable.id))
+    .where(eq(boostsTable.paymentStatus, "paid"))
+    .orderBy(desc(boostsTable.createdAt))
+    .limit(500);
+
+  const preview = rows
+    .map((r) =>
+      diagnoseCampaignFeedEligibility({
+        ...r,
+        deliveryError: null,
+      }, now),
+    )
+    .filter((d) => d.exclusionReasons.includes("advantage_plus_geo_overconstrained"))
+    .map((d) => ({
+      boostId: d.boostId,
+      listingId: d.listingId,
+      advertiserId: d.advertiser.id,
+      targetingMode: "advantage_plus",
+      country: d.targetAudience.country,
+      before: {
+        listing: {
+          boost_audience_state: d.targetAudience.state,
+          boost_audience_city: d.targetAudience.city,
+          boost_audience_cities: d.targetAudience.cities,
+        },
+      },
+      after: {
+        listing: {
+          boost_audience_state: null,
+          boost_audience_city: null,
+          boost_audience_cities: null,
+        },
+        boost: {
+          audience_state: null,
+          audience_city: null,
+          audience_cities: null,
+        },
+      },
+      campaignStatus: d.campaignStatus,
+      paymentStatus: d.paymentStatus,
+      startsAt: d.startsAt,
+      expiresAt: d.expiresAt,
+      impressions: d.recordedImpressions,
+      exclusionReasons: d.exclusionReasons,
+      expiredWithoutDelivery:
+        d.exclusionReasons.includes("boost_expired") && d.recordedImpressions === 0,
+      businessReviewRequired:
+        d.exclusionReasons.includes("boost_expired") && d.recordedImpressions === 0,
+    }));
+
+  res.json({
+    generatedAt: now.toISOString(),
+    executesMutations: false,
+    eligibleForGeoClearCount: preview.filter((p) => !p.businessReviewRequired).length,
+    businessReviewRequiredCount: preview.filter((p) => p.businessReviewRequired).length,
+    rows: preview,
+    approvalRequired: true,
+    applyBlockedInAgent: true,
+  });
+});
+
+/**
+ * GET /api/admin/boosts/:boostId/feed-eligibility
+ * Super Admin only — explain why a single campaign is/isn't in the auto feed.
+ */
+router.get("/admin/boosts/:boostId/feed-eligibility", requireSuperAdmin, async (req, res): Promise<void> => {
+  const boostId = parseInt(String(req.params.boostId), 10);
+  if (!Number.isFinite(boostId) || boostId < 1) {
+    res.status(400).json({ error: "Invalid boost id" });
+    return;
+  }
+
+  const [row] = await db
+    .select({
+      boostId: boostsTable.id,
+      listingId: listingsTable.id,
+      advertiserId: usersTable.id,
+      advertiserName: usersTable.name,
+      advertiserRole: usersTable.role,
+      paymentStatus: boostsTable.paymentStatus,
+      campaignStatus: boostsTable.campaignStatus,
+      moderationStatus: listingsTable.moderationStatus,
+      listingStatus: listingsTable.status,
+      stockQuantity: listingsTable.stockQuantity,
+      price: listingsTable.price,
+      isBoosted: listingsTable.isBoosted,
+      boostVideoUrl: listingsTable.boostVideoUrl,
+      startsAt: boostsTable.startsAt,
+      expiresAt: boostsTable.expiresAt,
+      boostStartAt: listingsTable.boostStartAt,
+      boostExpiresAt: listingsTable.boostExpiresAt,
+      audienceType: boostsTable.audienceType,
+      audienceCountry: boostsTable.audienceCountry,
+      audienceState: boostsTable.audienceState,
+      audienceCity: boostsTable.audienceCity,
+      audienceCities: boostsTable.audienceCities,
+      boostAudienceCountry: listingsTable.boostAudienceCountry,
+      boostAudienceState: listingsTable.boostAudienceState,
+      boostAudienceCity: listingsTable.boostAudienceCity,
+      boostAudienceCities: listingsTable.boostAudienceCities,
+      impressions: boostsTable.impressions,
+      videoViews: boostsTable.videoViews,
+    })
+    .from(boostsTable)
+    .innerJoin(listingsTable, eq(boostsTable.listingId, listingsTable.id))
+    .innerJoin(usersTable, eq(boostsTable.userId, usersTable.id))
+    .where(eq(boostsTable.id, boostId))
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "Boost not found" });
+    return;
+  }
+
+  const diagnostic = diagnoseCampaignFeedEligibility({ ...row, deliveryError: null }, new Date());
+  res.json({
+    ...diagnostic,
+    geoOverconstrainedFlag: isAdvantagePlusGeoOverconstrained({
+      audienceType: row.audienceType,
+      audienceState: row.audienceState,
+      audienceCity: row.audienceCity,
+      audienceCities: row.audienceCities,
+      boostAudienceState: row.boostAudienceState,
+      boostAudienceCity: row.boostAudienceCity,
+      boostAudienceCities: row.boostAudienceCities,
+    }),
+  });
 });
 
 // ─── Boost Control ────────────────────────────────────────────────────────────

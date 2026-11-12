@@ -1957,6 +1957,10 @@ router.post("/listings/:id/boost", requireAuth, async (req, res): Promise<void> 
   // Keep plan field for backward compatibility
   const plan = durationDays === 1 ? "1day" : durationDays <= 3 ? "3day" : "7day";
 
+  // Advantage+ = country-wide automatic pool (null cities). Custom keeps cities.
+  const deliveryCities = audienceType === "custom" && cities.length > 0 ? cities : null;
+  const deliveryCity = audienceType === "custom" ? (cities[0] ?? null) : null;
+
   const [boost] = await db.insert(boostsTable).values({
     listingId: id,
     userId: req.userId!,
@@ -1969,8 +1973,8 @@ router.post("/listings/:id/boost", requireAuth, async (req, res): Promise<void> 
     audienceType,
     audienceName,
     audienceCountry: country,
-    audienceCities: cities.length > 0 ? cities : null,
-    audienceCity: cities[0] ?? null,
+    audienceCities: deliveryCities,
+    audienceCity: deliveryCity,
     audienceAgeMin: ageMin,
     audienceAgeMax: ageMax,
     audienceGender: gender,
@@ -1987,8 +1991,8 @@ router.post("/listings/:id/boost", requireAuth, async (req, res): Promise<void> 
     boostStartAt: new Date(),
     boostExpiresAt: expiresAt,
     boostAudienceCountry: country,
-    boostAudienceCities: cities.length > 0 ? cities : null,
-    boostAudienceCity: cities[0] ?? null,
+    boostAudienceCities: deliveryCities,
+    boostAudienceCity: deliveryCity,
     boostAudienceAgeMin: ageMin,
     boostAudienceAgeMax: ageMax,
     boostAudienceGender: gender,

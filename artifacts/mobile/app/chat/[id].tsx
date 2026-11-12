@@ -26,6 +26,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import {
   createOffer,
 } from "@/lib/offersApi";
+import { blockUser, reportTarget } from "@/lib/blocksApi";
 import {
   fetchConversations,
   fetchMessages,
@@ -453,6 +454,50 @@ export default function ChatThreadScreen() {
             onPress={() => router.push(`/listing/${meta.listingId}`)}
           >
             <Feather name="shopping-bag" size={18} color="#0F172A" />
+          </Pressable>
+        ) : (
+          <View style={{ width: 8 }} />
+        )}
+        {meta?.otherUserId ? (
+          <Pressable
+            style={styles.back}
+            onPress={() => {
+              Alert.alert(title, undefined, [
+                {
+                  text: "Block user",
+                  style: "destructive",
+                  onPress: () => {
+                    if (!token || !meta.otherUserId) return;
+                    void blockUser(meta.otherUserId, { token })
+                      .then(() => Alert.alert("Blocked", "User blocked. A moderation report was filed."))
+                      .catch((e) =>
+                        Alert.alert("Block", e instanceof Error ? e.message : "Error"),
+                      );
+                  },
+                },
+                {
+                  text: "Report user",
+                  onPress: () => {
+                    if (!token || !meta.otherUserId) return;
+                    void reportTarget(
+                      {
+                        targetType: "user",
+                        targetId: meta.otherUserId,
+                        reason: "Reported from chat for abusive or unsafe behavior",
+                      },
+                      { token },
+                    )
+                      .then(() => Alert.alert("Reported", "Thanks — moderators will review."))
+                      .catch((e) =>
+                        Alert.alert("Report", e instanceof Error ? e.message : "Error"),
+                      );
+                  },
+                },
+                { text: "Cancel", style: "cancel" },
+              ]);
+            }}
+          >
+            <Feather name="more-vertical" size={18} color="#0F172A" />
           </Pressable>
         ) : (
           <View style={{ width: 40 }} />

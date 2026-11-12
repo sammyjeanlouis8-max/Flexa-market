@@ -41,7 +41,8 @@
         "NSFaceIDUsageDescription": "Flexa Market uses Face ID so you can sign in quickly and securely without typing your password.",
         "UIBackgroundModes": [
           "remote-notification",
-          "fetch"
+          "fetch",
+          "audio"
         ]
       }
     },
@@ -65,7 +66,8 @@
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.WAKE_LOCK",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
@@ -105,6 +107,7 @@
       ],
       "./modules/flexa-background-upload/app.plugin.js",
       "./plugins/withOptionalGoogleServices.js",
+      "./plugins/withRevenueCatIos.js",
       "expo-asset",
       "expo-font",
       "./plugins/withAndroidAdaptiveLayout.js"

@@ -26,7 +26,13 @@ import {
   type AppNotification,
 } from "@/lib/notificationsApi";
 import { formatDate } from "@/lib/orderUi";
-import { getPushPrepStatus } from "@/lib/pushPrep";
+import {
+  DEVICE_VALIDATION_ITEMS,
+  loadDeviceValidationState,
+  saveDeviceValidationState,
+  type DeviceValidationState,
+} from "@/lib/deviceValidationChecklist";
+import { getPushPrepStatus, registerExpoPushToken } from "@/lib/pushPrep";
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
@@ -35,7 +41,13 @@ export default function NotificationsScreen() {
   const [items, setItems] = useState<AppNotification[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushTick, setPushTick] = useState(0);
+  const [deviceChecklist, setDeviceChecklist] =
+    useState<DeviceValidationState | null>(null);
+  const [showChecklist, setShowChecklist] = useState(false);
   const pushStatus = getPushPrepStatus();
+  void pushTick;
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -63,8 +75,32 @@ export default function NotificationsScreen() {
         return;
       }
       if (token) void load("initial");
+      void loadDeviceValidationState().then(setDeviceChecklist);
     }, [authLoading, token, router, load]),
   );
+
+  const toggleChecklistItem = async (
+    id: (typeof DEVICE_VALIDATION_ITEMS)[number]["id"],
+  ) => {
+    const base =
+      deviceChecklist ??
+      ({
+        checked: {},
+        notes: "",
+        updatedAt: null,
+        physicalDeviceVerified: false as const,
+      } satisfies DeviceValidationState);
+    const nextChecked = {
+      ...base.checked,
+      [id]: !base.checked[id],
+    };
+    const saved = await saveDeviceValidationState({
+      checked: nextChecked,
+      notes: base.notes,
+      updatedAt: base.updatedAt,
+    });
+    setDeviceChecklist(saved);
+  };
 
   const onOpen = async (n: AppNotification) => {
     if (token && !n.isRead) {
@@ -142,16 +178,77 @@ export default function NotificationsScreen() {
         )}
       </View>
 
-      <Text style={styles.pushNote}>
-        In-app center uses your real account notifications. Push delivery
-        preparation:{" "}
-        {pushStatus.tokenRegistered
-          ? "Expo token registered for this session"
-          : pushStatus.registrationAttempted
-            ? pushStatus.lastError || "token not registered yet"
-            : "will register after sign-in (FCM via google-services when available)"}
-        . No simulated push events.
-      </Text>
+      <View style={styles.pushCard}>
+        <Text style={styles.pushNote}>
+          In-app center uses your real account notifications. No simulated push events.
+          Physical FCM delivery is not claimed verified without a device test.
+        </Text>
+        <Text style={styles.pushMeta}>
+          token: {pushStatus.tokenRegistered ? "registered" : "not registered"}
+          {" · "}perm: {pushStatus.permissionStatus || "—"}
+          {" · "}pkg: {pushStatus.androidPackage}
+          {" · "}EAS: {pushStatus.easProjectId.slice(0, 8)}…
+        </Text>
+        {pushStatus.lastError ? (
+          <Text style={styles.pushErr}>{pushStatus.lastError}</Text>
+        ) : null}
+        {token ? (
+          <Pressable
+            style={styles.pushRetry}
+            disabled={pushBusy}
+            onPress={() => {
+              setPushBusy(true);
+              void registerExpoPushToken(token)
+                .finally(() => {
+                  setPushBusy(false);
+                  setPushTick((n) => n + 1);
+                });
+            }}
+            testID="btn-retry-push-register"
+          >
+            <Text style={styles.pushRetryText}>
+              {pushBusy ? "Registering…" : "Retry push registration"}
+            </Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          style={styles.checklistToggle}
+          onPress={() => setShowChecklist((v) => !v)}
+          testID="btn-toggle-device-checklist"
+        >
+          <Text style={styles.checklistToggleText}>
+            {showChecklist
+              ? "Hide device validation checklist"
+              : "Show device validation checklist (local only)"}
+          </Text>
+        </Pressable>
+        {showChecklist ? (
+          <View style={styles.checklistBox} testID="device-validation-checklist">
+            <Text style={styles.pushNote}>
+              Toggles are local notes only. physicalDeviceVerified stays false
+              until a human records evidence on a real Android device.
+            </Text>
+            {DEVICE_VALIDATION_ITEMS.map((item) => {
+              const on = !!deviceChecklist?.checked[item.id];
+              return (
+                <Pressable
+                  key={item.id}
+                  style={styles.checkRow}
+                  onPress={() => void toggleChecklistItem(item.id)}
+                  testID={`check-${item.id}`}
+                >
+                  <Feather
+                    name={on ? "check-square" : "square"}
+                    size={18}
+                    color={on ? "#F97316" : "#94A3B8"}
+                  />
+                  <Text style={styles.checkLabel}>{item.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
 
       {authLoading || (token && items === null && !error) ? (
         <ActivityIndicator color="#F97316" style={{ marginTop: 40 }} />
@@ -223,13 +320,51 @@ const styles = StyleSheet.create({
     width: 64,
     textAlign: "right",
   },
-  pushNote: {
+  pushCard: {
     marginHorizontal: 16,
     marginBottom: 10,
+    backgroundColor: "#FFF7ED",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+    padding: 10,
+    gap: 4,
+  },
+  pushNote: {
     fontSize: 11,
-    color: "#64748B",
+    color: "#9A3412",
     lineHeight: 15,
   },
+  pushMeta: {
+    fontSize: 10,
+    color: "#64748B",
+    lineHeight: 14,
+  },
+  pushErr: {
+    fontSize: 10,
+    color: "#B91C1C",
+    fontWeight: "700",
+  },
+  pushRetry: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "#FFEDD5",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  pushRetryText: { color: "#C2410C", fontWeight: "800", fontSize: 11 },
+  checklistToggle: { marginTop: 8, paddingVertical: 6 },
+  checklistToggleText: { color: "#0369A1", fontWeight: "700", fontSize: 12 },
+  checklistBox: {
+    marginTop: 8,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#FED7AA",
+    paddingTop: 8,
+  },
+  checkRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  checkLabel: { flex: 1, color: "#9A3412", fontSize: 12, fontWeight: "600" },
   card: {
     flexDirection: "row",
     alignItems: "center",

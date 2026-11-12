@@ -37,6 +37,8 @@ export type SavedUserAddress = {
 export type CartCheckoutItem = {
   listingId: number;
   quantity: number;
+  /** Optional — validated server-side when listing_variants table exists. */
+  variantId?: number;
 };
 
 /** Matches POST /api/cart/checkout body used by marketplace Cart.tsx */

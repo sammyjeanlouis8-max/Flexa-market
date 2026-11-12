@@ -1,21 +1,51 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
+import { canAccessAdminCenter } from "@/lib/adminRoles";
+import { isSupportStaff } from "@/lib/supportRoles";
 
-const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap }[] = [
+type LinkItem = { label: string; href: string; icon: keyof typeof Feather.glyphMap };
+
+const BASE_LINKS: LinkItem[] = [
   { label: "Edit profile", href: "/edit-profile", icon: "edit-2" },
   { label: "My orders", href: "/orders", icon: "package" },
   { label: "Seller sales", href: "/sales", icon: "bar-chart-2" },
   { label: "My listings", href: "/my-listings", icon: "grid" },
+  { label: "Size / color", href: "/product-variations", icon: "layers" },
+  { label: "Become a seller", href: "/seller-registration", icon: "briefcase" },
+  { label: "Drafts", href: "/drafts", icon: "file-text" },
+  { label: "Identity (KYC)", href: "/kyc", icon: "shield" },
+  { label: "Store manager", href: "/store-manager", icon: "users" },
+  { label: "Campaigns", href: "/my-boosts", icon: "zap" },
+  { label: "Promo videos", href: "/promo-feed", icon: "play-circle" },
   { label: "Private offers", href: "/offers", icon: "tag" },
   { label: "Favorites", href: "/favorites", icon: "heart" },
   { label: "Wallet", href: "/wallet", icon: "credit-card" },
+  { label: "Transfer", href: "/wallet-transfer", icon: "send" },
+  { label: "Flex Card", href: "/flex-card", icon: "credit-card" },
+  { label: "eSIM", href: "/esim", icon: "smartphone" },
+  { label: "Loans", href: "/loans", icon: "book" },
+  { label: "Credit score", href: "/credit-score", icon: "activity" },
+  { label: "BNPL", href: "/bnpl", icon: "shopping-bag" },
+  { label: "Subscriptions", href: "/subscription", icon: "star" },
+  { label: "Cash agents", href: "/cash-agents", icon: "dollar-sign" },
+  { label: "Purchase commissions", href: "/commission-promo", icon: "percent" },
+  { label: "Become a driver", href: "/driver-apply", icon: "truck" },
+  { label: "Driver dashboard", href: "/driver-dashboard", icon: "navigation" },
+  { label: "Referrals", href: "/referrals", icon: "gift" },
+  { label: "Jobs", href: "/jobs", icon: "briefcase" },
+  { label: "Calculator", href: "/calculator", icon: "percent" },
+  { label: "Flexa TV", href: "/tv", icon: "tv" },
+  { label: "Flexa Music", href: "/music", icon: "music" },
   { label: "Addresses", href: "/addresses", icon: "map-pin" },
+  { label: "Help Center", href: "/help", icon: "help-circle" },
   { label: "Support", href: "/support", icon: "life-buoy" },
+  { label: "FlexaBot", href: "/chatbot", icon: "cpu" },
   { label: "Notifications", href: "/notifications", icon: "bell" },
   { label: "Settings", href: "/settings", icon: "settings" },
   { label: "Delivery tracking", href: "/delivery-tracking", icon: "map" },
@@ -26,6 +56,19 @@ export default function ProfileTab() {
   const router = useRouter();
   const { user, token, logout, isLoading } = useAuth();
   const { country } = useMarketplace();
+  const { t } = useLanguage();
+
+  const links = useMemo(() => {
+    const staff: LinkItem[] = [];
+    if (canAccessAdminCenter(user)) {
+      staff.push({ label: t("adminTitle"), href: "/admin", icon: "shield" });
+    }
+    if (isSupportStaff(user)) {
+      staff.push({ label: t("supportAgentDesk"), href: "/support-agent", icon: "headphones" });
+      staff.push({ label: t("supportAdminDesk"), href: "/support-admin", icon: "activity" });
+    }
+    return [...staff, ...BASE_LINKS];
+  }, [user, t]);
 
   return (
     <ScrollView
@@ -44,6 +87,12 @@ export default function ProfileTab() {
             {user.country ?? country}
             {user.city ? ` · ${user.city}` : ""}
           </Text>
+          <Pressable
+            style={styles.secondaryBtn}
+            onPress={() => router.push(`/profile/${user.id}`)}
+          >
+            <Text style={styles.secondaryBtnText}>Public shop</Text>
+          </Pressable>
           <Pressable style={styles.secondaryBtn} onPress={() => logout()}>
             <Text style={styles.secondaryBtnText}>Sign out</Text>
           </Pressable>
@@ -64,7 +113,7 @@ export default function ProfileTab() {
       )}
 
       <View style={styles.list}>
-        {LINKS.map((item) => (
+        {links.map((item) => (
           <Pressable
             key={item.href}
             style={styles.row}

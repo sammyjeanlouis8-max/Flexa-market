@@ -2775,13 +2775,67 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
     if (l.sellerId === userId) { res.status(400).json({ error: `Ou pa ka achte pwòp pwodwi ou: "${l.title}"` }); return; }
   }
 
+  // Optional multi-SKU: resolve variant price/stock when listing_variants exists.
+  // If a client sends variantId but the table is not migrated → 503 (no fake stock).
+  const variantByItem = new Map<number, { price: number | null; stockQuantity: number; id: number }>();
+  try {
+    const { listingVariantsTable } = await import("@workspace/db");
+    for (let idx = 0; idx < rawItems.length; idx++) {
+      const item = rawItems[idx] as { listingId?: number; variantId?: number; quantity?: number };
+      const variantId = Number(item.variantId);
+      if (!variantId) continue;
+      const listingId = Number(item.listingId);
+      const [variant] = await db
+        .select()
+        .from(listingVariantsTable)
+        .where(
+          and(
+            eq(listingVariantsTable.id, variantId),
+            eq(listingVariantsTable.listingId, listingId),
+            eq(listingVariantsTable.isActive, true),
+          ),
+        )
+        .limit(1);
+      if (!variant) {
+        res.status(400).json({ error: `Variation #${variantId} not found for listing #${listingId}` });
+        return;
+      }
+      const qty = Number(item.quantity) || 1;
+      if (variant.stockQuantity < qty) {
+        res.status(409).json({ error: `Insufficient stock for variation #${variantId}` });
+        return;
+      }
+      variantByItem.set(idx, {
+        id: variant.id,
+        price: variant.price,
+        stockQuantity: variant.stockQuantity,
+      });
+    }
+  } catch (err: any) {
+    const needsVariant = rawItems.some((i: any) => Number(i?.variantId) > 0);
+    if (
+      needsVariant &&
+      (err?.code === "42P01" ||
+        /listing_variants.*does not exist/i.test(String(err?.message ?? "")))
+    ) {
+      res.status(503).json({
+        code: "VARIANTS_SCHEMA_PENDING",
+        error: "Multi-SKU checkout requires listing_variants migration (awaiting approval).",
+      });
+      return;
+    }
+    if (needsVariant) throw err;
+  }
+
   // Calculate grand total — convert non-USD listing currencies to USD first
   const [{ displayRate: cartDisplayRate }, cartDopRate] = await Promise.all([getDisplayRate(), getDopRate()]);
   let grandTotal = 0;
-  for (const item of rawItems) {
+  for (let idx = 0; idx < rawItems.length; idx++) {
+    const item = rawItems[idx];
     const l = listings.find(x => x.id === Number(item.listingId))!;
     const lCurrency = (l as any).currency ?? "USD";
-    let lPriceUsd = l.price;
+    const variant = variantByItem.get(idx);
+    let lPriceUsd = variant?.price != null ? Number(variant.price) : l.price;
     if (lCurrency === "HTG") lPriceUsd = parseFloat((lPriceUsd / cartDisplayRate).toFixed(2));
     else if (lCurrency === "DOP") lPriceUsd = parseFloat((lPriceUsd / cartDopRate).toFixed(2));
     grandTotal += lPriceUsd * (Number(item.quantity) || 1);
@@ -2849,27 +2903,51 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
   const orders: { txId: number; sellerId: number; amount: number; deliveryFee: number; title: string }[] = [];
   let refundTotal = 0;
 
-  for (const item of rawItems) {
+  for (let idx = 0; idx < rawItems.length; idx++) {
+    const item = rawItems[idx];
     const listing = listings.find(x => x.id === Number(item.listingId))!;
     const qty = Number(item.quantity) || 1;
     const itemCurrency = (listing as any).currency ?? "USD";
-    let itemPriceUsd = listing.price;
+    const variantMeta = variantByItem.get(idx);
+    let itemPriceUsd =
+      variantMeta?.price != null ? Number(variantMeta.price) : listing.price;
     if (itemCurrency === "HTG") itemPriceUsd = parseFloat((itemPriceUsd / cartDisplayRate).toFixed(2));
     else if (itemCurrency === "DOP") itemPriceUsd = parseFloat((itemPriceUsd / cartDopRate).toFixed(2));
     const itemTotal = Math.round(itemPriceUsd * qty * 100) / 100;
     const listingCountry = listing.country ?? "Haiti";
     const autoReleaseDays = listingCountry === "Haiti" ? AUTO_RELEASE_DAYS_HAITI : AUTO_RELEASE_DAYS_OTHER;
 
-    // Mark listing sold (skip if already gone)
-    const [updated] = await db.update(listingsTable)
-      .set({ status: "sold" } as any)
-      .where(and(eq(listingsTable.id, listing.id), eq(listingsTable.status, "available")))
-      .returning({ id: listingsTable.id });
+    if (variantMeta) {
+      const { listingVariantsTable } = await import("@workspace/db");
+      const [stocked] = await db
+        .update(listingVariantsTable)
+        .set({
+          stockQuantity: sql`GREATEST(0, ${listingVariantsTable.stockQuantity} - ${qty})`,
+          updatedAt: new Date(),
+        } as any)
+        .where(
+          and(
+            eq(listingVariantsTable.id, variantMeta.id),
+            sql`${listingVariantsTable.stockQuantity} >= ${qty}`,
+          ),
+        )
+        .returning({ id: listingVariantsTable.id });
+      if (!stocked) {
+        refundTotal += itemTotal;
+        continue;
+      }
+    } else {
+      // Mark listing sold (skip if already gone) — single-SKU / legacy path
+      const [updated] = await db.update(listingsTable)
+        .set({ status: "sold" } as any)
+        .where(and(eq(listingsTable.id, listing.id), eq(listingsTable.status, "available")))
+        .returning({ id: listingsTable.id });
 
-    if (!updated) {
-      // Already sold — refund this item
-      refundTotal += itemTotal;
-      continue;
+      if (!updated) {
+        // Already sold — refund this item
+        refundTotal += itemTotal;
+        continue;
+      }
     }
 
     const commission = await quoteForListing(
@@ -2889,7 +2967,9 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
       paymentMethod: "wallet",
       paymentStatus: "completed",
       paymentRef,
-      description: `Purchase of "${listing.title}" (panye)`,
+      description: variantMeta
+        ? `Purchase of "${listing.title}" (panye · variant #${variantMeta.id})`
+        : `Purchase of "${listing.title}" (panye)`,
       shippingName: shippingName.trim(),
       shippingPhone: shippingPhone.trim(),
       shippingEmail: shippingEmail?.trim() ?? null,

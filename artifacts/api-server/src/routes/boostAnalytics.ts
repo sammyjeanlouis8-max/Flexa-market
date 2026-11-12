@@ -53,14 +53,20 @@ function resolveCampaignStatus(row: {
   campaignStatus: string | null;
   expiresAt: Date;
   boostExpiresAt?: Date | null;
+  startsAt?: Date | null;
+  boostStartAt?: Date | null;
 }, now: Date): string {
   const expired = row.expiresAt <= now || (!!row.boostExpiresAt && row.boostExpiresAt <= now);
+  const start = row.startsAt ?? row.boostStartAt ?? null;
   let status = row.campaignStatus || "pending";
   if (row.paymentStatus === "draft" || status === "draft") return "draft";
-  if (row.paymentStatus === "pending") return "pending";
+  if (row.paymentStatus === "pending" || row.paymentStatus === "pending_review") {
+    return row.paymentStatus === "pending_review" ? "pending_review" : "pending";
+  }
   if (row.paymentStatus === "rejected" || status === "rejected") return "rejected";
   if (row.paymentStatus === "cancelled" || status === "cancelled") return "cancelled";
   if (status === "paused" && row.paymentStatus === "paid" && !expired) return "paused";
+  if (row.paymentStatus === "paid" && !expired && start && start > now) return "scheduled";
   if (row.paymentStatus === "paid" && !expired) return "active";
   if (row.paymentStatus === "paid" && expired) return "expired";
   return status || "pending";
@@ -98,6 +104,7 @@ router.get("/boost-analytics", requireAuth, async (req, res): Promise<void> => {
         plan: boostsTable.plan,
         startsAt: boostsTable.startsAt,
         expiresAt: boostsTable.expiresAt,
+        boostStartAt: listingsTable.boostStartAt,
         boostExpiresAt: listingsTable.boostExpiresAt,
         favoriteCount: listingsTable.favoriteCount,
         sharesCount: listingsTable.sharesCount,
@@ -483,6 +490,7 @@ router.get("/boost-analytics/:boostId", requireAuth, async (req, res): Promise<v
         plan: boostsTable.plan,
         startsAt: boostsTable.startsAt,
         expiresAt: boostsTable.expiresAt,
+        boostStartAt: listingsTable.boostStartAt,
         boostExpiresAt: listingsTable.boostExpiresAt,
         favoriteCount: listingsTable.favoriteCount,
         sharesCount: listingsTable.sharesCount,

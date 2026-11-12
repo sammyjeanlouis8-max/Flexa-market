@@ -117,6 +117,54 @@ router.get("/jobs/me", requireAuth, async (req, res): Promise<void> => {
   res.json(rows.map(r => shapeJob(r.jobs, r.users ? { id: r.users.id, name: r.users.name, avatar: r.users.avatar } : null)));
 });
 
+// ── My applications (job seeker sees their own submissions) ───────────────────
+
+router.get("/jobs/my-applications", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const rows = await db.execute(sql`
+    SELECT ja.id, ja.job_id, ja.status, ja.cover_letter, ja.whatsapp, ja.employer_note, ja.created_at,
+           j.title as job_title, j.status as job_status, j.poster_id,
+           u.name as poster_name
+    FROM job_applications ja
+    JOIN jobs j ON j.id = ja.job_id
+    JOIN users u ON u.id = j.poster_id
+    WHERE ja.applicant_id = ${userId}
+    ORDER BY ja.created_at DESC
+    LIMIT 100
+  `);
+  res.json(rows.rows.map((r: any) => ({
+    id: r.id,
+    job_id: r.job_id,
+    job_title: r.job_title,
+    job_status: r.job_status,
+    poster_name: r.poster_name,
+    status: r.status,
+    cover_letter: r.cover_letter,
+    whatsapp: r.whatsapp,
+    employer_note: r.employer_note,
+    created_at: r.created_at,
+  })));
+});
+
+// ── Employer verification routes ──────────────────────────────────────────────
+
+router.get("/jobs/employer-status", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const user = req.user as any;
+  if (user?.isSuperAdmin) {
+    res.json({ status: "approved", isVerifiedEmployer: true, adminBypass: true });
+    return;
+  }
+  const result = await db.execute(sql`
+    SELECT id, status, rejection_reason, created_at FROM employer_verifications
+    WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT 1
+  `);
+  const app = result.rows[0] as any ?? null;
+  const isVerifiedEmployer = Boolean(user?.isVerifiedEmployer);
+  res.json({ status: app?.status ?? null, isVerifiedEmployer, application: app });
+});
+
+
 /**
  * GET /api/jobs/:id — single job. Visible to the poster, the claimer, or to
  * anyone if the job is still open.
@@ -368,53 +416,6 @@ router.delete("/jobs/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
   res.json({ message: "Deleted" });
-});
-
-// ── My applications (job seeker sees their own submissions) ───────────────────
-
-router.get("/jobs/my-applications", requireAuth, async (req, res): Promise<void> => {
-  const userId = req.userId!;
-  const rows = await db.execute(sql`
-    SELECT ja.id, ja.job_id, ja.status, ja.cover_letter, ja.whatsapp, ja.employer_note, ja.created_at,
-           j.title as job_title, j.status as job_status, j.poster_id,
-           u.name as poster_name
-    FROM job_applications ja
-    JOIN jobs j ON j.id = ja.job_id
-    JOIN users u ON u.id = j.poster_id
-    WHERE ja.applicant_id = ${userId}
-    ORDER BY ja.created_at DESC
-    LIMIT 100
-  `);
-  res.json(rows.rows.map((r: any) => ({
-    id: r.id,
-    job_id: r.job_id,
-    job_title: r.job_title,
-    job_status: r.job_status,
-    poster_name: r.poster_name,
-    status: r.status,
-    cover_letter: r.cover_letter,
-    whatsapp: r.whatsapp,
-    employer_note: r.employer_note,
-    created_at: r.created_at,
-  })));
-});
-
-// ── Employer verification routes ──────────────────────────────────────────────
-
-router.get("/jobs/employer-status", requireAuth, async (req, res): Promise<void> => {
-  const userId = req.userId!;
-  const user = req.user as any;
-  if (user?.isSuperAdmin) {
-    res.json({ status: "approved", isVerifiedEmployer: true, adminBypass: true });
-    return;
-  }
-  const result = await db.execute(sql`
-    SELECT id, status, rejection_reason, created_at FROM employer_verifications
-    WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT 1
-  `);
-  const app = result.rows[0] as any ?? null;
-  const isVerifiedEmployer = Boolean(user?.isVerifiedEmployer);
-  res.json({ status: app?.status ?? null, isVerifiedEmployer, application: app });
 });
 
 router.post("/jobs/employer-apply", requireAuth, async (req, res): Promise<void> => {

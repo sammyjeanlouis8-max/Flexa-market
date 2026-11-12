@@ -166,6 +166,8 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
 
   // Custom / map targeting: honor wizard selections (department, cities, radius).
   // Advantage+ (automatic): country-wide — never pin to the seller's home geo.
+  // Stamping seller geo previously excluded most viewers from GET /api/videos/feed
+  // while Admin free boosts (null state/city) appeared nationwide.
   const audienceType =
     req.body.audience?.audienceType === "custom" ? "custom" : "advantage_plus";
   const bodyState =
@@ -788,10 +790,11 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
   // Super-admins may target ALL countries globally.
   const isAllCountries = !!(req.user?.isSuperAdmin) && rawCountry === "ALL";
   const country = rawCountry;
-  const state = (!isAllCountries && country === "Haiti") ? (req.user!.state ?? "Ouest") : null;
-  const city  = (!isAllCountries && typeof req.body.audienceCity === "string" && req.body.audienceCity.trim())
-    ? req.body.audienceCity.trim()
-    : (!isAllCountries ? (req.user!.location ?? null) : null);
+  // Video-only is Advantage+ automatic delivery: country-wide (null dept/city),
+  // matching admin free boosts. Do not force the seller's Haiti department —
+  // that silently excluded regular seller promos from most viewers' feeds.
+  const state: string | null = null;
+  const city: string | null = null;
   const gender = ["all", "male", "female"].includes(req.body.audienceGender) ? req.body.audienceGender : "all";
   const ageMin = Number.isFinite(Number(req.body.audienceAgeMin)) ? Math.max(13, Math.min(79, Number(req.body.audienceAgeMin))) : 18;
   const ageMax = Number.isFinite(Number(req.body.audienceAgeMax)) ? Math.max(ageMin + 1, Math.min(80, Number(req.body.audienceAgeMax))) : 65;

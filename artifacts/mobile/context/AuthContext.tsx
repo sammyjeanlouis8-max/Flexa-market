@@ -1,5 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { identifyIapUser, logoutIapUser } from "@/lib/iap";
+import { unregisterExpoPushToken } from "@/lib/pushPrep";
 
 const TOKEN_KEY = "flexamarket_token";
 
@@ -49,6 +51,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const tokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
 
   const fetchUser = useCallback(async (t: string) => {
     try {
@@ -58,9 +65,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data);
+        // Mirror Swift shell: Purchases.logIn(String(userId)) so restores
+        // and RevenueCat webhooks stay tied to the Flexa account.
+        if (data?.id != null) {
+          void identifyIapUser(Number(data.id)).catch(() => {});
+        }
       } else if (res.status === 401) {
         // Only a definitive invalid-token response may destroy the saved
         // session. Temporary server/proxy errors must leave the user signed in.
+        // Best-effort push unregister before wiping the JWT.
+        await unregisterExpoPushToken(t).catch(() => {});
+        void logoutIapUser();
         await AsyncStorage.removeItem(TOKEN_KEY);
         setToken(null);
         setUser(null);
@@ -84,6 +99,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async (newToken: string) => {
+      const previous = tokenRef.current;
+      // Account switch: drop the previous account's device push binding first.
+      if (previous && previous !== newToken) {
+        await unregisterExpoPushToken(previous).catch(() => {});
+      }
       await AsyncStorage.setItem(TOKEN_KEY, newToken);
       setToken(newToken);
       await fetchUser(newToken);
@@ -92,6 +112,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    const current = tokenRef.current;
+    // Unregister while JWT is still valid so ownership checks succeed.
+    await unregisterExpoPushToken(current).catch(() => {});
+    void logoutIapUser();
     await AsyncStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);

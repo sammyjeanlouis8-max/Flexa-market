@@ -10,21 +10,29 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { rateDriver, tipDriver } from "@/lib/deliveryFeedbackApi";
 import {
   confirmDelivery,
+  fetchOrderCarriers,
   fetchOrderDetail,
+  fetchOrderLabel,
   fetchOrderTracking,
+  shipOrder,
   type CarrierTracking,
   type OrderDetail,
+  type OrderLabel,
 } from "@/lib/ordersApi";
 import {
   formatDate,
@@ -32,6 +40,20 @@ import {
   listStatusLabel,
   orderRef,
 } from "@/lib/orderUi";
+
+type ShipMode = "personal" | "fm" | "bus" | "carrier";
+
+function resolveSellerShipKind(
+  country: string | null | undefined,
+  deliveryMethod: string | null | undefined,
+): "haiti" | "dr_seller" | "dr_company" | "carrier" {
+  if (country === "Haiti") return "haiti";
+  if (country === "Dominican Republic") {
+    if (deliveryMethod === "self_delivery") return "dr_seller";
+    if (deliveryMethod && deliveryMethod.trim()) return "dr_company";
+  }
+  return "carrier";
+}
 
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -44,6 +66,28 @@ export default function OrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [tipAmount, setTipAmount] = useState("2");
+  const [driverRating, setDriverRating] = useState(5);
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [shipMode, setShipMode] = useState<ShipMode>("personal");
+  const [deliveryDescription, setDeliveryDescription] = useState("");
+  const [driverPhone, setDriverPhone] = useState("");
+  const [driverName, setDriverName] = useState("");
+  const [deliveryNote, setDeliveryNote] = useState("");
+  const [fmVehicleType, setFmVehicleType] = useState<"motorcycle" | "car">(
+    "motorcycle",
+  );
+  const [busDestCity, setBusDestCity] = useState("");
+  const [busTrackingLink, setBusTrackingLink] = useState("");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [carrier, setCarrier] = useState("");
+  const [carriers, setCarriers] = useState<string[]>([]);
+  const [shippingBusy, setShippingBusy] = useState(false);
+  const [labelBusy, setLabelBusy] = useState(false);
+  const [label, setLabel] = useState<OrderLabel | null>(null);
+  const [labelOpen, setLabelOpen] = useState(false);
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -80,6 +124,44 @@ export default function OrderDetailScreen() {
     if (token) void load("initial");
   }, [authLoading, token, load, router]);
 
+  useEffect(() => {
+    if (!order?.isSeller || order.orderStatus !== "ready_to_ship") return;
+    const kind = resolveSellerShipKind(
+      order.listingCountry,
+      order.deliveryMethod,
+    );
+    if (kind === "haiti") {
+      setShipMode("personal");
+      return;
+    }
+    if (kind === "dr_seller") {
+      setShipMode("personal");
+      setDriverName(order.merchant?.name ?? "");
+      return;
+    }
+    setShipMode("carrier");
+    if (kind === "dr_company" && order.deliveryMethod) {
+      setCarrier(order.deliveryMethod);
+      return;
+    }
+    let cancelled = false;
+    void fetchOrderCarriers().then((list) => {
+      if (cancelled) return;
+      setCarriers(list);
+      setCarrier((prev) => prev || list[0] || "");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    order?.orderId,
+    order?.isSeller,
+    order?.orderStatus,
+    order?.listingCountry,
+    order?.deliveryMethod,
+    order?.merchant?.name,
+  ]);
+
   const onConfirm = async () => {
     if (!token || !id) return;
     setConfirming(true);
@@ -90,9 +172,160 @@ export default function OrderDetailScreen() {
         return;
       }
       await load("refresh");
+      setShowFeedback(true);
     } finally {
       setConfirming(false);
     }
+  };
+
+  const onSubmitFeedback = async () => {
+    if (!token || !order?.fmDelivery?.id) {
+      Alert.alert("Unavailable", "No Flexa delivery is linked to tip or rate.");
+      setShowFeedback(false);
+      return;
+    }
+    const deliveryId = order.fmDelivery.id;
+    const amount = Number(tipAmount);
+    setFeedbackBusy(true);
+    try {
+      if (!Number.isNaN(amount) && amount >= 0.5) {
+        const tip = await tipDriver(
+          deliveryId,
+          {
+            amount,
+            message: feedbackNote.trim() || undefined,
+            rating: driverRating,
+          },
+          { token },
+        );
+        if (!tip.ok && !tip.alreadyTipped) {
+          Alert.alert("Tip", tip.error ?? "Could not tip");
+        }
+      }
+      const rate = await rateDriver(
+        deliveryId,
+        {
+          rating: driverRating,
+          comment: feedbackNote.trim() || undefined,
+        },
+        { token },
+      );
+      if (!rate.ok && !rate.alreadyRated) {
+        Alert.alert("Rating", rate.error ?? "Could not rate driver");
+      } else {
+        Alert.alert("Thanks", "Delivery feedback submitted.");
+      }
+      setShowFeedback(false);
+    } finally {
+      setFeedbackBusy(false);
+    }
+  };
+
+  const onShip = async () => {
+    if (!token || !id || !order?.isSeller) return;
+    setShippingBusy(true);
+    try {
+      let payload: Parameters<typeof shipOrder>[1];
+      if (shipMode === "carrier") {
+        if (!trackingNumber.trim() || !carrier.trim()) {
+          Alert.alert("Required", "Enter tracking number and carrier.");
+          return;
+        }
+        payload = {
+          trackingNumber: trackingNumber.trim(),
+          carrier: carrier.trim(),
+        };
+      } else if (shipMode === "fm") {
+        if (!deliveryDescription.trim()) {
+          Alert.alert("Required", "Delivery description is required.");
+          return;
+        }
+        payload = {
+          deliveryDescription: deliveryDescription.trim(),
+          deliveryNote: deliveryNote.trim() || undefined,
+          useFmDriver: true,
+          fmVehicleType,
+        };
+      } else if (shipMode === "bus") {
+        if (!deliveryDescription.trim() || !driverPhone.trim()) {
+          Alert.alert(
+            "Required",
+            "Delivery description and transporter phone are required.",
+          );
+          return;
+        }
+        payload = {
+          deliveryDescription: deliveryDescription.trim(),
+          driverPhone: driverPhone.trim(),
+          driverName: driverName.trim() || undefined,
+          deliveryNote: deliveryNote.trim() || undefined,
+          useBus: true,
+          busDestCity: busDestCity.trim() || undefined,
+          busTrackingLink: busTrackingLink.trim() || undefined,
+        };
+      } else {
+        if (!deliveryDescription.trim() || !driverPhone.trim()) {
+          Alert.alert(
+            "Required",
+            "Delivery description and driver phone are required.",
+          );
+          return;
+        }
+        payload = {
+          deliveryDescription: deliveryDescription.trim(),
+          driverPhone: driverPhone.trim(),
+          driverName: driverName.trim() || undefined,
+          deliveryNote: deliveryNote.trim() || undefined,
+        };
+      }
+      const result = await shipOrder(id, payload, { token });
+      if (!result.ok) {
+        Alert.alert("Could not ship", result.error ?? "Try again");
+        return;
+      }
+      Alert.alert("Shipped", "Buyer will be notified.");
+      await load("refresh");
+    } finally {
+      setShippingBusy(false);
+    }
+  };
+
+  const onOpenLabel = async () => {
+    if (!token || !id || !order?.isSeller) return;
+    setLabelBusy(true);
+    try {
+      const data = await fetchOrderLabel(id, { token });
+      setLabel(data);
+      setLabelOpen(true);
+    } catch (e) {
+      Alert.alert(
+        "Label unavailable",
+        e instanceof Error ? e.message : "Could not load shipping label",
+      );
+    } finally {
+      setLabelBusy(false);
+    }
+  };
+
+  const onShareLabel = async () => {
+    if (!label) return;
+    const lines = [
+      label.orderRef,
+      label.listing.title,
+      `Buyer: ${label.buyer.name ?? "—"}`,
+      `To: ${[label.shipTo.name, label.shipTo.phone].filter(Boolean).join(" · ")}`,
+      [
+        label.shipTo.street,
+        label.shipTo.city,
+        label.shipTo.region,
+        label.shipTo.zip,
+        label.shipTo.country,
+      ]
+        .filter(Boolean)
+        .join(", "),
+      `Amount: ${formatMoney(label.amount, label.currency)}`,
+    ];
+    await Share.share({ message: lines.join("\n") });
   };
 
   const status = order
@@ -111,6 +344,15 @@ export default function OrderDetailScreen() {
       : null;
 
   const img = order?.listing?.images?.[0] ?? null;
+  const canSellerShip =
+    !!order?.isSeller && order.orderStatus === "ready_to_ship";
+  const shipKind = resolveSellerShipKind(
+    order?.listingCountry,
+    order?.deliveryMethod,
+  );
+  const showHaitiModes = shipKind === "haiti";
+  const showManualForm =
+    shipKind === "haiti" || shipKind === "dr_seller";
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -305,6 +547,202 @@ export default function OrderDetailScreen() {
             </View>
           ) : null}
 
+          {order.isSeller ? (
+            <View style={styles.card}>
+              <Text style={styles.section}>Seller fulfillment</Text>
+              <Pressable
+                style={[styles.secondaryBtn, labelBusy && { opacity: 0.7 }]}
+                onPress={onOpenLabel}
+                disabled={labelBusy}
+                testID="btn-order-label"
+              >
+                {labelBusy ? (
+                  <ActivityIndicator color="#0F172A" />
+                ) : (
+                  <Text style={styles.secondaryBtnText}>
+                    View shipping label
+                  </Text>
+                )}
+              </Pressable>
+              {canSellerShip ? (
+                <>
+                  <Text style={styles.muted}>
+                    Mark ready_to_ship as shipped using the same server rules as
+                    the website.
+                  </Text>
+                  {showHaitiModes ? (
+                    <View style={styles.modeRow}>
+                      {(
+                        [
+                          ["personal", "Driver"],
+                          ["fm", "FM"],
+                          ["bus", "Bus"],
+                        ] as const
+                      ).map(([mode, labelText]) => (
+                        <Pressable
+                          key={mode}
+                          style={[
+                            styles.modeChip,
+                            shipMode === mode && styles.modeChipOn,
+                          ]}
+                          onPress={() => setShipMode(mode)}
+                          testID={`chip-ship-${mode}`}
+                        >
+                          <Text
+                            style={[
+                              styles.modeChipText,
+                              shipMode === mode && styles.modeChipTextOn,
+                            ]}
+                          >
+                            {labelText}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                  {shipKind === "dr_seller" ? (
+                    <Text style={styles.muted}>
+                      Dominican seller delivery — enter your phone; FM/bus are
+                      blocked by the server for this order.
+                    </Text>
+                  ) : null}
+                  {shipKind === "dr_company" ? (
+                    <Text style={styles.muted}>
+                      Carrier locked to checkout company: {order.deliveryMethod}
+                    </Text>
+                  ) : null}
+                  {!showManualForm ? (
+                    <>
+                      <TextInput
+                        value={trackingNumber}
+                        onChangeText={setTrackingNumber}
+                        placeholder="Tracking number"
+                        placeholderTextColor="#94A3B8"
+                        style={styles.input}
+                        autoCapitalize="characters"
+                        testID="input-tracking-number"
+                      />
+                      <TextInput
+                        value={carrier}
+                        onChangeText={
+                          shipKind === "dr_company" ? undefined : setCarrier
+                        }
+                        editable={shipKind !== "dr_company"}
+                        placeholder={
+                          carriers.length
+                            ? `Carrier (${carriers.slice(0, 3).join(", ")}…)`
+                            : "Carrier"
+                        }
+                        placeholderTextColor="#94A3B8"
+                        style={styles.input}
+                        testID="input-carrier"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <TextInput
+                        value={deliveryDescription}
+                        onChangeText={setDeliveryDescription}
+                        placeholder="Delivery description"
+                        placeholderTextColor="#94A3B8"
+                        style={styles.input}
+                        testID="input-delivery-description"
+                      />
+                      {shipMode === "fm" ? (
+                        <View style={styles.modeRow}>
+                          {(["motorcycle", "car"] as const).map((v) => (
+                            <Pressable
+                              key={v}
+                              style={[
+                                styles.modeChip,
+                                fmVehicleType === v && styles.modeChipOn,
+                              ]}
+                              onPress={() => setFmVehicleType(v)}
+                            >
+                              <Text
+                                style={[
+                                  styles.modeChipText,
+                                  fmVehicleType === v && styles.modeChipTextOn,
+                                ]}
+                              >
+                                {v}
+                              </Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      ) : (
+                        <>
+                          <TextInput
+                            value={driverPhone}
+                            onChangeText={setDriverPhone}
+                            placeholder={
+                              shipMode === "bus"
+                                ? "Transporter phone"
+                                : "Driver phone"
+                            }
+                            placeholderTextColor="#94A3B8"
+                            keyboardType="phone-pad"
+                            style={styles.input}
+                            testID="input-driver-phone"
+                          />
+                          <TextInput
+                            value={driverName}
+                            onChangeText={setDriverName}
+                            placeholder="Name (optional)"
+                            placeholderTextColor="#94A3B8"
+                            style={styles.input}
+                          />
+                        </>
+                      )}
+                      {shipMode === "bus" ? (
+                        <>
+                          <TextInput
+                            value={busDestCity}
+                            onChangeText={setBusDestCity}
+                            placeholder="Destination city (optional)"
+                            placeholderTextColor="#94A3B8"
+                            style={styles.input}
+                          />
+                          <TextInput
+                            value={busTrackingLink}
+                            onChangeText={setBusTrackingLink}
+                            placeholder="Tracking link (optional)"
+                            placeholderTextColor="#94A3B8"
+                            autoCapitalize="none"
+                            style={styles.input}
+                          />
+                        </>
+                      ) : null}
+                      <TextInput
+                        value={deliveryNote}
+                        onChangeText={setDeliveryNote}
+                        placeholder="Note to buyer (optional)"
+                        placeholderTextColor="#94A3B8"
+                        style={styles.input}
+                      />
+                    </>
+                  )}
+                  <Pressable
+                    style={[styles.primaryBtn, shippingBusy && { opacity: 0.7 }]}
+                    onPress={onShip}
+                    disabled={shippingBusy}
+                    testID="btn-ship-order"
+                  >
+                    {shippingBusy ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.primaryBtnText}>Ship order</Text>
+                    )}
+                  </Pressable>
+                </>
+              ) : (
+                <Text style={styles.muted}>
+                  Shipping actions appear when status is ready_to_ship.
+                </Text>
+              )}
+            </View>
+          ) : null}
+
           {order.isBuyer &&
           !["delivered", "completed", "cancelled", "return_refunded"].includes(
             order.orderStatus,
@@ -324,8 +762,126 @@ export default function OrderDetailScreen() {
               )}
             </Pressable>
           ) : null}
+
+          {order.isBuyer &&
+          order.fmDelivery?.id &&
+          (showFeedback ||
+            ["delivered", "completed"].includes(order.orderStatus) ||
+            order.fmDelivery.status === "delivered") ? (
+            <View style={styles.card}>
+              <Text style={styles.section}>Driver tip & rating</Text>
+              <Text style={styles.muted}>
+                Tip credits the driver’s Flexa wallet (min $0.50). Rating is
+                required for feedback.
+              </Text>
+              <TextInput
+                value={tipAmount}
+                onChangeText={setTipAmount}
+                keyboardType="decimal-pad"
+                placeholder="Tip USD"
+                placeholderTextColor="#94A3B8"
+                style={styles.input}
+                testID="input-tip-amount"
+              />
+              <View style={styles.starsRow}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Pressable key={n} onPress={() => setDriverRating(n)}>
+                    <Feather
+                      name="star"
+                      size={22}
+                      color={n <= driverRating ? "#F97316" : "#CBD5E1"}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput
+                value={feedbackNote}
+                onChangeText={setFeedbackNote}
+                placeholder="Optional note"
+                placeholderTextColor="#94A3B8"
+                style={styles.input}
+              />
+              <Pressable
+                style={[styles.primaryBtn, feedbackBusy && { opacity: 0.7 }]}
+                onPress={onSubmitFeedback}
+                disabled={feedbackBusy}
+                testID="btn-submit-delivery-feedback"
+              >
+                {feedbackBusy ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Submit tip & rating</Text>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
         </ScrollView>
       )}
+
+      <Modal
+        visible={labelOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setLabelOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalCard,
+              { paddingBottom: Math.max(insets.bottom, 16) },
+            ]}
+          >
+            <Text style={styles.topTitle}>Shipping label</Text>
+            {label ? (
+              <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 8 }}>
+                <Text style={styles.line}>{label.orderRef}</Text>
+                <Text style={styles.line}>{label.listing.title}</Text>
+                <Text style={styles.muted}>
+                  From:{" "}
+                  {[label.shipFrom.name, label.shipFrom.city, label.shipFrom.country]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+                </Text>
+                <Text style={styles.muted}>
+                  To:{" "}
+                  {[label.shipTo.name, label.shipTo.phone]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+                </Text>
+                <Text style={styles.line}>
+                  {[
+                    label.shipTo.street,
+                    label.shipTo.city,
+                    label.shipTo.region,
+                    label.shipTo.zip,
+                    label.shipTo.country,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "—"}
+                </Text>
+                <Text style={styles.price}>
+                  {formatMoney(label.amount, label.currency)}
+                </Text>
+              </ScrollView>
+            ) : null}
+            <View style={styles.modeRow}>
+              <Pressable
+                style={[styles.secondaryBtn, { flex: 1 }]}
+                onPress={() => setLabelOpen(false)}
+              >
+                <Text style={styles.secondaryBtnText}>Close</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.primaryBtn, { flex: 1 }]}
+                onPress={onShareLabel}
+                testID="btn-share-label"
+              >
+                <Text style={styles.primaryBtnText}>Share</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -339,6 +895,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  modeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  modeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  modeChipOn: { backgroundColor: "#FFF7ED", borderColor: "#FDBA74" },
+  modeChipText: { fontSize: 13, fontWeight: "700", color: "#64748B" },
+  modeChipTextOn: { color: "#C2410C" },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.45)",
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
+    gap: 12,
+  },
   iconBtn: {
     width: 40,
     height: 40,
@@ -350,6 +930,17 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   topTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
+  input: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: "#0F172A",
+    backgroundColor: "#F8FAFC",
+  },
+  starsRow: { flexDirection: "row", gap: 8, marginVertical: 4 },
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,

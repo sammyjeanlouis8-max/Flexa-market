@@ -30,6 +30,8 @@ export type Listing = {
   sellerIsVerified?: boolean;
   createdAt?: string;
   stockQuantity?: number | null;
+  categorySlug?: string | null;
+  moderationStatus?: string | null;
 };
 
 export type HomeStats = {
@@ -73,6 +75,75 @@ export async function fetchHomeStats(
   const res = await apiFetch(`/stats/home?${q}`, opts);
   if (!res.ok) throw new Error(`Home stats failed (${res.status})`);
   return res.json();
+}
+
+export type PromoVideoHomeItem = {
+  id: number;
+  title?: string | null;
+  videoUrl?: string | null;
+  thumbnailUrl?: string | null;
+  sellerName?: string | null;
+  boostEndAt?: string | null;
+};
+
+/** Home promo strip — max two latest eligible feed videos (never full catalog). */
+export async function fetchHomePromoVideos(
+  country: string,
+  opts: FetchOpts = {},
+): Promise<PromoVideoHomeItem[]> {
+  const q = new URLSearchParams({
+    page: "1",
+    limit: "2",
+    sort: "all",
+    country,
+  });
+  const res = await apiFetch(`/videos/feed?${q}`, opts);
+  if (!res.ok) return [];
+  const data = await res.json();
+  const videos = Array.isArray(data?.videos) ? data.videos : [];
+  return videos.slice(0, 2).map((v: Record<string, unknown>) => ({
+    id: Number(v.id),
+    title: (v.title as string) ?? null,
+    videoUrl: (v.videoUrl as string) ?? null,
+    thumbnailUrl: (v.thumbnailUrl as string) ?? null,
+    sellerName: (v.sellerName as string) ?? null,
+    boostEndAt: (v.boostEndAt as string) ?? null,
+  }));
+}
+
+export async function fetchPromoVideosFeed(
+  opts: FetchOpts & {
+    country?: string;
+    page?: number;
+    limit?: number;
+    selected?: number;
+  } = {},
+): Promise<{ videos: PromoVideoHomeItem[]; hasMore: boolean; nextPage: number | null }> {
+  const q = new URLSearchParams({
+    page: String(opts.page ?? 1),
+    limit: String(Math.min(20, Math.max(1, opts.limit ?? 10))),
+    sort: "all",
+  });
+  if (opts.country) q.set("country", opts.country);
+  if (opts.selected && opts.selected > 0) q.set("selected", String(opts.selected));
+  const res = await apiFetch(`/videos/feed?${q}`, opts);
+  if (!res.ok) throw new Error(`Promo feed failed (${res.status})`);
+  const data = await res.json();
+  const videos = (Array.isArray(data?.videos) ? data.videos : []).map(
+    (v: Record<string, unknown>) => ({
+      id: Number(v.id),
+      title: (v.title as string) ?? null,
+      videoUrl: (v.videoUrl as string) ?? null,
+      thumbnailUrl: (v.thumbnailUrl as string) ?? null,
+      sellerName: (v.sellerName as string) ?? null,
+      boostEndAt: (v.boostEndAt as string) ?? null,
+    }),
+  );
+  return {
+    videos,
+    hasMore: !!data?.hasMore,
+    nextPage: data?.nextPage ?? null,
+  };
 }
 
 export async function fetchListings(

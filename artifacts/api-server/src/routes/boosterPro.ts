@@ -12,6 +12,10 @@ import {
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, optionalAuth, requireNotRestricted, requireCardNotBlocked } from "../middlewares/auth";
 import {
+  ANDROID_DIGITAL_PURCHASE_UNAVAILABLE,
+  isAndroidNativeApp,
+} from "../middlewares/androidDigitalPurchaseGuard";
+import {
   validateAudience,
   validateBudget,
   estimateReach,
@@ -173,9 +177,11 @@ router.get("/booster/campaigns", requireAuth, async (req, res): Promise<void> =>
 
   const campaigns = rows.map((r) => {
     const expired = r.expiresAt <= now || (!!r.boostExpiresAt && r.boostExpiresAt <= now);
+    const startGate = r.startsAt ?? r.boostStartAt;
     let status = r.campaignStatus || "pending";
     if (r.paymentStatus === "draft" || status === "draft") status = "draft";
     else if (status === "paused" && r.paymentStatus === "paid" && !expired) status = "paused";
+    else if (r.paymentStatus === "paid" && !expired && startGate && startGate > now) status = "scheduled";
     else if (r.paymentStatus === "paid" && !expired) status = "active";
     else if (r.paymentStatus === "paid" && expired) status = "expired";
     return {
@@ -280,6 +286,15 @@ router.get("/booster/analytics", requireAuth, async (req, res): Promise<void> =>
 router.post("/booster/campaigns", requireAuth, requireNotRestricted, requireCardNotBlocked, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const mode = req.body?.mode === "draft" ? "draft" : "launch";
+  // Paid launch spends wallet / digital promo inventory — block on Android native UA.
+  // Draft saves remain allowed. Path-based digital guard does not inspect body.mode.
+  if (mode === "launch" && isAndroidNativeApp(req.get("user-agent"))) {
+    res.status(403).json({
+      error: "Digital purchases are unavailable in the Android app.",
+      code: ANDROID_DIGITAL_PURCHASE_UNAVAILABLE,
+    });
+    return;
+  }
   const adFormat = req.body?.adFormat === "image" ? "image" : "video";
   const adTitle = String(req.body?.adTitle ?? "").trim().slice(0, 120);
   const adDescription = String(req.body?.adDescription ?? "").trim().slice(0, 2000);
@@ -335,6 +350,7 @@ router.post("/booster/campaigns", requireAuth, requireNotRestricted, requireCard
     req.user?.country,
   );
   if (!audienceCheck.ok) { res.status(400).json({ error: audienceCheck.error }); return; }
+  // validateAudience already applies Advantage+ country-wide geo clearing.
   const audience = audienceCheck.audience;
 
   const startsAt = startDate ? new Date(startDate) : new Date();

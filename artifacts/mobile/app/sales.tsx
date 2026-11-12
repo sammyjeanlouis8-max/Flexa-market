@@ -17,8 +17,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import {
   fetchSalesDashboard,
+  fetchSalesSummary,
   fetchSellerOrders,
   type SalesDashboard,
+  type SalesSummary,
   type SellerSaleOrder,
 } from "@/lib/sellerApi";
 
@@ -32,6 +34,7 @@ export default function SalesScreen() {
   const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
   const [dash, setDash] = useState<SalesDashboard | null>(null);
+  const [summary, setSummary] = useState<SalesSummary | null>(null);
   const [orders, setOrders] = useState<SellerSaleOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,12 +45,14 @@ export default function SalesScreen() {
       if (mode === "refresh") setRefreshing(true);
       else setError(null);
       try {
-        const [d, o] = await Promise.all([
+        const [d, o, s] = await Promise.all([
           fetchSalesDashboard({ token }),
           fetchSellerOrders({ token }),
+          fetchSalesSummary({ token }).catch(() => null),
         ]);
         setDash(d);
         setOrders(o);
+        setSummary(s);
         setError(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load sales");
@@ -71,10 +76,21 @@ export default function SalesScreen() {
 
   const stats = [
     {
-      label: "Earnings",
-      value: money(dash?.totalEarnings ?? dash?.totalSales),
+      label: "Net earnings",
+      value: money(summary?.netEarnings ?? dash?.totalEarnings ?? dash?.totalSales),
     },
-    { label: "Orders", value: String(dash?.totalOrders ?? orders?.length ?? 0) },
+    {
+      label: "Gross sales",
+      value: money(summary?.totalSales ?? dash?.totalSales ?? 0),
+    },
+    {
+      label: "Commission",
+      value: money(summary?.totalCommission ?? 0),
+    },
+    {
+      label: "Orders",
+      value: String(summary?.orderCount ?? dash?.totalOrders ?? orders?.length ?? 0),
+    },
     { label: "Pending", value: String(dash?.pendingOrders ?? 0) },
     { label: "Completed", value: String(dash?.completedOrders ?? 0) },
   ];
@@ -111,6 +127,17 @@ export default function SalesScreen() {
           ListHeaderComponent={
             <View>
               {error ? <Text style={styles.error}>{error}</Text> : null}
+              <View style={styles.quick}>
+                <Pressable style={styles.quickBtn} onPress={() => router.push("/seller-analytics")}>
+                  <Text style={styles.quickText}>Analytics</Text>
+                </Pressable>
+                <Pressable style={styles.quickBtn} onPress={() => router.push("/seller-earnings")}>
+                  <Text style={styles.quickText}>Payouts</Text>
+                </Pressable>
+                <Pressable style={styles.quickBtn} onPress={() => router.push("/my-boosts")}>
+                  <Text style={styles.quickText}>Campaigns</Text>
+                </Pressable>
+              </View>
               <View style={styles.stats}>
                 {stats.map((s) => (
                   <View key={s.label} style={styles.statCard}>

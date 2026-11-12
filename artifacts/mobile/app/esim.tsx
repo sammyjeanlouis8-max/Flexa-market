@@ -1,7 +1,6 @@
 /**
- * Flexa eSIM — DEFERRED (Phase 3B).
- * Provider integration is not ready. This screen intentionally does not sell
- * plans, invent prices, or generate QR codes.
+ * Flexa eSIM — BLOCKED: no provider API, tables, or env integration in-repo.
+ * Honest deferred shell — does not sell plans or invent QR/activation.
  */
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -14,11 +13,18 @@ export default function EsimDeferredScreen() {
   const router = useRouter();
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}>
+    <View
+      style={[
+        styles.root,
+        { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 },
+      ]}
+    >
       <View style={styles.topBar}>
         <Pressable
           style={styles.back}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+          onPress={() =>
+            router.canGoBack() ? router.back() : router.replace("/")
+          }
         >
           <Feather name="arrow-left" size={22} color="#0F172A" />
         </Pressable>
@@ -28,16 +34,18 @@ export default function EsimDeferredScreen() {
 
       <View style={styles.card}>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>DEFERRED</Text>
+          <Text style={styles.badgeText}>BLOCKED — PROVIDER</Text>
         </View>
-        <Text style={styles.heading}>eSIM purchases are not available yet</Text>
+        <Text style={styles.heading}>eSIM is not available yet</Text>
         <Text style={styles.body}>
-          The mobile carrier / eSIM provider integration is not ready. Flexa Market
-          will not show fake plans, fake prices, or fake QR codes.
+          No eSIM provider contract, catalog API, checkout endpoint, or QR
+          activation flow exists in this repository. Country selection, plan
+          discovery, payment, and activation UIs will ship only after an
+          authorized provider is integrated.
         </Text>
         <Text style={styles.body}>
-          Existing eSIM-related backend code is preserved and left inactive. This
-          feature will be enabled in a later phase once the provider is approved.
+          This screen will not invent plans, prices, QR codes, or fake success
+          states.
         </Text>
         <Pressable style={styles.btn} onPress={() => router.replace("/")}>
           <Text style={styles.btnText}>Back to marketplace</Text>
@@ -72,25 +80,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
     padding: 20,
+    gap: 12,
   },
   badge: {
     alignSelf: "flex-start",
-    backgroundColor: "#FEF3C7",
+    backgroundColor: "#FEE2E2",
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 999,
-    marginBottom: 12,
+    borderRadius: 8,
   },
-  badgeText: { color: "#B45309", fontWeight: "800", fontSize: 11, letterSpacing: 0.6 },
-  heading: { fontSize: 18, fontWeight: "800", color: "#0F172A", marginBottom: 10 },
-  body: { fontSize: 14, lineHeight: 21, color: "#475569", marginBottom: 10 },
+  badgeText: { color: "#B91C1C", fontWeight: "800", fontSize: 11 },
+  heading: { fontSize: 18, fontWeight: "900", color: "#0F172A" },
+  body: { fontSize: 14, lineHeight: 20, color: "#475569" },
   btn: {
-    marginTop: 12,
     height: 48,
-    borderRadius: 999,
-    backgroundColor: "#0F172A",
+    borderRadius: 12,
+    backgroundColor: "#F97316",
     alignItems: "center",
     justifyContent: "center",
   },
-  btnText: { color: "#fff", fontWeight: "800" },
+  btnText: { color: "#fff", fontWeight: "800", fontSize: 15 },
 });

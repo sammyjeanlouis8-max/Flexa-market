@@ -168,14 +168,23 @@ export async function fetchBoostAnalytics(
   const data = await readJson(res);
   if (!res.ok) throw new Error(data.error || `Boost analytics failed (${res.status})`);
   const campaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
-  const totals =
-    data.totals ||
-    data.summary ||
-    data.overview || {
-      impressions: data.totalImpressions ?? campaigns.reduce((s: number, c: any) => s + (c.impressions || 0), 0),
-      clicks: data.totalClicks ?? campaigns.reduce((s: number, c: any) => s + (c.clicks || 0), 0),
-      spend: data.totalSpend ?? campaigns.reduce((s: number, c: any) => s + (c.spend || 0), 0),
-      videoViews: data.totalViews ?? campaigns.reduce((s: number, c: any) => s + (c.videoViews || 0), 0),
-    };
+  const metricVal = (m: any) =>
+    m == null ? 0 : typeof m === "number" ? m : Number(m.value ?? m.count ?? 0) || 0;
+  const summary = data.summary || data.totals || data.overview || {};
+  const totals = {
+    impressions:
+      metricVal(summary.totalImpressions) ||
+      campaigns.reduce((s: number, c: any) => s + (c.impressions || 0), 0),
+    clicks:
+      metricVal(summary.productClicks) ||
+      metricVal(summary.totalClicks) ||
+      campaigns.reduce((s: number, c: any) => s + (c.clicks || 0), 0),
+    spend:
+      metricVal(summary.totalBoostSpend) ||
+      campaigns.reduce((s: number, c: any) => s + (c.spend || 0), 0),
+    videoViews:
+      metricVal(summary.totalVideoViews) ||
+      campaigns.reduce((s: number, c: any) => s + (c.videoViews || 0), 0),
+  };
   return { campaigns, totals };
 }

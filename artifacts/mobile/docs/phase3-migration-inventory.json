@@ -11,16 +11,17 @@
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
-    "placeholderRouteCount": 16,
-    "fullyNativeRouteCount": 23,
-    "partiallyNativeRouteCount": 5,
+    "placeholderRouteCount": 6,
+    "fullyNativeRouteCount": 37,
+    "partiallyNativeRouteCount": 8,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
-      "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
+      "eSIM marked DEFERRED/BLOCKED — no fake catalog.",
       "Wallet top-up remains BLOCKED by Android digital purchase guard.",
       "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell).",
       "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
-      "Realtime via socket.io /api/socket.io with HTTP polling fallback."
+      "Realtime via socket.io /api/socket.io with HTTP polling fallback.",
+      "Seller parity: Sell/edit/listings/drafts/sales/offers/KYC/videos/shop/manager/analytics native; boost/subscription partially (Android digital purchase guard)."
     ],
     "phase3b": true,
     "phase3c": true
@@ -92,10 +93,10 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 23,
-    "PARTIALLY_NATIVE": 5,
-    "PLACEHOLDER": 16,
-    "MISSING": 33,
+    "FULLY_NATIVE": 37,
+    "PARTIALLY_NATIVE": 8,
+    "PLACEHOLDER": 6,
+    "MISSING": 28,
     "BLOCKED": 5
   },
   "features": [
@@ -530,10 +531,25 @@
       ],
       "status": "PARTIALLY_NATIVE",
       "missing": [
-        "public shop profile",
-        "sell still placeholder"
+        "some settings hubs"
       ],
-      "work": "Phase 3C: inbox/chat deep-links native"
+      "work": "Public shop at /shop/[id]; sell native; profile hub still partial"
+    },
+    {
+      "id": "shop-profile",
+      "name": "Public seller shop",
+      "domain": "customer",
+      "webRoute": "/profile/:id",
+      "nativeRoute": "/shop/[id]",
+      "role": "guest+",
+      "apis": [
+        "/api/users/:id",
+        "/api/users/:id/listings",
+        "/api/users/:id/follow"
+      ],
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native public shop profile + listings + follow"
     },
     {
       "id": "edit-profile",
@@ -628,11 +644,9 @@
         "/api/kyc/status",
         "/api/kyc/submit"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "document upload flow"
-      ],
-      "work": "After Sell/Wallet needs"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native KYC status + document/selfie multipart submit"
     },
     {
       "id": "language-picker",
@@ -659,11 +673,9 @@
         "/api/offers",
         "/api/offers/stream"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "offer list + accept/counter"
-      ],
-      "work": "After messaging"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native offers list with accept/reject/counter/accept-counter"
     },
     {
       "id": "subscription",
@@ -676,12 +688,12 @@
         "/api/subscription/*",
         "/api/subscription/android/*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "plans UI",
-        "Play Billing path"
+        "Play Billing path",
+        "in-app checkout"
       ],
-      "work": "BLOCKED for web checkout; use /subscription/android/* later"
+      "work": "Plans + current subscription native; purchase blocked on Android with honest message"
     },
     {
       "id": "subscription-billing",
@@ -873,13 +885,9 @@
         "/api/storage/uploads",
         "/api/flexa-ai/product-description"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "create listing form",
-        "image upload",
-        "payout checks"
-      ],
-      "work": "Critical seller Phase 3"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Create listing form, categories, image upload, POST /api/listings"
     },
     {
       "id": "my-listings",
@@ -893,44 +901,38 @@
         "PATCH /api/listings/:id",
         "DELETE /api/listings/:id"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "manage list + edit"
-      ],
-      "work": "With Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Seller listings list with edit/delete/boost links"
     },
     {
       "id": "edit-listing",
       "name": "Edit Product",
       "domain": "seller",
       "webRoute": "/sell?edit= / listing edit",
-      "nativeRoute": null,
+      "nativeRoute": "/sell-edit/[id]",
       "role": "seller",
       "apis": [
         "PATCH /api/listings/:id"
       ],
-      "status": "MISSING",
-      "missing": [
-        "edit screen"
-      ],
-      "work": "With Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /sell-edit/[id] PUT /api/listings/:id"
     },
     {
       "id": "image-upload",
       "name": "Image Upload",
       "domain": "seller",
       "webRoute": "(Sell)",
-      "nativeRoute": null,
+      "nativeRoute": "/sell",
       "role": "seller",
       "apis": [
         "/api/storage/uploads*",
         "/api/upload"
       ],
-      "status": "MISSING",
-      "missing": [
-        "native picker + chunked upload"
-      ],
-      "work": "Prerequisite for Sell; bg upload module exists"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "expo-image-picker + /storage/uploads request-url/put-proxy used by Sell/KYC"
     },
     {
       "id": "video-upload",
@@ -943,11 +945,11 @@
         "/api/videos/*",
         "/api/storage/uploads"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "upload + discover UI"
+        "upload UI"
       ],
-      "work": "After image upload"
+      "work": "Videos feed native; seller video upload still deferred"
     },
     {
       "id": "inventory",
@@ -976,27 +978,23 @@
         "/api/sales/dashboard",
         "/api/sales/summary"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "dashboard UI"
-      ],
-      "work": "After Orders"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native sales dashboard via /api/sales/dashboard"
     },
     {
       "id": "seller-analytics",
       "name": "Sales Analytics",
       "domain": "seller",
       "webRoute": "/settings/analytics",
-      "nativeRoute": null,
+      "nativeRoute": "/analytics",
       "role": "seller",
       "apis": [
         "/api/seller/analytics"
       ],
-      "status": "MISSING",
-      "missing": [
-        "analytics charts"
-      ],
-      "work": "Later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /analytics via /api/seller/analytics"
     },
     {
       "id": "seller-orders",
@@ -1045,11 +1043,11 @@
         "/api/boost/*",
         "/api/booster/*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "campaign create UI"
+        "Paid boost initiate blocked on Android digital purchase guard"
       ],
-      "work": "Paid boost BLOCKED on Android; free/admin modes may work"
+      "work": "Campaign UI + estimate + wallet initiate; Play guard may block"
     },
     {
       "id": "boost-paid",
@@ -1072,16 +1070,29 @@
       "name": "Boost Analytics",
       "domain": "seller",
       "webRoute": "/boost-analytics",
-      "nativeRoute": "/my-boosts",
+      "nativeRoute": "/boost-analytics",
       "role": "seller",
       "apis": [
         "/api/boost-analytics*"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "analytics UI"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /boost-analytics summary via /api/boost-analytics"
+    },
+    {
+      "id": "my-boosts",
+      "name": "My Boosts",
+      "domain": "seller",
+      "webRoute": "/my-boosts",
+      "nativeRoute": "/my-boosts",
+      "role": "seller",
+      "apis": [
+        "/api/boost/my-active",
+        "/api/boost/:id/cancel"
       ],
-      "work": "After Boost"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native active boosts list with cancel/reboost"
     },
     {
       "id": "promo-videos",
@@ -1093,44 +1104,40 @@
       "apis": [
         "/api/videos/feed"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "TikTok-style feed"
+        "TikTok-style fullscreen player optional"
       ],
-      "work": "Medium priority"
+      "work": "Native videos feed list from /api/videos/feed"
     },
     {
       "id": "drafts",
       "name": "My Drafts / Bouillon",
       "domain": "seller",
       "webRoute": "/my-drafts",
-      "nativeRoute": null,
+      "nativeRoute": "/my-drafts",
       "role": "seller",
       "apis": [
         "/api/videos",
         "/api/listings"
       ],
-      "status": "MISSING",
-      "missing": [
-        "drafts UI"
-      ],
-      "work": "With Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /my-drafts for listing drafts + boost draft/expired campaigns"
     },
     {
       "id": "store-manager",
       "name": "Store Manager Dashboard",
       "domain": "seller",
       "webRoute": "/manager",
-      "nativeRoute": null,
+      "nativeRoute": "/manager",
       "role": "store_manager",
       "apis": [
         "/api/manager/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "manager UI"
-      ],
-      "work": "Role-specific later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /manager via /api/manager/me + orders + mark ready"
     },
     {
       "id": "seller-registration",
@@ -1154,7 +1161,7 @@
       "domain": "driver",
       "webRoute": "/delivery/apply",
       "nativeRoute": "/driver-apply",
-      "role": "buyer\u2192driver",
+      "role": "buyer→driver",
       "apis": [
         "/api/delivery/apply"
       ],
@@ -1425,7 +1432,7 @@
       "missing": [
         "provider integration"
       ],
-      "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready"
+      "work": "DEFERRED — honest /esim screen; no fake plans/QR; preserve backend until ready"
     },
     {
       "id": "smart-notifications",
@@ -1442,7 +1449,7 @@
       "missing": [
         "physical FCM delivery verification"
       ],
-      "work": "Phase 3C: notification tap \u2192 /chat/:id, /orders/:id, /wallet"
+      "work": "Phase 3C: notification tap → /chat/:id, /orders/:id, /wallet"
     }
   ],
   "recommendedPhase3Order": [

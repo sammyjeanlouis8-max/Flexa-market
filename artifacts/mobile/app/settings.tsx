@@ -69,6 +69,26 @@ export default function SettingsScreen() {
         <Feather name="chevron-right" size={18} color="#94A3B8" />
       </Pressable>
 
+      {[
+        { label: "Security", value: "Password & account", href: "/settings/security" },
+        { label: "Notifications", value: "Push, email, SMS", href: "/settings/notifications" },
+        { label: "Privacy", value: "Policies & data", href: "/settings/privacy" },
+        { label: "Payments", value: "Wallet & Flex Card", href: "/settings/payments" },
+        { label: "Help", value: "Support & FAQ", href: "/settings/help" },
+      ].map((item) => (
+        <Pressable
+          key={item.href}
+          style={[styles.row, { marginTop: 10 }]}
+          onPress={() => router.push(item.href as any)}
+        >
+          <View>
+            <Text style={styles.label}>{item.label}</Text>
+            <Text style={styles.value}>{item.value}</Text>
+          </View>
+          <Feather name="chevron-right" size={18} color="#94A3B8" />
+        </Pressable>
+      ))}
+
       <Text style={styles.hint}>
         Guests browse listings for the selected country. Signed-in shoppers use
         their account country from the DigitalOcean backend.

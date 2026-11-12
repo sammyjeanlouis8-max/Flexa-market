@@ -59,22 +59,18 @@ export default function CalculatorScreen() {
       setError(null);
       setDraft("");
       const userMsg: Msg = { id: `u-${Date.now()}`, role: "user", content };
-      const next = [...messages.filter((m) => m.id !== "welcome" || messages.length === 1), userMsg];
-      // Keep welcome only if it's the sole starter; always include conversation turns for API
       const history = [...messages.filter((m) => m.role === "user" || m.id !== "welcome"), userMsg];
       setMessages([...messages, userMsg]);
       setSending(true);
       try {
-        const payload = history
+        const apiMessages = history
           .filter((m) => m.role === "user" || m.role === "assistant")
           .slice(-18)
           .map((m) => ({ role: m.role, content: m.content }));
-        // Ensure last is user
-        const apiMessages = payload.length ? payload : [{ role: "user" as const, content }];
         const res = await apiRequest<{ content: string }>("/calculator/ask", {
           token,
           method: "POST",
-          body: { messages: apiMessages },
+          body: { messages: apiMessages.length ? apiMessages : [{ role: "user", content }] },
         });
         setMessages((prev) => [
           ...prev,

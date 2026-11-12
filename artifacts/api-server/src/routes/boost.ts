@@ -15,6 +15,7 @@ import { handleCheckoutCompleted } from "./stripeCheckout";
 import { logger } from "../lib/logger";
 import { extractWasabiKey } from "../lib/s3";
 import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
+import { videoThumbnailProxyUrl } from "../lib/videoThumbnail";
 
 /**
  * Resolve a stored boostVideoUrl to a playable URL.
@@ -220,8 +221,32 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
       }
     }
   }
+  // Prefer an existing product photo as the durable poster; otherwise use the
+  // ffmpeg frame uploaded beside the normalized Wasabi video.
+  const posterPatch: { boostVideoUrl: string | null; boostImageUrl?: string | null } = {
+    boostVideoUrl: videoUrl,
+  };
+  if (videoUrl) {
+    const [listingRow] = await db
+      .select({
+        images: listingsTable.images,
+        boostImageUrl: listingsTable.boostImageUrl,
+      })
+      .from(listingsTable)
+      .where(eq(listingsTable.id, listingId))
+      .limit(1);
+    if (listingRow && !listingRow.boostImageUrl) {
+      const productPhoto =
+        Array.isArray(listingRow.images) && typeof listingRow.images[0] === "string"
+          ? listingRow.images[0]
+          : null;
+      posterPatch.boostImageUrl = productPhoto ?? videoThumbnailProxyUrl(videoUrl);
+    }
+  } else {
+    // Clearing the video does not wipe boostImageUrl — image ads may still use it.
+  }
   await db.update(listingsTable)
-    .set({ boostVideoUrl: videoUrl })
+    .set(posterPatch)
     .where(eq(listingsTable.id, listingId));
 
   const [boost] = await db.insert(boostsTable).values({
@@ -693,6 +718,7 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
     status: "hidden",
     sellerId: req.userId!,
     boostVideoUrl: videoUrl,
+    boostImageUrl: videoThumbnailProxyUrl(videoUrl),
     boostCtaType: ctaType === "none" ? null : ctaType,
     boostExternalLink: externalLink,
     boostWhatsappNumber: whatsappNumber,
@@ -992,11 +1018,35 @@ router.patch("/boost/:boostId/video", requireAuth, async (req, res): Promise<voi
     }
   }
 
+  const videoPatch: { boostVideoUrl: string | null; boostImageUrl?: string | null } = {
+    boostVideoUrl: videoUrl,
+  };
+  if (videoUrl) {
+    const [listingRow] = await db
+      .select({
+        images: listingsTable.images,
+        boostImageUrl: listingsTable.boostImageUrl,
+      })
+      .from(listingsTable)
+      .where(eq(listingsTable.id, boost.listingId))
+      .limit(1);
+    if (listingRow && !listingRow.boostImageUrl) {
+      const productPhoto =
+        Array.isArray(listingRow.images) && typeof listingRow.images[0] === "string"
+          ? listingRow.images[0]
+          : null;
+      videoPatch.boostImageUrl = productPhoto ?? videoThumbnailProxyUrl(videoUrl);
+    }
+  }
   await db.update(listingsTable)
-    .set({ boostVideoUrl: videoUrl })
+    .set(videoPatch)
     .where(eq(listingsTable.id, boost.listingId));
 
-  res.json({ ok: true, boostVideoUrl: videoUrl });
+  res.json({
+    ok: true,
+    boostVideoUrl: videoUrl,
+    boostImageUrl: videoPatch.boostImageUrl ?? undefined,
+  });
 });
 
 /**

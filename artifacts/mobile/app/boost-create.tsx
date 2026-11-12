@@ -414,7 +414,12 @@ export default function BoostCreateScreen() {
 
         {previewUri ? (
           <View style={styles.preview} testID="boost-video-preview">
-            <NativeVideoPlayer uri={previewUri} title="Preview" autoPlay={false} />
+            <NativeVideoPlayer
+              uri={previewUri}
+              title="Preview"
+              posterUrl={null}
+              autoPlay={false}
+            />
           </View>
         ) : null}
 

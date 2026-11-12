@@ -8,7 +8,7 @@ import {
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { extractWasabiKey } from "../lib/s3";
-import { cleanListingImages } from "../lib/listingMedia";
+import { resolvePromoVideoThumbnail } from "../lib/promoVideoThumbnail";
 
 const router = Router();
 
@@ -44,15 +44,11 @@ function resolveVideoUrl(raw: string | null | undefined): string | null {
 }
 
 function thumbnailFor(listing: typeof listingsTable.$inferSelect): string | null {
-  const images = cleanListingImages(listing.images);
-  if (images[0]) return images[0];
-  const boost = listing.boostVideoUrl;
-  if (boost?.includes("res.cloudinary.com") && boost.includes("/video/upload/")) {
-    return boost
-      .replace("/video/upload/", "/video/upload/so_0,w_360,h_640,c_fill,q_70/")
-      .replace(/\.(mp4|webm|mov|avi|mkv)(\?.*)?$/i, ".jpg");
-  }
-  return null;
+  return resolvePromoVideoThumbnail({
+    boostImageUrl: listing.boostImageUrl,
+    images: listing.images,
+    boostVideoUrl: listing.boostVideoUrl,
+  });
 }
 
 /**

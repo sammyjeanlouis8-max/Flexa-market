@@ -12,6 +12,7 @@ export type SystemMediaAsset = {
   uri: string;
   mimeType?: string | null;
   fileName?: string | null;
+  fileSize?: number | null;
   width?: number;
   height?: number;
   duration?: number | null;
@@ -60,6 +61,7 @@ export async function pickSystemMedia(
       uri: a.uri,
       mimeType: a.mimeType,
       fileName: a.fileName,
+      fileSize: a.fileSize,
       width: a.width,
       height: a.height,
       duration: a.duration,

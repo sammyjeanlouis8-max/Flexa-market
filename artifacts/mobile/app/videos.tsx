@@ -62,6 +62,7 @@ export default function VideosScreen() {
   useFocusEffect(
     useCallback(() => {
       void load("initial");
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when marketplace country/session changes
     }, [country, token]),
   );
 

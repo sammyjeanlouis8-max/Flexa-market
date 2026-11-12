@@ -167,13 +167,15 @@ export async function fetchBoostAnalytics(
   const res = await authed(`/boost-analytics${qs ? `?${qs}` : ""}`, opts);
   const data = await readJson(res);
   if (!res.ok) throw new Error(data.error || `Boost analytics failed (${res.status})`);
-  return {
-    campaigns: Array.isArray(data.campaigns) ? data.campaigns : [],
-    totals: data.totals || data.summary || {
-      impressions: data.totalImpressions,
-      clicks: data.totalClicks,
-      spend: data.totalSpend,
-      videoViews: data.totalViews,
-    },
-  };
+  const campaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
+  const totals =
+    data.totals ||
+    data.summary ||
+    data.overview || {
+      impressions: data.totalImpressions ?? campaigns.reduce((s: number, c: any) => s + (c.impressions || 0), 0),
+      clicks: data.totalClicks ?? campaigns.reduce((s: number, c: any) => s + (c.clicks || 0), 0),
+      spend: data.totalSpend ?? campaigns.reduce((s: number, c: any) => s + (c.spend || 0), 0),
+      videoViews: data.totalViews ?? campaigns.reduce((s: number, c: any) => s + (c.videoViews || 0), 0),
+    };
+  return { campaigns, totals };
 }

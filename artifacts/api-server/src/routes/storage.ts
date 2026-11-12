@@ -25,6 +25,10 @@ import {
   convertVideoFileToH264,
   VideoDurationExceededError,
 } from "../lib/videoConvert";
+import {
+  extractVideoThumbnailJpeg,
+  videoThumbnailStorageKeyFromVideoKey,
+} from "../lib/videoThumbnail";
 import { createVideoAssetProof } from "../lib/boostVideoAsset";
 import {
   claimBoostVideoProcessing,
@@ -443,9 +447,27 @@ async function processChunkUpload(
       await deleteWasabiObject(finalKey).catch(() => {});
       return;
     }
+
+    // Poster frame for native/web previews — best-effort; video still completes if this fails.
+    const thumbKey = videoThumbnailStorageKeyFromVideoKey(finalKey);
+    if (thumbKey) {
+      try {
+        const jpeg = await extractVideoThumbnailJpeg(normalizedPath, {
+          signal: conversionAbort.signal,
+        });
+        if (jpeg) {
+          await putWasabiObject(thumbKey, jpeg, "image/jpeg", jpeg.byteLength);
+          log.info({ uploadId, thumbKey, ownerId: session.ownerId }, "Boost video poster uploaded");
+        }
+      } catch (thumbErr) {
+        log.warn({ err: thumbErr, uploadId, ownerId: session.ownerId }, "Boost video poster extraction failed");
+      }
+    }
+
     const completed = await completeBoostVideoProcessing(uploadId, processingToken, finalKey);
     if (!completed) {
       await deleteWasabiObject(finalKey).catch(() => {});
+      if (thumbKey) await deleteWasabiObject(thumbKey).catch(() => {});
       return;
     }
 

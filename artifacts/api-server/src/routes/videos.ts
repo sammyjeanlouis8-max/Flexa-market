@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { db, listingsTable, usersTable, commentsTable, followsTable, promoVideoSavesTable } from "@workspace/db";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
-import { getRole, hasRole, optionalAuth } from "../middlewares/auth";
+import { getRole, hasRole, optionalAuth, requireAdmin } from "../middlewares/auth";
 import { extractWasabiKey } from "../lib/s3";
+import { resolvePromoVideoThumbnail } from "../lib/promoVideoThumbnail";
+import { backfillMissingPromoVideoThumbnails } from "../lib/promoVideoThumbnailBackfill";
 import {
   getAdminScopeCities,
   getAdminScopeCountries,
@@ -624,6 +626,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
         status:           listingsTable.status,
         images:           listingsTable.images,
         boostVideoUrl:    listingsTable.boostVideoUrl,
+        boostImageUrl:    listingsTable.boostImageUrl,
         boostStartAt:     listingsTable.boostStartAt,
         boostExpiresAt:   listingsTable.boostExpiresAt,
         viewCount:        listingsTable.viewCount,
@@ -701,16 +704,14 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       return [{
         id:               r.id,
         videoUrl,
-        thumbnailUrl:     (() => {
-          if (r.images?.[0]) return r.images[0];
-          // Generate thumbnail from Cloudinary video URL when no listing images exist
-          if (r.boostVideoUrl?.includes('res.cloudinary.com') && r.boostVideoUrl.includes('/video/upload/')) {
-            return r.boostVideoUrl
-              .replace('/video/upload/', '/video/upload/so_0,w_360,h_640,c_fill,q_70/')
-              .replace(/\.(mp4|webm|mov|avi|mkv)(\?.*)?$/i, '.jpg');
-          }
-          return null;
-        })(),
+        thumbnailUrl: resolvePromoVideoThumbnail({
+          boostImageUrl: r.boostImageUrl,
+          images: r.images,
+          boostVideoUrl: r.boostVideoUrl,
+        }),
+        productPhotoUrl: Array.isArray(r.images) && typeof r.images[0] === "string"
+          ? r.images[0]
+          : null,
         title:            r.title,
         description:      r.description ?? "",
         price:            r.price,
@@ -861,6 +862,24 @@ router.post("/videos/:id/buy-click", optionalAuth, async (req, res): Promise<voi
   } catch (err) {
     req.log?.error?.({ err, listingId }, "Failed to record video buy click");
     res.status(500).json({ error: "Failed to record video buy click" });
+  }
+});
+
+/**
+ * POST /api/videos/backfill-thumbnails
+ * Admin-only: fill missing boostImageUrl posters for published promo videos
+ * (product photo first, then ffmpeg frame from the durable Wasabi MP4).
+ */
+router.post("/videos/backfill-thumbnails", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const limitRaw = Number(req.body?.limit ?? req.query.limit ?? 50);
+    const result = await backfillMissingPromoVideoThumbnails({
+      limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    req.log?.error?.({ err }, "Failed to backfill promo video thumbnails");
+    res.status(500).json({ error: "Failed to backfill promo video thumbnails" });
   }
 });
 

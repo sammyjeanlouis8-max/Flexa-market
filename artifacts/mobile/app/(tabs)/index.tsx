@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ListingCard } from "@/components/ListingCard";
 import { SearchBar } from "@/components/SearchBar";
 import { SkeletonCard } from "@/components/SkeletonCard";
+import { VideoPoster } from "@/components/VideoPoster";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
@@ -313,17 +314,22 @@ export default function HomeTab() {
                       accessibilityRole="button"
                       testID={`home-promo-video-${v.id}`}
                     >
-                      <View style={styles.promoThumb}>
-                        <Feather name="play" size={22} color="#fff" />
-                      </View>
-                      <Text style={styles.promoTitle} numberOfLines={2}>
-                        {v.title || `Promo #${v.id}`}
-                      </Text>
-                      {v.sellerName ? (
-                        <Text style={styles.promoSeller} numberOfLines={1}>
-                          @{v.sellerName}
+                      <VideoPoster
+                        thumbnailUrl={v.thumbnailUrl}
+                        productPhotoUrl={v.productPhotoUrl}
+                        style={styles.promoThumb}
+                        testID={`home-promo-poster-${v.id}`}
+                      />
+                      <View style={styles.promoMeta}>
+                        <Text style={styles.promoTitle} numberOfLines={2}>
+                          {v.title || `Promo #${v.id}`}
                         </Text>
-                      ) : null}
+                        {v.sellerName ? (
+                          <Text style={styles.promoSeller} numberOfLines={1}>
+                            @{v.sellerName}
+                          </Text>
+                        ) : null}
+                      </View>
                     </Pressable>
                   ))}
                 </View>
@@ -454,17 +460,17 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   promoThumb: {
-    height: 120,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#1E293B",
+    height: 148,
+    width: "100%",
+  },
+  promoMeta: {
+    paddingTop: 8,
   },
   promoTitle: {
     color: "#fff",
     fontWeight: "800",
     fontSize: 12,
     paddingHorizontal: 10,
-    marginTop: 8,
   },
   promoSeller: {
     color: "#94A3B8",

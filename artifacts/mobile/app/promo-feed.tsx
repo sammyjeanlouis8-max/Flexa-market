@@ -135,6 +135,8 @@ export default function PromoFeedScreen() {
                   <NativeVideoPlayer
                     uri={uri}
                     title={item.title || undefined}
+                    posterUrl={item.thumbnailUrl}
+                    productPhotoUrl={item.productPhotoUrl}
                     autoPlay={isActive}
                     active={isActive}
                   />

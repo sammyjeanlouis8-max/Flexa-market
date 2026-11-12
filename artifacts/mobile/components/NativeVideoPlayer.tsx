@@ -1,6 +1,7 @@
 /**
  * Native video player powered by expo-av.
  * Only the mounted instance should play; unmount pauses/unloads.
+ * Shows poster (thumbnail → product photo → light placeholder) until playback starts.
  */
 import { Feather } from "@expo/vector-icons";
 import { AVPlaybackStatus, ResizeMode, Video } from "expo-av";
@@ -14,10 +15,14 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useMusicPlayer } from "@/context/MusicPlayerContext";
+import { absoluteMediaUrl } from "@/lib/mediaUrl";
+import { VideoPoster } from "@/components/VideoPoster";
 
 type Props = {
   uri: string;
   title?: string;
+  posterUrl?: string | null;
+  productPhotoUrl?: string | null;
   autoPlay?: boolean;
   /** When false, immediately stop/unload so scrolling Video A→B cannot overlap audio. */
   active?: boolean;
@@ -27,6 +32,8 @@ type Props = {
 export function NativeVideoPlayer({
   uri,
   title,
+  posterUrl,
+  productPhotoUrl,
   autoPlay = true,
   active = true,
   onFullscreen,
@@ -39,10 +46,17 @@ export function NativeVideoPlayer({
   const [error, setError] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [aspect, setAspect] = useState(16 / 9);
+  const resolvedUri = absoluteMediaUrl(uri) ?? uri;
 
   useEffect(() => {
     void pauseForVideo();
   }, [uri, pauseForVideo]);
+
+  useEffect(() => {
+    setReady(false);
+    setError(null);
+    setStatus(null);
+  }, [uri]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -67,6 +81,7 @@ export function NativeVideoPlayer({
   const duration = status?.isLoaded ? status.durationMillis ?? 1 : 1;
   const progress = Math.min(1, position / Math.max(1, duration));
   const height = Math.min(width / Math.max(0.5, aspect), width * 1.4);
+  const showPoster = !playing && (!autoPlay || !active || !ready);
 
   const toggle = async () => {
     const v = videoRef.current;
@@ -82,7 +97,7 @@ export function NativeVideoPlayer({
         <Video
           ref={videoRef}
           style={StyleSheet.absoluteFill}
-          source={{ uri }}
+          source={{ uri: resolvedUri }}
           resizeMode={ResizeMode.CONTAIN}
           useNativeControls={false}
           shouldPlay={autoPlay && active}
@@ -96,7 +111,16 @@ export function NativeVideoPlayer({
           onError={() => setError("Playback failed")}
           onPlaybackStatusUpdate={(s) => setStatus(s)}
         />
-        {!ready && !error ? (
+        {showPoster ? (
+          <VideoPoster
+            thumbnailUrl={posterUrl}
+            productPhotoUrl={productPhotoUrl}
+            style={StyleSheet.absoluteFill}
+            playIconSize={28}
+            testID="native-video-poster"
+          />
+        ) : null}
+        {!ready && !error && !showPoster ? (
           <View style={styles.overlay}>
             <ActivityIndicator color="#F97316" />
           </View>
@@ -171,7 +195,7 @@ const styles = StyleSheet.create({
   title: { fontWeight: "800", color: "#0F172A", fontSize: 16 },
   stage: {
     width: "100%",
-    backgroundColor: "#0F172A",
+    backgroundColor: "#E8EEF5",
     borderRadius: 14,
     overflow: "hidden",
   },

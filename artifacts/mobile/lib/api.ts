@@ -82,6 +82,8 @@ export type PromoVideoHomeItem = {
   title?: string | null;
   videoUrl?: string | null;
   thumbnailUrl?: string | null;
+  /** First listing product photo — fallback when thumbnail fails or is missing. */
+  productPhotoUrl?: string | null;
   sellerName?: string | null;
   boostEndAt?: string | null;
 };
@@ -106,6 +108,7 @@ export async function fetchHomePromoVideos(
     title: (v.title as string) ?? null,
     videoUrl: (v.videoUrl as string) ?? null,
     thumbnailUrl: (v.thumbnailUrl as string) ?? null,
+    productPhotoUrl: (v.productPhotoUrl as string) ?? null,
     sellerName: (v.sellerName as string) ?? null,
     boostEndAt: (v.boostEndAt as string) ?? null,
   }));
@@ -135,6 +138,7 @@ export async function fetchPromoVideosFeed(
       title: (v.title as string) ?? null,
       videoUrl: (v.videoUrl as string) ?? null,
       thumbnailUrl: (v.thumbnailUrl as string) ?? null,
+      productPhotoUrl: (v.productPhotoUrl as string) ?? null,
       sellerName: (v.sellerName as string) ?? null,
       boostEndAt: (v.boostEndAt as string) ?? null,
     }),

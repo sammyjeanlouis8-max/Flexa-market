@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeVideoPlayer } from "@/components/NativeVideoPlayer";
+import { VideoPoster } from "@/components/VideoPoster";
 import { useAuth } from "@/context/AuthContext";
 import { fetchVideosFeed, type VideoFeedItem } from "@/lib/sellerApi";
 
@@ -107,21 +108,50 @@ export default function VideosScreen() {
                     setPlayingId((prev) => (prev === item.id ? null : item.id));
                   }}
                 >
-                  <Feather name={isPlaying ? "pause" : "video"} size={20} color="#F97316" />
+                  <VideoPoster
+                    thumbnailUrl={
+                      typeof item.thumbnailUrl === "string" ? item.thumbnailUrl : null
+                    }
+                    productPhotoUrl={
+                      typeof item.productPhotoUrl === "string" ? item.productPhotoUrl : null
+                    }
+                    style={styles.cardThumb}
+                    playIconSize={16}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardTitle} numberOfLines={2}>
                       {item.title || `Video #${item.id}`}
                     </Text>
                     <Text style={styles.cardSub}>
-                      {uri ? (isPlaying ? "Playing · tap to close" : "Tap to preview") : "No URL"}
+                      {uri
+                        ? isPlaying
+                          ? "Playing · tap to close"
+                          : "Tap to preview"
+                        : "No URL"}
                       {item.listingId ? ` · listing #${item.listingId}` : ""}
                     </Text>
                   </View>
-                  <Feather name="chevron-right" size={16} color="#94A3B8" />
+                  <Feather
+                    name={isPlaying ? "pause" : "chevron-right"}
+                    size={16}
+                    color="#94A3B8"
+                  />
                 </Pressable>
                 {isPlaying ? (
                   <View style={styles.player}>
-                    <NativeVideoPlayer uri={uri} title={item.title || undefined} autoPlay />
+                    <NativeVideoPlayer
+                      uri={uri}
+                      title={item.title || undefined}
+                      posterUrl={
+                        typeof item.thumbnailUrl === "string" ? item.thumbnailUrl : null
+                      }
+                      productPhotoUrl={
+                        typeof item.productPhotoUrl === "string"
+                          ? item.productPhotoUrl
+                          : null
+                      }
+                      autoPlay
+                    />
                   </View>
                 ) : null}
               </View>
@@ -174,6 +204,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   cardRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12 },
+  cardThumb: { width: 56, height: 72, borderRadius: 8 },
   cardTitle: { fontWeight: "800", color: "#0F172A", fontSize: 14 },
   cardSub: { color: "#64748B", fontSize: 11, marginTop: 2 },
   player: { paddingHorizontal: 8, paddingBottom: 10 },

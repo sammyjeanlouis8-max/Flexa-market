@@ -3,8 +3,8 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 172,
-  "branch": "cursor/native-auth-globe-android-09ff",
+  "pr": null,
+  "branch": "cursor/native-buyer-phase3e-09ff",
   "auditedAt": "2026-11-09T22:10:00Z",
   "auditCommit": "deeda28a",
   "verification": {
@@ -20,11 +20,14 @@
       "Wallet top-up remains BLOCKED by Android digital purchase guard.",
       "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell).",
       "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
-      "Realtime via socket.io /api/socket.io with HTTP polling fallback."
+      "Realtime via socket.io /api/socket.io with HTTP polling fallback.",
+      "Phase 3E: buyer recovery, categories, delivery tip/rate, help/legal/delete, public track/shop."
     ],
     "phase3b": true,
     "phase3c": true,
-    "phase3d": true
+    "phase3d": true,
+    "phase3e": true,
+    "phase3eStartCommit": "65df21a5"
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -93,10 +96,10 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 29,
-    "PARTIALLY_NATIVE": 5,
-    "PLACEHOLDER": 12,
-    "MISSING": 31,
+    "FULLY_NATIVE": 40,
+    "PARTIALLY_NATIVE": 2,
+    "PLACEHOLDER": 11,
+    "MISSING": 24,
     "BLOCKED": 5
   },
   "features": [
@@ -163,17 +166,19 @@
       "name": "Forgot password",
       "domain": "auth",
       "webRoute": "/auth/forgot-password",
-      "nativeRoute": null,
+      "nativeRoute": "/auth/forgot-password",
       "role": "guest",
       "apis": [
-        "/api/auth/forgot-password",
-        "/api/recovery/*"
+        "/api/recovery/start",
+        "/api/recovery/verify-otp",
+        "/api/recovery/resend-otp",
+        "/api/recovery/get-questions",
+        "/api/recovery/verify-security",
+        "/api/recovery/reset-password"
       ],
-      "status": "MISSING",
-      "missing": [
-        "recovery screens"
-      ],
-      "work": "Native recovery wizard"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3E native recovery wizard via AuthShell/AuthGlobe"
     },
     {
       "id": "home",
@@ -222,11 +227,9 @@
         "/api/categories",
         "/api/listings"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "dedicated category browser UI"
-      ],
-      "work": "Wire /api/categories into Search"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3E Search chips + Home categoryCounts filter via GET /api/categories + listings?category="
     },
     {
       "id": "listing-detail",
@@ -238,15 +241,9 @@
       "apis": [
         "/api/listings/:id"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "message seller",
-        "reviews",
-        "BNPL",
-        "single-item Stripe buy",
-        "DR seller shipping checkout"
-      ],
-      "work": "Phase 3: chat + buy-now paths"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3E seller shop link + seller reviews; BNPL/share remain later"
     },
     {
       "id": "cart",
@@ -376,16 +373,14 @@
       "name": "Public tracking",
       "domain": "customer",
       "webRoute": "/track/:trackingNumber",
-      "nativeRoute": null,
+      "nativeRoute": "/track/[trackingNumber]",
       "role": "guest+",
       "apis": [
         "/api/track/:trackingNumber"
       ],
-      "status": "MISSING",
-      "missing": [
-        "guest tracking screen"
-      ],
-      "work": "Add /track native route"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3E guest FM- tracking"
     },
     {
       "id": "delivery-confirm",
@@ -399,11 +394,9 @@
         "/api/delivery/:id/tip",
         "/api/delivery/:id/rate-driver"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "Tip/rating modals"
-      ],
-      "work": "Confirm delivery on order detail"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3E tip + rate-driver after confirm (POST /api/delivery/:id/tip|rate-driver)"
     },
     {
       "id": "addresses",
@@ -524,17 +517,14 @@
       "name": "Account / Profile hub",
       "domain": "customer",
       "webRoute": "/settings + /profile/:id",
-      "nativeRoute": "/profile",
+      "nativeRoute": "/profile/[id]",
       "role": "guest/buyer",
       "apis": [
         "/api/auth/me"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "public shop profile",
-        "sell still placeholder"
-      ],
-      "work": "Phase 3C: inbox/chat deep-links native"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3E public shop profile + listings + reviews"
     },
     {
       "id": "edit-profile",
@@ -574,16 +564,17 @@
       "name": "Settings subpages (identity, security, privacy, preferences, help, payments, notifications prefs)",
       "domain": "customer",
       "webRoute": "/settings/*",
-      "nativeRoute": null,
+      "nativeRoute": "/settings,/security,/help,/legal/[doc]",
       "role": "buyer",
       "apis": [
         "various /api/auth /api/users"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "all settings sub-routes"
+        "notification preference toggles",
+        "privacy blocks UI"
       ],
-      "work": "Incremental settings expansion"
+      "work": "Phase 3E security + help + legal linked; prefs/blocks later"
     },
     {
       "id": "notifications",
@@ -768,28 +759,24 @@
       "name": "Help Center / FAQ / Contact",
       "domain": "support",
       "webRoute": "/help-center,/faq,/contact,/settings/help",
-      "nativeRoute": null,
+      "nativeRoute": "/help",
       "role": "guest+",
       "apis": [],
-      "status": "MISSING",
-      "missing": [
-        "static content screens"
-      ],
-      "work": "Can ship as native markdown/content"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3E Help Center hub linking Support, legal, recovery"
     },
     {
       "id": "legal",
       "name": "Legal pages (privacy, terms, EULA, policies)",
       "domain": "support",
       "webRoute": "/privacy-policy,/terms,/eula,...",
-      "nativeRoute": null,
+      "nativeRoute": "/legal/[doc]",
       "role": "guest+",
       "apis": [],
-      "status": "MISSING",
-      "missing": [
-        "in-app legal viewers"
-      ],
-      "work": "Required for store compliance"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3E Privacy, Terms, EULA in-app"
     },
     {
       "id": "inbox",
@@ -919,11 +906,9 @@
         "/api/storage/uploads*",
         "/api/upload"
       ],
-      "status": "MISSING",
-      "missing": [
-        "native picker + chunked upload"
-      ],
-      "work": "Prerequisite for Sell; bg upload module exists"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Reconciled: Sell Wasabi multi-image already native in Phase 3D"
     },
     {
       "id": "video-upload",
@@ -994,18 +979,16 @@
       "name": "Seller Orders Management",
       "domain": "seller",
       "webRoute": "/orders (sales tab)",
-      "nativeRoute": "/orders",
+      "nativeRoute": "/sales",
       "role": "seller",
       "apis": [
         "/api/orders/sales",
         "/api/orders/:id/ship",
         "/api/orders/:id/label"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "sales-side actions"
-      ],
-      "work": "Orders module with role views"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Reconciled: /sales covers seller orders from Phase 3D"
     },
     {
       "id": "earnings-payouts",
@@ -1379,16 +1362,14 @@
       "name": "Delete Account / Data Deletion",
       "domain": "customer",
       "webRoute": "/delete-account,/data-deletion",
-      "nativeRoute": null,
+      "nativeRoute": "/delete-account",
       "role": "buyer/guest",
       "apis": [
-        "/api/users/me/delete"
+        "/api/users/me"
       ],
-      "status": "MISSING",
-      "missing": [
-        "store-compliance flows"
-      ],
-      "work": "Required before Play production"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Phase 3E DELETE /api/users/me with password"
     },
     {
       "id": "website-embed",

@@ -18,6 +18,7 @@ export default function LoginRoute() {
         router.replace("/");
       }}
       onGoRegister={() => router.replace("/auth/register")}
+      onForgotPassword={() => router.push("/auth/forgot-password")}
     />
   );
 }

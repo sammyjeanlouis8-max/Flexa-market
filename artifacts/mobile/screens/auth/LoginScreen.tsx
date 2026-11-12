@@ -18,12 +18,14 @@ import { loginWithEmail } from "../../lib/authApi";
 type LoginScreenProps = {
   onSuccess: (token: string) => Promise<void> | void;
   onGoRegister: () => void;
+  onForgotPassword?: () => void;
   onOpenWebsite?: (path: string) => void;
 };
 
 export default function LoginScreen({
   onSuccess,
   onGoRegister,
+  onForgotPassword,
   onOpenWebsite,
 }: LoginScreenProps) {
   const [email, setEmail] = useState("");
@@ -138,7 +140,11 @@ export default function LoginScreen({
           <Text style={styles.label}>Password</Text>
           <AuthLink
             label="Forgot password?"
-            onPress={() => openPath("/auth/forgot-password")}
+            onPress={() =>
+              onForgotPassword
+                ? onForgotPassword()
+                : openPath("/auth/forgot-password")
+            }
             testID="link-forgot-password"
           />
         </View>

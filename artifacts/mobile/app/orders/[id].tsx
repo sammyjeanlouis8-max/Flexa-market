@@ -15,10 +15,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { rateDriver, tipDriver } from "@/lib/deliveryFeedbackApi";
 import {
   confirmDelivery,
   fetchOrderDetail,
@@ -44,6 +46,11 @@ export default function OrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [tipAmount, setTipAmount] = useState("2");
+  const [driverRating, setDriverRating] = useState(5);
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -90,8 +97,52 @@ export default function OrderDetailScreen() {
         return;
       }
       await load("refresh");
+      setShowFeedback(true);
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const onSubmitFeedback = async () => {
+    if (!token || !order?.fmDelivery?.id) {
+      Alert.alert("Unavailable", "No Flexa delivery is linked to tip or rate.");
+      setShowFeedback(false);
+      return;
+    }
+    const deliveryId = order.fmDelivery.id;
+    const amount = Number(tipAmount);
+    setFeedbackBusy(true);
+    try {
+      if (!Number.isNaN(amount) && amount >= 0.5) {
+        const tip = await tipDriver(
+          deliveryId,
+          {
+            amount,
+            message: feedbackNote.trim() || undefined,
+            rating: driverRating,
+          },
+          { token },
+        );
+        if (!tip.ok && !tip.alreadyTipped) {
+          Alert.alert("Tip", tip.error ?? "Could not tip");
+        }
+      }
+      const rate = await rateDriver(
+        deliveryId,
+        {
+          rating: driverRating,
+          comment: feedbackNote.trim() || undefined,
+        },
+        { token },
+      );
+      if (!rate.ok && !rate.alreadyRated) {
+        Alert.alert("Rating", rate.error ?? "Could not rate driver");
+      } else {
+        Alert.alert("Thanks", "Delivery feedback submitted.");
+      }
+      setShowFeedback(false);
+    } finally {
+      setFeedbackBusy(false);
     }
   };
 
@@ -324,6 +375,59 @@ export default function OrderDetailScreen() {
               )}
             </Pressable>
           ) : null}
+
+          {order.isBuyer &&
+          order.fmDelivery?.id &&
+          (showFeedback ||
+            ["delivered", "completed"].includes(order.orderStatus) ||
+            order.fmDelivery.status === "delivered") ? (
+            <View style={styles.card}>
+              <Text style={styles.section}>Driver tip & rating</Text>
+              <Text style={styles.muted}>
+                Tip credits the driver’s Flexa wallet (min $0.50). Rating is
+                required for feedback.
+              </Text>
+              <TextInput
+                value={tipAmount}
+                onChangeText={setTipAmount}
+                keyboardType="decimal-pad"
+                placeholder="Tip USD"
+                placeholderTextColor="#94A3B8"
+                style={styles.input}
+                testID="input-tip-amount"
+              />
+              <View style={styles.starsRow}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Pressable key={n} onPress={() => setDriverRating(n)}>
+                    <Feather
+                      name="star"
+                      size={22}
+                      color={n <= driverRating ? "#F97316" : "#CBD5E1"}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput
+                value={feedbackNote}
+                onChangeText={setFeedbackNote}
+                placeholder="Optional note"
+                placeholderTextColor="#94A3B8"
+                style={styles.input}
+              />
+              <Pressable
+                style={[styles.primaryBtn, feedbackBusy && { opacity: 0.7 }]}
+                onPress={onSubmitFeedback}
+                disabled={feedbackBusy}
+                testID="btn-submit-delivery-feedback"
+              >
+                {feedbackBusy ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Submit tip & rating</Text>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -350,6 +454,17 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   topTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
+  input: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: "#0F172A",
+    backgroundColor: "#F8FAFC",
+  },
+  starsRow: { flexDirection: "row", gap: 8, marginVertical: 4 },
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,

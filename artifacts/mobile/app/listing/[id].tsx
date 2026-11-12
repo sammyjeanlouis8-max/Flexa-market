@@ -23,6 +23,10 @@ import {
   isFavorite,
   removeFavorite,
 } from "@/lib/favoritesApi";
+import {
+  fetchSellerReviews,
+  type SellerReview,
+} from "@/lib/publicShopApi";
 
 const WIDTH = Dimensions.get("window").width;
 
@@ -40,6 +44,7 @@ export default function ListingDetailScreen() {
   const [favorited, setFavorited] = useState(false);
   const [favBusy, setFavBusy] = useState(false);
   const [msgBusy, setMsgBusy] = useState(false);
+  const [reviews, setReviews] = useState<SellerReview[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +60,14 @@ export default function ListingDetailScreen() {
           if (!cancelled) setFavorited(liked);
         } else if (!cancelled) {
           setFavorited(false);
+        }
+        if (!cancelled && data?.sellerId) {
+          try {
+            const rs = await fetchSellerReviews(data.sellerId, { token });
+            if (!cancelled) setReviews(rs.slice(0, 5));
+          } catch {
+            if (!cancelled) setReviews([]);
+          }
         }
       } catch (e) {
         if (!cancelled) {
@@ -263,19 +276,45 @@ export default function ListingDetailScreen() {
                   <Text style={styles.boostText}>Boosted listing</Text>
                 </View>
               ) : null}
-              {listing.sellerName ? (
-                <View style={styles.seller}>
+              {listing.sellerName || listing.sellerId ? (
+                <Pressable
+                  style={styles.seller}
+                  onPress={() =>
+                    listing.sellerId
+                      ? router.push(`/profile/${listing.sellerId}`)
+                      : undefined
+                  }
+                  testID="link-seller-shop"
+                >
                   <Feather name="user" size={16} color="#475569" />
                   <Text style={styles.sellerText}>
-                    {listing.sellerName}
+                    {listing.sellerName ?? "Seller"}
                     {listing.sellerIsVerified ? " · Verified" : ""}
+                    {" · View shop"}
                   </Text>
-                </View>
+                  <Feather name="chevron-right" size={16} color="#F97316" />
+                </Pressable>
               ) : null}
               <Text style={styles.section}>Description</Text>
               <Text style={styles.description}>
                 {listing.description?.trim() || "No description provided."}
               </Text>
+              {reviews.length > 0 ? (
+                <>
+                  <Text style={styles.section}>Seller reviews</Text>
+                  {reviews.map((r) => (
+                    <View key={r.id} style={styles.reviewCard}>
+                      <Text style={styles.reviewTitle}>
+                        {r.reviewerName} ·{" "}
+                        {"★".repeat(Math.max(1, Math.min(5, r.rating || 1)))}
+                      </Text>
+                      {r.comment ? (
+                        <Text style={styles.reviewBody}>{r.comment}</Text>
+                      ) : null}
+                    </View>
+                  ))}
+                </>
+              ) : null}
             </View>
           </ScrollView>
 
@@ -406,7 +445,17 @@ const styles = StyleSheet.create({
   },
   boostText: { color: "#C2410C", fontSize: 12, fontWeight: "700" },
   seller: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
-  sellerText: { color: "#475569", fontSize: 14, fontWeight: "600" },
+  sellerText: { color: "#475569", fontSize: 14, fontWeight: "600", flex: 1 },
+  reviewCard: {
+    marginTop: 8,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  reviewTitle: { fontWeight: "700", color: "#0F172A", fontSize: 13 },
+  reviewBody: { color: "#475569", marginTop: 4, fontSize: 13, lineHeight: 18 },
   section: {
     marginTop: 12,
     fontSize: 13,

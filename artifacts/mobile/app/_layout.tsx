@@ -99,6 +99,7 @@ export default function RootLayout() {
                     <Stack.Screen name="agents" />
                     <Stack.Screen name="manager" />
                     <Stack.Screen name="analytics" />
+                    <Stack.Screen name="website" />
                     <Stack.Screen name="+not-found" />
                   </Stack>
                 </NavigationProvider>

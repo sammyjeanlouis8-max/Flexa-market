@@ -36,6 +36,21 @@ test("Home tab is native marketplace browse without WebView or broad media permi
   assert.match(source, /fetchListings|fetchHomeStats/);
 });
 
+test("sell and chat use system media picker without media-library permission prompts", () => {
+  const sell = fs.readFileSync(
+    path.join(__dirname, "..", "app", "(tabs)", "sell.tsx"),
+    "utf8",
+  );
+  const chat = fs.readFileSync(
+    path.join(__dirname, "..", "app", "chat", "[id].tsx"),
+    "utf8",
+  );
+  assert.match(sell, /pickSystemMedia/);
+  assert.match(chat, /pickSystemMedia/);
+  assert.equal(sell.includes("requestMediaLibraryPermissionsAsync"), false);
+  assert.equal(chat.includes("requestMediaLibraryPermissionsAsync"), false);
+});
+
 test("App entry uses Expo Router instead of the WebView shell", () => {
   const entry = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
   assert.match(entry, /expo-router\/entry/);

@@ -5,7 +5,6 @@
  */
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -28,6 +27,7 @@ import {
   requestMusicUploadSignature,
 } from "@/lib/musicApi";
 import { clearMusicDraft, loadMusicDraft, saveMusicDraft } from "@/lib/musicDrafts";
+import { pickSystemMedia } from "@/lib/systemMediaPicker";
 
 const AUDIO_TYPES = [
   "audio/mpeg",
@@ -158,16 +158,11 @@ export default function MusicUploadScreen() {
   };
 
   const pickCover = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert(t("musicUploadTitle"), t("musicCoverPerm"));
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickSystemMedia({
       mediaTypes: ["images"],
       quality: 0.85,
     });
-    if (result.canceled || !result.assets?.[0]) return;
+    if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     const fileRes = await fetch(asset.uri);
     const blob = await fileRes.blob();

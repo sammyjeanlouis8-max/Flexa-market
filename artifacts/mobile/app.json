@@ -49,16 +49,13 @@
     "android": {
       "package": "com.flexa.market",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 39,
+      "versionCode": 40,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0F172A"
       },
       "permissions": [
-        "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.VIBRATE",
@@ -74,7 +71,10 @@
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -109,7 +109,16 @@
       "./plugins/withOptionalGoogleServices.js",
       "expo-asset",
       "expo-font",
-      "./plugins/withAndroidAdaptiveLayout.js"
+      "./plugins/withAndroidAdaptiveLayout.js",
+      "./plugins/withPlayCompliancePermissions.js",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Flexa Market uses the system photo picker so you can attach selected photos to listings, profiles, messages, and support tickets.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {},
     "extra": {

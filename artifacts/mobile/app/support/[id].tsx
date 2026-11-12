@@ -3,7 +3,6 @@
  * Text / image / video only — no voice.
  */
 import { Feather } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
 import { Video, ResizeMode } from "expo-av";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -25,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { uploadLocalFile } from "@/lib/mediaUpload";
+import { pickSystemMedia } from "@/lib/systemMediaPicker";
 import {
   claimSupportThread,
   closeSupportThread,
@@ -113,17 +113,12 @@ export default function SupportTicketScreen() {
 
   const uploadAndSend = async (kind: "image" | "video") => {
     if (!token || sending || closed) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert(t("supportTitle"), t("supportMediaPerm"));
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickSystemMedia({
       mediaTypes: kind === "image" ? ["images"] : ["videos"],
       quality: 0.8,
       videoMaxDuration: 120,
     });
-    if (result.canceled || !result.assets?.[0]) return;
+    if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     setSending(true);
     setUploadPct(0);

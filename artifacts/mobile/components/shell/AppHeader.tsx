@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
@@ -20,6 +20,24 @@ type Props = {
   rightExtra?: React.ReactNode;
 };
 
+/**
+ * Top inset for the green chrome.
+ * Apply safe-area once. On Android, prefer StatusBar.currentHeight when
+ * safe-area `insets.top` is inflated by a tall display-cutout region that
+ * leaves an empty gap under the clock/battery icons (seen on some emulators).
+ */
+function useHeaderTopInset(): number {
+  const insets = useSafeAreaInsets();
+  if (Platform.OS === "android") {
+    const status = StatusBar.currentHeight ?? 0;
+    if (status > 0 && insets.top > status + 8) {
+      return status;
+    }
+    return Math.max(insets.top, status);
+  }
+  return insets.top;
+}
+
 export function AppHeader({
   title,
   showBrand = true,
@@ -30,14 +48,19 @@ export function AppHeader({
   showProfile = true,
   rightExtra,
 }: Props) {
-  const insets = useSafeAreaInsets();
+  const topInset = useHeaderTopInset();
   const router = useRouter();
   const { token } = useAuth();
   const { count } = useCart();
   const { openDrawer } = useNavigationChrome();
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top }]}>
+    <View style={[styles.wrap, { paddingTop: topInset }]}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor={colors.flexaGreen}
+        translucent={Platform.OS === "android"}
+      />
       <View style={styles.bar}>
         <View style={styles.left}>
           {showBack ? (
@@ -129,15 +152,16 @@ const styles = StyleSheet.create({
   wrap: {
     backgroundColor: colors.flexaGreen,
   },
+  // Compact toolbar — matches mobile-web chrome height under the status bar.
   bar: {
-    minHeight: 52,
-    paddingHorizontal: 8,
+    height: 48,
+    paddingHorizontal: 6,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 4,
   },
-  left: { flexDirection: "row", alignItems: "center", flex: 1, gap: 4, minWidth: 0 },
+  left: { flexDirection: "row", alignItems: "center", flex: 1, gap: 2, minWidth: 0 },
   right: { flexDirection: "row", alignItems: "center" },
   iconBtn: {
     width: 40,
@@ -146,8 +170,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  brand: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1, minWidth: 0 },
-  logo: { width: 28, height: 28, borderRadius: 8 },
+  brand: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1, minWidth: 0 },
+  logo: { width: 26, height: 26, borderRadius: 7 },
   brandTitle: {
     color: "#FFFFFF",
     fontSize: 15,
@@ -155,7 +179,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     maxWidth: 120,
   },
-  pageTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "700", marginLeft: 4, flexShrink: 1 },
+  pageTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "700", marginLeft: 2, flexShrink: 1 },
   badge: {
     position: "absolute",
     top: 4,

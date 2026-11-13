@@ -83,7 +83,11 @@ export default function HomeTab() {
           fetchCategories({ token }).catch(() => []),
         ]);
         setFeatured(stats.featuredListings ?? []);
-        setListings(page1.listings ?? []);
+        const rows =
+          (page1.listings && page1.listings.length > 0
+            ? page1.listings
+            : stats.recentListings) ?? [];
+        setListings(rows);
         setPage(page1.page ?? 1);
         setTotalPages(page1.totalPages ?? 1);
         const catList = Array.isArray(cats)
@@ -244,13 +248,6 @@ export default function HomeTab() {
         <Text style={styles.sectionTitle}>Today&apos;s Picks</Text>
       </View>
 
-      {!user ? (
-        <Pressable style={styles.signInBanner} onPress={() => router.push("/auth/login")}>
-          <Text style={styles.signInText}>Sign in for a personalized feed in your country</Text>
-          <Feather name="chevron-right" size={16} color={colors.flexaOrange} />
-        </Pressable>
-      ) : null}
-
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
@@ -318,6 +315,17 @@ export default function HomeTab() {
           onEndReachedThreshold={0.4}
           ListFooterComponent={
             <>
+              {!user ? (
+                <Pressable
+                  style={[styles.signInBanner, { marginHorizontal: 12, marginTop: 8 }]}
+                  onPress={() => router.push("/auth/login")}
+                >
+                  <Text style={styles.signInText}>
+                    Sign in for a personalized feed in your country
+                  </Text>
+                  <Feather name="chevron-right" size={16} color={colors.flexaOrange} />
+                </Pressable>
+              ) : null}
               {categoryFooter}
               {loadingMore ? (
                 <ActivityIndicator style={{ marginVertical: 16 }} color={colors.flexaGreen} />
@@ -377,12 +385,13 @@ const styles = StyleSheet.create({
   catTabTextActive: { color: colors.flexaGreen, fontWeight: "800" },
   catEmoji: { fontSize: 13 },
   hero: {
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "hidden",
-    minHeight: 120,
+    minHeight: 96,
+    maxHeight: 110,
     flexDirection: "row",
   },
-  heroCopy: { flex: 1, padding: 12, justifyContent: "center", gap: 4 },
+  heroCopy: { flex: 1, padding: 10, justifyContent: "center", gap: 2 },
   boostBadge: {
     alignSelf: "flex-start",
     backgroundColor: colors.flexaOrange,
@@ -391,21 +400,21 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   boostBadgeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
-  heroTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "800", lineHeight: 22 },
-  heroPrice: { color: "rgba(255,255,255,0.9)", fontSize: 14, fontWeight: "700" },
+  heroTitle: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", lineHeight: 18 },
+  heroPrice: { color: "rgba(255,255,255,0.9)", fontSize: 13, fontWeight: "700" },
   shopNow: {
-    marginTop: 4,
+    marginTop: 2,
     alignSelf: "flex-start",
     backgroundColor: colors.flexaOrange,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
   },
-  shopNowText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
-  heroImage: { width: "42%", maxWidth: 160 },
+  shopNowText: { color: "#FFFFFF", fontWeight: "800", fontSize: 12 },
+  heroImage: { width: "38%", maxWidth: 140 },
   section: { gap: 10 },
   sectionHead: {
     flexDirection: "row",

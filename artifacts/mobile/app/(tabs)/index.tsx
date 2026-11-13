@@ -240,35 +240,6 @@ export default function HomeTab() {
         </Pressable>
       ) : null}
 
-      {categories.length > 0 ? (
-        <View style={styles.section}>
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>Shop by Category</Text>
-            <Pressable onPress={() => router.push("/search")} style={styles.seeAll}>
-              <Text style={styles.seeAllText}>See all</Text>
-              <Feather name="chevron-right" size={14} color={colors.flexaGreen} />
-            </Pressable>
-          </View>
-          <View style={styles.catGrid}>
-            {categories.slice(0, 6).map((cat) => (
-              <Pressable
-                key={String(cat.id)}
-                style={styles.catTile}
-                onPress={() => {
-                  setActiveCategory(cat.slug);
-                  router.push({ pathname: "/search", params: { category: cat.slug } } as any);
-                }}
-              >
-                <Text style={styles.catTileIcon}>{cat.icon || "📦"}</Text>
-                <Text style={styles.catTileName} numberOfLines={2}>
-                  {cat.name}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ) : null}
-
       <View style={styles.sectionHead}>
         <Text style={styles.sectionTitle}>Today&apos;s Picks</Text>
       </View>
@@ -283,6 +254,36 @@ export default function HomeTab() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
+
+  const categoryFooter =
+    categories.length > 0 ? (
+      <View style={[styles.section, { paddingHorizontal: 12, marginTop: 8 }]}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Shop by Category</Text>
+          <Pressable onPress={() => router.push("/search")} style={styles.seeAll}>
+            <Text style={styles.seeAllText}>See all</Text>
+            <Feather name="chevron-right" size={14} color={colors.flexaGreen} />
+          </Pressable>
+        </View>
+        <View style={styles.catGrid}>
+          {categories.slice(0, 6).map((cat) => (
+            <Pressable
+              key={String(cat.id)}
+              style={styles.catTile}
+              onPress={() => {
+                setActiveCategory(cat.slug);
+                router.push({ pathname: "/search", params: { category: cat.slug } } as any);
+              }}
+            >
+              <Text style={styles.catTileIcon}>{cat.icon || "📦"}</Text>
+              <Text style={styles.catTileName} numberOfLines={2}>
+                {cat.name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    ) : null;
 
   return (
     <View style={styles.root}>
@@ -316,11 +317,14 @@ export default function HomeTab() {
           onEndReached={() => void loadMore()}
           onEndReachedThreshold={0.4}
           ListFooterComponent={
-            loadingMore ? (
-              <ActivityIndicator style={{ marginVertical: 16 }} color={colors.flexaGreen} />
-            ) : (
-              <View style={{ height: 88 }} />
-            )
+            <>
+              {categoryFooter}
+              {loadingMore ? (
+                <ActivityIndicator style={{ marginVertical: 16 }} color={colors.flexaGreen} />
+              ) : (
+                <View style={{ height: 88 }} />
+              )}
+            </>
           }
           ListEmptyComponent={
             !loading ? (

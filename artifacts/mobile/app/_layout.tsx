@@ -102,6 +102,7 @@ export default function RootLayout() {
                     <Stack.Screen name="website" />
                     <Stack.Screen name="+not-found" />
                   </Stack>
+                  <AppDrawer />
                 </NavigationProvider>
               </CartProvider>
             </MarketplaceProvider>

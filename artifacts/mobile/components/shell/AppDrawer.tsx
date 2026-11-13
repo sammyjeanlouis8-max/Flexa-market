@@ -3,7 +3,6 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -192,17 +191,12 @@ export function AppDrawer() {
     setTimeout(() => goPath(router, href), 80);
   };
 
+  if (!drawerOpen) return null;
+
+  // Absolute overlay (not RN Modal) — Modal presentation is unreliable on some
+  // Android emulator / SystemUI combinations and never paints above the tabs.
   return (
-    <Modal
-      visible={drawerOpen}
-      transparent
-      animationType="fade"
-      onRequestClose={closeDrawer}
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      hardwareAccelerated
-    >
-      <View style={styles.overlay}>
+      <View style={styles.overlay} pointerEvents="box-none">
         <Pressable style={styles.backdrop} onPress={closeDrawer} testID="premium-menu-backdrop" />
         <View style={[styles.sheet, { paddingTop: insets.top }]} testID="premium-side-menu">
           <View style={styles.header}>
@@ -299,16 +293,21 @@ export function AppDrawer() {
           </ScrollView>
         </View>
       </View>
-    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, flexDirection: "row" },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10000,
+    elevation: 10000,
+    flexDirection: "row",
+  },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   sheet: {
     width: "88%",
     maxWidth: 360,
+    height: "100%",
     backgroundColor: "#FFFFFF",
     elevation: 12,
     shadowColor: "#000",

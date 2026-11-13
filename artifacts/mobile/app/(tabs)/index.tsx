@@ -203,7 +203,9 @@ export default function HomeTab() {
 
   const heroBanner = hero ? (
     <Pressable
-      onPress={() => router.push(`/listing/${hero.id}`)}
+      onPress={() =>
+        router.push({ pathname: "/listing/[id]", params: { id: String(hero.id) } })
+      }
       style={{ marginHorizontal: 12, marginTop: 8 }}
     >
       <LinearGradient

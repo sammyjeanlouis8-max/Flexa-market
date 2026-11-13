@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import type { Listing } from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/mediaUrl";
 
 const CARD_WIDTH = (Dimensions.get("window").width - 12 * 3) / 2;
 
@@ -19,28 +20,28 @@ interface ListingCardProps {
   isFavorited?: boolean;
 }
 
-function resolveListingImage(uri?: string | null): string | undefined {
-  if (!uri) return undefined;
-  if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
-  if (uri.startsWith("/")) return `https://flexamarket.com${uri}`;
-  return uri;
-}
-
 export function ListingCard({
   item,
   onFavoriteToggle,
   isFavorited = false,
 }: ListingCardProps) {
-  const imageUri = resolveListingImage(item.images?.[0]);
+  const imageUri = resolveMediaUrl(item.images?.[0]);
   const price = Number(item.price || 0);
-  const currency = item.currency === "HTG" ? "G" : "$";
+  const currency = item.currency === "HTG" ? "G" : item.currency === "DOP" ? "RD$" : "$";
+
+  const openListing = () => {
+    const id = String(item.id);
+    if (!id || id === "undefined" || id === "null") return;
+    router.push({ pathname: "/listing/[id]", params: { id } });
+  };
 
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-      onPress={() => router.push(`/listing/${item.id}`)}
+      onPress={openListing}
       accessibilityRole="button"
       accessibilityLabel={item.title}
+      testID={`listing-card-${item.id}`}
     >
       <View style={styles.imageContainer}>
         {imageUri ? (

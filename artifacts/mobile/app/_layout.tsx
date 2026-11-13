@@ -37,7 +37,10 @@ export default function RootLayout() {
                     <Stack.Screen name="auth/register" />
                     <Stack.Screen name="auth/login-phone" />
                     <Stack.Screen name="auth/forgot-password" />
-                    <Stack.Screen name="listing/[id]" />
+                    <Stack.Screen
+                      name="listing/[id]"
+                      options={{ animation: "slide_from_right", gestureEnabled: true }}
+                    />
                     <Stack.Screen name="cart" />
                     <Stack.Screen name="checkout" />
                     <Stack.Screen name="checkout-success" />

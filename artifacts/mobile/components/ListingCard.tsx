@@ -89,9 +89,6 @@ export function ListingCard({
         <Text style={styles.title} numberOfLines={1}>
           {item.title}
         </Text>
-        <Text style={styles.location} numberOfLines={1}>
-          {item.city ?? item.location ?? item.country ?? ""}
-        </Text>
       </View>
     </Pressable>
   );
@@ -108,10 +105,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   pressed: { opacity: 0.92 },
-  // Compact image so a 2×2 product grid fits the first Home viewport on 720×1280.
+  // Compact image so a full 2×2 product grid fits above the bottom nav on 720×1280.
   imageContainer: {
     width: "100%",
-    height: Math.round(CARD_WIDTH * 0.55),
+    height: Math.round(CARD_WIDTH * 0.48),
     backgroundColor: "#F1F5F9",
   },
   image: { width: "100%", height: "100%" },

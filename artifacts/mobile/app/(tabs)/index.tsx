@@ -12,7 +12,6 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -188,33 +187,14 @@ export default function HomeTab() {
         placeholder="Search products..."
       />
 
-      {/* ScrollView (not nested FlatList) — nested VirtualizedLists break Android scroll. */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.catTabs}
-      >
-        {[{ id: "all", name: "All", slug: "__all__", icon: "" }, ...categories].map((item) => {
-          const selected =
-            item.slug === "__all__" ? activeCategory === null : activeCategory === item.slug;
-          return (
-            <Pressable
-              key={String(item.id)}
-              onPress={() => setActiveCategory(item.slug === "__all__" ? null : item.slug)}
-              style={[styles.catTab, selected && styles.catTabActive]}
-            >
-              {item.icon ? <Text style={styles.catEmoji}>{item.icon}</Text> : null}
-              <Text style={[styles.catTabText, selected && styles.catTabTextActive]}>
-                {item.name}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      {/* Today's Picks title sits above the 2-col grid so four cards fit the first viewport. */}
+      {/* Category filter chips live under Shop by Category / Categories tab so the
+          first viewport can show a full 2×2 product grid without scrolling. */}
       <View style={styles.sectionHead}>
         <Text style={styles.sectionTitle}>Today&apos;s Picks</Text>
+        <Pressable onPress={() => router.push("/(tabs)/search")} style={styles.seeAll}>
+          <Text style={styles.seeAllText}>Categories</Text>
+          <Feather name="chevron-right" size={14} color={colors.flexaGreen} />
+        </Pressable>
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}

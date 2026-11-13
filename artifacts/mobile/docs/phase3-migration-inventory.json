@@ -3,24 +3,23 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 172,
-  "branch": "cursor/native-auth-globe-android-09ff",
-  "auditedAt": "2026-11-09T22:10:00Z",
+  "pr": 230,
+  "branch": "cursor/native-parity-84-pages-09ff",
+  "auditedAt": "2026-11-12T22:59:05Z",
   "auditCommit": "deeda28a",
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 19,
-    "placeholderRouteCount": 16,
-    "fullyNativeRouteCount": 23,
-    "partiallyNativeRouteCount": 5,
+    "placeholderRouteCount": 0,
+    "fullyNativeRouteCount": 75,
+    "partiallyNativeRouteCount": 4,
     "notes": [
-      "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
-      "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
-      "Wallet top-up remains BLOCKED by Android digital purchase guard.",
-      "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell).",
-      "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
-      "Realtime via socket.io /api/socket.io with HTTP polling fallback."
+      "Native 84-page parity pass: Expo Router screens cover inventory features without NativePlaceholder.",
+      "Shared green AppHeader/AppDrawer + web-parity bottom tabs on Home.",
+      "No in-app WebView marketplace shell; website opens system browser.",
+      "BLOCKED remain Play Billing / eSIM provider policy items.",
+      "Android emulator smoke + iPhone simulator verification tracked in native-84-page-verification.md"
     ],
     "phase3b": true,
     "phase3c": true
@@ -92,10 +91,10 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 23,
-    "PARTIALLY_NATIVE": 5,
-    "PLACEHOLDER": 16,
-    "MISSING": 33,
+    "FULLY_NATIVE": 75,
+    "PARTIALLY_NATIVE": 4,
+    "PLACEHOLDER": 0,
+    "MISSING": 0,
     "BLOCKED": 5
   },
   "features": [
@@ -145,34 +144,30 @@
       "name": "Phone login",
       "domain": "auth",
       "webRoute": "/auth/login-phone",
-      "nativeRoute": null,
+      "nativeRoute": "/auth/login-phone",
       "role": "guest",
       "apis": [
         "/api/auth/login-phone",
         "/api/otp/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "native phone OTP UI"
-      ],
-      "work": "Add auth/login-phone screen + OTP flow"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native phone OTP login"
     },
     {
       "id": "auth-forgot-password",
       "name": "Forgot password",
       "domain": "auth",
       "webRoute": "/auth/forgot-password",
-      "nativeRoute": null,
+      "nativeRoute": "/auth/forgot-password",
       "role": "guest",
       "apis": [
         "/api/auth/forgot-password",
         "/api/recovery/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "recovery screens"
-      ],
-      "work": "Native recovery wizard"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native password recovery"
     },
     {
       "id": "home",
@@ -186,11 +181,8 @@
         "/api/listings"
       ],
       "status": "FULLY_NATIVE",
-      "missing": [
-        "personalized feed parity",
-        "home video strip"
-      ],
-      "work": "Optional feed enrichment later"
+      "missing": [],
+      "work": "Green chrome, drawer, category grid, 2-col picks, CalcAI FAB"
     },
     {
       "id": "search",
@@ -221,11 +213,9 @@
         "/api/categories",
         "/api/listings"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "dedicated category browser UI"
-      ],
-      "work": "Wire /api/categories into Search"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Category chips + search category browser"
     },
     {
       "id": "listing-detail",
@@ -237,15 +227,9 @@
       "apis": [
         "/api/listings/:id"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "message seller",
-        "reviews",
-        "BNPL",
-        "single-item Stripe buy",
-        "DR seller shipping checkout"
-      ],
-      "work": "Phase 3: chat + buy-now paths"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native listing detail + cart/checkout links"
     },
     {
       "id": "cart",
@@ -375,23 +359,21 @@
       "name": "Public tracking",
       "domain": "customer",
       "webRoute": "/track/:trackingNumber",
-      "nativeRoute": null,
+      "nativeRoute": "/track/[trackingNumber]",
       "role": "guest+",
       "apis": [
         "/api/track/:trackingNumber"
       ],
-      "status": "MISSING",
-      "missing": [
-        "guest tracking screen"
-      ],
-      "work": "Add /track native route"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Guest tracking + /track entry"
     },
     {
       "id": "delivery-confirm",
       "name": "Delivery Confirmation",
       "domain": "customer",
       "webRoute": "/orders/:id/delivered",
-      "nativeRoute": null,
+      "nativeRoute": "/orders/[id]",
       "role": "buyer",
       "apis": [
         "/api/orders/:id/confirm",
@@ -400,9 +382,9 @@
       ],
       "status": "PARTIALLY_NATIVE",
       "missing": [
-        "Tip/rating modals"
+        "tip/rating modal polish"
       ],
-      "work": "Confirm delivery on order detail"
+      "work": "Confirm via order detail actions"
     },
     {
       "id": "addresses",
@@ -459,24 +441,22 @@
       "name": "Wallet P2P transfer",
       "domain": "customer",
       "webRoute": "/wallet/transfer",
-      "nativeRoute": null,
+      "nativeRoute": "/wallet-transfer",
       "role": "buyer",
       "apis": [
         "/api/wallet/transfer",
         "/api/wallet/p2p/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "transfer UI"
-      ],
-      "work": "After Wallet native"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "P2P transfer UI"
     },
     {
       "id": "wallet-history",
       "name": "Transaction History",
       "domain": "customer",
       "webRoute": "/wallet/history",
-      "nativeRoute": "/wallet",
+      "nativeRoute": "/wallet-history",
       "role": "buyer",
       "apis": [
         "/api/wallet/history",
@@ -484,39 +464,35 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Phase 3B: included in /wallet with filters + detail"
+      "work": "Dedicated history screen"
     },
     {
       "id": "flex-card-repay",
       "name": "Flex Card repay",
       "domain": "customer",
       "webRoute": "/flex-card/repay",
-      "nativeRoute": null,
+      "nativeRoute": "/flex-card-repay",
       "role": "buyer",
       "apis": [
         "/api/flex-card/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "repay UI"
-      ],
-      "work": "After Wallet"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Flex Card repay flow"
     },
     {
       "id": "bnpl",
       "name": "BNPL",
       "domain": "customer",
       "webRoute": "/bnpl",
-      "nativeRoute": null,
+      "nativeRoute": "/bnpl",
       "role": "buyer",
       "apis": [
         "/api/bnpl/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "eligibility + checkout UI"
-      ],
-      "work": "Later phase"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "BNPL settings + eligibility"
     },
     {
       "id": "profile-account",
@@ -528,12 +504,25 @@
       "apis": [
         "/api/auth/me"
       ],
-      "status": "PARTIALLY_NATIVE",
-      "missing": [
-        "public shop profile",
-        "sell still placeholder"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Account hub + role links"
+    },
+    {
+      "id": "shop-profile",
+      "name": "Public seller shop",
+      "domain": "customer",
+      "webRoute": "/profile/:id",
+      "nativeRoute": "/shop/[id]",
+      "role": "guest+",
+      "apis": [
+        "/api/users/:id",
+        "/api/users/:id/listings",
+        "/api/users/:id/follow"
       ],
-      "work": "Phase 3C: inbox/chat deep-links native"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native public shop profile + listings + follow"
     },
     {
       "id": "edit-profile",
@@ -573,16 +562,14 @@
       "name": "Settings subpages (identity, security, privacy, preferences, help, payments, notifications prefs)",
       "domain": "customer",
       "webRoute": "/settings/*",
-      "nativeRoute": null,
+      "nativeRoute": "/settings/*",
       "role": "buyer",
       "apis": [
         "various /api/auth /api/users"
       ],
-      "status": "MISSING",
-      "missing": [
-        "all settings sub-routes"
-      ],
-      "work": "Incremental settings expansion"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "privacy/security/payments/notifications/help"
     },
     {
       "id": "notifications",
@@ -605,17 +592,16 @@
       "name": "Android push (FCM)",
       "domain": "customer",
       "webRoute": "N/A",
-      "nativeRoute": "expo-notifications (partial deps)",
+      "nativeRoute": "expo-notifications",
       "role": "buyer",
       "apis": [
         "/api/push/expo-token"
       ],
       "status": "PARTIALLY_NATIVE",
       "missing": [
-        "Device FCM end-to-end verification",
-        "Do not claim push delivery"
+        "physical device FCM proof"
       ],
-      "work": "Expo token registration wired; google-services present for com.flexa.market"
+      "work": "Push bootstrap wired; device delivery pending"
     },
     {
       "id": "kyc",
@@ -628,11 +614,9 @@
         "/api/kyc/status",
         "/api/kyc/submit"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "document upload flow"
-      ],
-      "work": "After Sell/Wallet needs"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native KYC status + document/selfie multipart submit"
     },
     {
       "id": "language-picker",
@@ -659,11 +643,9 @@
         "/api/offers",
         "/api/offers/stream"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "offer list + accept/counter"
-      ],
-      "work": "After messaging"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native offers list with accept/reject/counter/accept-counter"
     },
     {
       "id": "subscription",
@@ -676,12 +658,11 @@
         "/api/subscription/*",
         "/api/subscription/android/*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "plans UI",
-        "Play Billing path"
+        "Play Billing IAP"
       ],
-      "work": "BLOCKED for web checkout; use /subscription/android/* later"
+      "work": "Plans UI; store purchase blocked"
     },
     {
       "id": "subscription-billing",
@@ -705,92 +686,80 @@
       "name": "Referral System / Leaderboard",
       "domain": "customer",
       "webRoute": "/leaderboard",
-      "nativeRoute": null,
+      "nativeRoute": "/leaderboard",
       "role": "buyer",
       "apis": [
         "/api/referrals/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "leaderboard UI"
-      ],
-      "work": "Later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Referral leaderboard"
     },
     {
       "id": "commission-promo",
       "name": "Commission promo",
       "domain": "customer",
       "webRoute": "/commission-promo",
-      "nativeRoute": null,
+      "nativeRoute": "/commission-promo",
       "role": "buyer",
       "apis": [
         "/api/promo-purchase-commissions/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "promo UI"
-      ],
-      "work": "Later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Commission promo screen"
     },
     {
       "id": "jobs",
       "name": "Jobs board",
       "domain": "customer",
       "webRoute": "/jobs",
-      "nativeRoute": null,
+      "nativeRoute": "/jobs",
       "role": "buyer",
       "apis": [
         "/api/jobs/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "jobs UI"
-      ],
-      "work": "Later / geo-specific"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Jobs board"
     },
     {
       "id": "calculator",
       "name": "CalcAI calculator",
       "domain": "customer",
       "webRoute": "/calculator",
-      "nativeRoute": null,
+      "nativeRoute": "/calculator",
       "role": "buyer",
       "apis": [
         "/api/calculator/ask"
       ],
-      "status": "MISSING",
-      "missing": [
-        "calculator UI"
-      ],
-      "work": "Low priority"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "CalcAI calculator + Home FAB"
     },
     {
       "id": "help-center",
       "name": "Help Center / FAQ / Contact",
       "domain": "support",
       "webRoute": "/help-center,/faq,/contact,/settings/help",
-      "nativeRoute": null,
+      "nativeRoute": "/help-center",
       "role": "guest+",
       "apis": [],
-      "status": "MISSING",
-      "missing": [
-        "static content screens"
-      ],
-      "work": "Can ship as native markdown/content"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Help center + settings/help"
     },
     {
       "id": "legal",
       "name": "Legal pages (privacy, terms, EULA, policies)",
       "domain": "support",
       "webRoute": "/privacy-policy,/terms,/eula,...",
-      "nativeRoute": null,
+      "nativeRoute": "/legal/[slug]",
       "role": "guest+",
       "apis": [],
-      "status": "MISSING",
-      "missing": [
-        "in-app legal viewers"
-      ],
-      "work": "Required for store compliance"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Privacy/terms/EULA native screens"
     },
     {
       "id": "inbox",
@@ -832,34 +801,30 @@
       "name": "Support Center / Tickets",
       "domain": "communication",
       "webRoute": "/support,/support/:id",
-      "nativeRoute": null,
+      "nativeRoute": "/support",
       "role": "buyer",
       "apis": [
         "/api/support/threads",
         "/api/support/messages"
       ],
-      "status": "MISSING",
-      "missing": [
-        "ticket list + thread + rating"
-      ],
-      "work": "After Inbox pattern reused"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Support list + /support/[id]"
     },
     {
       "id": "chatbot",
       "name": "FlexaBot Chatbot",
       "domain": "communication",
       "webRoute": "/chatbot",
-      "nativeRoute": null,
+      "nativeRoute": "/chatbot",
       "role": "buyer",
       "apis": [
         "/api/chatbot/message",
         "/api/support/threads"
       ],
-      "status": "MISSING",
-      "missing": [
-        "bot UI"
-      ],
-      "work": "After support"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "In-app chatbot"
     },
     {
       "id": "sell",
@@ -873,13 +838,9 @@
         "/api/storage/uploads",
         "/api/flexa-ai/product-description"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "create listing form",
-        "image upload",
-        "payout checks"
-      ],
-      "work": "Critical seller Phase 3"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Create listing form, categories, image upload, POST /api/listings"
     },
     {
       "id": "my-listings",
@@ -893,44 +854,38 @@
         "PATCH /api/listings/:id",
         "DELETE /api/listings/:id"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "manage list + edit"
-      ],
-      "work": "With Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Seller listings list with edit/delete/boost links"
     },
     {
       "id": "edit-listing",
       "name": "Edit Product",
       "domain": "seller",
       "webRoute": "/sell?edit= / listing edit",
-      "nativeRoute": null,
+      "nativeRoute": "/sell-edit/[id]",
       "role": "seller",
       "apis": [
         "PATCH /api/listings/:id"
       ],
-      "status": "MISSING",
-      "missing": [
-        "edit screen"
-      ],
-      "work": "With Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /sell-edit/[id] PUT /api/listings/:id"
     },
     {
       "id": "image-upload",
       "name": "Image Upload",
       "domain": "seller",
       "webRoute": "(Sell)",
-      "nativeRoute": null,
+      "nativeRoute": "/sell",
       "role": "seller",
       "apis": [
         "/api/storage/uploads*",
         "/api/upload"
       ],
-      "status": "MISSING",
-      "missing": [
-        "native picker + chunked upload"
-      ],
-      "work": "Prerequisite for Sell; bg upload module exists"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "expo-image-picker + /storage/uploads request-url/put-proxy used by Sell/KYC"
     },
     {
       "id": "video-upload",
@@ -943,27 +898,23 @@
         "/api/videos/*",
         "/api/storage/uploads"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "upload + discover UI"
-      ],
-      "work": "After image upload"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Promo videos management"
     },
     {
       "id": "inventory",
       "name": "Inventory / Restock",
       "domain": "seller",
       "webRoute": "(listing management)",
-      "nativeRoute": null,
+      "nativeRoute": "/my-listings",
       "role": "seller",
       "apis": [
         "/api/listings/:id/restock"
       ],
-      "status": "MISSING",
-      "missing": [
-        "stock controls"
-      ],
-      "work": "With my-listings"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Inventory via my-listings"
     },
     {
       "id": "sales",
@@ -976,63 +927,54 @@
         "/api/sales/dashboard",
         "/api/sales/summary"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "dashboard UI"
-      ],
-      "work": "After Orders"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native sales dashboard via /api/sales/dashboard"
     },
     {
       "id": "seller-analytics",
       "name": "Sales Analytics",
       "domain": "seller",
       "webRoute": "/settings/analytics",
-      "nativeRoute": null,
+      "nativeRoute": "/analytics",
       "role": "seller",
       "apis": [
         "/api/seller/analytics"
       ],
-      "status": "MISSING",
-      "missing": [
-        "analytics charts"
-      ],
-      "work": "Later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /analytics via /api/seller/analytics"
     },
     {
       "id": "seller-orders",
       "name": "Seller Orders Management",
       "domain": "seller",
       "webRoute": "/orders (sales tab)",
-      "nativeRoute": "/orders",
+      "nativeRoute": "/sales",
       "role": "seller",
       "apis": [
         "/api/orders/sales",
         "/api/orders/:id/ship",
         "/api/orders/:id/label"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "sales-side actions"
-      ],
-      "work": "Orders module with role views"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Sales dashboard covers seller orders"
     },
     {
       "id": "earnings-payouts",
       "name": "Earnings / Commissions / Payouts",
       "domain": "seller",
       "webRoute": "/settings/payments, wallet",
-      "nativeRoute": null,
+      "nativeRoute": "/settings/payments",
       "role": "seller",
       "apis": [
         "/api/seller/payout-account*",
         "/api/commission/quote"
       ],
-      "status": "MISSING",
-      "missing": [
-        "payout onboarding UI",
-        "Stripe Connect return"
-      ],
-      "work": "After Wallet/Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Payments settings + wallet"
     },
     {
       "id": "boost",
@@ -1045,11 +987,11 @@
         "/api/boost/*",
         "/api/booster/*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "campaign create UI"
+        "paid boost Play Billing"
       ],
-      "work": "Paid boost BLOCKED on Android; free/admin modes may work"
+      "work": "Boost UI; paid path policy-gated"
     },
     {
       "id": "boost-paid",
@@ -1072,16 +1014,29 @@
       "name": "Boost Analytics",
       "domain": "seller",
       "webRoute": "/boost-analytics",
-      "nativeRoute": "/my-boosts",
+      "nativeRoute": "/boost-analytics",
       "role": "seller",
       "apis": [
         "/api/boost-analytics*"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "analytics UI"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /boost-analytics summary via /api/boost-analytics"
+    },
+    {
+      "id": "my-boosts",
+      "name": "My Boosts",
+      "domain": "seller",
+      "webRoute": "/my-boosts",
+      "nativeRoute": "/my-boosts",
+      "role": "seller",
+      "apis": [
+        "/api/boost/my-active",
+        "/api/boost/:id/cancel"
       ],
-      "work": "After Boost"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native active boosts list with cancel/reboost"
     },
     {
       "id": "promo-videos",
@@ -1093,60 +1048,54 @@
       "apis": [
         "/api/videos/feed"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "TikTok-style feed"
+        "TikTok-style fullscreen player optional"
       ],
-      "work": "Medium priority"
+      "work": "Native videos feed list from /api/videos/feed"
     },
     {
       "id": "drafts",
       "name": "My Drafts / Bouillon",
       "domain": "seller",
       "webRoute": "/my-drafts",
-      "nativeRoute": null,
+      "nativeRoute": "/my-drafts",
       "role": "seller",
       "apis": [
         "/api/videos",
         "/api/listings"
       ],
-      "status": "MISSING",
-      "missing": [
-        "drafts UI"
-      ],
-      "work": "With Sell"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /my-drafts for listing drafts + boost draft/expired campaigns"
     },
     {
       "id": "store-manager",
       "name": "Store Manager Dashboard",
       "domain": "seller",
       "webRoute": "/manager",
-      "nativeRoute": null,
+      "nativeRoute": "/manager",
       "role": "store_manager",
       "apis": [
         "/api/manager/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "manager UI"
-      ],
-      "work": "Role-specific later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native /manager via /api/manager/me + orders + mark ready"
     },
     {
       "id": "seller-registration",
       "name": "Seller Registration / Stripe Connect",
       "domain": "seller",
       "webRoute": "/sell + /settings/stripe-return",
-      "nativeRoute": null,
+      "nativeRoute": "/sell",
       "role": "seller",
       "apis": [
         "/api/stripe/connect/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "onboarding + return handling"
-      ],
-      "work": "With Sell for payout-required countries"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Sell onboarding path"
     },
     {
       "id": "driver-apply",
@@ -1158,11 +1107,9 @@
       "apis": [
         "/api/delivery/apply"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "application form + selfie"
-      ],
-      "work": "Driver phase"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Driver application form"
     },
     {
       "id": "driver-dashboard",
@@ -1175,28 +1122,24 @@
         "/api/delivery/*",
         "/api/driver/*"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "browse/accept/job detail"
-      ],
-      "work": "Driver phase"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Driver deliveries dashboard"
     },
     {
       "id": "cash-agent",
       "name": "Cash Agent directory / dashboard",
       "domain": "agent",
       "webRoute": "/wallet/agents,/agent,/agents/apply",
-      "nativeRoute": null,
+      "nativeRoute": "/agents",
       "role": "agent/buyer",
       "apis": [
         "/api/agents/*",
         "/api/cashout/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "agent flows"
-      ],
-      "work": "Later"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Cash agent / agents screen"
     },
     {
       "id": "loans",
@@ -1208,75 +1151,67 @@
       "apis": [
         "/api/loans/*"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "intentionally redirects home today"
-      ],
-      "work": "Decide product policy for native"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Loans eligibility + apply"
     },
     {
       "id": "credit-score",
       "name": "Credit Score",
       "domain": "fintech",
       "webRoute": "/credit-score",
-      "nativeRoute": null,
+      "nativeRoute": "/credit-score",
       "role": "buyer (HT/DR)",
       "apis": [
         "/api/credit-score/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "credit UI"
-      ],
-      "work": "With loans policy"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Credit score screen"
     },
     {
       "id": "flexa-tv",
       "name": "Flexa TV",
       "domain": "media",
       "webRoute": "/tv",
-      "nativeRoute": null,
+      "nativeRoute": "/tv",
       "role": "guest+",
       "apis": [
         "/api/tv/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "TV player UI"
-      ],
-      "work": "Later / media phase"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Flexa TV"
     },
     {
       "id": "flexa-music",
       "name": "Flexa Music",
       "domain": "media",
       "webRoute": "/music,/music/upload,/music/earnings,/music/play/:id",
-      "nativeRoute": null,
+      "nativeRoute": "/music",
       "role": "guest+/artist",
       "apis": [
         "/api/music/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "player + upload"
-      ],
-      "work": "Music buys BLOCKED on Android digital guard"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Flexa Music catalog"
     },
     {
       "id": "music-purchase",
       "name": "Music digital purchase",
       "domain": "media",
       "webRoute": "/music",
-      "nativeRoute": null,
+      "nativeRoute": "/music",
       "role": "buyer",
       "apis": [
         "/api/music buy/subscribe"
       ],
       "status": "BLOCKED",
       "missing": [
-        "Play Billing"
+        "Play Billing digital goods"
       ],
-      "work": "Android digital purchase guard"
+      "work": "Catalog native; purchase blocked on Play"
     },
     {
       "id": "admin-panel",
@@ -1289,115 +1224,101 @@
         "/api/admin/*",
         "/api/admin/me"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "entire control center"
-      ],
-      "work": "Large Phase 4+; role-gated; prefer responsive web admin unless required native"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Admin dashboard with tabs"
     },
     {
       "id": "admin-users",
       "name": "User / Seller / Driver Management",
       "domain": "admin",
       "webRoute": "/admin/users,/admin/driver-applications,/admin/agents",
-      "nativeRoute": null,
+      "nativeRoute": "/admin?tab=users",
       "role": "admin+",
       "apis": [
         "/api/admin/users",
         "/api/admin/driver-applications",
         "/api/admin/agents"
       ],
-      "status": "MISSING",
-      "missing": [
-        "management UIs"
-      ],
-      "work": "Admin phase"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Admin users tab"
     },
     {
       "id": "admin-moderation",
       "name": "Product Moderation / Reports / Disputes",
       "domain": "admin",
       "webRoute": "/admin/moderation,/admin/reports,/admin/appeals",
-      "nativeRoute": null,
+      "nativeRoute": "/admin?tab=moderation",
       "role": "moderator+",
       "apis": [
         "/api/admin/moderation",
         "/api/admin/reports"
       ],
-      "status": "MISSING",
-      "missing": [
-        "moderation tools"
-      ],
-      "work": "Admin phase"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Admin moderation tab"
     },
     {
       "id": "admin-finance",
       "name": "Financial Management / Payments / Wallet Ops / Refunds",
       "domain": "admin",
       "webRoute": "/admin/transactions,/admin/stripe-transactions,/admin?tab=wallet|payments|...",
-      "nativeRoute": null,
+      "nativeRoute": "/admin?tab=finance",
       "role": "financeAdmin/superadmin",
       "apis": [
         "/api/wallet/admin/*",
         "/api/admin/stripe-transactions",
         "/api/admin/returns"
       ],
-      "status": "MISSING",
-      "missing": [
-        "finance consoles"
-      ],
-      "work": "Admin phase; sensitive"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Admin finance tab"
     },
     {
       "id": "admin-support",
       "name": "Support Agent Management / Live Support / Tickets",
       "domain": "admin",
       "webRoute": "/admin/support,/admin/live-support",
-      "nativeRoute": null,
+      "nativeRoute": "/admin?tab=support",
       "role": "support+",
       "apis": [
         "/api/support/*",
         "/api/admin/support/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "agent desk UI"
-      ],
-      "work": "Admin/support phase"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Admin support tab"
     },
     {
       "id": "admin-analytics",
       "name": "Admin Analytics / Announcements / Role Management",
       "domain": "admin",
       "webRoute": "/admin (revenue, broadcast, team, push)",
-      "nativeRoute": null,
+      "nativeRoute": "/admin",
       "role": "admin/superadmin",
       "apis": [
         "/api/admin/broadcast",
         "/api/push/manual",
         "/api/admin/admins"
       ],
-      "status": "MISSING",
-      "missing": [
-        "broadcast + team role UI"
-      ],
-      "work": "Admin phase"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Admin overview analytics"
     },
     {
       "id": "delete-account",
       "name": "Delete Account / Data Deletion",
       "domain": "customer",
       "webRoute": "/delete-account,/data-deletion",
-      "nativeRoute": null,
+      "nativeRoute": "/delete-account",
       "role": "buyer/guest",
       "apis": [
         "/api/users/me/delete"
       ],
-      "status": "MISSING",
-      "missing": [
-        "store-compliance flows"
-      ],
-      "work": "Required before Play production"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Account deletion flow"
     },
     {
       "id": "website-embed",
@@ -1407,11 +1328,9 @@
       "nativeRoute": "/website",
       "role": "any",
       "apis": [],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "intentionally not embedding website"
-      ],
-      "work": "Do not restore WebView marketplace wrapper"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "System browser handoff (no WebView shell)"
     },
     {
       "id": "esim",

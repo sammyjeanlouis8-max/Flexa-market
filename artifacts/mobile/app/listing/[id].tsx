@@ -347,7 +347,7 @@ export default function ListingDetailScreen() {
             contentContainerStyle={{
               // Measured web bar is 61px; use onLayout height so delivery/stock
               // clear the sticky purchase bar instead of sitting under it.
-              paddingBottom: purchaseBarH + 28,
+              paddingBottom: purchaseBarH + 48,
             }}
             testID="listing-scroll"
           >

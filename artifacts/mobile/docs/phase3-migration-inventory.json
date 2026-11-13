@@ -707,7 +707,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Commission promo screen"
+      "work": "User commission promo: balances, share/regen code, withdraw, history (API complete)"
     },
     {
       "id": "jobs",
@@ -1225,8 +1225,10 @@
         "/api/admin/me"
       ],
       "status": "FULLY_NATIVE",
-      "missing": [],
-      "work": "Admin dashboard with tabs"
+      "missing": [
+        "Some superadmin-only tools (broadcast SMS/email, platform-fees editor, password-hash ops) still desktop-oriented"
+      ],
+      "work": "Admin dashboard tabs with write actions (users, moderation, listings, finance, boosts, promo, support)"
     },
     {
       "id": "admin-users",
@@ -1242,7 +1244,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Admin users tab"
+      "work": "Ban/unban, restrict, verify, trust actions on Users tab"
     },
     {
       "id": "admin-moderation",
@@ -1257,7 +1259,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Admin moderation tab"
+      "work": "Approve/reject/suspend moderation actions"
     },
     {
       "id": "admin-finance",
@@ -1273,7 +1275,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Admin finance tab"
+      "work": "Mark verified + refund (superadmin) on Finance tab"
     },
     {
       "id": "admin-support",
@@ -1288,7 +1290,7 @@
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Admin support tab"
+      "work": "Support thread list \u2192 /support/[id]"
     },
     {
       "id": "admin-analytics",
@@ -1303,8 +1305,10 @@
         "/api/admin/admins"
       ],
       "status": "FULLY_NATIVE",
-      "missing": [],
-      "work": "Admin overview analytics"
+      "missing": [
+        "Dedicated traffic analytics charts"
+      ],
+      "work": "Overview stats + promo/boosts tabs"
     },
     {
       "id": "delete-account",

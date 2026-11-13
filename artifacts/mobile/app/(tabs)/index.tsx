@@ -212,38 +212,7 @@ export default function HomeTab() {
         })}
       </ScrollView>
 
-      {hero ? (
-        <Pressable onPress={() => router.push(`/listing/${hero.id}`)}>
-          <LinearGradient
-            colors={[colors.flexaGreen, "#1F8A54"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.hero}
-          >
-            <View style={styles.heroCopy}>
-              {hero.isBoosted ? (
-                <View style={styles.boostBadge}>
-                  <Text style={styles.boostBadgeText}>BOOSTED</Text>
-                </View>
-              ) : null}
-              <Text style={styles.heroTitle} numberOfLines={2}>
-                {hero.title}
-              </Text>
-              <Text style={styles.heroPrice}>{formatPrice(hero)}</Text>
-              <View style={styles.shopNow}>
-                <Text style={styles.shopNowText}>Shop Now</Text>
-                <Feather name="chevron-right" size={16} color="#FFFFFF" />
-              </View>
-            </View>
-            {hero.images?.[0] ? (
-              <Image source={{ uri: hero.images[0] }} style={styles.heroImage} contentFit="cover" />
-            ) : (
-              <View style={[styles.heroImage, { backgroundColor: "rgba(255,255,255,0.12)" }]} />
-            )}
-          </LinearGradient>
-        </Pressable>
-      ) : null}
-
+      {/* Today's Picks title sits above the 2-col grid so four cards fit the first viewport. */}
       <View style={styles.sectionHead}>
         <Text style={styles.sectionTitle}>Today&apos;s Picks</Text>
       </View>
@@ -251,6 +220,41 @@ export default function HomeTab() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
+
+  const heroBanner = hero ? (
+    <Pressable
+      onPress={() => router.push(`/listing/${hero.id}`)}
+      style={{ marginHorizontal: 12, marginTop: 8 }}
+    >
+      <LinearGradient
+        colors={[colors.flexaGreen, "#1F8A54"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}
+      >
+        <View style={styles.heroCopy}>
+          {hero.isBoosted ? (
+            <View style={styles.boostBadge}>
+              <Text style={styles.boostBadgeText}>BOOSTED</Text>
+            </View>
+          ) : null}
+          <Text style={styles.heroTitle} numberOfLines={2}>
+            {hero.title}
+          </Text>
+          <Text style={styles.heroPrice}>{formatPrice(hero)}</Text>
+          <View style={styles.shopNow}>
+            <Text style={styles.shopNowText}>Shop Now</Text>
+            <Feather name="chevron-right" size={16} color="#FFFFFF" />
+          </View>
+        </View>
+        {hero.images?.[0] ? (
+          <Image source={{ uri: hero.images[0] }} style={styles.heroImage} contentFit="cover" />
+        ) : (
+          <View style={[styles.heroImage, { backgroundColor: "rgba(255,255,255,0.12)" }]} />
+        )}
+      </LinearGradient>
+    </Pressable>
+  ) : null;
 
   const categoryFooter =
     categories.length > 0 ? (
@@ -315,6 +319,7 @@ export default function HomeTab() {
           onEndReachedThreshold={0.4}
           ListFooterComponent={
             <>
+              {heroBanner}
               {!user ? (
                 <Pressable
                   style={[styles.signInBanner, { marginHorizontal: 12, marginTop: 8 }]}

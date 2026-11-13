@@ -101,7 +101,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   pressed: { opacity: 0.92 },
-  imageContainer: { width: "100%", height: CARD_WIDTH, backgroundColor: "#F1F5F9" },
+  // Shorter than square so a 2×2 product grid fits the first Home viewport on phones.
+  imageContainer: {
+    width: "100%",
+    height: Math.round(CARD_WIDTH * 0.72),
+    backgroundColor: "#F1F5F9",
+  },
   image: { width: "100%", height: "100%" },
   imagePlaceholder: {
     width: "100%",
@@ -131,8 +136,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  info: { padding: 10, gap: 3 },
-  price: { fontSize: 15, fontWeight: "700", color: "#0F172A" },
-  title: { fontSize: 13, color: "#334155", lineHeight: 18 },
-  location: { fontSize: 11, color: "#94A3B8", marginTop: 1 },
+  info: { paddingHorizontal: 8, paddingVertical: 6, gap: 2 },
+  price: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
+  title: { fontSize: 12, color: "#334155", lineHeight: 16 },
+  location: { fontSize: 10, color: "#94A3B8", marginTop: 0 },
 });

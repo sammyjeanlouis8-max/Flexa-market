@@ -31,7 +31,6 @@ export default function RootLayout() {
               <CartProvider>
                 <NavigationProvider>
                   <PushBootstrap />
-                  <AppDrawer />
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="(tabs)" />
                     <Stack.Screen name="auth/login" />

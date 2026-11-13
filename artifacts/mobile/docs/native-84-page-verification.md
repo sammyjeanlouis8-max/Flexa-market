@@ -1,13 +1,14 @@
 # Flexa Market — rapò verifikasyon paj pa paj (natif)
 
-**Dat:** 2026-11-13 06:35 EST  
-**Inventory features (source of truth):** **84**  
-**Note:** Older summaries that totaled 85 double-counted one inventory row; this file has exactly one line per inventory feature.  
-**Android package in release APK:** `com.flexamarket.app`  
-**Version / build:** 1.0.1 / versionCode 43  
-**Device:** emulator-5554 (`sdk_gphone64_x86_64`)  
-**Hosting:** DigitalOcean App Platform only — `docs/HOSTING.md`  
-**All 84 pages interactively tested?** **No** — see counts below.  
+**Dat:** 2026-11-13 09:20 EST  
+**Sign-off:** **NON** — package koreksyon fèt, men matris 84 paj konplè ak kont wòl poko fini.  
+**Android package verifye (aapt + pm):** `com.flexamarket.app` · versionName `1.0.1` · versionCode **43**  
+**Ansyen package retire:** `com.flexa.market` pa enstale sou emulator-5554  
+**PR package:** https://github.com/sammyjeanlouis8-max/Flexa-market/pull/233  
+
+**Wòl tès manke (secrets mande):** buyer, seller, driver, agent, support, admin, superadmin  
+(`FLEXA_TEST_*_EMAIL` / `FLEXA_TEST_*_PASSWORD`) — paj dèyè login rete **Bloke** jiskaske yo disponib.
+
 
 ## Rezime Android
 

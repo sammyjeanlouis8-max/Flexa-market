@@ -2,7 +2,7 @@
  * Firebase / Expo push preparation for native Expo Router (Phase 3A).
  *
  * Status (inspected, not invented):
- * - google-services.json is present for Android package `com.flexa.market`
+ * - google-services.json is present for Android package `com.flexamarket.app`
  *   and Firebase project `flexa-market-8873a` (see app.json googleServicesFile).
  * - withOptionalGoogleServices keeps builds green if the file is absent.
  * - expo-notifications is already a dependency.

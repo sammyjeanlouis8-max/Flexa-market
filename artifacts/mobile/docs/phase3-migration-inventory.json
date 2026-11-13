@@ -1464,7 +1464,7 @@
     "firebase": {
       "googleServicesPresent": true,
       "projectId": "flexa-market-8873a",
-      "androidPackage": "com.flexa.market",
+      "androidPackage": "com.flexamarket.app",
       "pushDeliveryClaimed": false,
       "notes": "Push token registration prepared via expo-notifications + POST /api/push/expo-token. No simulated notifications."
     }

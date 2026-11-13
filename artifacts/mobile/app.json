@@ -46,9 +46,9 @@
       }
     },
     "android": {
-      "package": "com.flexa.market",
+      "package": "com.flexamarket.app",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 42,
+      "versionCode": 43,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0F172A"

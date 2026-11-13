@@ -34,6 +34,8 @@ export type Listing = {
   sellerReviewCount?: number | null;
   createdAt?: string;
   stockQuantity?: number | null;
+  listingVideoUrl?: string | null;
+  boostVideoUrl?: string | null;
 };
 
 export type HomeStats = {

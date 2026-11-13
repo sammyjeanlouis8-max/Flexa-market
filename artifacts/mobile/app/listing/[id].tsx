@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Linking,
   Pressable,
   ScrollView,
   Share,
@@ -21,6 +22,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/shell/AppHeader";
 import colors from "@/constants/colors";
+import { PDP_METRICS, pdpMainSize } from "@/constants/layoutMetrics";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { fetchListing, type Listing } from "@/lib/api";
@@ -35,9 +37,14 @@ import { resolveMediaUrl } from "@/lib/mediaUrl";
 
 const WIDTH = Dimensions.get("window").width;
 const HEIGHT = Dimensions.get("window").height;
-const THUMB = 52;
-/** Compact gallery so title + price + stock clear the pinned purchase bar. */
-const GALLERY_H = Math.min(Math.round(WIDTH * 0.62), Math.round(HEIGHT * 0.28));
+const THUMB = PDP_METRICS.thumbSize;
+/** Web: aspect-square main, max-h min(52vh, 380); thumb rail 44 + gaps. */
+const MAIN_SIZE = pdpMainSize(WIDTH, HEIGHT);
+const GALLERY_H = MAIN_SIZE;
+
+type GalleryItem =
+  | { type: "image"; uri: string }
+  | { type: "video"; uri: string; poster?: string };
 
 function formatMoney(price: number, currency?: string | null) {
   const symbol =
@@ -88,7 +95,10 @@ export default function ListingDetailScreen() {
       setQty(1);
       try {
         const data = await fetchListing(id, { token });
-        if (!cancelled) setListing(data);
+        if (!cancelled) {
+          setListing(data);
+          setImageIndex(0);
+        }
         if (!cancelled && token) {
           const liked = await isFavorite(Number(id), { token });
           if (!cancelled) setFavorited(liked);
@@ -109,10 +119,23 @@ export default function ListingDetailScreen() {
     };
   }, [id, token]);
 
-  const images = useMemo(() => {
-    const raw = listing?.images?.length ? listing.images : [];
-    return raw.map((u) => resolveMediaUrl(u)).filter(Boolean) as string[];
-  }, [listing?.images]);
+  const media = useMemo((): GalleryItem[] => {
+    if (!listing) return [];
+    const items: GalleryItem[] = [];
+    const poster = resolveMediaUrl(listing.images?.[0]);
+    const promo = resolveMediaUrl(listing.boostVideoUrl || listing.listingVideoUrl);
+    if (promo) items.push({ type: "video", uri: promo, poster });
+    for (const u of listing.images || []) {
+      const uri = resolveMediaUrl(u);
+      if (uri) items.push({ type: "image", uri });
+    }
+    return items;
+  }, [listing]);
+  const images = useMemo(
+    () => media.filter((m) => m.type === "image").map((m) => m.uri),
+    [media],
+  );
+  const current = media[imageIndex] ?? null;
 
   const price = Number(listing?.price || 0);
   const listingId = Number(listing?.id || id);
@@ -319,50 +342,85 @@ export default function ListingDetailScreen() {
         <>
           <ScrollView
             contentContainerStyle={{
-              paddingBottom: 100 + Math.max(insets.bottom, 8),
+              paddingBottom:
+                PDP_METRICS.purchaseBarApprox +
+                PDP_METRICS.purchaseBtnHeight +
+                Math.max(insets.bottom, 8),
             }}
             testID="listing-scroll"
           >
-            {/* Gallery: left thumbs + main image */}
+            {/* Gallery: narrow thumb rail + large square main (web metrics) */}
             <View style={styles.galleryRow}>
-              {images.length > 1 ? (
+              {media.length > 1 ? (
                 <ScrollView
                   style={styles.thumbs}
                   contentContainerStyle={styles.thumbsInner}
                   showsVerticalScrollIndicator={false}
                 >
-                  {images.map((uri, i) => (
+                  {media.map((item, i) => (
                     <Pressable
-                      key={`${uri}-${i}`}
+                      key={`${item.type}-${i}`}
                       onPress={() => setImageIndex(i)}
                       style={[
                         styles.thumb,
                         i === imageIndex && styles.thumbActive,
                       ]}
-                      accessibilityLabel={`Photo ${i + 1}`}
+                      accessibilityLabel={
+                        item.type === "video" ? "Promo video" : `Photo ${i + 1}`
+                      }
                       testID={`listing-thumb-${i}`}
                     >
                       <Image
-                        source={{ uri }}
+                        source={{
+                          uri:
+                            item.type === "video"
+                              ? item.poster || images[0] || ""
+                              : item.uri,
+                        }}
                         style={styles.thumbImg}
                         contentFit="cover"
                       />
+                      {item.type === "video" ? (
+                        <View style={styles.thumbPromo}>
+                          <Feather name="play" size={10} color="#FFFFFF" />
+                          <Text style={styles.thumbPromoText}>PROMO</Text>
+                        </View>
+                      ) : null}
                     </Pressable>
                   ))}
                 </ScrollView>
               ) : (
-                <View style={{ width: 8 }} />
+                <View style={{ width: PDP_METRICS.thumbLeft }} />
               )}
 
               <View style={styles.mainWrap}>
-                {images[imageIndex] ? (
+                {current?.type === "image" ? (
                   <Image
-                    source={{ uri: images[imageIndex] }}
+                    source={{ uri: current.uri }}
                     style={styles.mainImg}
-                    contentFit="cover"
+                    contentFit="contain"
                     transition={150}
                     testID="listing-main-image"
                   />
+                ) : current?.type === "video" ? (
+                  <Pressable
+                    style={styles.mainImg}
+                    onPress={() => void Linking.openURL(current.uri)}
+                    testID="listing-main-video"
+                  >
+                    {current.poster ? (
+                      <Image
+                        source={{ uri: current.poster }}
+                        style={StyleSheet.absoluteFillObject}
+                        contentFit="contain"
+                      />
+                    ) : (
+                      <View style={[styles.mainImg, styles.mainPlaceholder]} />
+                    )}
+                    <View style={styles.playOverlay}>
+                      <Feather name="play" size={28} color="#FFFFFF" />
+                    </View>
+                  </Pressable>
                 ) : (
                   <View style={[styles.mainImg, styles.mainPlaceholder]}>
                     <Feather name="image" size={40} color="#94A3B8" />
@@ -392,24 +450,23 @@ export default function ListingDetailScreen() {
                   </Pressable>
                 </View>
 
+                <Pressable
+                  style={styles.similarBtn}
+                  onPress={onSearchSimilar}
+                  testID="listing-search-similar"
+                >
+                  <Feather name="search" size={14} color="#475569" />
+                  <Text style={styles.similarText} numberOfLines={1}>
+                    Search for similar items
+                  </Text>
+                </Pressable>
               </View>
             </View>
 
-            <Pressable
-              style={styles.similarBtn}
-              onPress={onSearchSimilar}
-              testID="listing-search-similar"
-            >
-              <Feather name="search" size={14} color="#475569" />
-              <Text style={styles.similarText} numberOfLines={1}>
-                Search for similar items
-              </Text>
-            </Pressable>
-
-            {images.length > 0 ? (
+            {media.length > 0 ? (
               <View style={styles.counterRow}>
                 <View style={styles.dots}>
-                  {images.map((_, i) => (
+                  {media.map((_, i) => (
                     <View
                       key={i}
                       style={[styles.dot, i === imageIndex && styles.dotOn]}
@@ -417,7 +474,7 @@ export default function ListingDetailScreen() {
                   ))}
                 </View>
                 <Text style={styles.counter}>
-                  {imageIndex + 1} / {images.length}
+                  {imageIndex + 1} / {media.length}
                 </Text>
               </View>
             ) : null}
@@ -553,6 +610,8 @@ export default function ListingDetailScreen() {
                     (inCart || addedFlash) && { color: "#FFFFFF" },
                   ]}
                   numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
                 >
                   {addedFlash
                     ? "Added!"
@@ -604,18 +663,26 @@ const styles = StyleSheet.create({
 
   galleryRow: {
     flexDirection: "row",
-    alignItems: "stretch",
+    alignItems: "flex-start",
     paddingTop: 8,
-    paddingRight: 10,
-    gap: 8,
+    paddingRight: 12,
+    gap: PDP_METRICS.gapThumbToMain,
     minHeight: GALLERY_H,
   },
-  thumbs: { width: THUMB + 16, maxHeight: GALLERY_H },
-  thumbsInner: { paddingLeft: 8, gap: 8, paddingBottom: 8 },
+  thumbs: {
+    width: PDP_METRICS.thumbLeft + THUMB,
+    maxHeight: GALLERY_H,
+  },
+  thumbsInner: {
+    paddingLeft: PDP_METRICS.thumbLeft,
+    gap: PDP_METRICS.thumbGap,
+    paddingBottom: 4,
+  },
+  // Web thumbs are rounded squares (~44), active = orange border
   thumb: {
     width: THUMB,
     height: THUMB,
-    borderRadius: THUMB / 2,
+    borderRadius: 8,
     overflow: "hidden",
     borderWidth: 2,
     borderColor: "#E2E8F0",
@@ -623,15 +690,37 @@ const styles = StyleSheet.create({
   },
   thumbActive: { borderColor: colors.flexaOrange },
   thumbImg: { width: "100%", height: "100%" },
+  thumbPromo: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.flexaOrange,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    paddingVertical: 2,
+  },
+  thumbPromoText: { color: "#fff", fontSize: 8, fontWeight: "800" },
   mainWrap: {
-    flex: 1,
-    height: GALLERY_H,
-    borderRadius: 12,
-    backgroundColor: "#F8FAFC",
+    width: MAIN_SIZE,
+    height: MAIN_SIZE,
+    maxWidth: "100%",
+    flexGrow: 1,
+    flexShrink: 1,
+    borderRadius: 4,
+    backgroundColor: "rgba(241,245,249,0.5)",
     overflow: "hidden",
   },
   mainImg: { width: "100%", height: "100%" },
   mainPlaceholder: { alignItems: "center", justifyContent: "center" },
+  playOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15,23,42,0.35)",
+  },
   overlayActions: {
     position: "absolute",
     top: 10,
@@ -652,23 +741,25 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  // Web: absolute bottom-center over main image
   similarBtn: {
-    marginTop: 10,
-    marginHorizontal: 16,
+    position: "absolute",
+    bottom: 8,
+    alignSelf: "center",
+    left: 12,
+    right: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.92)",
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    alignSelf: "center",
-    maxWidth: "92%",
+    borderColor: "rgba(226,232,240,0.8)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
-  similarText: { fontSize: 12, fontWeight: "700", color: "#0F172A" },
+  similarText: { fontSize: 11, fontWeight: "600", color: "#0F172A" },
 
   counterRow: {
     flexDirection: "row",
@@ -734,6 +825,7 @@ const styles = StyleSheet.create({
   },
   description: { fontSize: 15, lineHeight: 22, color: "#334155" },
 
+  // Web purchase bar ≈ 61px, buttons 44px, pad 8×10
   purchaseBar: {
     position: "absolute",
     left: 0,
@@ -741,25 +833,26 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingTop: 10,
-    backgroundColor: "rgba(255,255,255,0.97)",
-    borderTopWidth: 1,
+    gap: 6,
+    paddingHorizontal: PDP_METRICS.purchaseBarPaddingH,
+    paddingTop: PDP_METRICS.purchaseBarPaddingV,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#E2E8F0",
   },
   qtyBox: {
     flexDirection: "row",
     alignItems: "center",
-    height: 44,
+    height: PDP_METRICS.purchaseBtnHeight,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#F1F5F9",
+    flexShrink: 0,
   },
   qtyBtn: {
-    width: 36,
-    height: 44,
+    width: 34,
+    height: PDP_METRICS.purchaseBtnHeight,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -772,25 +865,32 @@ const styles = StyleSheet.create({
   },
   addCartBtn: {
     flex: 1.05,
-    height: 44,
+    minWidth: 0,
+    height: PDP_METRICS.purchaseBtnHeight,
     borderRadius: 999,
     backgroundColor: "#FFD814",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: 8,
+    gap: 4,
+    paddingHorizontal: 6,
   },
   addCartBtnInCart: { backgroundColor: colors.flexaGreen },
-  addCartText: { fontWeight: "800", fontSize: 12, color: "#0F172A" },
+  addCartText: {
+    fontWeight: "800",
+    fontSize: 12,
+    color: "#0F172A",
+    flexShrink: 1,
+  },
   buyNowBtn: {
     flex: 1.15,
-    height: 44,
+    minWidth: 0,
+    height: PDP_METRICS.purchaseBtnHeight,
     borderRadius: 999,
     backgroundColor: colors.flexaOrange,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
   },
   buyNowText: { color: "#FFFFFF", fontWeight: "800", fontSize: 12 },
   buyNowPrice: { color: "#FFFFFF", fontWeight: "700", fontSize: 10, opacity: 0.95 },

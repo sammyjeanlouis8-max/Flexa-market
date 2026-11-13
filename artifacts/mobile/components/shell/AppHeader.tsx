@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React from "react";
-import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
+import { PixelRatio, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
@@ -20,20 +20,26 @@ type Props = {
   rightExtra?: React.ReactNode;
 };
 
+/** Typical Android status-bar content height (dp). Tall cutout/statusBars
+ * insets on some devices/emulators report ~48dp+ and leave empty green
+ * under the clock — cap chrome padding to this instead. */
+const ANDROID_STATUS_DP = 24;
+
 /**
- * Top inset for the green chrome.
- * Apply safe-area once. On Android, prefer StatusBar.currentHeight when
- * safe-area `insets.top` is inflated by a tall display-cutout region that
- * leaves an empty gap under the clock/battery icons (seen on some emulators).
+ * Top inset for the green chrome — apply once (no outer SafeAreaView).
+ * Android: never pad by the full display-cutout / statusBars frame when it
+ * exceeds a normal status-bar height; green still draws edge-to-edge via
+ * translucent StatusBar. iOS keeps true safe-area top (notch / Dynamic Island).
  */
 function useHeaderTopInset(): number {
   const insets = useSafeAreaInsets();
   if (Platform.OS === "android") {
-    const status = StatusBar.currentHeight ?? 0;
-    if (status > 0 && insets.top > status + 8) {
-      return status;
-    }
-    return Math.max(insets.top, status);
+    const statusPx = StatusBar.currentHeight ?? 0;
+    const capPx = Math.round(PixelRatio.get() * ANDROID_STATUS_DP);
+    // Prefer the smaller of safe-area top and StatusBar height, then hard-cap.
+    // On cutout emulators both can be ~128px while icons only occupy ~24dp.
+    const raw = statusPx > 0 ? Math.min(insets.top || statusPx, statusPx) : insets.top;
+    return Math.min(raw || capPx, capPx);
   }
   return insets.top;
 }

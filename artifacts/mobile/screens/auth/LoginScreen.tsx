@@ -222,6 +222,14 @@ export default function LoginScreen({
         loading={loading}
         disabled={loading}
       />
+
+      <View style={styles.altAuth}>
+        <AuthLink
+          label="Sign in with phone"
+          onPress={() => openPath("/auth/login-phone")}
+          testID="link-login-phone"
+        />
+      </View>
     </AuthShell>
   );
 }
@@ -229,6 +237,10 @@ export default function LoginScreen({
 const styles = StyleSheet.create({
   field: {
     gap: 6,
+  },
+  altAuth: {
+    marginTop: 12,
+    alignItems: "center",
   },
   labelRow: {
     flexDirection: "row",

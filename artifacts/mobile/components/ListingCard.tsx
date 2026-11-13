@@ -19,12 +19,19 @@ interface ListingCardProps {
   isFavorited?: boolean;
 }
 
+function resolveListingImage(uri?: string | null): string | undefined {
+  if (!uri) return undefined;
+  if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
+  if (uri.startsWith("/")) return `https://flexamarket.com${uri}`;
+  return uri;
+}
+
 export function ListingCard({
   item,
   onFavoriteToggle,
   isFavorited = false,
 }: ListingCardProps) {
-  const imageUri = item.images?.[0];
+  const imageUri = resolveListingImage(item.images?.[0]);
   const price = Number(item.price || 0);
   const currency = item.currency === "HTG" ? "G" : "$";
 
@@ -79,7 +86,7 @@ export function ListingCard({
             maximumFractionDigits: 2,
           })}
         </Text>
-        <Text style={styles.title} numberOfLines={2}>
+        <Text style={styles.title} numberOfLines={1}>
           {item.title}
         </Text>
         <Text style={styles.location} numberOfLines={1}>
@@ -93,18 +100,18 @@ export function ListingCard({
 const styles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E2E8F0",
     overflow: "hidden",
-    marginBottom: 12,
+    marginBottom: 6,
     backgroundColor: "#FFFFFF",
   },
   pressed: { opacity: 0.92 },
-  // Shorter than square so a 2×2 product grid fits the first Home viewport on phones.
+  // Compact image so a 2×2 product grid fits the first Home viewport on 720×1280.
   imageContainer: {
     width: "100%",
-    height: Math.round(CARD_WIDTH * 0.72),
+    height: Math.round(CARD_WIDTH * 0.55),
     backgroundColor: "#F1F5F9",
   },
   image: { width: "100%", height: "100%" },
@@ -136,8 +143,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  info: { paddingHorizontal: 8, paddingVertical: 6, gap: 2 },
-  price: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
-  title: { fontSize: 12, color: "#334155", lineHeight: 16 },
+  info: { paddingHorizontal: 8, paddingVertical: 4, gap: 1 },
+  price: { fontSize: 13, fontWeight: "700", color: "#0F172A" },
+  title: { fontSize: 11, color: "#334155", lineHeight: 14 },
   location: { fontSize: 10, color: "#94A3B8", marginTop: 0 },
 });

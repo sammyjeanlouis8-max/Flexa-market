@@ -193,7 +193,15 @@ export function AppDrawer() {
   };
 
   return (
-    <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={closeDrawer}>
+    <Modal
+      visible={drawerOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={closeDrawer}
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+      hardwareAccelerated
+    >
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={closeDrawer} testID="premium-menu-backdrop" />
         <View style={[styles.sheet, { paddingTop: insets.top }]} testID="premium-side-menu">

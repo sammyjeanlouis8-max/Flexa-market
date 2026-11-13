@@ -12,6 +12,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -183,17 +184,18 @@ export default function HomeTab() {
         placeholder="Search products..."
       />
 
-      <FlatList
+      {/* ScrollView (not nested FlatList) — nested VirtualizedLists break Android scroll. */}
+      <ScrollView
         horizontal
-        data={[{ id: "all", name: "All", slug: "__all__", icon: "" }, ...categories]}
-        keyExtractor={(c) => String(c.id)}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.catTabs}
-        renderItem={({ item }) => {
+      >
+        {[{ id: "all", name: "All", slug: "__all__", icon: "" }, ...categories].map((item) => {
           const selected =
             item.slug === "__all__" ? activeCategory === null : activeCategory === item.slug;
           return (
             <Pressable
+              key={String(item.id)}
               onPress={() => setActiveCategory(item.slug === "__all__" ? null : item.slug)}
               style={[styles.catTab, selected && styles.catTabActive]}
             >
@@ -203,8 +205,8 @@ export default function HomeTab() {
               </Text>
             </Pressable>
           );
-        }}
-      />
+        })}
+      </ScrollView>
 
       {hero ? (
         <Pressable onPress={() => router.push(`/listing/${hero.id}`)}>
@@ -248,7 +250,7 @@ export default function HomeTab() {
             </Pressable>
           </View>
           <View style={styles.catGrid}>
-            {categories.slice(0, 8).map((cat) => (
+            {categories.slice(0, 6).map((cat) => (
               <Pressable
                 key={String(cat.id)}
                 style={styles.catTile}
@@ -373,10 +375,10 @@ const styles = StyleSheet.create({
   hero: {
     borderRadius: 16,
     overflow: "hidden",
-    minHeight: 148,
+    minHeight: 120,
     flexDirection: "row",
   },
-  heroCopy: { flex: 1, padding: 14, justifyContent: "center", gap: 6 },
+  heroCopy: { flex: 1, padding: 12, justifyContent: "center", gap: 4 },
   boostBadge: {
     alignSelf: "flex-start",
     backgroundColor: colors.flexaOrange,

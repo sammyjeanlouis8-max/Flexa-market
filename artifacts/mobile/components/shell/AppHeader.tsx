@@ -52,6 +52,8 @@ export function AppHeader({
             <Pressable
               onPress={openDrawer}
               style={styles.iconBtn}
+              hitSlop={12}
+              accessibilityRole="button"
               accessibilityLabel="Open menu"
               testID="nav-hamburger"
             >
@@ -146,7 +148,13 @@ const styles = StyleSheet.create({
   },
   brand: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1, minWidth: 0 },
   logo: { width: 28, height: 28, borderRadius: 8 },
-  brandTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "800", letterSpacing: 0.2 },
+  brandTitle: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+    maxWidth: 120,
+  },
   pageTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "700", marginLeft: 4, flexShrink: 1 },
   badge: {
     position: "absolute",

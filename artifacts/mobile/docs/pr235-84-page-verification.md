@@ -10,22 +10,51 @@
 
 **#235 gen tout koreksyon Home/PDP + package `com.flexamarket.app` (via zansèt #233/#234).**
 
-**Commit tès (tout koreksyon yo):** `d9daf51f`
+**Commit tès (tout koreksyon yo):** `d9daf51f`  
+**Rapò ID update:** `b13f5604` tip + dokiman sa a (pa chanje package/Bundle ID)
 
 ## Build anba tès
 
 | | |
 |---|---|
 | Platform | **Android** (iOS bloke — gade anba) |
-| Package | `com.flexamarket.app` |
+| Package | `com.flexamarket.app` (**kenbe** — pa chanje) |
 | versionName | `1.0.1` |
 | versionCode | **55** |
-| Commit SHA | `d9daf51f` |
+| Commit SHA | `d9daf51f` (APK) / tip branch pou rapò |
 | Aparèy | emulator `sdk_gphone64_x86_64` · Android 14 · 720×1280 @ dens 420 |
 | OTA | **Disabled** pou sideload (`expo.modules.updates.ENABLED=false`) → bundle **embedded** nan APK |
 | Backend | `https://flexamarket.com/api` (DigitalOcean, header `x-do-app-origin`) |
 
-**iOS:** **BLOCKED** — VM Linux cloud agent pa gen Xcode, Simulator, ni Apple signing. Menm kòd RN pataje; pa gen build/test iOS sou machin sa a.
+## Verifikasyon ID (san modifye konfig)
+
+### Android package — verifye dirèkteman sou emilatè
+
+| Tchek | Rezilta |
+|---|---|
+| `adb shell pm path com.flexamarket.app` | `package:/data/app/.../com.flexamarket.app-.../base.apk` |
+| `adb shell pm path com.flexa.market` | **vid** (ansyen WebView package pa enstale) |
+| `dumpsys package` | `Package [com.flexamarket.app]` · versionName `1.0.1` · versionCode **55** |
+| `aapt dump badging` (base.apk tire soti nan aparèy) | `package: name='com.flexamarket.app' versionCode='55' versionName='1.0.1'` · `launchable-activity: name='com.flexamarket.app.MainActivity'` |
+| `app.json` / `release-preflight.mjs` | `android.package` **dwe** rete `com.flexamarket.app` |
+
+Prèv tèks: `/opt/cursor/artifacts/pr235_android_package_id_verify.txt`
+
+**Play Console / fich:** Pa gen aksè Play Console nan VM sa a. Repo a (PR #233 + `release-preflight.mjs`) vize **`com.flexamarket.app`**. Ansyen ID WebView **`com.flexa.market`** pa nan APK enstale a. **Pa gen chanjman ID Android** nan tès sa a — kenbe `com.flexamarket.app` jiskaske ou konfime fich Play ou vize a.
+
+### iOS Bundle ID — konfig release sèlman (pa gen IPA)
+
+| Tchek | Rezilta |
+|---|---|
+| `artifacts/mobile/app.json` → `ios.bundleIdentifier` | **`com.flexamarket.mobile`** |
+| `scripts/release-preflight.mjs` | Assert: dwe rete `com.flexamarket.mobile` |
+| `artifacts/ios-native/project.yml` `PRODUCT_BUNDLE_IDENTIFIER` | **`com.flexamarket.mobile`** |
+| `artifacts/ios-native/fastlane/Appfile` | `app_identifier "com.flexamarket.mobile"` |
+| Build IPA / Simulator | **BLOCKED** — Linux VM pa gen Xcode |
+
+Prèv tèks: `/opt/cursor/artifacts/pr235_ios_bundle_id_verify.txt`
+
+**iOS:** Bundle ID WebView ki deja nan App Store Connect (`com.flexamarket.mobile`) verifye nan konfig release. Pa gen binary iOS sou machin sa a pou dump IPA.
 
 ## Total: PASS 6 · FAIL 0 · BLOCKED 55 · NOT_TESTED 23 (sou 84)
 
@@ -123,5 +152,7 @@ Enventè: **84/84** paj nan `native-84-page-map.md` — pa gen mank ni anplis.
 ## Remak
 
 - Chif 68/68 ansyen PR pa konte. Rapò sa a se sou build **vc55 / d9daf51f**.
+- **Android package kenbe `com.flexamarket.app`.** **iOS Bundle ID kenbe `com.flexamarket.mobile`.** Pa gen modifye konfig ID nan tès sa a.
+- Re-smoke apre verifikasyon ID (2026-11-13 ~17:43 America/New_York): Home chaje + PDP `Add to Cart` / `Buy Now` / `Sold by` **PASS** sou emilatè.
 - Pa gen merge epi pa gen AAB — tann konfimasyon ou.
 - Pou kontinye PASS sou paj buyer/seller/driver/admin, bezwen secrets tès Flexa (yo pa disponib nan anviwònman an).

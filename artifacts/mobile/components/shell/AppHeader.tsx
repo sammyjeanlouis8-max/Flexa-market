@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { PixelRatio, Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
@@ -20,6 +20,29 @@ type Props = {
   rightExtra?: React.ReactNode;
 };
 
+/** Typical Android status-bar content height in density-independent pixels. */
+const ANDROID_STATUS_DP = 24;
+
+/**
+ * Top inset for the green chrome — apply once (no outer SafeAreaView).
+ *
+ * Android note: `StatusBar.currentHeight` is in **physical pixels**, while
+ * `useSafeAreaInsets()` and style padding are in **dp**. Mixing them made a
+ * "63px" cap apply as 63dp (~165px) and recreated the tall empty green gap.
+ * Convert status height to dp, then cap to a normal status-bar height so tall
+ * cutout/statusBars frames do not inflate the toolbar.
+ */
+function useHeaderTopInset(): number {
+  const insets = useSafeAreaInsets();
+  if (Platform.OS === "android") {
+    const statusPx = StatusBar.currentHeight ?? 0;
+    const statusDp = statusPx > 0 ? statusPx / PixelRatio.get() : 0;
+    const raw = statusDp > 0 ? Math.min(insets.top || statusDp, statusDp) : insets.top;
+    return Math.min(raw || ANDROID_STATUS_DP, ANDROID_STATUS_DP);
+  }
+  return insets.top;
+}
+
 export function AppHeader({
   title,
   showBrand = true,
@@ -30,14 +53,19 @@ export function AppHeader({
   showProfile = true,
   rightExtra,
 }: Props) {
-  const insets = useSafeAreaInsets();
+  const topInset = useHeaderTopInset();
   const router = useRouter();
   const { token } = useAuth();
   const { count } = useCart();
   const { openDrawer } = useNavigationChrome();
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top }]}>
+    <View style={[styles.wrap, { paddingTop: topInset }]} testID="app-header">
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor={colors.flexaGreen}
+        translucent={Platform.OS === "android"}
+      />
       <View style={styles.bar}>
         <View style={styles.left}>
           {showBack ? (
@@ -129,15 +157,16 @@ const styles = StyleSheet.create({
   wrap: {
     backgroundColor: colors.flexaGreen,
   },
+  // Compact toolbar — matches mobile-web chrome height under the status bar.
   bar: {
-    minHeight: 52,
-    paddingHorizontal: 8,
+    height: 48,
+    paddingHorizontal: 6,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 4,
   },
-  left: { flexDirection: "row", alignItems: "center", flex: 1, gap: 4, minWidth: 0 },
+  left: { flexDirection: "row", alignItems: "center", flex: 1, gap: 2, minWidth: 0 },
   right: { flexDirection: "row", alignItems: "center" },
   iconBtn: {
     width: 40,
@@ -146,8 +175,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  brand: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1, minWidth: 0 },
-  logo: { width: 28, height: 28, borderRadius: 8 },
+  brand: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1, minWidth: 0 },
+  logo: { width: 26, height: 26, borderRadius: 7 },
   brandTitle: {
     color: "#FFFFFF",
     fontSize: 15,
@@ -155,7 +184,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     maxWidth: 120,
   },
-  pageTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "700", marginLeft: 4, flexShrink: 1 },
+  pageTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "700", marginLeft: 2, flexShrink: 1 },
   badge: {
     position: "absolute",
     top: 4,

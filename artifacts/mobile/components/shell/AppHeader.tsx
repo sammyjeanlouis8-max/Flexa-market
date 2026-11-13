@@ -20,26 +20,25 @@ type Props = {
   rightExtra?: React.ReactNode;
 };
 
-/** Typical Android status-bar content height (dp). Tall cutout/statusBars
- * insets on some devices/emulators report ~48dp+ and leave empty green
- * under the clock — cap chrome padding to this instead. */
+/** Typical Android status-bar content height in density-independent pixels. */
 const ANDROID_STATUS_DP = 24;
 
 /**
  * Top inset for the green chrome — apply once (no outer SafeAreaView).
- * Android: never pad by the full display-cutout / statusBars frame when it
- * exceeds a normal status-bar height; green still draws edge-to-edge via
- * translucent StatusBar. iOS keeps true safe-area top (notch / Dynamic Island).
+ *
+ * Android note: `StatusBar.currentHeight` is in **physical pixels**, while
+ * `useSafeAreaInsets()` and style padding are in **dp**. Mixing them made a
+ * "63px" cap apply as 63dp (~165px) and recreated the tall empty green gap.
+ * Convert status height to dp, then cap to a normal status-bar height so tall
+ * cutout/statusBars frames do not inflate the toolbar.
  */
 function useHeaderTopInset(): number {
   const insets = useSafeAreaInsets();
   if (Platform.OS === "android") {
     const statusPx = StatusBar.currentHeight ?? 0;
-    const capPx = Math.round(PixelRatio.get() * ANDROID_STATUS_DP);
-    // Prefer the smaller of safe-area top and StatusBar height, then hard-cap.
-    // On cutout emulators both can be ~128px while icons only occupy ~24dp.
-    const raw = statusPx > 0 ? Math.min(insets.top || statusPx, statusPx) : insets.top;
-    return Math.min(raw || capPx, capPx);
+    const statusDp = statusPx > 0 ? statusPx / PixelRatio.get() : 0;
+    const raw = statusDp > 0 ? Math.min(insets.top || statusDp, statusDp) : insets.top;
+    return Math.min(raw || ANDROID_STATUS_DP, ANDROID_STATUS_DP);
   }
   return insets.top;
 }
@@ -61,7 +60,7 @@ export function AppHeader({
   const { openDrawer } = useNavigationChrome();
 
   return (
-    <View style={[styles.wrap, { paddingTop: topInset }]}>
+    <View style={[styles.wrap, { paddingTop: topInset }]} testID="app-header">
       <StatusBar
         barStyle="light-content"
         backgroundColor={colors.flexaGreen}

@@ -10,13 +10,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   Linking,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -35,12 +35,7 @@ import {
 } from "@/lib/favoritesApi";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
 
-const WIDTH = Dimensions.get("window").width;
-const HEIGHT = Dimensions.get("window").height;
 const THUMB = PDP_METRICS.thumbSize;
-/** Web: aspect-square main, max-h min(52vh, 380); thumb rail 44 + gaps. */
-const MAIN_SIZE = pdpMainSize(WIDTH, HEIGHT);
-const GALLERY_H = MAIN_SIZE;
 
 type GalleryItem =
   | { type: "image"; uri: string }
@@ -68,8 +63,13 @@ export default function ListingDetailScreen() {
   const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
   const { token, user } = useAuth();
   const { addItem, isInCart } = useCart();
+
+  /** Web: aspect-square main, max-h min(52vh, 380); thumb rail 44 + gaps. */
+  const mainSize = pdpMainSize(winW, winH);
+  const galleryH = mainSize;
 
   const [listing, setListing] = useState<Listing | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +80,9 @@ export default function ListingDetailScreen() {
   const [favorited, setFavorited] = useState(false);
   const [favBusy, setFavBusy] = useState(false);
   const [msgBusy, setMsgBusy] = useState(false);
+  const [purchaseBarH, setPurchaseBarH] = useState(
+    PDP_METRICS.purchaseBarApprox + Math.max(insets.bottom, 8),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -342,18 +345,17 @@ export default function ListingDetailScreen() {
         <>
           <ScrollView
             contentContainerStyle={{
-              paddingBottom:
-                PDP_METRICS.purchaseBarApprox +
-                PDP_METRICS.purchaseBtnHeight +
-                Math.max(insets.bottom, 8),
+              // Measured web bar is 61px; use onLayout height so delivery/stock
+              // clear the sticky purchase bar instead of sitting under it.
+              paddingBottom: purchaseBarH + 28,
             }}
             testID="listing-scroll"
           >
             {/* Gallery: narrow thumb rail + large square main (web metrics) */}
-            <View style={styles.galleryRow}>
+            <View style={[styles.galleryRow, { minHeight: galleryH }]}>
               {media.length > 1 ? (
                 <ScrollView
-                  style={styles.thumbs}
+                  style={[styles.thumbs, { maxHeight: galleryH }]}
                   contentContainerStyle={styles.thumbsInner}
                   showsVerticalScrollIndicator={false}
                 >
@@ -393,12 +395,17 @@ export default function ListingDetailScreen() {
                 <View style={{ width: PDP_METRICS.thumbLeft }} />
               )}
 
-              <View style={styles.mainWrap}>
+              <View
+                style={[
+                  styles.mainWrap,
+                  { width: mainSize, height: mainSize },
+                ]}
+              >
                 {current?.type === "image" ? (
                   <Image
                     source={{ uri: current.uri }}
                     style={styles.mainImg}
-                    contentFit="contain"
+                    contentFit={PDP_METRICS.objectFit}
                     transition={150}
                     testID="listing-main-image"
                   />
@@ -563,8 +570,12 @@ export default function ListingDetailScreen() {
             <View
               style={[
                 styles.purchaseBar,
-                { paddingBottom: Math.max(insets.bottom, 10) },
+                { paddingBottom: Math.max(insets.bottom, 8) },
               ]}
+              onLayout={(e) => {
+                const h = Math.ceil(e.nativeEvent.layout.height);
+                if (h > 0 && h !== purchaseBarH) setPurchaseBarH(h);
+              }}
               testID="listing-purchase-bar"
             >
               <View style={styles.qtyBox} testID="listing-qty">
@@ -601,17 +612,18 @@ export default function ListingDetailScreen() {
               >
                 <Feather
                   name="shopping-cart"
-                  size={15}
+                  size={winW < 360 ? 13 : 15}
                   color={inCart || addedFlash ? "#FFFFFF" : "#0F172A"}
                 />
                 <Text
                   style={[
                     styles.addCartText,
                     (inCart || addedFlash) && { color: "#FFFFFF" },
+                    winW < 360 && { fontSize: 11 },
                   ]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
-                  minimumFontScale={0.85}
+                  minimumFontScale={0.7}
                 >
                   {addedFlash
                     ? "Added!"
@@ -637,8 +649,12 @@ export default function ListingDetailScreen() {
             <View
               style={[
                 styles.purchaseBar,
-                { paddingBottom: Math.max(insets.bottom, 10) },
+                { paddingBottom: Math.max(insets.bottom, 8) },
               ]}
+              onLayout={(e) => {
+                const h = Math.ceil(e.nativeEvent.layout.height);
+                if (h > 0 && h !== purchaseBarH) setPurchaseBarH(h);
+              }}
             >
               <Text style={styles.ownNote}>This is your listing</Text>
             </View>
@@ -665,13 +681,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     paddingTop: 8,
-    paddingRight: 12,
+    paddingRight: PDP_METRICS.mainRightInset,
     gap: PDP_METRICS.gapThumbToMain,
-    minHeight: GALLERY_H,
   },
   thumbs: {
     width: PDP_METRICS.thumbLeft + THUMB,
-    maxHeight: GALLERY_H,
   },
   thumbsInner: {
     paddingLeft: PDP_METRICS.thumbLeft,
@@ -704,8 +718,6 @@ const styles = StyleSheet.create({
   },
   thumbPromoText: { color: "#fff", fontSize: 8, fontWeight: "800" },
   mainWrap: {
-    width: MAIN_SIZE,
-    height: MAIN_SIZE,
     maxWidth: "100%",
     flexGrow: 1,
     flexShrink: 1,
@@ -825,7 +837,7 @@ const styles = StyleSheet.create({
   },
   description: { fontSize: 15, lineHeight: 22, color: "#334155" },
 
-  // Web purchase bar ≈ 61px, buttons 44px, pad 8×10
+  // Web .fm-pdp-purchase-bar ≈ 61px, buttons 44px, pad 8×10, gap 6
   purchaseBar: {
     position: "absolute",
     left: 0,
@@ -833,7 +845,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: PDP_METRICS.purchaseBarGap,
     paddingHorizontal: PDP_METRICS.purchaseBarPaddingH,
     paddingTop: PDP_METRICS.purchaseBarPaddingV,
     backgroundColor: "rgba(255,255,255,0.95)",
@@ -848,31 +860,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
     backgroundColor: "#F1F5F9",
-    flexShrink: 0,
+    flexShrink: 1,
+    maxWidth: 96,
   },
   qtyBtn: {
-    width: 34,
+    width: 28,
     height: PDP_METRICS.purchaseBtnHeight,
     alignItems: "center",
     justifyContent: "center",
   },
   qtyNum: {
-    minWidth: 22,
+    minWidth: 16,
     textAlign: "center",
     fontWeight: "800",
-    fontSize: 14,
+    fontSize: 13,
     color: "#0F172A",
   },
+  // Web Add to Cart ≈ 125 @390; keep flex share so label never truncates.
   addCartBtn: {
-    flex: 1.05,
-    minWidth: 0,
+    flexGrow: 1.15,
+    flexShrink: 1,
+    flexBasis: 110,
+    minWidth: 108,
     height: PDP_METRICS.purchaseBtnHeight,
     borderRadius: 999,
     backgroundColor: "#FFD814",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 3,
     paddingHorizontal: 6,
   },
   addCartBtnInCart: { backgroundColor: colors.flexaGreen },
@@ -881,10 +897,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#0F172A",
     flexShrink: 1,
+    maxWidth: "100%",
   },
   buyNowBtn: {
-    flex: 1.15,
-    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 96,
+    minWidth: 88,
     height: PDP_METRICS.purchaseBtnHeight,
     borderRadius: 999,
     backgroundColor: colors.flexaOrange,

@@ -3,19 +3,20 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import React from "react";
 import {
-  Dimensions,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
-import { HOME_METRICS, homeCardWidth } from "@/constants/layoutMetrics";
+import {
+  HOME_METRICS,
+  homeCardWidth,
+  homeImageHeight,
+} from "@/constants/layoutMetrics";
 import type { Listing } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
-
-const WIN_W = Dimensions.get("window").width;
-const CARD_WIDTH = homeCardWidth(WIN_W);
-const IMAGE_HEIGHT = Math.round(CARD_WIDTH * HOME_METRICS.imageAspect);
 
 interface ListingCardProps {
   item: Listing;
@@ -28,6 +29,12 @@ export function ListingCard({
   onFavoriteToggle,
   isFavorited = false,
 }: ListingCardProps) {
+  const { width: winW, height: winH } = useWindowDimensions();
+  const tabBar = Platform.OS === "ios" ? 84 : HOME_METRICS.bottomBar;
+  const cardWidth = homeCardWidth(winW);
+  const imageHeight = homeImageHeight(winW, winH, tabBar);
+  const shortViewport = imageHeight < cardWidth * 0.92;
+
   const imageUri = resolveMediaUrl(item.images?.[0]);
   const price = Number(item.price || 0);
   const currency =
@@ -42,18 +49,22 @@ export function ListingCard({
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.card,
+        { width: cardWidth, marginBottom: HOME_METRICS.rowGap / 2 },
+        pressed && styles.pressed,
+      ]}
       onPress={openListing}
       accessibilityRole="button"
       accessibilityLabel={item.title}
       testID={`listing-card-${item.id}`}
     >
-      <View style={styles.imageContainer}>
+      <View style={[styles.imageContainer, { height: imageHeight }]}>
         {imageUri ? (
           <Image
             source={{ uri: imageUri }}
             style={styles.image}
-            contentFit="cover"
+            contentFit={HOME_METRICS.objectFit}
             transition={200}
             recyclingKey={`listing-${item.id}`}
           />
@@ -89,8 +100,8 @@ export function ListingCard({
           </Pressable>
         ) : null}
       </View>
-      <View style={styles.info}>
-        <Text style={styles.title} numberOfLines={2}>
+      <View style={[styles.info, shortViewport && styles.infoCompact]}>
+        <Text style={styles.title} numberOfLines={shortViewport ? 1 : 2}>
           {item.title}
         </Text>
         <Text style={styles.price} numberOfLines={1}>
@@ -108,7 +119,7 @@ export function ListingCard({
             </Text>
           </View>
         ) : null}
-        {item.stockQuantity != null ? (
+        {!shortViewport && item.stockQuantity != null ? (
           <Text style={styles.stock} numberOfLines={1}>
             {Number(item.stockQuantity)} available
           </Text>
@@ -120,19 +131,16 @@ export function ListingCard({
 
 const styles = StyleSheet.create({
   card: {
-    width: CARD_WIDTH,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E2E8F0",
     overflow: "hidden",
-    marginBottom: HOME_METRICS.columnGap / 2,
     backgroundColor: "#FFFFFF",
   },
   pressed: { opacity: 0.92 },
   // Web: listing-card-media aspect-square + object-cover
   imageContainer: {
     width: "100%",
-    height: IMAGE_HEIGHT,
     backgroundColor: "#F1F5F9",
   },
   image: { width: "100%", height: "100%" },
@@ -175,6 +183,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   info: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 8, gap: 2 },
+  infoCompact: { paddingTop: 4, paddingBottom: 6, gap: 1 },
   title: { fontSize: 13, fontWeight: "700", color: "#0F172A", lineHeight: 17 },
   price: { fontSize: 15, fontWeight: "800", color: "#0F172A", marginTop: 1 },
   locRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 1 },

@@ -22,9 +22,8 @@ export const HOME_METRICS = {
   pageInset: 13,
   columnGap: 12,
   imageAspect: 1, // square
-  // Square frame matches WebView; contain avoids the heavy cover crop on
-  // portrait product photos while keeping proportions (no stretch).
-  objectFit: "contain" as const,
+  // Match WebView listing-card-media: square frame + object-fit cover.
+  objectFit: "cover" as const,
   /** Measured media edge at 390 CSS px */
   mediaAt390: 176,
   /** Compact native meta under the photo (title/price/loc/stock) */

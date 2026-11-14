@@ -9,7 +9,7 @@
 | PR | [#243](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/243) stacked on [#242](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/242) |
 | Branch | `cursor/native-84-screen-audit-9d45` |
 | Includes #242 | **Yes** — merged `a31b4506` (Contacts → Agent directory, enlarged action orbs) |
-| Test commit | `401864c182126c5e2cc46d32ad5c91cc830c587d` |
+| Test commit | `1ae1d6826f3030ba58333f97ded5679f1673c503` |
 | Package | `com.flexamarket.app` |
 | versionName | `1.0.1` |
 | versionCode | **59** |
@@ -238,4 +238,4 @@ Secrets still **unbound** in Cursor (bindings exist, values empty). Exact names:
 
 ---
 
-**Test APK commit:** `401864c182126c5e2cc46d32ad5c91cc830c587d` · versionCode **59** · package `com.flexamarket.app` · no release AAB.
+**Test APK commit:** `1ae1d6826f3030ba58333f97ded5679f1673c503` · versionCode **59** · package `com.flexamarket.app` · no release AAB.

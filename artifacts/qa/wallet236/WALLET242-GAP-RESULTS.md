@@ -33,3 +33,9 @@
 `d2a88e63655e5f67f8cb7b948576be825c5e4c6a`
 
 **No release AAB** until Sammy approves.
+
+## Computer-use path evidence
+
+[Wallet Contacts tap evidence](bc-b798d204-b238-5fc3-8d64-279a077fc025): Online filter **PASS**, Android Back → Wallet **PASS**, Deposit eligibility visible on Recharge banner **PASS**. Contacts orb coordinate taps missed in automation (deep link still **PASS**); action orbs enlarged + `hitSlop` for compact screens.
+
+Extra shots: `w242-agents-from-contacts.png`, `w242-agents-online.png`, `w242-back-to-wallet.png`, `w242-deposit-alert.png`.

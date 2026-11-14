@@ -520,6 +520,10 @@ export default function WalletScreen() {
                     key={a.label}
                     style={[styles.actionOrb, a.solid && styles.actionOrbSolid]}
                     onPress={a.onPress}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={a.label}
+                    testID={`wallet-action-${a.label.toLowerCase().replace(/\s+/g, "-")}`}
                   >
                     <Feather
                       name={a.icon}
@@ -1048,10 +1052,10 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: "center",
   },
-  actionsRow: { gap: 10, paddingVertical: 4 },
+  actionsRow: { gap: 10, paddingVertical: 6, paddingHorizontal: 2 },
   actionOrb: {
-    width: 64,
-    minHeight: 64,
+    width: 72,
+    minHeight: 72,
     borderRadius: 14,
     backgroundColor: "#fff",
     borderWidth: 1,
@@ -1059,10 +1063,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
-    padding: 6,
+    padding: 8,
   },
   actionOrbSolid: { backgroundColor: "#065F46", borderColor: "#047857" },
-  actionOrbText: { fontSize: 9, fontWeight: "800", color: "#134E4A", textAlign: "center" },
+  actionOrbText: { fontSize: 10, fontWeight: "800", color: "#134E4A", textAlign: "center" },
   triple: { flexDirection: "row", gap: 8 },
   miniCard: {
     flex: 1,

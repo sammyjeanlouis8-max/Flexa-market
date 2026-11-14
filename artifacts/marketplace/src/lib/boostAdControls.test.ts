@@ -5,6 +5,7 @@ import {
   resolveBoostAdCtaLabel,
   resolveBoostAdSkipInLabel,
   resolveBoostAdSkipLabel,
+  selectHomePromoCompanionProduct,
   selectHomePromoVideos,
 } from "./boostAdControls";
 
@@ -62,6 +63,32 @@ describe("boostAdControls labels", () => {
 
   it("falls back to English Skip in when keys are missing", () => {
     expect(resolveBoostAdSkipInLabel(makeT({}), 3)).toBe("Skip in 3 s");
+  });
+});
+
+describe("selectHomePromoCompanionProduct", () => {
+  it("prefers a different in-country product with an image", () => {
+    const picked = selectHomePromoCompanionProduct(
+      [
+        { id: 10, status: "available", country: "Haiti", images: ["https://img/a.jpg"] },
+        { id: 11, status: "available", country: "Haiti", images: ["https://img/b.jpg"] },
+        { id: 12, status: "sold", country: "Haiti", images: ["https://img/c.jpg"] },
+        { id: 13, status: "available", country: "USA", images: ["https://img/d.jpg"] },
+      ],
+      { excludeListingIds: [10], activeCountry: "Haiti" },
+    );
+    expect(picked?.id).toBe(11);
+  });
+
+  it("returns null when no eligible companion exists", () => {
+    const picked = selectHomePromoCompanionProduct(
+      [
+        { id: 10, status: "available", country: "Haiti", images: ["https://img/a.jpg"] },
+        { id: 12, status: "sold", country: "Haiti", images: ["https://img/c.jpg"] },
+      ],
+      { excludeListingIds: [10], activeCountry: "Haiti" },
+    );
+    expect(picked).toBeNull();
   });
 });
 

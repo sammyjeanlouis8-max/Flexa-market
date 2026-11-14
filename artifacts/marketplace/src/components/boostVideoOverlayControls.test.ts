@@ -41,6 +41,7 @@ describe("Home promo strip contract", () => {
     expect(homeSrc).toMatch(/HOME_PROMO_VIDEO_CARD_LIMIT/);
     expect(homeSrc).toMatch(/HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT/);
     expect(homeSrc).toMatch(/selectHomePromoVideos/);
+    expect(homeSrc).toMatch(/selectHomePromoCompanionProduct/);
     expect(homeSrc).toMatch(/sort: "new"/);
     expect(homeSrc).toMatch(
       /selectHomePromoVideos\(\s*\(data\.videos \?\? \[\]\) as PromoVideoItem\[\],\s*HOME_PROMO_VIDEO_CARD_LIMIT,\s*\)/,
@@ -48,7 +49,10 @@ describe("Home promo strip contract", () => {
     expect(homeSrc).toMatch(/videos\.slice\(0, HOME_PROMO_VIDEO_CARD_LIMIT\)/);
     expect(homeSrc).toMatch(/data-testid="home-promo-video-strip"/);
     expect(homeSrc).toMatch(/data-home-promo-video-card="true"/);
+    expect(homeSrc).toMatch(/data-testid="home-promo-companion-product"/);
+    expect(homeSrc).toMatch(/data-testid="home-promo-video-solo"/);
     expect(homeSrc).toMatch(/href=\{`\/videos\?video=\$\{v\.id\}`\}/);
+    expect(homeSrc).toMatch(/catalogListings=\{allListings\}/);
     // Dedicated strip — must not be nested inside the Featured product grid.
     expect(homeSrc).toMatch(
       /HOME PROMO STRIP[\s\S]*<VideoPromoSection[\s\S]*FEATURED PRODUCTS/,

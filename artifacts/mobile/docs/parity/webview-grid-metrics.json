@@ -1,0 +1,122 @@
+{
+  "normal": {
+    "greenChromeBottom": 0,
+    "header": {
+      "w": 375,
+      "h": 57,
+      "top": 0,
+      "left": 0,
+      "aspect": "auto",
+      "br": "0px",
+      "pad": "0px",
+      "gap": "normal"
+    },
+    "grid": {
+      "w": 351,
+      "h": 738,
+      "top": 106,
+      "left": 12,
+      "aspect": "auto",
+      "br": "0px",
+      "pad": "0px",
+      "gap": "10px"
+    },
+    "card": {
+      "w": 171,
+      "h": 342,
+      "top": 106,
+      "left": 12,
+      "aspect": "auto",
+      "br": "20px",
+      "pad": "0px",
+      "gap": "normal"
+    },
+    "media": {
+      "w": 169,
+      "h": 169,
+      "top": 107,
+      "left": 13,
+      "aspect": "1 / 1",
+      "br": "0px",
+      "pad": "0px",
+      "gap": "normal"
+    },
+    "img": {
+      "w": 169,
+      "h": 169,
+      "objectFit": "cover"
+    },
+    "info": {
+      "w": 169,
+      "h": 172,
+      "top": 276,
+      "left": 13,
+      "aspect": "auto",
+      "br": "0px",
+      "pad": "10px",
+      "gap": "normal"
+    },
+    "gap": "10px",
+    "pagePad": 12
+  },
+  "small": {
+    "greenChromeBottom": 0,
+    "header": {
+      "w": 345,
+      "h": 57,
+      "top": 0,
+      "left": 0,
+      "aspect": "auto",
+      "br": "0px",
+      "pad": "0px",
+      "gap": "normal"
+    },
+    "grid": {
+      "w": 321,
+      "h": 708,
+      "top": 57,
+      "left": 12,
+      "aspect": "auto",
+      "br": "0px",
+      "pad": "0px",
+      "gap": "10px"
+    },
+    "card": {
+      "w": 156,
+      "h": 327,
+      "top": 57,
+      "left": 12,
+      "aspect": "auto",
+      "br": "20px",
+      "pad": "0px",
+      "gap": "normal"
+    },
+    "media": {
+      "w": 154,
+      "h": 154,
+      "top": 58,
+      "left": 13,
+      "aspect": "1 / 1",
+      "br": "0px",
+      "pad": "0px",
+      "gap": "normal"
+    },
+    "img": {
+      "w": 154,
+      "h": 154,
+      "objectFit": "cover"
+    },
+    "info": {
+      "w": 154,
+      "h": 172,
+      "top": 212,
+      "left": 13,
+      "aspect": "auto",
+      "br": "0px",
+      "pad": "10px",
+      "gap": "normal"
+    },
+    "gap": "10px",
+    "pagePad": 12
+  }
+}

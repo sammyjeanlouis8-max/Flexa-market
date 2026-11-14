@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   Share,
@@ -83,6 +84,8 @@ export default function ListingDetailScreen() {
   const [purchaseBarH, setPurchaseBarH] = useState(
     PDP_METRICS.purchaseBarApprox + Math.max(insets.bottom, 8),
   );
+  /** Web `galleryFullscreen` dialog — show entire photo with object-contain. */
+  const [galleryFullscreen, setGalleryFullscreen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -346,13 +349,24 @@ export default function ListingDetailScreen() {
           <ScrollView
             contentContainerStyle={{
               // Measured web bar is 61px; use onLayout height so delivery/stock
-              // clear the sticky purchase bar instead of sitting under it.
+              // clear the sticky purchase bar. Keep full natural content height
+              // so the page scrolls to the end without shrinking gallery/CTAs.
               paddingBottom: purchaseBarH + 48,
+              flexGrow: 1,
             }}
             testID="listing-scroll"
           >
-            {/* Gallery: narrow thumb rail + large square main (web metrics) */}
-            <View style={[styles.galleryRow, { minHeight: galleryH }]}>
+            {/* Gallery sits fully below AppHeader (green bar) — never under it. */}
+            <View
+              style={[
+                styles.galleryRow,
+                {
+                  minHeight: galleryH,
+                  paddingTop: PDP_METRICS.galleryPadTop,
+                },
+              ]}
+              testID="listing-gallery"
+            >
               {media.length > 1 ? (
                 <ScrollView
                   style={[styles.thumbs, { maxHeight: galleryH }]}
@@ -402,13 +416,19 @@ export default function ListingDetailScreen() {
                 ]}
               >
                 {current?.type === "image" ? (
-                  <Image
-                    source={{ uri: current.uri }}
+                  <Pressable
                     style={styles.mainImg}
-                    contentFit={PDP_METRICS.objectFit}
-                    transition={150}
+                    onPress={() => setGalleryFullscreen(true)}
+                    accessibilityLabel="Enlarge photo"
                     testID="listing-main-image"
-                  />
+                  >
+                    <Image
+                      source={{ uri: current.uri }}
+                      style={StyleSheet.absoluteFillObject}
+                      contentFit={PDP_METRICS.objectFit}
+                      transition={150}
+                    />
+                  </Pressable>
                 ) : current?.type === "video" ? (
                   <Pressable
                     style={styles.mainImg}
@@ -455,6 +475,16 @@ export default function ListingDetailScreen() {
                       color={favorited ? "#EF4444" : "#0F172A"}
                     />
                   </Pressable>
+                  {current?.type === "image" ? (
+                    <Pressable
+                      style={styles.roundBtn}
+                      onPress={() => setGalleryFullscreen(true)}
+                      accessibilityLabel="Fullscreen"
+                      testID="listing-fullscreen"
+                    >
+                      <Feather name="maximize-2" size={16} color="#0F172A" />
+                    </Pressable>
+                  ) : null}
                 </View>
 
                 <Pressable
@@ -659,6 +689,69 @@ export default function ListingDetailScreen() {
               <Text style={styles.ownNote}>This is your listing</Text>
             </View>
           )}
+
+          {/* Web galleryFullscreen dialog — entire photo visible (object-contain). */}
+          <Modal
+            visible={galleryFullscreen}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setGalleryFullscreen(false)}
+            statusBarTranslucent
+          >
+            <View style={styles.fullscreenRoot} testID="listing-fullscreen-modal">
+              <Pressable
+                style={styles.fullscreenClose}
+                onPress={() => setGalleryFullscreen(false)}
+                accessibilityLabel="Close fullscreen"
+                testID="listing-fullscreen-close"
+              >
+                <Feather name="x" size={24} color="#FFFFFF" />
+              </Pressable>
+              {media.length > 1 ? (
+                <>
+                  <Pressable
+                    style={[styles.fullscreenNav, styles.fullscreenNavLeft]}
+                    onPress={() =>
+                      setImageIndex((i) => (i - 1 + media.length) % media.length)
+                    }
+                    accessibilityLabel="Previous"
+                  >
+                    <Feather name="chevron-left" size={28} color="#0F172A" />
+                  </Pressable>
+                  <Pressable
+                    style={[styles.fullscreenNav, styles.fullscreenNavRight]}
+                    onPress={() =>
+                      setImageIndex((i) => (i + 1) % media.length)
+                    }
+                    accessibilityLabel="Next"
+                  >
+                    <Feather name="chevron-right" size={28} color="#0F172A" />
+                  </Pressable>
+                </>
+              ) : null}
+              <View style={styles.fullscreenStage}>
+                {current?.type === "image" ? (
+                  <Image
+                    source={{ uri: current.uri }}
+                    style={styles.fullscreenImg}
+                    contentFit="contain"
+                    testID="listing-fullscreen-image"
+                  />
+                ) : current?.type === "video" && current.poster ? (
+                  <Image
+                    source={{ uri: current.poster }}
+                    style={styles.fullscreenImg}
+                    contentFit="contain"
+                  />
+                ) : null}
+              </View>
+              {media.length > 0 ? (
+                <Text style={styles.fullscreenCounter}>
+                  {imageIndex + 1} / {media.length}
+                </Text>
+              ) : null}
+            </View>
+          </Modal>
         </>
       )}
     </View>
@@ -680,7 +773,6 @@ const styles = StyleSheet.create({
   galleryRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingTop: 8,
     paddingRight: PDP_METRICS.mainRightInset,
     gap: PDP_METRICS.gapThumbToMain,
   },
@@ -920,5 +1012,56 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#64748B",
     paddingVertical: 8,
+  },
+
+  fullscreenRoot: {
+    flex: 1,
+    backgroundColor: "#000000",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullscreenClose: {
+    position: "absolute",
+    top: 48,
+    right: 16,
+    zIndex: 2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenStage: {
+    width: "100%",
+    height: "85%",
+    maxHeight: "85%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenImg: {
+    width: "100%",
+    height: "100%",
+  },
+  fullscreenNav: {
+    position: "absolute",
+    top: "50%",
+    marginTop: -22,
+    zIndex: 2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenNavLeft: { left: 12 },
+  fullscreenNavRight: { right: 12 },
+  fullscreenCounter: {
+    position: "absolute",
+    bottom: 36,
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 14,
   },
 });

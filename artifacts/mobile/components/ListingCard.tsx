@@ -3,7 +3,6 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import React from "react";
 import {
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -29,11 +28,10 @@ export function ListingCard({
   onFavoriteToggle,
   isFavorited = false,
 }: ListingCardProps) {
-  const { width: winW, height: winH } = useWindowDimensions();
-  const tabBar = Platform.OS === "ios" ? 84 : HOME_METRICS.bottomBar;
+  const { width: winW } = useWindowDimensions();
+  // Match WebView: square media at the same useful width (169@390, 154@360).
   const cardWidth = homeCardWidth(winW);
-  const imageHeight = homeImageHeight(winW, winH, tabBar);
-  const shortViewport = imageHeight < cardWidth * 0.92;
+  const imageHeight = homeImageHeight(winW);
 
   const imageUri = resolveMediaUrl(item.images?.[0]);
   const price = Number(item.price || 0);
@@ -51,7 +49,11 @@ export function ListingCard({
     <Pressable
       style={({ pressed }) => [
         styles.card,
-        { width: cardWidth, marginBottom: HOME_METRICS.rowGap / 2 },
+        {
+          width: cardWidth,
+          marginBottom: HOME_METRICS.rowGap / 2,
+          borderRadius: HOME_METRICS.cardRadius,
+        },
         pressed && styles.pressed,
       ]}
       onPress={openListing}
@@ -100,8 +102,13 @@ export function ListingCard({
           </Pressable>
         ) : null}
       </View>
-      <View style={[styles.info, shortViewport && styles.infoCompact]}>
-        <Text style={styles.title} numberOfLines={shortViewport ? 1 : 2}>
+      <View
+        style={[
+          styles.info,
+          { padding: HOME_METRICS.infoPadding },
+        ]}
+      >
+        <Text style={styles.title} numberOfLines={2}>
           {item.title}
         </Text>
         <Text style={styles.price} numberOfLines={1}>
@@ -119,7 +126,7 @@ export function ListingCard({
             </Text>
           </View>
         ) : null}
-        {!shortViewport && item.stockQuantity != null ? (
+        {item.stockQuantity != null ? (
           <Text style={styles.stock} numberOfLines={1}>
             {Number(item.stockQuantity)} available
           </Text>
@@ -131,7 +138,6 @@ export function ListingCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E2E8F0",
     overflow: "hidden",
@@ -182,9 +188,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  info: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 8, gap: 2 },
-  infoCompact: { paddingTop: 4, paddingBottom: 6, gap: 1 },
-  title: { fontSize: 13, fontWeight: "700", color: "#0F172A", lineHeight: 17 },
+  // Web .listing-card-info padding: 10px
+  info: { gap: 2 },
+  title: { fontSize: 14, fontWeight: "700", color: "#0F172A", lineHeight: 18, minHeight: 36 },
   price: { fontSize: 15, fontWeight: "800", color: "#0F172A", marginTop: 1 },
   locRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 1 },
   location: { fontSize: 11, color: "#94A3B8", flexShrink: 1 },

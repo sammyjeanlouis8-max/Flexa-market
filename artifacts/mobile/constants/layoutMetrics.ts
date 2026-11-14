@@ -1,37 +1,48 @@
 /**
- * Layout metrics measured from live flexamarket.com WebView at 390×844 CSS px
- * (iPhone-like). Native layouts scale from these proportions.
+ * Layout metrics measured from live flexamarket.com (mobile Chrome / WebView)
+ * on 2026-11-14. Native layouts use the same proportions at the same useful
+ * viewport size — do not shrink photos just to force 2×2 above the tab bar;
+ * the WebView scrolls instead.
  *
- * HOME (Featured / Today's Picks grid) — remeasured 2026-11-13:
- * - page horizontal inset ≈ 13
- * - column gap ≈ 12
- * - listing-card-media: aspect-square 1:1, object-fit: cover
- * - media size @390: 176×176; card width ≈ 178; full web card ≈ 349 tall
- * - bottom tab bar ≈ 57
+ * HOME (.home-product-grid) @390×844:
+ * - page horizontal inset = 12
+ * - grid gap = 10
+ * - listing-card-media: aspect-ratio 1/1, object-fit cover → 169×169
+ * - listing-card-info padding = 10
+ * - card border-radius ≈ 12–20 (rounded-xl)
+ * - mobile-app-header-row = 56 (+ safe-area top)
+ * - mobile-bottom-nav-row = 56 (+ safe-area / --flexa-android-bottom)
  *
- * PDP gallery — remeasured 2026-11-13:
- * - thumb: 44×44, left inset 8, vertical gap 6
- * - gap thumb → main: 10
- * - main: aspect-square, object-fit: contain → 320×320 @390
- * - purchase bar (.fm-pdp-purchase-bar): height 61, pad 8×10, gap 6
- * - qty ≈ 98×44; Add to Cart ≈ 125×44; Buy Now ≈ 135×44
+ * HOME @360×640 (small): media 154×154 square cover (same rules)
+ *
+ * PDP gallery @390×844:
+ * - thumb 44×44, left inset 8, vertical gap 6, gap thumb→main 10
+ * - main aspect-square, object-fit contain, max-h min(52vh, 380) → 305×305
+ * - gallery sits below sticky green header (breadcrumbs may sit between)
+ * - .fm-pdp-purchase-bar height 61, pad 8×10, gap 6; buttons h-11 (44)
+ * - fullscreen dialog: object-contain, full photo visible
+ *
+ * PDP @360×640: main 275×275 contain; bar still 61
  */
 export const WEB_VIEWPORT = { width: 390, height: 844 } as const;
+export const WEB_VIEWPORT_SMALL = { width: 360, height: 640 } as const;
 
 export const HOME_METRICS = {
-  pageInset: 13,
-  columnGap: 12,
-  imageAspect: 1, // square
-  // Match WebView listing-card-media: square frame + object-fit cover.
+  pageInset: 12,
+  columnGap: 10,
+  imageAspect: 1, // square — always match WebView at equal width
   objectFit: "cover" as const,
   /** Measured media edge at 390 CSS px */
-  mediaAt390: 176,
-  /** Compact native meta under the photo (title/price/loc/stock) */
-  metaApprox: 58,
-  rowGap: 8,
-  bottomBar: 57,
-  /** Chrome above the 2×2 grid: header + country/search + section title */
-  chromeAboveGrid: 160,
+  mediaAt390: 169,
+  /** Measured media edge at 360 CSS px */
+  mediaAt360: 154,
+  infoPadding: 10,
+  cardRadius: 12,
+  rowGap: 10,
+  bottomBarRow: 56,
+  /** Web often injects --flexa-android-bottom ≈ 32 under gesture nav */
+  bottomBarGestureFloor: 24,
+  headerRow: 56,
 };
 
 export const PDP_METRICS = {
@@ -44,6 +55,8 @@ export const PDP_METRICS = {
   mainMaxVh: 0.52,
   mainMaxPx: 380,
   objectFit: "contain" as const,
+  /** Gallery top padding under green bar (web uses pt-3 ≈ 12) */
+  galleryPadTop: 12,
   purchaseBarPaddingV: 8,
   purchaseBarPaddingH: 10,
   purchaseBarGap: 6,
@@ -58,34 +71,15 @@ export function homeCardWidth(windowWidth: number): number {
 }
 
 /**
- * Home photo frame height. Prefer the measured square proportion; on short
- * viewports shrink just enough so two full rows sit above the tab bar.
+ * Home photo frame height — always square like WebView `.listing-card-media`.
+ * Same useful width ⇒ same media size (169 @390, 154 @360).
  */
-export function homeImageHeight(
-  windowWidth: number,
-  windowHeight: number,
-  tabBarHeight = HOME_METRICS.bottomBar,
-): number {
+export function homeImageHeight(windowWidth: number): number {
   const cardW = homeCardWidth(windowWidth);
-  const square = Math.round(cardW * HOME_METRICS.imageAspect);
-  const available =
-    windowHeight -
-    HOME_METRICS.chromeAboveGrid -
-    tabBarHeight -
-    HOME_METRICS.rowGap;
-  const maxForTwoRows = Math.floor(
-    (available - 2 * HOME_METRICS.metaApprox) / 2,
-  );
-  // Prefer square (WebView). On short phones shrink so two full rows clear
-  // the tab bar — still well above the old ~0.48 crop (~57dp on this width).
-  const minReadable = Math.round(square * 0.55);
-  if (!Number.isFinite(maxForTwoRows) || maxForTwoRows <= 0) {
-    return square;
-  }
-  return Math.min(square, Math.max(minReadable, maxForTwoRows));
+  return Math.round(cardW * HOME_METRICS.imageAspect);
 }
 
-/** PDP main gallery box size for a given window. */
+/** PDP main gallery box size for a given window (matches web max-h + aspect). */
 export function pdpMainSize(windowWidth: number, windowHeight: number): number {
   const {
     thumbSize,
@@ -94,17 +88,16 @@ export function pdpMainSize(windowWidth: number, windowHeight: number): number {
     mainRightInset,
     mainMaxVh,
     mainMaxPx,
-    purchaseBarApprox,
   } = PDP_METRICS;
   const fromWidth =
     windowWidth - thumbLeft - thumbSize - gapThumbToMain - mainRightInset;
-  // Reserve header + title/price/delivery block + purchase bar so content
-  // isn't covered by the sticky bar on first paint.
-  const reservedChrome = 72 + 140 + purchaseBarApprox;
-  const fromHeight = Math.min(
-    windowHeight * mainMaxVh,
-    mainMaxPx,
-    Math.max(180, windowHeight - reservedChrome),
-  );
+  // Web: max-h-[min(52vh,380px)] with aspect-square → limited by both.
+  const fromHeight = Math.min(windowHeight * mainMaxVh, mainMaxPx);
   return Math.max(180, Math.min(fromWidth, fromHeight));
+}
+
+/** Bottom tab bar total height including gesture / safe-area floor. */
+export function bottomTabBarHeight(safeBottom: number): number {
+  const inset = Math.max(safeBottom, HOME_METRICS.bottomBarGestureFloor);
+  return HOME_METRICS.bottomBarRow + inset;
 }

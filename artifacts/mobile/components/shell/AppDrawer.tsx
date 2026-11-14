@@ -1,18 +1,25 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
+import { LANGUAGES, useLanguage } from "@/context/LanguageContext";
+import { useMarketplace } from "@/context/MarketplaceContext";
 import { useNavigationChrome } from "@/context/NavigationContext";
+import { useTheme } from "@/context/ThemeContext";
+import { apiRequest } from "@/lib/request";
 import { fetchWalletBalance } from "@/lib/walletApi";
 
 type IconName = React.ComponentProps<typeof Feather>["name"];
@@ -30,20 +37,93 @@ type DrawerSection = {
   items: DrawerItem[];
 };
 
-function goPath(router: ReturnType<typeof useRouter>, href: string) {
-  if (href.startsWith("/search?")) {
-    router.push(href as any);
-    return;
+type DriverStatus = "loading" | "none" | "pending" | "approved" | "rejected" | "suspended";
+
+/** Haiti-only FM delivery links — matches web `canShowFMDeliveryLinks`. */
+function canShowFMDeliveryLinks(country: string | null | undefined): boolean {
+  return country === "Haiti";
+}
+
+/** WebView `PremiumSideMenu` apply-row labels by driver application status. */
+function driverApplyLabel(status: DriverStatus): string {
+  switch (status) {
+    case "pending":
+      return "Application Pending";
+    case "approved":
+      return "My Driver Profile";
+    case "rejected":
+      return "Application Rejected";
+    case "suspended":
+      return "Account Suspended";
+    default:
+      return "Apply as Driver";
   }
+}
+
+function isPathActive(pathname: string, href: string): boolean {
+  const path = pathname.split("?")[0] || "/";
+  if (href === "/" || href === "/(tabs)" || href === "/(tabs)/") {
+    return path === "/" || path === "/(tabs)" || path === "/(tabs)/index" || path.endsWith("/index");
+  }
+  const base = href.split("?")[0];
+  if (base === "/search") {
+    if (href.includes("boosted=true")) {
+      return path.includes("search") && href.includes("boosted=true");
+    }
+    // Categories / search without boosted
+    return (path.includes("/search") || path.endsWith("/search")) && !pathname.includes("boosted=true");
+  }
+  if (path === base || path.startsWith(`${base}/`)) return true;
+  // Expo tabs / aliases
+  if ((base === "/favorites" || base === "/saved") && path.includes("favorites")) return true;
+  if (
+    (base === "/my-boosts" || base === "/booster") &&
+    (path.includes("my-boosts") || path.includes("boost") || path.includes("booster"))
+  ) {
+    return true;
+  }
+  if ((base === "/shop" || base.startsWith("/profile/")) && (path.includes("/shop/") || path.includes("/profile/"))) {
+    return true;
+  }
+  if (base.includes("driver") || base.includes("delivery")) {
+    if (path.includes("driver") || path.includes("delivery")) return true;
+  }
+  return false;
+}
+
+function goPath(router: ReturnType<typeof useRouter>, href: string) {
   router.push(href as any);
 }
 
 export function AppDrawer() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const pathname = usePathname();
+  const { width } = useWindowDimensions();
   const { user, token, logout } = useAuth();
+  const { country } = useMarketplace();
+  const { lang, setLang } = useLanguage();
+  const { isDark, toggleDark } = useTheme();
   const { drawerOpen, closeDrawer } = useNavigationChrome();
   const [promoTotal, setPromoTotal] = useState<number | null>(null);
+  const [langOpen, setLangOpen] = useState(false);
+  const [driverStatus, setDriverStatus] = useState<DriverStatus>("none");
+
+  const sheetWidth = Math.min(width * 0.92, 360);
+  const langMeta = LANGUAGES.find((l) => l.code === lang) ?? LANGUAGES.find((l) => l.code === "en");
+  const deliveryCountry = user?.country ?? country;
+
+  useEffect(() => {
+    if (!drawerOpen) {
+      setLangOpen(false);
+      return;
+    }
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeDrawer();
+      return true;
+    });
+    return () => sub.remove();
+  }, [drawerOpen, closeDrawer]);
 
   useEffect(() => {
     if (!drawerOpen || !token) {
@@ -53,7 +133,9 @@ export function AppDrawer() {
     let cancelled = false;
     fetchWalletBalance({ token })
       .then((b) => {
-        if (!cancelled) setPromoTotal(Number(b.promoBalance || 0) + Number(b.availableUsd || 0));
+        if (!cancelled) {
+          setPromoTotal(Number(b.promoBalance || 0) + Number(b.availableUsd || 0));
+        }
       })
       .catch(() => {
         if (!cancelled) setPromoTotal(null);
@@ -62,6 +144,38 @@ export function AppDrawer() {
       cancelled = true;
     };
   }, [drawerOpen, token]);
+
+  // Match web `useDriverStatus` for Delivery & Services labels / My Deliveries.
+  useEffect(() => {
+    if (!user || !token || !canShowFMDeliveryLinks(deliveryCountry)) {
+      setDriverStatus("none");
+      return;
+    }
+    let cancelled = false;
+    setDriverStatus("loading");
+    apiRequest<{ driver?: { status?: string }; application?: { status?: string } }>("/delivery/application", {
+      token,
+    })
+      .then((data) => {
+        if (cancelled) return;
+        if (data.driver?.status === "active") {
+          setDriverStatus("approved");
+          return;
+        }
+        const s = data.application?.status;
+        if (s === "pending" || s === "approved" || s === "rejected" || s === "suspended") {
+          setDriverStatus(s);
+          return;
+        }
+        setDriverStatus("none");
+      })
+      .catch(() => {
+        if (!cancelled) setDriverStatus("none");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, token, deliveryCountry, drawerOpen]);
 
   const sections: DrawerSection[] = useMemo(() => {
     const discover: DrawerSection = {
@@ -79,6 +193,7 @@ export function AppDrawer() {
     const out: DrawerSection[] = [discover];
 
     if (user) {
+      // Shop & Products — labels match WebView screenshots; native routes map to existing screens.
       out.push({
         id: "boutique",
         heading: "SHOP & PRODUCTS",
@@ -86,7 +201,7 @@ export function AppDrawer() {
           { icon: "shopping-bag", label: "My Shop", href: `/shop/${user.id}`, testID: "drawer-my-shop" },
           { icon: "package", label: "My listings", href: "/my-listings", testID: "drawer-my-products" },
           { icon: "plus-square", label: "Add a product", href: "/sell", testID: "drawer-add-product" },
-          { icon: "video", label: "My videos", href: "/videos", testID: "drawer-my-videos" },
+          { icon: "video", label: "My videos", href: "/my-videos", testID: "drawer-my-videos" },
           { icon: "zap", label: "My Active Boosts", href: "/my-boosts", testID: "drawer-shop-my-boosts" },
           { icon: "bar-chart-2", label: "Boost Analytics", href: "/boost-analytics", testID: "drawer-boost-analytics" },
           { icon: "settings", label: "Shop settings", href: "/settings", testID: "drawer-shop-settings" },
@@ -102,24 +217,53 @@ export function AppDrawer() {
           { icon: "award", label: "Reviews & Ratings", href: `/shop/${user.id}`, testID: "drawer-reviews" },
         ],
       });
-      out.push({
-        id: "delivery",
-        heading: "DELIVERY",
-        items: [
-          { icon: "truck", label: "Available deliveries", href: "/driver-dashboard", testID: "drawer-deliveries" },
-          { icon: "user-plus", label: "Apply as driver", href: "/driver-apply", testID: "drawer-driver-apply" },
-          { icon: "map-pin", label: "Order tracking", href: "/track", testID: "drawer-tracking" },
-        ],
-      });
+
+      if (canShowFMDeliveryLinks(deliveryCountry)) {
+        const deliveryItems: DrawerItem[] = [
+          {
+            icon: "truck",
+            label: "Available Deliveries",
+            href: "/driver-dashboard",
+            testID: "drawer-deliveries",
+          },
+          {
+            icon: "user-plus",
+            label: driverApplyLabel(driverStatus),
+            href: "/driver-apply",
+            testID: "drawer-driver-apply",
+          },
+        ];
+        if (driverStatus === "approved") {
+          deliveryItems.push({
+            icon: "map-pin",
+            label: "My Deliveries",
+            href: "/driver-dashboard",
+            testID: "drawer-my-deliveries",
+          });
+        }
+        deliveryItems.push({
+          icon: "search",
+          label: "Order tracking",
+          href: "/track",
+          testID: "drawer-tracking",
+        });
+        out.push({
+          id: "delivery",
+          heading: "DELIVERY & SERVICES",
+          items: deliveryItems,
+        });
+      }
+
       out.push({
         id: "account",
         heading: "MY ACCOUNT",
         items: [
-          { icon: "user", label: "Profile", href: "/profile", testID: "drawer-profile" },
+          // Web Profile → /settings
+          { icon: "user", label: "Profile", href: "/settings", testID: "drawer-profile" },
           { icon: "heart", label: "Saved", href: "/favorites", testID: "drawer-saved" },
           { icon: "file-text", label: "My Drafts", href: "/my-drafts", testID: "drawer-my-drafts" },
           { icon: "credit-card", label: "Wallet", href: "/wallet", testID: "drawer-wallet" },
-          { icon: "gift", label: "Promo Account", href: "/wallet?tab=promo", testID: "drawer-promo-account" },
+          { icon: "gift", label: "Promo Account", href: "/wallet", testID: "drawer-promo-account" },
           { icon: "award", label: "Subscription", href: "/subscription", testID: "drawer-subscription" },
           { icon: "settings", label: "Settings", href: "/settings", testID: "drawer-settings" },
           { icon: "lock", label: "Security & Login", href: "/settings/security", testID: "drawer-security" },
@@ -130,7 +274,7 @@ export function AppDrawer() {
       out.push({
         id: "account",
         heading: "MY ACCOUNT",
-        items: [{ icon: "log-in", label: "Login", href: "/auth/login", testID: "drawer-login" }],
+        items: [{ icon: "user", label: "Sign In", href: "/auth/login", testID: "drawer-login" }],
       });
     }
 
@@ -142,41 +286,37 @@ export function AppDrawer() {
         { icon: "music", label: "Flexa Music", href: "/music", testID: "drawer-flexa-music" },
         ...(user
           ? ([
-              { icon: "zap", label: "My Boosts", href: "/my-boosts", testID: "drawer-my-boosts" },
-              { icon: "percent", label: "Commission promo", href: "/commission-promo", testID: "drawer-commission" },
+              { icon: "zap", label: "My Active Boosts", href: "/my-boosts", testID: "drawer-my-boosts" },
+              { icon: "percent", label: "Commission Promo", href: "/commission-promo", testID: "drawer-commission" },
             ] as DrawerItem[])
           : []),
-        { icon: "briefcase", label: "Jobs", href: "/jobs", testID: "drawer-jobs" },
+        { icon: "briefcase", label: "Jobs & Opportunities", href: "/jobs", testID: "drawer-jobs" },
         ...(user
           ? ([{ icon: "award", label: "Referral Program", href: "/leaderboard", testID: "drawer-referral" }] as DrawerItem[])
           : []),
-        { icon: "message-circle", label: "FlexaBot AI", href: "/chatbot", testID: "drawer-chatbot" },
-        { icon: "help-circle", label: "Support", href: "/support", testID: "drawer-support" },
+        { icon: "star", label: "FlexaBot AI", href: "/chatbot", testID: "drawer-chatbot" },
+        { icon: "help-circle", label: "Support & Help", href: "/support", testID: "drawer-support" },
       ],
     });
 
-    out.push({
-      id: "financial",
-      heading: "FINANCIAL SUPPORT",
-      items: [
-        { icon: "trending-up", label: "Credit Score", href: "/credit-score", testID: "drawer-credit" },
-        { icon: "dollar-sign", label: "Business Loans", href: "/loans", testID: "drawer-loans" },
-      ],
-    });
+    // Financial Support is hidden on WebView native-mobile shell — keep parity.
+    // (Web: `!isNativeMobileApp() && Haiti|DR|superAdmin`)
 
-    if (user?.isAdmin || user?.isSuperAdmin) {
+    if (user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user")) {
       out.push({
         id: "admin",
         heading: "ADMIN",
         items: [
           { icon: "shield", label: "Admin Dashboard", href: "/admin", testID: "drawer-admin" },
-          { icon: "shield", label: "Moderator Panel", href: "/admin?tab=moderation", testID: "drawer-moderator" },
+          ...(user.isAdmin || user.isSuperAdmin || user.role === "moderator"
+            ? ([{ icon: "shield", label: "Moderator Panel", href: "/admin?tab=moderation", testID: "drawer-moderator" }] as DrawerItem[])
+            : []),
         ],
       });
     }
 
     return out;
-  }, [user]);
+  }, [user, deliveryCountry, driverStatus]);
 
   const roleLabel = user?.isSuperAdmin
     ? "Super Admin"
@@ -193,106 +333,200 @@ export function AppDrawer() {
 
   if (!drawerOpen) return null;
 
-  // Absolute overlay (not RN Modal) — Modal presentation is unreliable on some
-  // Android emulator / SystemUI combinations and never paints above the tabs.
   return (
-      <View style={styles.overlay} pointerEvents="box-none">
-        <Pressable style={styles.backdrop} onPress={closeDrawer} testID="premium-menu-backdrop" />
-        <View style={[styles.sheet, { paddingTop: insets.top }]} testID="premium-side-menu">
-          <View style={styles.header}>
-            <View style={styles.headerTop}>
-              <View style={styles.brandRow}>
-                <Image
-                  source={require("../../assets/images/flexa-logo-v2.png")}
-                  style={styles.logo}
-                  contentFit="contain"
-                />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.brandName}>Flexa Market</Text>
-                  <Text style={styles.brandTag}>Marketplace · Delivery · Services</Text>
-                </View>
+    <View style={styles.overlay} pointerEvents="box-none">
+      <Pressable
+        style={styles.backdrop}
+        onPress={closeDrawer}
+        testID="premium-menu-backdrop"
+        accessibilityLabel="Close menu backdrop"
+      />
+      <View
+        style={[styles.sheet, { width: sheetWidth, paddingTop: insets.top }]}
+        testID="premium-side-menu"
+      >
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <View style={styles.brandRow}>
+              <Image
+                source={require("../../assets/images/flexa-logo-v2.png")}
+                style={styles.logo}
+                contentFit="contain"
+              />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.brandName}>Flexa Market</Text>
+                <Text style={styles.brandTag}>Marketplace · Delivery · Services</Text>
               </View>
-              <Pressable onPress={closeDrawer} style={styles.closeBtn} accessibilityLabel="Close menu">
-                <Feather name="x" size={18} color="#FFFFFF" />
-              </Pressable>
             </View>
-
-            {user ? (
-              <View style={styles.userCard}>
-                <Text style={styles.userName} numberOfLines={1}>
-                  {user.name}{" "}
-                  {user.kycStatus === "approved" ? (
-                    <Text style={styles.verified}>✓</Text>
-                  ) : null}
-                </Text>
-                <Text style={styles.userMeta} numberOfLines={1}>
-                  {roleLabel} · ID: FM-{user.id}
-                </Text>
-                <Pressable style={styles.promoBtn} onPress={() => onNavigate("/wallet")}>
-                  <Feather name="gift" size={14} color="#6EE7B7" />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.promoLabel}>Promo Account</Text>
-                    <Text style={styles.promoValue}>
-                      ${promoTotal != null ? promoTotal.toFixed(2) : "—"}
-                    </Text>
-                  </View>
-                  <Feather name="chevron-right" size={16} color="rgba(255,255,255,0.5)" />
-                </Pressable>
-              </View>
-            ) : null}
+            <Pressable
+              onPress={closeDrawer}
+              style={styles.closeBtn}
+              accessibilityLabel="Close menu"
+              testID="premium-menu-close"
+            >
+              <Feather name="x" size={16} color="#FFFFFF" />
+            </Pressable>
           </View>
 
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 12, paddingBottom: insets.bottom + 24, gap: 14 }}
-          >
-            {sections.map((section) => (
-              <View key={section.id} style={styles.section}>
-                <Text style={styles.sectionHeading}>{section.heading}</Text>
-                {section.items.map((item) => (
-                  <Pressable
-                    key={`${section.id}-${item.label}`}
-                    style={({ pressed }) => [
-                      styles.row,
-                      pressed && { backgroundColor: "rgba(20,108,67,0.08)" },
-                      item.href === "/" && styles.rowActive,
-                    ]}
-                    onPress={() => onNavigate(item.href)}
-                    testID={item.testID}
-                  >
-                    <Feather name={item.icon} size={18} color={colors.flexaGreen} />
-                    <Text style={styles.rowLabel}>{item.label}</Text>
-                    <Feather name="chevron-right" size={16} color="#94A3B8" />
-                  </Pressable>
-                ))}
-              </View>
-            ))}
-
-            <Pressable
-              style={styles.langRow}
-              onPress={() => onNavigate("/language-picker")}
-            >
-              <Feather name="globe" size={18} color={colors.flexaGreen} />
-              <Text style={styles.rowLabel}>Language</Text>
-              <Feather name="chevron-right" size={16} color="#94A3B8" />
-            </Pressable>
-
-            {user ? (
+          {user ? (
+            <View style={styles.userCard}>
+              <Text style={styles.userName} numberOfLines={1}>
+                {user.name}{" "}
+                {user.kycStatus === "approved" ? (
+                  <Text style={styles.verified}>✓</Text>
+                ) : null}
+              </Text>
+              <Text style={styles.userMeta} numberOfLines={1}>
+                {roleLabel} · ID: FM-{user.id}
+              </Text>
               <Pressable
-                style={styles.logout}
-                onPress={async () => {
-                  closeDrawer();
-                  await logout();
-                  router.replace("/");
-                }}
+                style={styles.promoBtn}
+                onPress={() => onNavigate("/wallet")}
+                testID="drawer-promo-balance"
               >
-                <Feather name="log-out" size={18} color="#EF4444" />
-                <Text style={styles.logoutText}>Log out</Text>
+                <Feather name="gift" size={14} color="#6EE7B7" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.promoLabel}>Promo Account</Text>
+                  <Text style={styles.promoValue}>
+                    ${promoTotal != null ? promoTotal.toFixed(2) : "—"}
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={14} color="rgba(255,255,255,0.5)" />
               </Pressable>
-            ) : null}
-          </ScrollView>
+            </View>
+          ) : null}
         </View>
+
+        <ScrollView
+          style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+          contentContainerStyle={{
+            paddingHorizontal: 10,
+            paddingTop: 12,
+            paddingBottom: Math.max(insets.bottom, 16) + 16,
+            gap: 12,
+          }}
+          showsVerticalScrollIndicator={false}
+          testID="premium-menu-scroll"
+        >
+          {sections.map((section) => (
+            <View key={section.id} style={styles.sectionBlock} testID={`drawer-section-${section.id}`}>
+              <Text style={styles.sectionHeading}>{section.heading}</Text>
+              <View style={styles.sectionCard}>
+                {section.items.map((item, idx) => {
+                  const active = isPathActive(pathname, item.href);
+                  return (
+                    <Pressable
+                      key={`${section.id}-${item.testID ?? item.label}`}
+                      style={({ pressed }) => [
+                        styles.row,
+                        idx > 0 && styles.rowDivider,
+                        active && styles.rowActive,
+                        pressed && !active && { backgroundColor: "rgba(20,108,67,0.06)" },
+                      ]}
+                      onPress={() => onNavigate(item.href)}
+                      testID={item.testID}
+                      accessibilityState={{ selected: active }}
+                    >
+                      {active ? <View style={styles.activeBar} /> : null}
+                      <View style={[styles.iconBox, active && styles.iconBoxActive]}>
+                        <Feather
+                          name={item.icon}
+                          size={14}
+                          color={active ? colors.flexaGreenDeep : "#64748B"}
+                        />
+                      </View>
+                      <Text style={[styles.rowLabel, active && styles.rowLabelActive]} numberOfLines={1}>
+                        {item.label}
+                      </Text>
+                      <Feather
+                        name="chevron-right"
+                        size={14}
+                        color={active ? colors.flexaGreen : "#CBD5E1"}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+
+          <View style={styles.sectionBlock} testID="drawer-section-preferences">
+            <Text style={styles.sectionHeading}>PREFERENCES</Text>
+            <View style={styles.sectionCard}>
+              <Pressable
+                style={styles.row}
+                onPress={() => setLangOpen((v) => !v)}
+                testID="drawer-lang-toggle"
+              >
+                <View style={styles.iconBox}>
+                  <Feather name="globe" size={14} color="#64748B" />
+                </View>
+                <Text style={styles.rowLabel}>Language</Text>
+                <Text style={styles.langMeta}>
+                  {langMeta?.flag} {langMeta?.label === "English" || langMeta?.code === "en" ? "English" : langMeta?.native}
+                </Text>
+                <Feather
+                  name="chevron-right"
+                  size={14}
+                  color="#CBD5E1"
+                  style={{ transform: [{ rotate: langOpen ? "90deg" : "0deg" }] }}
+                />
+              </Pressable>
+              {langOpen ? (
+                <View style={styles.langPicker}>
+                  {LANGUAGES.map((l) => (
+                    <Pressable
+                      key={l.code}
+                      style={[styles.langOption, lang === l.code && styles.langOptionActive]}
+                      onPress={async () => {
+                        await setLang(l.code);
+                        setLangOpen(false);
+                        closeDrawer();
+                      }}
+                      testID={`drawer-lang-${l.code}`}
+                    >
+                      <Text style={styles.langOptionFlag}>{l.flag}</Text>
+                      <Text style={styles.langOptionName}>{l.native}</Text>
+                      {lang === l.code ? (
+                        <Text style={styles.langCheck}>✓</Text>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              <View style={[styles.row, styles.rowDivider]}>
+                <View style={styles.iconBox}>
+                  <Feather name={isDark ? "sun" : "moon"} size={14} color="#64748B" />
+                </View>
+                <Text style={styles.rowLabel}>Dark Mode</Text>
+                <Switch
+                  testID="btn-dark-mode-toggle"
+                  value={isDark}
+                  onValueChange={() => toggleDark()}
+                  trackColor={{ false: "#E2E8F0", true: colors.flexaGreen }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+            </View>
+          </View>
+
+          {user ? (
+            <Pressable
+              style={styles.logout}
+              testID="drawer-logout"
+              onPress={async () => {
+                closeDrawer();
+                await logout();
+                router.replace("/");
+              }}
+            >
+              <Feather name="log-out" size={16} color="#EF4444" />
+              <Text style={styles.logoutText}>Sign out</Text>
+            </Pressable>
+          ) : null}
+        </ScrollView>
       </View>
+    </View>
   );
 }
 
@@ -305,8 +539,6 @@ const styles = StyleSheet.create({
   },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   sheet: {
-    width: "88%",
-    maxWidth: 360,
     height: "100%",
     backgroundColor: "#FFFFFF",
     elevation: 12,
@@ -320,7 +552,12 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 14,
   },
-  headerTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 },
+  headerTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 },
   logo: { width: 32, height: 32, borderRadius: 8 },
   brandName: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
@@ -358,41 +595,102 @@ const styles = StyleSheet.create({
   },
   promoLabel: { color: "rgba(255,255,255,0.7)", fontSize: 10 },
   promoValue: { color: "#FFFFFF", fontSize: 13, fontWeight: "700", marginTop: 2 },
-  section: { gap: 2 },
+  sectionBlock: { gap: 4 },
   sectionHeading: {
-    color: colors.flexaGreen,
-    fontSize: 11,
+    color: "hsl(152, 55%, 28%)",
+    fontSize: 10,
     fontWeight: "800",
-    letterSpacing: 0.6,
-    marginBottom: 4,
-    marginLeft: 4,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginLeft: 8,
+    marginBottom: 2,
+  },
+  sectionCard: {
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(226,232,240,0.95)",
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
   row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-  },
-  rowActive: { backgroundColor: "rgba(20,108,67,0.1)" },
-  rowLabel: { flex: 1, fontSize: 14, color: "#0F172A", fontWeight: "600" },
-  langRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  logout: {
+    position: "relative",
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 14,
+    minHeight: 40,
+    paddingVertical: 6,
     paddingHorizontal: 10,
   },
-  logoutText: { color: "#EF4444", fontSize: 14, fontWeight: "700" },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(226,232,240,0.9)",
+  },
+  rowActive: {
+    backgroundColor: "hsla(152, 45%, 92%, 1)",
+  },
+  activeBar: {
+    position: "absolute",
+    left: 0,
+    top: 6,
+    bottom: 6,
+    width: 3,
+    borderTopRightRadius: 999,
+    borderBottomRightRadius: 999,
+    backgroundColor: "hsl(152, 65%, 28%)",
+  },
+  iconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconBoxActive: {
+    backgroundColor: "hsla(152, 55%, 88%, 1)",
+  },
+  rowLabel: { flex: 1, fontSize: 13, color: "#0F172A", fontWeight: "500" },
+  rowLabelActive: { fontWeight: "700", color: "hsl(152, 65%, 18%)" },
+  langMeta: { fontSize: 11, color: "#64748B", marginRight: 2 },
+  langPicker: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(226,232,240,0.9)",
+    backgroundColor: "#F8FAFC",
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    gap: 2,
+  },
+  langOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  langOptionActive: {
+    backgroundColor: "hsla(152, 45%, 92%, 1)",
+  },
+  langOptionFlag: { fontSize: 16 },
+  langOptionName: { flex: 1, fontSize: 13, color: "#0F172A" },
+  langCheck: { color: colors.flexaGreen, fontWeight: "800", fontSize: 12 },
+  logout: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  logoutText: { color: "#EF4444", fontSize: 13, fontWeight: "700" },
 });

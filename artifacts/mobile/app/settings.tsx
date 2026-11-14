@@ -5,6 +5,7 @@ import {
   FlatList,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -32,67 +33,73 @@ export default function SettingsScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <Pressable style={styles.row} onPress={() => setOpen(true)}>
-        <View>
-          <Text style={styles.label}>Marketplace country</Text>
-          <Text style={styles.value}>
-            {COUNTRY_FLAGS[country] ?? ""} {country}
-          </Text>
-        </View>
-        <Feather name="chevron-right" size={18} color="#94A3B8" />
-      </Pressable>
-
-      <Pressable style={[styles.row, { marginTop: 10 }]} onPress={() => router.push("/edit-profile")}>
-        <View>
-          <Text style={styles.label}>Account</Text>
-          <Text style={styles.value}>Edit profile</Text>
-        </View>
-        <Feather name="chevron-right" size={18} color="#94A3B8" />
-      </Pressable>
-
-      <Pressable style={[styles.row, { marginTop: 10 }]} onPress={() => router.push("/addresses")}>
-        <View>
-          <Text style={styles.label}>Delivery</Text>
-          <Text style={styles.value}>Address book</Text>
-        </View>
-        <Feather name="chevron-right" size={18} color="#94A3B8" />
-      </Pressable>
-
-      <Pressable
-        style={[styles.row, { marginTop: 10 }]}
-        onPress={() => router.push("/language-picker")}
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 12) + 24 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <View>
-          <Text style={styles.label}>Preferences</Text>
-          <Text style={styles.value}>Language</Text>
-        </View>
-        <Feather name="chevron-right" size={18} color="#94A3B8" />
-      </Pressable>
-
-      {[
-        { label: "Security", value: "Password & account", href: "/settings/security" },
-        { label: "Notifications", value: "Push, email, SMS", href: "/settings/notifications" },
-        { label: "Privacy", value: "Policies & data", href: "/settings/privacy" },
-        { label: "Payments", value: "Wallet & Flex Card", href: "/settings/payments" },
-        { label: "Help", value: "Support & FAQ", href: "/settings/help" },
-      ].map((item) => (
-        <Pressable
-          key={item.href}
-          style={[styles.row, { marginTop: 10 }]}
-          onPress={() => router.push(item.href as any)}
-        >
+        <Pressable style={styles.row} onPress={() => setOpen(true)}>
           <View>
-            <Text style={styles.label}>{item.label}</Text>
-            <Text style={styles.value}>{item.value}</Text>
+            <Text style={styles.label}>Marketplace country</Text>
+            <Text style={styles.value}>
+              {COUNTRY_FLAGS[country] ?? ""} {country}
+            </Text>
           </View>
           <Feather name="chevron-right" size={18} color="#94A3B8" />
         </Pressable>
-      ))}
 
-      <Text style={styles.hint}>
-        Guests browse listings for the selected country. Signed-in shoppers use
-        their account country from the DigitalOcean backend.
-      </Text>
+        <Pressable style={[styles.row, { marginTop: 10 }]} onPress={() => router.push("/edit-profile")}>
+          <View>
+            <Text style={styles.label}>Account</Text>
+            <Text style={styles.value}>Edit profile</Text>
+          </View>
+          <Feather name="chevron-right" size={18} color="#94A3B8" />
+        </Pressable>
+
+        <Pressable style={[styles.row, { marginTop: 10 }]} onPress={() => router.push("/addresses")}>
+          <View>
+            <Text style={styles.label}>Delivery</Text>
+            <Text style={styles.value}>Address book</Text>
+          </View>
+          <Feather name="chevron-right" size={18} color="#94A3B8" />
+        </Pressable>
+
+        <Pressable
+          style={[styles.row, { marginTop: 10 }]}
+          onPress={() => router.push("/language-picker")}
+        >
+          <View>
+            <Text style={styles.label}>Preferences</Text>
+            <Text style={styles.value}>Language</Text>
+          </View>
+          <Feather name="chevron-right" size={18} color="#94A3B8" />
+        </Pressable>
+
+        {[
+          { label: "Security", value: "Password & account", href: "/settings/security" },
+          { label: "Notifications", value: "Push, email, SMS", href: "/settings/notifications" },
+          { label: "Privacy", value: "Policies & data", href: "/settings/privacy" },
+          { label: "Payments", value: "Wallet & Flex Card", href: "/settings/payments" },
+          { label: "Help", value: "Support & FAQ", href: "/settings/help" },
+        ].map((item) => (
+          <Pressable
+            key={item.href}
+            style={[styles.row, { marginTop: 10 }]}
+            onPress={() => router.push(item.href as any)}
+          >
+            <View>
+              <Text style={styles.label}>{item.label}</Text>
+              <Text style={styles.value}>{item.value}</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color="#94A3B8" />
+          </Pressable>
+        ))}
+
+        <Text style={styles.hint}>
+          Guests browse listings for the selected country. Signed-in shoppers use
+          their account country from the DigitalOcean backend.
+        </Text>
+      </ScrollView>
 
       <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>

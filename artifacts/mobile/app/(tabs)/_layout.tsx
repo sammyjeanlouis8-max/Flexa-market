@@ -1,8 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Dimensions, Platform, Text, View } from "react-native";
+import { Dimensions, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import colors from "@/constants/colors";
+import {
+  HOME_METRICS,
+  bottomTabBarHeight,
+} from "@/constants/layoutMetrics";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { fetchUnreadCount } from "@/lib/chatApi";
@@ -31,7 +36,17 @@ function TabLabel({ label, color }: { label: string; color: string }) {
 export default function TabLayout() {
   const { token } = useAuth();
   const { count: cartCount } = useCart();
+  const insets = useSafeAreaInsets();
   const [unread, setUnread] = useState(0);
+
+  // Match WebView: 56px content row + max(safe-area, gesture floor) so
+  // every label — especially "Messages" — sits clearly above the Android
+  // system gesture bar.
+  const padBottom = Math.max(
+    insets.bottom,
+    HOME_METRICS.bottomBarGestureFloor,
+  );
+  const tabBarHeight = bottomTabBarHeight(insets.bottom);
 
   useEffect(() => {
     if (!token) {
@@ -64,9 +79,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: "#FFFFFF",
           borderTopColor: "#E2E8F0",
-          // Web bottom bar ≈ 57 CSS px (+ iOS home indicator)
-          height: Platform.OS === "ios" ? 84 : 56,
-          paddingBottom: Platform.OS === "ios" ? 24 : 6,
+          height: tabBarHeight,
+          paddingBottom: padBottom,
           paddingTop: 4,
         },
         tabBarIconStyle: { marginTop: 2 },
@@ -87,7 +101,9 @@ export default function TabLayout() {
         name="search"
         options={{
           title: "Categories",
-          tabBarLabel: ({ color }) => <TabLabel label="Categories" color={color} />,
+          tabBarLabel: ({ color }) => (
+            <TabLabel label="Categories" color={color} />
+          ),
           tabBarIcon: ({ color, size }) => (
             <Feather name="grid" color={color} size={size} />
           ),
@@ -97,7 +113,9 @@ export default function TabLayout() {
         name="inbox"
         options={{
           title: "Messages",
-          tabBarLabel: ({ color }) => <TabLabel label="Messages" color={color} />,
+          tabBarLabel: ({ color }) => (
+            <TabLabel label="Messages" color={color} />
+          ),
           tabBarBadge: unread > 0 ? (unread > 99 ? "99+" : unread) : undefined,
           tabBarBadgeStyle: {
             backgroundColor: colors.flexaOrange,
@@ -117,7 +135,8 @@ export default function TabLayout() {
         options={{
           title: "Cart",
           tabBarLabel: ({ color }) => <TabLabel label="Cart" color={color} />,
-          tabBarBadge: cartCount > 0 ? (cartCount > 99 ? "99+" : cartCount) : undefined,
+          tabBarBadge:
+            cartCount > 0 ? (cartCount > 99 ? "99+" : cartCount) : undefined,
           tabBarBadgeStyle: {
             backgroundColor: colors.flexaOrange,
             color: "#FFFFFF",
@@ -133,7 +152,9 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: "My Account",
-          tabBarLabel: ({ color }) => <TabLabel label="My Account" color={color} />,
+          tabBarLabel: ({ color }) => (
+            <TabLabel label="My Account" color={color} />
+          ),
           tabBarIcon: ({ color, size }) => (
             <Feather name="user" color={color} size={size} />
           ),

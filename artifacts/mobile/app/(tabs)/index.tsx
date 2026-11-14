@@ -449,13 +449,13 @@ const styles = StyleSheet.create({
   error: { color: "#B91C1C", fontSize: 13 },
   empty: { textAlign: "center", color: "#64748B", marginTop: 24, marginBottom: 40 },
   listContent: { paddingBottom: 8 },
-  // Match web home-product-grid: gap ≈ 12, inset ≈ 13
-  gridRow: { paddingHorizontal: 13, gap: 12, marginBottom: 8 },
+  // Match web home-product-grid: gap 10, inset 12 (remeasured 2026-11-14)
+  gridRow: { paddingHorizontal: 12, gap: 10, marginBottom: 10 },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    paddingHorizontal: 13,
-    gap: 12,
+    paddingHorizontal: 12,
+    gap: 10,
   },
   skeletons: { flex: 1 },
   fab: {

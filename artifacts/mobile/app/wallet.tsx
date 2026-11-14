@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
@@ -487,11 +488,7 @@ export default function WalletScreen() {
                       label: "Contacts",
                       icon: "users" as const,
                       solid: false as boolean,
-                      onPress: () =>
-                        Alert.alert(
-                          "Contacts",
-                          "Agent directory is limited on Android. Use Send to transfer by account search, or open agents from the web wallet when available.",
-                        ),
+                      onPress: () => router.push("/agents"),
                     },
                     {
                       label: "Bonus",
@@ -590,7 +587,9 @@ export default function WalletScreen() {
               ) : (
                 <Pressable
                   style={styles.panelGold}
-                  onPress={() => router.push("/agents")}
+                  onPress={() =>
+                    void Linking.openURL("https://flexamarket.com/agents/apply")
+                  }
                 >
                   <Feather name="star" size={18} color="#B45309" />
                   <View style={{ flex: 1 }}>

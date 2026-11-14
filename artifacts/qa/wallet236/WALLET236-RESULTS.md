@@ -14,7 +14,7 @@
 | Overview / Promo / Transactions tabs | **Fixed** | Emulator screenshots attached |
 | Deposit | **Verified** | Remains blocked on Android (Play policy + server guard); shows reason |
 | Send | **Fixed** | → `/wallet-transfer` |
-| Contacts | **Blocked** | No native agents directory; explains limitation |
+| Contacts | **Fixed** | Opens native `/agents` Agent directory (web `/wallet/agents`) — see `WALLET242-GAP-RESULTS.md` |
 | Bonus (redeem card) | **Fixed** | Modal → `POST /wallet/redeem-card` |
 | Receive / Cash out | **Fixed** | → `/wallet-cashout` → `POST /cashout/request` |
 | History | **Fixed** | → `/wallet-history` + in-tab All/In/Out |
@@ -29,7 +29,7 @@
 
 ## Remaining differences (specific causes)
 
-1. **Contacts** — web opens `/wallet/agents`; native has no agents directory route yet (alert explains).
+1. **Contacts** — native opens `/agents` Agent directory (parity with web `/wallet/agents`).
 2. **History shortcut on web** goes to `/sales`; native uses `/wallet-history` (correct ledger history).
 3. **Non-zero / Super Admin platform UI** — blocked without funded or Super Admin test secrets in this environment.
 4. **QR** uses `api.qrserver.com` image (display-only); web uses in-app QR component — same account payload.

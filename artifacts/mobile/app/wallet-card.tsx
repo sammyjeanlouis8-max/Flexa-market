@@ -136,6 +136,13 @@ export default function WalletCardScreen() {
             This is your personal FM wallet card (account {account}). It is separate from the
             official FM-FLEXA-MARKET platform account and from Flex Card debt repayment.
           </Text>
+          {Number(balance?.balanceUsd ?? 0) === 0 ? (
+            <Text style={styles.emptyHint}>
+              Balance $0.00 is a valid empty wallet — not an access error. Deposit remains blocked on
+              Android; Send, Receive, Contacts, and Haiti FM Wallet checkout stay available when
+              eligible.
+            </Text>
+          ) : null}
         </View>
       )}
     </View>
@@ -220,6 +227,16 @@ const styles = StyleSheet.create({
   },
   actionText: { color: colors.flexaGreen, fontWeight: "800", fontSize: 13 },
   note: { color: "#64748B", fontSize: 12, lineHeight: 18 },
+  emptyHint: {
+    color: "#0F766E",
+    fontSize: 12,
+    lineHeight: 18,
+    backgroundColor: "#ECFDF5",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    padding: 10,
+  },
   error: { color: "#B91C1C" },
   retry: { color: colors.flexaGreen, fontWeight: "800" },
 });

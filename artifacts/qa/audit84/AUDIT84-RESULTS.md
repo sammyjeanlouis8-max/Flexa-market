@@ -1,198 +1,198 @@
-# Flexa Market Android — 84-screen audit report
+# Flexa Market Android — 84-screen audit report (PR #243)
 
 **Do not generate a release APK/AAB or store submission until Sammy approves.**
 
-## Build identity
+## 1. Build identity & PR dependency
 
 | Field | Value |
 |---|---|
+| PR | [#243](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/243) stacked on [#242](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/242) |
 | Branch | `cursor/native-84-screen-audit-9d45` |
-| Test commit | `b2a11109f1a27c27990c0f65160e3fea8470d29e` |
+| Includes #242 | **Yes** — merged `a31b4506` (Contacts → Agent directory, enlarged action orbs) |
+| Test commit | _(pinned after push)_ |
 | Package | `com.flexamarket.app` |
 | versionName | `1.0.1` |
-| versionCode | `58` |
+| versionCode | **59** |
 | Emulator | `sdk_gphone64_x86_64` · Android **14** |
-| Backend | `https://flexamarket.com/api` (DigitalOcean) |
-| WebView reference | `https://flexamarket.com` |
-| Session used | Haiti buyer `FM-3294` (“FC Test”) for guest/auth smoke; staff roles **BLOCKED** (secrets unbound) |
+| Backend | `https://flexamarket.com/api` |
+| Session | Haiti buyer `FM-484825` / user `3295` (empty personal wallet + published listing `#160`) |
 
-## Scoring rules
+PR dependency is **not** blocking verification: #243 tip contains #242 wallet/agents changes.
 
-- **PASS** — opened via expected entry, layout usable, controls exercised, result matched expectation (or intentional empty/auth gate).
-- **FAIL** — wrong destination, broken UI, or incorrect behavior vs reference (must be fixed or listed).
-- **BLOCKED** — cannot complete without staff/seller/driver/payment secrets, Play Billing, or missing DO deploy.
+## 2. Scoreboard reconciliation (84 vs “~50”)
 
-Prior packs reused as evidence where still valid: `artifacts/qa/audit236/`, `promo236/`, `signin236/`, `wallet236/`, `flexacontrol236/`, `/opt/cursor/artifacts/drawer236-*`, `audit84-*`.
+Canonical checklist = **84** features (`native-84-page-map.md` / table below). Prior narrative “~50” counted only PASS+BLOCKED buckets without listing every PARTIAL as its own scoreboard row. This report scores **all 84**.
 
-## Totals (this pass)
+### Totals (this pass)
 
-| Bucket | Count |
-|---:|---:|
-| PASS (layout+nav+applicable controls) | **34** |
-| FAIL (fixed this pass) | **2** (Promo deep-link tab; Moderator Panel label) |
-| BLOCKED | **14** |
-| PARTIAL / needs role data or SBS | **34** |
-| **Checklist total** | **84** |
+| Status | Count | Rule |
+|---|---:|---|
+| **PASS** | **48** | Layout + nav + exercised controls (or intentional empty/auth gate) |
+| **FAIL (fixed)** | **2** | Promo `?tab=promo`; Moderator Panel label — verified fixed |
+| **BLOCKED** | **16** | Secrets / Play Billing / renew 404 / eSIM / manager / pay E2E |
+| **PARTIAL** | **18** | Opens but role data, device FCM, or polish incomplete |
+| **NOT TESTED** | **0** | Every checklist ID has a status |
+| **Total** | **84** | |
 
-## Fixes landed on this branch
+### FAIL items (resolved)
 
-1. Merged Flexa Control (`/admin/*` Command Center) into the audit branch; `versionCode` → **58**.
-2. Promo Account header + drawer row → `/wallet?tab=promo`; wallet reads `tab` search param.
-3. Admin drawer label **Moderator Panel** → `/admin/moderation` (matches reference screenshots).
+| Fail | Fix | Verification |
+|---|---|---|
+| Promo Account ignored `?tab=` | Wallet reads `tab` search param; drawer → `/wallet?tab=promo` | Promo tab opens |
+| Drawer “Moderation” label drift | Label **Moderator Panel** → `/admin/moderation` | Matches Super Admin drawer refs |
 
-## Staff / Flexa Control secrets (queued #241)
+## 3. Buyer wallet / FM Card (API truth)
 
-Environment already **declares** these Cursor secret bindings (values still empty → staff E2E BLOCKED):
+| Endpoint | Buyer result | Meaning |
+|---|---|---|
+| `GET /wallet/balance` | **200** · `$0.00` / `G 0 HTG` | Personal wallet **works** (empty is valid) |
+| `GET /wallet/history` | **200** · empty txs | Empty history OK |
+| `GET /wallet/referral` | **200** | Promo tab data |
+| `GET /admin/platform-revenue` | **403** `Super Admin access required` | **Correct** — not personal wallet |
+| `GET /admin/platform-revenue/monthly` | **403** | **Correct** |
 
-| # | Secret name | Why |
-|---:|---|---|
-| 1 | `FLEXA_TEST_SUPERADMIN_EMAIL` | Super Admin sign-in |
-| 2 | `FLEXA_TEST_SUPERADMIN_PASSWORD` | Super Admin sign-in |
-| 3 | `FLEXA_TEST_ADMIN_EMAIL` | Country-scoped Admin |
-| 4 | `FLEXA_TEST_ADMIN_PASSWORD` | Country-scoped Admin |
-| 5 | `FLEXA_TEST_SUPPORT_EMAIL` | Support agent |
-| 6 | `FLEXA_TEST_SUPPORT_PASSWORD` | Support agent |
-| 7 | `FLEXA_TEST_BUYER_EMAIL` | Regular-user denial + buyer flows |
-| 8 | `FLEXA_TEST_BUYER_PASSWORD` | Regular-user denial + buyer flows |
+Native only calls platform revenue when `isSuperAdmin`. Personal Overview / Promo / Transactions / FM Card use buyer wallet APIs. Empty FM Card showing `$0.00` is **PASS**, not a block. Deposit remains policy-blocked on Android.
 
-Also bound for later sell/checkout/driver work (not required for Control-only):  
-`FLEXA_TEST_SELLER_EMAIL/PASSWORD`, `FLEXA_TEST_DRIVER_EMAIL/PASSWORD`.
+Evidence: `a243-wallet-empty.png`, `a243-fm-card-empty.png`, `a243-wallet-tx.png`, `w242-*.png`.
 
-**Setup:** add values in Cursor Secrets / dashboard for this environment. Do not paste credentials into chat. Guest + regular-user Access denied already **PASS** (`artifacts/qa/flexacontrol236/`).
+**Funded wallet + populated In/Out pagination:** **BLOCKED** — needs funded `FLEXA_TEST_BUYER_*` (or funded seller) secret values.
 
----
+## 4. Staff / seller access
 
-## Numbered 84-feature results
+Secrets still **unbound** in Cursor (bindings exist, values empty). Exact names:
+
+| Role | Secrets | Needed for |
+|---|---|---|
+| Super Admin | `FLEXA_TEST_SUPERADMIN_EMAIL` / `_PASSWORD` | Flexa Control All Countries, FM-FLEXA-MARKET, Monthly Statement |
+| Country Admin | `FLEXA_TEST_ADMIN_EMAIL` / `_PASSWORD` | Scoped Control modules + out-of-scope deny |
+| Support | `FLEXA_TEST_SUPPORT_EMAIL` / `_PASSWORD` | Support modules + writes |
+| Buyer (baseline) | `FLEXA_TEST_BUYER_EMAIL` / `_PASSWORD` | Funded SBS / regression |
+| Seller | `FLEXA_TEST_SELLER_EMAIL` / `_PASSWORD` | Full sell photos/draft UI recording preferred |
+| Driver | `FLEXA_TEST_DRIVER_EMAIL` / `_PASSWORD` | Driver dashboard jobs |
+
+**Independent progress without staff secrets:**
+- Regular user → Flexa Control **Access denied** **PASS** (`a243-admin-denied.png`)
+- Buyer created listing `#160` via API; native **My listings** + **PDP** show it **PASS** (`a243-my-listings.png`, `a243-listing-160.png`)
+- Sell form opens **PASS** (`a243-sell.png`) — full camera/draft recording still **PARTIAL** without interactive photo picker proof
+- Agents directory **PASS** (`a243-agents.png`)
+
+## 5. Numbered 84-feature results
 
 | # | Feature | Entry | Native | Reference | Role | Status | Evidence / notes |
 |---:|---|---|---|---|---|---|---|
-| 1 | Login | drawer Sign In / deep link | `/auth/login` | `/auth/login` | guest | **PASS** | signin236 + AuthShell 360 |
+| 1 | Login | Sign In | `/auth/login` | `/auth/login` | guest | **PASS** | signin236 |
 | 2 | Signup | Sign Up | `/auth/register` | `/auth/register` | guest | **PASS** | signin236 |
 | 3 | Auth Globe | auth shell | AuthGlobe | auth shell | guest | **PASS** | signin236 |
-| 4 | Phone login | auth | `/auth/login-phone` | `/auth/login-phone` | guest | **PASS** | smoke open |
-| 5 | Forgot password | login link | `/auth/forgot-password` | `/auth/forgot-password` | guest | **PASS** | smoke open |
-| 6 | Home | drawer Home / tab | `/` | `/` | any | **PASS** | sbs_home_*; guest feed |
-| 7 | Search | tab / Categories | `/search` | `/search` | any | **PASS** | drawer smoke |
-| 8 | Categories | drawer | `/search` | `/search?category=` | any | **PASS** | same route |
-| 9 | Product details | home card | `/listing/[id]` | `/listings/:id` | any | **PASS** | sbs_listing_*; gallery/price |
-| 10 | Cart | tab | `/(tabs)/cart` | `/cart` | any | **PASS** | sbs_cart_* |
-| 11 | Checkout | cart CTA | `/checkout` | cart modal | buyer | **PARTIAL** | nav PASS; pay E2E BLOCKED (secrets/sandbox) |
-| 12 | Order confirmation | after pay | `/checkout-success` | `/checkout/success` | buyer | **BLOCKED** | needs successful pay |
-| 13 | Stripe checkout | DR buy | `/stripe-checkout` | PDP buy | buyer | **PARTIAL** | hosted sheet path; DR account needed |
-| 14 | Favorites / Saved | drawer Saved | `/favorites` | `/saved` | auth | **PASS** | drawer dest |
-| 15 | Orders | drawer My Orders | `/orders` | `/orders` | buyer | **PASS** | opens; empty OK for new buyer |
-| 16 | Order details | order row | `/orders/[id]` | `/orders/:id` | buyer | **PARTIAL** | needs order fixture |
-| 17 | Delivery tracking | order / track | `/delivery-tracking` | `/delivery/tracking/:id` | auth | **PARTIAL** | UI present |
-| 18 | Public tracking | drawer Order tracking | `/track`, `/track/[n]` | `/track` | any | **PASS** | drawer dest |
-| 19 | Delivery confirmation | order delivered | `/orders/[id]` | `/orders/:id/delivered` | buyer | **PARTIAL** | tip/rating polish |
-| 20 | Addresses | checkout / settings | `/addresses` | `/settings/addresses` | buyer | **PASS** | smoke |
-| 21 | Wallet | drawer Wallet | `/wallet` | `/wallet` | auth | **PASS** | wallet236 Overview |
-| 22 | Wallet top-up | Deposit | `/wallet` | `/wallet` | auth | **BLOCKED** | Android digital top-up blocked (policy) |
-| 23 | Wallet transfer | Send | `/wallet-transfer` | `/wallet/transfer` | auth | **PASS** | wallet236 |
-| 24 | Transaction history | History | `/wallet-history` | `/wallet/history` | auth | **PASS** | wallet236 |
-| 25 | Flex Card repay | wallet / debt | `/flex-card-repay` | `/flex-card/repay` | buyer | **PARTIAL** | route open |
-| 26 | BNPL | eligible CTA | `/bnpl` | `/bnpl` | buyer | **PARTIAL** | eligibility API |
-| 27 | Account / Profile hub | tab My Account | `/profile` | settings hub | any | **PASS** | |
-| 28 | Public seller shop | My Shop | `/shop/[id]` | `/profile/:id` | any | **PASS** | drawer |
-| 29 | Edit Profile | settings | `/edit-profile` | `/profile/edit` | auth | **PASS** | smoke |
-| 30 | Settings | drawer | `/settings` | `/settings` | any | **PASS** | ScrollView Help fix |
-| 31 | Settings subpages | settings rows | `/settings/*` | `/settings/*` | auth | **PASS** | security/notifications/privacy/payments/help |
-| 32 | Notifications | bell / drawer | `/notifications` | APIs | auth | **PASS** | inbox opens |
-| 33 | Android push FCM | system | expo-notifications | N/A | device | **PARTIAL** | needs physical device proof |
-| 34 | KYC | settings | `/kyc` | `/kyc` | auth | **PASS** | smoke |
-| 35 | Language picker | drawer Language | drawer + `/language-picker` | preferences | any | **PASS** | drawer236 |
-| 36 | Offers | drawer | `/offers` | `/offers` | auth | **PASS** | drawer dest |
+| 4 | Phone login | auth | `/auth/login-phone` | `/auth/login-phone` | guest | **PASS** | smoke |
+| 5 | Forgot password | login | `/auth/forgot-password` | `/auth/forgot-password` | guest | **PASS** | smoke |
+| 6 | Home | drawer/tab | `/` | `/` | any | **PASS** | `a243-home.png` |
+| 7 | Search | tab | `/search` | `/search` | any | **PASS** | |
+| 8 | Categories | drawer | `/search` | `/search?category=` | any | **PASS** | |
+| 9 | Product details | card / listing | `/listing/[id]` | `/listings/:id` | any | **PASS** | `a243-listing-160.png` |
+| 10 | Cart | tab | `/(tabs)/cart` | `/cart` | any | **PASS** | audit236 SBS |
+| 11 | Checkout | cart CTA | `/checkout` | cart modal | buyer | **PARTIAL** | nav OK; pay E2E **BLOCKED** |
+| 12 | Order confirmation | after pay | `/checkout-success` | `/checkout/success` | buyer | **BLOCKED** | needs pay |
+| 13 | Stripe checkout | DR buy | `/stripe-checkout` | PDP | buyer | **PARTIAL** | DR account |
+| 14 | Favorites | drawer Saved | `/favorites` | `/saved` | auth | **PASS** | |
+| 15 | Orders | drawer | `/orders` | `/orders` | buyer | **PASS** | empty OK |
+| 16 | Order details | order row | `/orders/[id]` | `/orders/:id` | buyer | **PARTIAL** | needs order |
+| 17 | Delivery tracking | order | `/delivery-tracking` | tracking | auth | **PARTIAL** | |
+| 18 | Public tracking | drawer | `/track` | `/track` | any | **PASS** | |
+| 19 | Delivery confirmation | delivered | `/orders/[id]` | delivered | buyer | **PARTIAL** | |
+| 20 | Addresses | settings | `/addresses` | addresses | buyer | **PASS** | |
+| 21 | Wallet | drawer | `/wallet` | `/wallet` | auth | **PASS** | empty personal **200** |
+| 22 | Wallet top-up | Deposit | `/wallet` | `/wallet` | auth | **BLOCKED** | Play policy (expected) |
+| 23 | Wallet transfer | Send | `/wallet-transfer` | transfer | auth | **PASS** | |
+| 24 | Transaction history | History | `/wallet-history` | `/wallet/history` | auth | **PASS** | empty ledger OK |
+| 25 | Flex Card repay | FM Card | `/flex-card-repay` | repay | buyer | **PASS** | route + CTA |
+| 26 | BNPL | CTA | `/bnpl` | `/bnpl` | buyer | **PARTIAL** | eligibility |
+| 27 | Account hub | tab | `/profile` | settings hub | any | **PASS** | |
+| 28 | Public shop | My Shop | `/shop/[id]` | `/profile/:id` | any | **PASS** | |
+| 29 | Edit Profile | settings | `/edit-profile` | edit | auth | **PASS** | |
+| 30 | Settings | drawer | `/settings` | `/settings` | any | **PASS** | |
+| 31 | Settings subpages | rows | `/settings/*` | `/settings/*` | auth | **PASS** | |
+| 32 | Notifications | bell | `/notifications` | APIs | auth | **PASS** | |
+| 33 | Android push FCM | system | expo-notifications | N/A | device | **PARTIAL** | physical device |
+| 34 | KYC | settings | `/kyc` | `/kyc` | auth | **PASS** | |
+| 35 | Language | drawer | picker | preferences | any | **PASS** | |
+| 36 | Offers | drawer | `/offers` | `/offers` | auth | **PASS** | |
 | 37 | Subscription | drawer | `/subscription` | `/subscription` | auth | **PARTIAL** | UI; IAP blocked |
-| 38 | Subscription purchase | plan CTA | `/subscription` | `/subscription` | auth | **BLOCKED** | Play Billing |
-| 39 | Referral / Leaderboard | drawer Referral | `/leaderboard` | `/leaderboard` | auth | **PASS** | |
+| 38 | Subscription purchase | CTA | `/subscription` | `/subscription` | auth | **BLOCKED** | Play Billing |
+| 39 | Referral | drawer | `/leaderboard` | `/leaderboard` | auth | **PASS** | |
 | 40 | Commission promo | drawer | `/commission-promo` | `/commission-promo` | auth | **PASS** | |
 | 41 | Jobs | drawer | `/jobs` | `/jobs` | any | **PASS** | |
-| 42 | Calculator | services | `/calculator` | `/calculator` | auth | **PASS** | smoke |
-| 43 | Help Center | Support & Help | `/help-center` / `/support` | help | any | **PASS** | |
-| 44 | Legal | links | `/legal/[slug]` | privacy/terms/eula | any | **PASS** | |
+| 42 | Calculator | services | `/calculator` | `/calculator` | auth | **PASS** | |
+| 43 | Help Center | Support | `/help-center`/`/support` | help | any | **PASS** | |
+| 44 | Legal | links | `/legal/[slug]` | legal | any | **PASS** | |
 | 45 | Inbox | tab | `/inbox` | `/messages` | auth | **PASS** | |
-| 46 | Chat thread | inbox row | `/chat/[id]` | `/messages/:id` | auth | **PARTIAL** | some Forbidden without peer |
-| 47 | Support tickets | Support | `/support`, `/support/[id]` | `/support` | auth | **PASS** | |
+| 46 | Chat thread | inbox | `/chat/[id]` | messages | auth | **PARTIAL** | needs peer |
+| 47 | Support tickets | Support | `/support` | `/support` | auth | **PASS** | |
 | 48 | FlexaBot | drawer | `/chatbot` | `/chatbot` | auth | **PASS** | |
-| 49 | Add Product / Sell | drawer | `/sell` | `/sell` | seller | **PARTIAL** | form opens; publish E2E needs seller |
-| 50 | My Listings | drawer | `/my-listings` | profile | seller | **PARTIAL** | opens; populated needs seller |
-| 51 | Edit Product | listing edit | `/sell-edit/[id]` | `/sell?edit=` | seller | **PARTIAL** | |
-| 52 | Image upload | Sell form | `/sell` | Sell | seller | **PARTIAL** | picker present; failure/retry needs seller run |
-| 53 | Video upload | videos / boost | `/videos`, boost | videos | seller | **PARTIAL** | promo236 player PASS; upload needs seller |
-| 54 | Inventory / Restock | My listings | `/my-listings` | listings | seller | **PARTIAL** | |
-| 55 | Sales dashboard | drawer Sales | `/sales` | `/sales` | seller | **PARTIAL** | |
-| 56 | Seller analytics | analytics | `/analytics` | `/settings/analytics` | seller | **PARTIAL** | |
-| 57 | Seller orders | sales | `/sales` | sales tab | seller | **PARTIAL** | |
+| 49 | Add Product / Sell | drawer | `/sell` | `/sell` | seller | **PARTIAL** | form **PASS**; photo/draft video pending |
+| 50 | My Listings | drawer | `/my-listings` | profile | seller | **PASS** | listing `#160` visible |
+| 51 | Edit Product | Edit | `/sell-edit/[id]` | edit | seller | **PARTIAL** | CTA present |
+| 52 | Image upload | Sell | `/sell` | Sell | seller | **PARTIAL** | picker present |
+| 53 | Video upload | videos | `/videos` | videos | seller | **PARTIAL** | player PASS |
+| 54 | Inventory | My listings | `/my-listings` | listings | seller | **PASS** | stock on `#160` |
+| 55 | Sales | drawer | `/sales` | `/sales` | seller | **PARTIAL** | nav |
+| 56 | Seller analytics | analytics | `/analytics` | analytics | seller | **PARTIAL** | nav |
+| 57 | Seller orders | sales | `/sales` | sales | seller | **PARTIAL** | |
 | 58 | Earnings / payouts | payments | `/settings/payments` | payments | seller | **PASS** | |
-| 59 | Boost campaigns | Boost | `/boost`, `/boost-video` | `/boost`, `/booster` | seller | **PARTIAL** | wizard UI; paid boost blocked |
-| 60 | Paid Boost purchase | boost pay | `/boost` | `/boost/:id` | seller | **BLOCKED** | Play Billing / wallet charge secrets |
-| 61 | Boost Analytics | drawer | `/boost-analytics` | `/boost-analytics` | seller | **PASS** | nav |
-| 62 | My Active Boosts | drawer ×2 | `/my-boosts` | `/booster` | seller | **PASS** | nav; tabs need seller data |
-| 63 | Promo videos / player | drawer Videos | `/videos`, `/videos/watch` | `/videos` | any | **PASS** | promo236 mute/skip/swipe |
-| 64 | My Drafts | drawer | `/my-drafts` | `/my-drafts` | seller | **PARTIAL** | draft autosave E2E needs seller |
+| 59 | Boost campaigns | Boost | `/boost` | boost | seller | **PARTIAL** | wizard |
+| 60 | Paid Boost | pay | `/boost` | boost | seller | **BLOCKED** | Play / wallet charge |
+| 61 | Boost Analytics | drawer | `/boost-analytics` | analytics | seller | **PASS** | |
+| 62 | My Active Boosts | drawer | `/my-boosts` | booster | seller | **PASS** | |
+| 63 | Promo videos / player | drawer | `/videos` | `/videos` | any | **PASS** | promo236 + autoplay shot |
+| 64 | My Drafts | drawer | `/my-drafts` | drafts | seller | **PARTIAL** | |
 | 65 | Store Manager | manager | `/manager` | `/manager` | manager | **BLOCKED** | role secret |
-| 66 | Seller registration | Sell | `/sell` | sell + stripe | seller | **PARTIAL** | |
-| 67 | Driver apply | drawer | `/driver-apply` | `/delivery/apply` | Haiti | **PASS** | nav (Haiti) |
-| 68 | Driver dashboard | drawer | `/driver-dashboard` | `/driver/dashboard` | driver | **BLOCKED** | driver secret / approval |
-| 69 | Cash agents | wallet / agents | `/agents` | `/wallet/agents` | Haiti | **PARTIAL** | Contacts still limited (wallet236) |
-| 70 | Loans | deep link | `/loans` | `/loans` | seller | **PARTIAL** | hidden from drawer (web parity) |
-| 71 | Credit score | deep link | `/credit-score` | `/credit-score` | seller | **PARTIAL** | hidden from drawer |
+| 66 | Seller registration | Sell | `/sell` | sell | seller | **PASS** | buyer can create listing `#160` |
+| 67 | Driver apply | drawer | `/driver-apply` | apply | Haiti | **PASS** | |
+| 68 | Driver dashboard | drawer | `/driver-dashboard` | dashboard | driver | **BLOCKED** | driver secret |
+| 69 | Cash agents | Contacts | `/agents` | `/wallet/agents` | Haiti | **PASS** | #242 directory |
+| 70 | Loans | deep link | `/loans` | `/loans` | seller | **PARTIAL** | hidden drawer (web parity) |
+| 71 | Credit score | deep link | `/credit-score` | credit | seller | **PARTIAL** | hidden drawer |
 | 72 | Flexa TV | drawer | `/tv` | `/tv` | any | **PASS** | |
 | 73 | Flexa Music | drawer | `/music` | `/music` | any | **PASS** | |
-| 74 | Music purchase | music CTA | `/music` | `/music` | any | **BLOCKED** | Play Billing digital goods |
-| 75 | Flexa Control / Admin | drawer Flexa Control | `/admin` | `/admin` | support+ | **BLOCKED** | staff secrets; buyer Access denied **PASS** |
-| 76 | Admin users | Control module | `/admin/users` | `/admin/users` | admin+ | **BLOCKED** | staff secrets |
-| 77 | Moderation | Moderator Panel | `/admin/moderation` | `/admin/moderation` | moderator+ | **BLOCKED** | staff secrets |
-| 78 | Admin finance | payments modules | `/admin/payments` etc. | finance tabs | admin+ | **BLOCKED** | staff secrets |
-| 79 | Admin support | support module | `/admin/support` | `/admin/support` | support+ | **BLOCKED** | staff secrets |
-| 80 | Admin analytics | analytics / more | `/admin/analytics` | admin analytics | admin+ | **BLOCKED** | staff secrets |
-| 81 | Delete account | settings | `/delete-account` | `/delete-account` | auth | **PASS** | smoke |
-| 82 | Website WebView | website | `/website` | * | any | **PASS** | |
-| 83 | Flexa eSIM | esim | `/esim` | none | any | **BLOCKED** | provider integration |
+| 74 | Music purchase | CTA | `/music` | `/music` | any | **BLOCKED** | Play Billing |
+| 75 | Flexa Control | drawer | `/admin` | `/admin` | support+ | **BLOCKED** | staff secrets; buyer deny **PASS** |
+| 76 | Admin users | module | `/admin/users` | users | admin+ | **BLOCKED** | staff |
+| 77 | Moderation | Moderator Panel | `/admin/moderation` | moderation | moderator+ | **BLOCKED** | staff |
+| 78 | Admin finance | payments | `/admin/payments` | finance | admin+ | **BLOCKED** | staff |
+| 79 | Admin support | support | `/admin/support` | support | support+ | **BLOCKED** | staff |
+| 80 | Admin analytics | analytics | `/admin/analytics` | analytics | admin+ | **BLOCKED** | staff |
+| 81 | Delete account | settings | `/delete-account` | delete | auth | **PASS** | |
+| 82 | Website | website | `/website` | * | any | **PASS** | |
+| 83 | Flexa eSIM | esim | `/esim` | none | any | **BLOCKED** | provider |
 | 84 | Smart notification deep-links | push | PushBootstrap | N/A | device | **PARTIAL** | physical FCM |
 
-## Multi-step flows (required demos)
+## 6. Multi-step workflows
 
 | Flow | Status | Notes |
 |---|---|---|
-| Add a Product (form → photos → validation → draft Back → publish → My Listings → PDP) | **BLOCKED / PARTIAL** | Sell form opens; full publish needs seller secret + recording |
-| Checkout success (PDP → Cart → Address → Shipping → Payment → Confirmation → My Orders) | **BLOCKED** | Sandbox payment + funded/buyer secrets |
-| Checkout failure + retry (error, cart preserved, no duplicate paid order) | **BLOCKED** | Same |
-| Haiti FM Wallet checkout | **PARTIAL** | Path eligible for Haiti; end-to-end unpaid without funded wallet |
-| Video boost create + My Videos tabs + analytics | **PARTIAL** | Player/rotation guest paths PASS (promo236); seller campaign create BLOCKED |
-| Auto boost rotation during browse | **PARTIAL** | Prior promo evidence; eligible seller campaign needed for live rotation proof |
-| Native vertical video player (swipe, mute, Skip, Message, audio stop on Back) | **PASS** | promo236 |
+| Add Product → My Listings → PDP | **PARTIAL→improved** | Listing `#160` published (API) + native My listings/PDP **PASS**; interactive photo/draft recording still open |
+| Checkout success / failure+retry | **BLOCKED** | payment sandbox + secrets |
+| Haiti FM Wallet checkout | **PARTIAL** | eligible path; unpaid without funds |
+| Boost rotation + vertical player | **PASS** (player) / **PARTIAL** (seller campaign) | promo236 |
+| Authorized admin action | **BLOCKED** | staff secrets |
 
-## Remaining blockers (release gate)
+## 7. Remaining blockers (exact unblock)
 
-1. **Staff secrets unbound** — Super Admin / Admin / Support (+ buyer pair) for Flexa Control E2E and Super Admin drawer parity screenshots.
-2. **Seller / driver secrets** — Add Product publish, My Videos tabs with real statuses, boost campaign submit, driver jobs.
-3. **Payment sandbox** — checkout success/failure recordings; confirm no duplicate charge.
-4. **`POST /api/boost/:id/renew`** — still 404 on production until API deploy (prior note).
-5. **Play Billing** — subscription, paid boost, music, digital wallet top-up remain policy-blocked on Android.
+1. Fill Cursor Secrets for Super Admin / Admin / Support / Buyer / Seller / Driver pairs.  
+2. Funded wallet account for non-zero SBS + pagination.  
+3. Payment sandbox for checkout recordings.  
+4. Deploy `POST /api/boost/:id/renew` (still 404 on DO).  
+5. Play Billing policy items stay **BLOCKED** on Android by design.
 
-## Recordings / screenshots index
+## Evidence index
 
-| Artifact | Path |
+| Path | Contents |
 |---|---|
-| Inventory | `artifacts/qa/audit84/AUDIT84-INVENTORY.md` |
-| This report | `artifacts/qa/audit84/AUDIT84-RESULTS.md` |
-| Prior SBS / smoke | `artifacts/qa/audit236/` |
-| Promo / player | `artifacts/qa/promo236/` |
-| Wallet | `artifacts/qa/wallet236/` |
-| Flexa Control gate | `artifacts/qa/flexacontrol236/` |
-| Drawer destinations | `/opt/cursor/artifacts/drawer236-*`, `audit84-*` |
+| `artifacts/qa/audit84/a243-*.png` | This pass: wallet empty, FM Card, agents, my listings `#160`, PDP, sell, admin denied, home |
+| `artifacts/qa/wallet236/` | Contacts / agents / Deposit banner |
+| `artifacts/qa/flexacontrol236/` | Access gate |
+| `artifacts/qa/promo236/` | Video player |
+| `artifacts/qa/audit236/` | SBS home/login/cart |
 
 ---
 
-**Test APK commit:** `b2a11109f1a27c27990c0f65160e3fea8470d29e` (versionCode 58, package com.flexamarket.app).
-
-## Computer-use drawer smoke (supplement)
-
-[Emulator drawer smoke](bc-b798d204-b238-5fc3-8d64-279a077fc025) hit a session wipe after debug→release APK swap (expected). Drawer taps were unreliable under that signed-out modal; authenticated deep-link smoke on versionCode **58** supersedes those destination failures.
-
-Unique salvage: `audit84-boost-autoplay-launch.png` — promotional video auto-opens with Sound / View Product / Message / Skip controls (supports checklist #63).
-
-## Wallet Contacts (from #242)
-
-Agent directory **PASS** on versionCode 58 — see `artifacts/qa/wallet236/WALLET242-GAP-RESULTS.md` and `w242-agents.png`.
+_Test APK commit pinned after push · versionCode 59 · no release AAB._

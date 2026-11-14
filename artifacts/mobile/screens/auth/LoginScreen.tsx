@@ -193,29 +193,41 @@ export default function LoginScreen({
         </View>
       ) : null}
 
-      <Pressable
-        testID="checkbox-eula"
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: eulaAccepted }}
-        onPress={() => setEulaAccepted((v) => !v)}
-        style={styles.eulaRow}
-        disabled={loading}
-      >
-        <View style={[styles.checkbox, eulaAccepted && styles.checkboxOn]}>
-          {eulaAccepted ? <Feather name="check" size={12} color="#fff" /> : null}
-        </View>
+      <View style={styles.eulaRow}>
+        <Pressable
+          testID="checkbox-eula"
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: eulaAccepted }}
+          accessibilityLabel="I agree to the EULA and Terms of Service"
+          onPress={() => setEulaAccepted((v) => !v)}
+          hitSlop={8}
+          disabled={loading}
+          style={styles.checkboxHit}
+        >
+          <View style={[styles.checkbox, eulaAccepted && styles.checkboxOn]}>
+            {eulaAccepted ? <Feather name="check" size={12} color="#fff" /> : null}
+          </View>
+        </Pressable>
         <Text style={styles.eulaText}>
           I agree to the{" "}
-          <Text style={styles.inlineLink} onPress={() => openPath("/eula")}>
+          <Text
+            style={styles.inlineLink}
+            onPress={() => openPath("/eula")}
+            accessibilityRole="link"
+          >
             EULA
           </Text>{" "}
           and{" "}
-          <Text style={styles.inlineLink} onPress={() => openPath("/terms")}>
+          <Text
+            style={styles.inlineLink}
+            onPress={() => openPath("/terms")}
+            accessibilityRole="link"
+          >
             Terms of Service
           </Text>
           .
         </Text>
-      </Pressable>
+      </View>
       {fieldErrors.eula ? (
         <Text style={styles.fieldError}>{fieldErrors.eula}</Text>
       ) : null}
@@ -294,10 +306,12 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 12,
   },
-  checkbox: {
-    width: 20,
-    height: 20,
+  checkboxHit: {
     marginTop: 2,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
     borderRadius: 999,
     borderWidth: 1.5,
     borderColor: "#d1d5db",

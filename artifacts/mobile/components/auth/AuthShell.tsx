@@ -67,11 +67,27 @@ export default function AuthShell({
   const isWide = width >= 900;
   const scrollRef = useRef<ScrollView>(null);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  // Short phones (e.g. 360×640): tighten hero so Sign In clears the gesture bar on first paint.
+  const shortViewport = !isWide && height <= 680;
   // Web CSS: .auth-globe-wrap is 7.75rem (124) below lg; 5.75rem (92) under 360px.
-  const globeSize = isWide ? 220 : width < 360 ? 92 : 124;
+  const globeSize = isWide
+    ? 220
+    : width < 360
+      ? 92
+      : shortViewport
+        ? 96
+        : 124;
   const langMeta = LANGUAGES.find((l) => l.code === lang) ?? LANGUAGES.find((l) => l.code === "en");
   // Short viewports: collapse brand chrome while keyboard is open so fields stay usable.
   const compactBrand = keyboardOpen && !isWide && height < 720;
+  const brandBodyMt = isWide ? 56 : shortViewport ? 10 : 28;
+  const brandPadBottom = isWide ? 48 : compactBrand ? 10 : shortViewport ? 18 : 28;
+  const formPadTop = shortViewport ? 14 : 24;
+  // Always clear the Android gesture / home indicator; short phones need a bit more air.
+  const formPadBottom =
+    Math.max(insets.bottom, shortViewport ? 20 : 16) + (shortViewport ? 16 : 12);
+  // Match WebView overlap (~-1.35rem) so brand subtitle stays readable above the card.
+  const formOverlapY = -22;
 
   const [fontsLoaded] = useFonts({
     SpaceGrotesk_500Medium,
@@ -131,9 +147,9 @@ export default function AuthShell({
               style={[
                 styles.brandPanel,
                 {
-                  // Web: pt-[calc(0.85rem+safe)] pb-7 (28)
-                  paddingTop: Math.max(insets.top, 12) + 2,
-                  paddingBottom: isWide ? 48 : compactBrand ? 12 : 28,
+                  // Web: pt-[calc(0.85rem+safe)] pb-7 (28); tighter on short phones.
+                  paddingTop: Math.max(insets.top, 12) + (shortViewport ? 0 : 2),
+                  paddingBottom: brandPadBottom,
                 },
                 isWide && styles.brandPanelWide,
               ]}
@@ -188,13 +204,22 @@ export default function AuthShell({
               </View>
 
               {!compactBrand ? (
-                <View style={[styles.brandBody, isWide && styles.brandBodyWide]}>
-                  <View style={styles.brandCopy}>
+                <View
+                  style={[
+                    styles.brandBody,
+                    { marginTop: brandBodyMt },
+                    // Web: items-end + globe self-center → center globe beside copy (not below it).
+                    !isWide && { alignItems: "center" },
+                    isWide && styles.brandBodyWide,
+                  ]}
+                >
+                  <View style={[styles.brandCopy, shortViewport && { paddingBottom: 0 }]}>
                     <Text
                       style={[
                         styles.brandTitle,
                         titleFont ? { fontFamily: titleFont } : null,
                         width < 360 && { fontSize: 21.6 },
+                        shortViewport && { fontSize: 22, lineHeight: 26 },
                       ]}
                     >
                       {brandTitle}
@@ -203,6 +228,7 @@ export default function AuthShell({
                       style={[
                         styles.brandSubtitle,
                         bodyFont ? { fontFamily: bodyFont } : null,
+                        shortViewport && { marginTop: 6, lineHeight: 17, fontSize: 12 },
                       ]}
                     >
                       {brandSubtitle}
@@ -217,8 +243,9 @@ export default function AuthShell({
               style={[
                 styles.formPanel,
                 !isWide && styles.formOverlap,
+                !isWide && { marginTop: formOverlapY, paddingTop: formPadTop },
                 {
-                  paddingBottom: Math.max(insets.bottom, 16) + 12,
+                  paddingBottom: formPadBottom,
                 },
                 isWide && styles.formPanelWide,
               ]}
@@ -228,6 +255,7 @@ export default function AuthShell({
                   style={[
                     styles.formTitle,
                     titleFont ? { fontFamily: titleFont } : null,
+                    shortViewport && { fontSize: 24 },
                   ]}
                 >
                   {title}
@@ -237,16 +265,19 @@ export default function AuthShell({
                     style={[
                       styles.formSubtitle,
                       bodyFont ? { fontFamily: bodyFont } : null,
+                      shortViewport && { marginTop: 4, lineHeight: 20 },
                     ]}
                   >
                     {subtitle}
                   </Text>
                 ) : null}
 
-                <View style={styles.formSurface}>{children}</View>
+                <View style={[styles.formSurface, shortViewport && { marginTop: 12, gap: 12 }]}>
+                  {children}
+                </View>
 
                 {footer ? (
-                  <View style={styles.footer}>
+                  <View style={[styles.footer, shortViewport && { marginTop: 14, gap: 8 }]}>
                     {typeof footer === "string" ? (
                       <Text
                         style={[
@@ -388,9 +419,9 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   brandBody: {
-    marginTop: 28,
+    // marginTop applied inline (28 default / tighter on short viewports)
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
     gap: 12,
   },
   brandBodyWide: {
@@ -401,7 +432,7 @@ const styles = StyleSheet.create({
   brandCopy: {
     flex: 1,
     minWidth: 0,
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
   brandTitle: {
     color: AUTH.white,

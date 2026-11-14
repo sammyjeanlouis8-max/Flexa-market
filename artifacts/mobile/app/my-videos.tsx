@@ -370,7 +370,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 2,
   },
   tabActive: {
     backgroundColor: colors.flexaGreen,

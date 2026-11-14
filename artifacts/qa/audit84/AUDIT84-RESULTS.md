@@ -192,3 +192,7 @@ Also bound for later sell/checkout/driver work (not required for Control-only):
 [Emulator drawer smoke](bc-b798d204-b238-5fc3-8d64-279a077fc025) hit a session wipe after debug→release APK swap (expected). Drawer taps were unreliable under that signed-out modal; authenticated deep-link smoke on versionCode **58** supersedes those destination failures.
 
 Unique salvage: `audit84-boost-autoplay-launch.png` — promotional video auto-opens with Sound / View Product / Message / Skip controls (supports checklist #63).
+
+## Wallet Contacts (from #242)
+
+Agent directory **PASS** on versionCode 58 — see `artifacts/qa/wallet236/WALLET242-GAP-RESULTS.md` and `w242-agents.png`.

@@ -130,3 +130,48 @@ export function selectHomePromoVideos<T extends HomePromoCandidate>(
     .sort((a, b) => rank(b) - rank(a) || b.id - a.id)
     .slice(0, Math.max(0, limit));
 }
+
+/** Catalog listing shape used to fill the empty Home promo column. */
+export type HomePromoCompanionCandidate = {
+  id: number;
+  status?: string | null;
+  country?: string | null;
+  images?: Array<string | null | undefined> | null;
+};
+
+/**
+ * When Home has exactly one eligible promo video, pick one companion product
+ * from the country-scoped Home catalog for the right column.
+ *
+ * Prefers a listing different from the video’s promoted product (video `id`
+ * is the listing id). Returns null when nothing eligible is available so the
+ * video can be centered alone.
+ */
+export function selectHomePromoCompanionProduct<T extends HomePromoCompanionCandidate>(
+  candidates: T[],
+  options: {
+    excludeListingIds: number[];
+    activeCountry?: string | null;
+    skipCountryFilter?: boolean;
+  },
+): T | null {
+  const exclude = new Set(options.excludeListingIds);
+  const country = options.activeCountry ?? null;
+  const skipCountry = options.skipCountryFilter ?? false;
+
+  const eligible = candidates.filter((listing) => {
+    if (exclude.has(listing.id)) return false;
+    if (listing.status && listing.status !== "available" && listing.status !== "active") {
+      return false;
+    }
+    if (!skipCountry && country && listing.country && listing.country !== country) {
+      return false;
+    }
+    return true;
+  });
+
+  const withImage = eligible.find((listing) =>
+    (listing.images ?? []).some((img) => typeof img === "string" && img.trim().length > 0),
+  );
+  return withImage ?? eligible[0] ?? null;
+}

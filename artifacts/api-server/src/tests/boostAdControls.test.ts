@@ -8,6 +8,7 @@ import {
   resolveBoostAdCtaLabel,
   resolveBoostAdSkipInLabel,
   resolveBoostAdSkipLabel,
+  selectHomePromoCompanionProduct,
   selectHomePromoVideos,
 } from "../../../marketplace/src/lib/boostAdControls";
 
@@ -145,6 +146,7 @@ describe("BoostVideoOverlay in-frame controls contract", () => {
     expect(homeSrc).toMatch(/HOME_PROMO_VIDEO_CARD_LIMIT/);
     expect(homeSrc).toMatch(/HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT/);
     expect(homeSrc).toMatch(/selectHomePromoVideos/);
+    expect(homeSrc).toMatch(/selectHomePromoCompanionProduct/);
     expect(homeSrc).toMatch(/sort: "new"/);
     expect(homeSrc).toMatch(
       /selectHomePromoVideos\(\s*\(data\.videos \?\? \[\]\) as PromoVideoItem\[\],\s*HOME_PROMO_VIDEO_CARD_LIMIT,\s*\)/,
@@ -152,7 +154,10 @@ describe("BoostVideoOverlay in-frame controls contract", () => {
     expect(homeSrc).toMatch(/videos\.slice\(0, HOME_PROMO_VIDEO_CARD_LIMIT\)/);
     expect(homeSrc).toMatch(/data-testid="home-promo-video-strip"/);
     expect(homeSrc).toMatch(/data-home-promo-video-card="true"/);
+    expect(homeSrc).toMatch(/data-testid="home-promo-companion-product"/);
+    expect(homeSrc).toMatch(/data-testid="home-promo-video-solo"/);
     expect(homeSrc).toMatch(/href=\{`\/videos\?video=\$\{v\.id\}`\}/);
+    expect(homeSrc).toMatch(/catalogListings=\{allListings\}/);
     expect(homeSrc).toMatch(
       /HOME PROMO STRIP[\s\S]*<VideoPromoSection[\s\S]*FEATURED PRODUCTS/,
     );
@@ -160,5 +165,29 @@ describe("BoostVideoOverlay in-frame controls contract", () => {
     const featuredIdx = homeSrc.indexOf("FEATURED PRODUCTS");
     expect(featuredIdx).toBeGreaterThan(-1);
     expect(homeSrc.slice(featuredIdx)).not.toMatch(/VideoPromoSection/);
+  });
+});
+
+describe("selectHomePromoCompanionProduct", () => {
+  it("prefers a different in-country product with an image", () => {
+    const picked = selectHomePromoCompanionProduct(
+      [
+        { id: 10, status: "available", country: "Haiti", images: ["https://img/a.jpg"] },
+        { id: 11, status: "available", country: "Haiti", images: ["https://img/b.jpg"] },
+        { id: 12, status: "sold", country: "Haiti", images: ["https://img/c.jpg"] },
+        { id: 13, status: "available", country: "USA", images: ["https://img/d.jpg"] },
+      ],
+      { excludeListingIds: [10], activeCountry: "Haiti" },
+    );
+    expect(picked?.id).toBe(11);
+  });
+
+  it("returns null when no eligible companion exists", () => {
+    expect(
+      selectHomePromoCompanionProduct(
+        [{ id: 10, status: "available", country: "Haiti", images: ["https://img/a.jpg"] }],
+        { excludeListingIds: [10], activeCountry: "Haiti" },
+      ),
+    ).toBeNull();
   });
 });

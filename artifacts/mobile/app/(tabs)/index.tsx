@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { HomePromoStrip } from "@/components/HomePromoStrip";
 import { ListingCard } from "@/components/ListingCard";
 import { SearchBar } from "@/components/SearchBar";
 import { SkeletonCard } from "@/components/SkeletonCard";
@@ -217,6 +218,13 @@ export default function HomeTab() {
           }
           onEndReached={loadMore}
           onEndReachedThreshold={0.4}
+          ListHeaderComponent={
+            <HomePromoStrip
+              country={country}
+              catalog={[...featured, ...recent, ...listings]}
+              token={token}
+            />
+          }
           ListEmptyComponent={
             <View style={styles.centered}>
               <Text style={styles.emptyTitle}>No listings yet</Text>

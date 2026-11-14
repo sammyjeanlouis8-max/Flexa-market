@@ -47,6 +47,7 @@ const Home               = lazy(() => import("@/pages/Home"));
 const BoostedDealPreview = lazy(() => import("@/pages/dev/BoostedDealPreview"));
 const FlexaControlPreview = lazy(() => import("@/pages/dev/FlexaControlPreview"));
 const CheckoutRedesignPreview = lazy(() => import("@/pages/dev/CheckoutRedesignPreview"));
+const HomePromoCompanionPreview = lazy(() => import("@/pages/dev/HomePromoCompanionPreview"));
 const Search             = lazy(() => import("@/pages/Search"));
 const ListingDetail      = lazy(() => import("@/pages/ListingDetail"));
 const Sell               = lazy(() => import("@/pages/Sell"));
@@ -247,6 +248,7 @@ function LayoutRoutes() {
           <Route path="/dev/settings-quick-actions-preview" component={DevSettingsQuickActionsPreview} />
           <Route path="/dev/flexa-control-preview" component={FlexaControlPreview} />
           <Route path="/dev/checkout-redesign-preview" component={CheckoutRedesignPreview} />
+          <Route path="/dev/home-promo-companion-preview" component={HomePromoCompanionPreview} />
           <Route path="/search" component={Search} />
           <Route path="/categories/:slug" component={Search} />
           <Route path="/listings/create">

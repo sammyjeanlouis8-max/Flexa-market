@@ -43,4 +43,4 @@
 
 ## Test APK commit
 
-*(filled after push)*
+`74fc340a3b2913f480a21a03e115a067c33e6ea8`

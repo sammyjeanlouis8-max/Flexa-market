@@ -1,13 +1,14 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import {
   HOME_PROMO_VIDEO_CARD_LIMIT,
   selectHomePromoCompanionProduct,
   selectHomePromoVideos,
-} from "./homePromoCompanion";
+} from "./homePromoCompanion.ts";
 
 describe("native home promo companion", () => {
   it("caps videos at two", () => {
-    expect(HOME_PROMO_VIDEO_CARD_LIMIT).toBe(2);
+    assert.equal(HOME_PROMO_VIDEO_CARD_LIMIT, 2);
     const now = Date.parse("2026-11-10T12:00:00.000Z");
     const picked = selectHomePromoVideos(
       [
@@ -18,7 +19,7 @@ describe("native home promo companion", () => {
       HOME_PROMO_VIDEO_CARD_LIMIT,
       now,
     );
-    expect(picked.map((v) => v.id)).toEqual([3, 2]);
+    assert.deepEqual(picked.map((v) => v.id), [3, 2]);
   });
 
   it("picks a different product for the empty promo column", () => {
@@ -29,7 +30,7 @@ describe("native home promo companion", () => {
       ],
       { excludeListingIds: [10], activeCountry: "Haiti" },
     );
-    expect(picked?.id).toBe(11);
+    assert.equal(picked?.id, 11);
   });
 
   it("returns null when no companion is eligible", () => {
@@ -37,6 +38,6 @@ describe("native home promo companion", () => {
       [{ id: 10, status: "available", country: "Haiti", images: ["a.jpg"] }],
       { excludeListingIds: [10], activeCountry: "Haiti" },
     );
-    expect(picked).toBeNull();
+    assert.equal(picked, null);
   });
 });

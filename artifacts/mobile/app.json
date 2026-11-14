@@ -48,7 +48,7 @@
     "android": {
       "package": "com.flexamarket.app",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 55,
+      "versionCode": 57,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0F172A"

@@ -4,7 +4,7 @@
 | Field | Value |
 |---|---|
 | Branch | `cursor/webview-native-layout-parity-9d45` |
-| **Final APK commit** | `27b437dc` + Settings scroll commit (see HEAD after push) |
+| **Final APK commit** | `99f620dd70492715372594ea3e676be2310e98f3`
 | Package | `com.flexamarket.app` |
 | versionName | `1.0.1` |
 | versionCode | `55` |

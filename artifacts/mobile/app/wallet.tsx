@@ -4,8 +4,8 @@
  * Haiti cart checkout with FM Wallet balance stays available.
  */
 import { Feather } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -60,9 +60,25 @@ function formatWhen(iso: string | null | undefined): string {
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ tab?: string }>();
   const { token, user, isLoading: authLoading } = useAuth();
 
-  const [tab, setTab] = useState<TabKey>("overview");
+  const initialTab = (["overview", "promo", "transactions"] as TabKey[]).includes(
+    params.tab as TabKey,
+  )
+    ? (params.tab as TabKey)
+    : "overview";
+  const [tab, setTab] = useState<TabKey>(initialTab);
+
+  useEffect(() => {
+    if (
+      params.tab === "overview" ||
+      params.tab === "promo" ||
+      params.tab === "transactions"
+    ) {
+      setTab(params.tab);
+    }
+  }, [params.tab]);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [balance, setBalance] = useState<WalletBalance | null>(null);
   const [txs, setTxs] = useState<WalletTx[] | null>(null);

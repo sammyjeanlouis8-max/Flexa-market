@@ -263,7 +263,7 @@ export function AppDrawer() {
           { icon: "heart", label: "Saved", href: "/favorites", testID: "drawer-saved" },
           { icon: "file-text", label: "My Drafts", href: "/my-drafts", testID: "drawer-my-drafts" },
           { icon: "credit-card", label: "Wallet", href: "/wallet", testID: "drawer-wallet" },
-          { icon: "gift", label: "Promo Account", href: "/wallet", testID: "drawer-promo-account" },
+          { icon: "gift", label: "Promo Account", href: "/wallet?tab=promo", testID: "drawer-promo-account" },
           { icon: "award", label: "Subscription", href: "/subscription", testID: "drawer-subscription" },
           { icon: "settings", label: "Settings", href: "/settings", testID: "drawer-settings" },
           { icon: "lock", label: "Security & Login", href: "/settings/security", testID: "drawer-security" },
@@ -302,29 +302,69 @@ export function AppDrawer() {
     // Financial Support is hidden on WebView native-mobile shell — keep parity.
     // (Web: `!isNativeMobileApp() && Haiti|DR|superAdmin`)
 
-    if (user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user")) {
-      out.push({
-        id: "admin",
-        heading: "ADMIN",
-        items: [
-          { icon: "shield", label: "Admin Dashboard", href: "/admin", testID: "drawer-admin" },
-          ...(user.isAdmin || user.isSuperAdmin || user.role === "moderator"
-            ? ([{ icon: "shield", label: "Moderator Panel", href: "/admin?tab=moderation", testID: "drawer-moderator" }] as DrawerItem[])
-            : []),
-        ],
-      });
+    // Flexa Control — staff only (support+). Gate matches server /admin/me.
+    {
+      const role = String(user?.role ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_-]+/g, "");
+      const staff =
+        !!(
+          user?.isAdmin ||
+          user?.isSuperAdmin ||
+          role === "superadmin" ||
+          role === "admin" ||
+          role === "moderator" ||
+          role === "support"
+        );
+      if (staff) {
+        out.push({
+          id: "admin",
+          heading: "ADMIN",
+          items: [
+            {
+              icon: "shield",
+              label: "Flexa Control",
+              href: "/admin",
+              testID: "drawer-admin",
+            },
+            ...(user?.isAdmin ||
+            user?.isSuperAdmin ||
+            role === "moderator" ||
+            role === "admin" ||
+            role === "superadmin"
+              ? ([
+                  {
+                    icon: "flag",
+                    label: "Moderation",
+                    href: "/admin/moderation",
+                    testID: "drawer-moderator",
+                  },
+                ] as DrawerItem[])
+              : []),
+          ],
+        });
+      }
     }
 
     return out;
   }, [user, deliveryCountry, driverStatus]);
 
-  const roleLabel = user?.isSuperAdmin
+  const normalizedRole = String(user?.role ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  const roleLabel = user?.isSuperAdmin || normalizedRole === "superadmin"
     ? "Super Admin"
-    : user?.isAdmin
+    : user?.isAdmin || normalizedRole === "admin"
       ? "Admin"
-      : user?.role && user.role !== "user"
-        ? user.role
-        : "Member";
+      : normalizedRole === "moderator"
+        ? "Moderator"
+        : normalizedRole === "support"
+          ? "Support"
+          : user?.role && user.role !== "user"
+            ? user.role
+            : "Member";
 
   const onNavigate = (href: string) => {
     closeDrawer();
@@ -381,7 +421,7 @@ export function AppDrawer() {
               </Text>
               <Pressable
                 style={styles.promoBtn}
-                onPress={() => onNavigate("/wallet")}
+                onPress={() => onNavigate("/wallet?tab=promo")}
                 testID="drawer-promo-balance"
               >
                 <Feather name="gift" size={14} color="#6EE7B7" />

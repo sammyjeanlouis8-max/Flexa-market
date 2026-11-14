@@ -14,7 +14,7 @@
 | Overview / Promo / Transactions tabs | **Fixed** | Emulator screenshots attached |
 | Deposit | **Verified** | Remains blocked on Android (Play policy + server guard); shows reason |
 | Send | **Fixed** | → `/wallet-transfer` |
-| Contacts | **Blocked** | No native agents directory; explains limitation |
+| Contacts | **Fixed** | Opens native `/agents` Agent directory (web `/wallet/agents`) — see `WALLET242-GAP-RESULTS.md` |
 | Bonus (redeem card) | **Fixed** | Modal → `POST /wallet/redeem-card` |
 | Receive / Cash out | **Fixed** | → `/wallet-cashout` → `POST /cashout/request` |
 | History | **Fixed** | → `/wallet-history` + in-tab All/In/Out |

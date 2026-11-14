@@ -4,12 +4,13 @@
  * Haiti cart checkout with FM Wallet balance stays available.
  */
 import { Feather } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
@@ -60,9 +61,25 @@ function formatWhen(iso: string | null | undefined): string {
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ tab?: string }>();
   const { token, user, isLoading: authLoading } = useAuth();
 
-  const [tab, setTab] = useState<TabKey>("overview");
+  const initialTab = (["overview", "promo", "transactions"] as TabKey[]).includes(
+    params.tab as TabKey,
+  )
+    ? (params.tab as TabKey)
+    : "overview";
+  const [tab, setTab] = useState<TabKey>(initialTab);
+
+  useEffect(() => {
+    if (
+      params.tab === "overview" ||
+      params.tab === "promo" ||
+      params.tab === "transactions"
+    ) {
+      setTab(params.tab);
+    }
+  }, [params.tab]);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [balance, setBalance] = useState<WalletBalance | null>(null);
   const [txs, setTxs] = useState<WalletTx[] | null>(null);
@@ -471,11 +488,7 @@ export default function WalletScreen() {
                       label: "Contacts",
                       icon: "users" as const,
                       solid: false as boolean,
-                      onPress: () =>
-                        Alert.alert(
-                          "Contacts",
-                          "Agent directory is limited on Android. Use Send to transfer by account search, or open agents from the web wallet when available.",
-                        ),
+                      onPress: () => router.push("/agents"),
                     },
                     {
                       label: "Bonus",
@@ -574,7 +587,9 @@ export default function WalletScreen() {
               ) : (
                 <Pressable
                   style={styles.panelGold}
-                  onPress={() => router.push("/agents")}
+                  onPress={() =>
+                    void Linking.openURL("https://flexamarket.com/agents/apply")
+                  }
                 >
                   <Feather name="star" size={18} color="#B45309" />
                   <View style={{ flex: 1 }}>

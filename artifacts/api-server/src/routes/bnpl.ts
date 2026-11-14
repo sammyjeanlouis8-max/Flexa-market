@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
 import { db, usersTable, transactionsTable, listingsTable, promoWalletTable, walletTransactionsTable, notificationsTable } from "@workspace/db";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getStripeClient } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
 import { eq, and, gte, count, avg, sql } from "drizzle-orm";
@@ -229,7 +229,7 @@ router.post("/bnpl/checkout", requireAuth, async (req: any, res: Response): Prom
 });
 
 // ── PATCH /api/admin/bnpl/settings — admin update ─────────────────────────────
-router.patch("/admin/bnpl/settings", requireAuth, async (req: any, res: Response): Promise<void> => {
+router.patch("/admin/bnpl/settings", requireAuth, requireAdmin, async (req: any, res: Response): Promise<void> => {
   try {
     const { klarnaEnabled, affirmEnabled, afterpayEnabled, minAmountUsd, maxAmountUsd, platformFeePct } = req.body;
 
@@ -254,7 +254,7 @@ router.patch("/admin/bnpl/settings", requireAuth, async (req: any, res: Response
 });
 
 // ── GET /api/admin/bnpl/analytics — BNPL transaction overview ─────────────────
-router.get("/admin/bnpl/analytics", requireAuth, async (req: any, res: Response): Promise<void> => {
+router.get("/admin/bnpl/analytics", requireAuth, requireAdmin, async (req: any, res: Response): Promise<void> => {
   try {
     const [stats] = await db.execute(sql.raw(`
       SELECT

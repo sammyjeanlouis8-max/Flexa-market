@@ -91,12 +91,12 @@ _Regenerated: 2026-11-12T22:59Z · Inventory features: **84** · Expo screen mod
 | 72 | `flexa-tv` | Flexa TV | `/tv` | `/tv` | **FULLY_NATIVE** | — |
 | 73 | `flexa-music` | Flexa Music | `/music,/music/upload,/music/earnings,/music/play/:id` | `/music` | **FULLY_NATIVE** | — |
 | 74 | `music-purchase` | Music digital purchase | `/music` | `/music` | **BLOCKED** | Play Billing digital goods |
-| 75 | `admin-panel` | Admin Panel / Super Admin Dashboard | `/admin,/admin/*` | `/admin` | **FULLY_NATIVE** | — |
-| 76 | `admin-users` | User / Seller / Driver Management | `/admin/users,/admin/driver-applications,/admin/agents` | `/admin?tab=users` | **FULLY_NATIVE** | — |
-| 77 | `admin-moderation` | Product Moderation / Reports / Disputes | `/admin/moderation,/admin/reports,/admin/appeals` | `/admin?tab=moderation` | **FULLY_NATIVE** | — |
-| 78 | `admin-finance` | Financial Management / Payments / Wallet Ops / Refunds | `/admin/transactions,/admin/stripe-transactions,/admin?tab=wallet|payments|...` | `/admin?tab=finance` | **FULLY_NATIVE** | — |
-| 79 | `admin-support` | Support Agent Management / Live Support / Tickets | `/admin/support,/admin/live-support` | `/admin?tab=support` | **FULLY_NATIVE** | — |
-| 80 | `admin-analytics` | Admin Analytics / Announcements / Role Management | `/admin (revenue, broadcast, team, push)` | `/admin` | **FULLY_NATIVE** | — |
+| 75 | `admin-panel` | Flexa Control / Super Admin Dashboard | `/admin,/admin/*` | `/admin` | **FULLY_NATIVE** | Staff gate via `GET /admin/me`; buyer Access denied |
+| 76 | `admin-users` | User / Seller / Driver Management | `/admin/users,/admin/driver-applications,/admin/agents` | `/admin/users` | **FULLY_NATIVE** | Module route under Flexa Control shell |
+| 77 | `admin-moderation` | Product Moderation / Reports / Disputes | `/admin/moderation,/admin/reports,/admin/appeals` | `/admin/moderation` | **FULLY_NATIVE** | Drawer: Moderator Panel |
+| 78 | `admin-finance` | Financial Management / Payments / Wallet Ops / Refunds | `/admin/transactions,/admin/stripe-transactions,/admin?tab=wallet|payments|...` | `/admin/payments` | **FULLY_NATIVE** | Also `/admin/refunds`, stripe modules |
+| 79 | `admin-support` | Support Agent Management / Live Support / Tickets | `/admin/support,/admin/live-support` | `/admin/support` | **FULLY_NATIVE** | — |
+| 80 | `admin-analytics` | Admin Analytics / Announcements / Role Management | `/admin (revenue, broadcast, team, push)` | `/admin/analytics`, `/admin/more` | **FULLY_NATIVE** | — |
 | 81 | `delete-account` | Delete Account / Data Deletion | `/delete-account,/data-deletion` | `/delete-account` | **FULLY_NATIVE** | — |
 | 82 | `website-embed` | Website WebView shell | `*` | `/website` | **FULLY_NATIVE** | — |
 | 83 | `esim` | Flexa eSIM | `None` | `/esim` | **BLOCKED** | provider integration |

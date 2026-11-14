@@ -29,7 +29,7 @@
 
 ## Remaining differences (specific causes)
 
-1. **Contacts** — web opens `/wallet/agents`; native has no agents directory route yet (alert explains).
+1. **Contacts** — native opens `/agents` Agent directory (parity with web `/wallet/agents`).
 2. **History shortcut on web** goes to `/sales`; native uses `/wallet-history` (correct ledger history).
 3. **Non-zero / Super Admin platform UI** — blocked without funded or Super Admin test secrets in this environment.
 4. **QR** uses `api.qrserver.com` image (display-only); web uses in-app QR component — same account payload.

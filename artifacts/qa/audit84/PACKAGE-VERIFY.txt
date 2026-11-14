@@ -2,5 +2,6 @@ package: com.flexamarket.app
 versionName: 1.0.1
 versionCode: 59
 emulator: sdk_gphone64_x86_64 Android 14
-commit: 16e16fee87eb27c96aac9a993b8f15f465a28a2f
+commit: 1166467bbab6e35bded63ea877e7ecd02c133f31
 branch: cursor/native-84-screen-audit-9d45
+apk: local assembleRelease from 16e16fee (vc59); docs head 1166467b

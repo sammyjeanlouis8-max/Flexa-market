@@ -1,6 +1,6 @@
 # Sign In layout parity — PR follow-up (AuthShell)
 
-**Test APK commit:** *(filled after push)*  
+**Test APK commit:** `6af1a9c5b053cc7b62f47e348f65747e16f6761c`  
 **Branch:** `cursor/signin-layout-inset-9d45`  
 **Viewports:** 360×640 and 390×844 logical, font scale 1.0, logged out, English  
 **API / WebView ref:** `https://flexamarket.com/auth/login`

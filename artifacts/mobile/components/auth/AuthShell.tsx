@@ -10,9 +10,11 @@ import {
 } from "@expo-google-fonts/space-grotesk";
 import { useFonts } from "expo-font";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useEffect, type ReactNode } from "react";
+import { useRouter } from "expo-router";
+import React, { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -23,6 +25,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LANGUAGES, useLanguage } from "../../context/LanguageContext";
 import { prefetchFlagAtlas } from "../../lib/globeAssetCache";
 import AuthGlobe from "./AuthGlobe";
 
@@ -58,9 +61,17 @@ export default function AuthShell({
   globeActive = true,
 }: AuthShellProps) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { lang } = useLanguage();
   const { width, height } = useWindowDimensions();
   const isWide = width >= 900;
-  const globeSize = isWide ? 220 : width < 360 ? 92 : width < 400 ? 124 : 140;
+  const scrollRef = useRef<ScrollView>(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  // Web CSS: .auth-globe-wrap is 7.75rem (124) below lg; 5.75rem (92) under 360px.
+  const globeSize = isWide ? 220 : width < 360 ? 92 : 124;
+  const langMeta = LANGUAGES.find((l) => l.code === lang) ?? LANGUAGES.find((l) => l.code === "en");
+  // Short viewports: collapse brand chrome while keyboard is open so fields stay usable.
+  const compactBrand = keyboardOpen && !isWide && height < 720;
 
   const [fontsLoaded] = useFonts({
     SpaceGrotesk_500Medium,
@@ -75,6 +86,23 @@ export default function AuthShell({
     prefetchFlagAtlas();
   }, []);
 
+  useEffect(() => {
+    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const show = Keyboard.addListener(showEvt, () => {
+      setKeyboardOpen(true);
+      // Scroll form into the resized window (matches WebView focus scroll).
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: Math.max(0, globeSize * 0.65), animated: true });
+      }, 80);
+    });
+    const hide = Keyboard.addListener(hideEvt, () => setKeyboardOpen(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [globeSize]);
+
   const titleFont = fontsLoaded ? "SpaceGrotesk_700Bold" : undefined;
   const bodyFont = fontsLoaded ? "DMSans_400Regular" : undefined;
   const bodyMedium = fontsLoaded ? "DMSans_500Medium" : undefined;
@@ -85,9 +113,12 @@ export default function AuthShell({
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
         <ScrollView
+          ref={scrollRef}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           bounces={false}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -100,8 +131,9 @@ export default function AuthShell({
               style={[
                 styles.brandPanel,
                 {
-                  paddingTop: Math.max(insets.top, 12) + 8,
-                  paddingBottom: isWide ? 48 : 36,
+                  // Web: pt-[calc(0.85rem+safe)] pb-7 (28)
+                  paddingTop: Math.max(insets.top, 12) + 2,
+                  paddingBottom: isWide ? 48 : compactBrand ? 12 : 28,
                 },
                 isWide && styles.brandPanelWide,
               ]}
@@ -141,30 +173,44 @@ export default function AuthShell({
                     Flexa Market
                   </Text>
                 </View>
+                {!isWide ? (
+                  <Pressable
+                    testID="auth-language"
+                    accessibilityRole="button"
+                    accessibilityLabel="Language"
+                    onPress={() => router.push("/language-picker")}
+                    style={styles.langChip}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.langFlag}>{langMeta?.flag ?? "🇺🇸"}</Text>
+                  </Pressable>
+                ) : null}
               </View>
 
-              <View style={[styles.brandBody, isWide && styles.brandBodyWide]}>
-                <View style={styles.brandCopy}>
-                  <Text
-                    style={[
-                      styles.brandTitle,
-                      titleFont ? { fontFamily: titleFont } : null,
-                      width < 360 && { fontSize: 22 },
-                    ]}
-                  >
-                    {brandTitle}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.brandSubtitle,
-                      bodyFont ? { fontFamily: bodyFont } : null,
-                    ]}
-                  >
-                    {brandSubtitle}
-                  </Text>
+              {!compactBrand ? (
+                <View style={[styles.brandBody, isWide && styles.brandBodyWide]}>
+                  <View style={styles.brandCopy}>
+                    <Text
+                      style={[
+                        styles.brandTitle,
+                        titleFont ? { fontFamily: titleFont } : null,
+                        width < 360 && { fontSize: 21.6 },
+                      ]}
+                    >
+                      {brandTitle}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.brandSubtitle,
+                        bodyFont ? { fontFamily: bodyFont } : null,
+                      ]}
+                    >
+                      {brandSubtitle}
+                    </Text>
+                  </View>
+                  <AuthGlobe size={globeSize} active={globeActive && !keyboardOpen} deferMount />
                 </View>
-                <AuthGlobe size={globeSize} active={globeActive} deferMount />
-              </View>
+              ) : null}
             </LinearGradient>
 
             <View
@@ -359,17 +405,30 @@ const styles = StyleSheet.create({
   },
   brandTitle: {
     color: AUTH.white,
-    fontSize: 26,
+    fontSize: 26.4,
     fontWeight: "700",
-    lineHeight: 30,
+    lineHeight: 30.4,
     letterSpacing: -0.4,
   },
   brandSubtitle: {
     marginTop: 10,
     color: "rgba(255,255,255,0.75)",
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 21,
     maxWidth: 280,
+  },
+  langChip: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  langFlag: {
+    fontSize: 18,
   },
   formPanel: {
     backgroundColor: AUTH.white,
@@ -377,6 +436,7 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
   formOverlap: {
+    // Web: margin-top -1.35rem ≈ -21.6
     marginTop: -22,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -403,7 +463,8 @@ const styles = StyleSheet.create({
   },
   formTitle: {
     color: AUTH.fg,
-    fontSize: 28,
+    // Web: text-[1.7rem] ≈ 27.2
+    fontSize: 27,
     fontWeight: "700",
     letterSpacing: -0.4,
   },
@@ -411,11 +472,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
     color: AUTH.muted,
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 23,
   },
   formSurface: {
     marginTop: 20,
-    gap: 14,
+    // Web form space-y-4 ≈ 16
+    gap: 16,
   },
   footer: {
     marginTop: 20,

@@ -102,6 +102,11 @@ export default function LoginScreen({
       subtitle="Sign in to buy, sell, and chat"
       footer={
         <View style={styles.footerBlock}>
+          <AuthLink
+            label="Sign in with phone number"
+            onPress={() => openPath("/auth/login-phone")}
+            testID="link-login-phone"
+          />
           <Text style={styles.footerMuted}>
             Don&apos;t have an account?{" "}
             <Text style={styles.footerLink} onPress={onGoRegister}>
@@ -222,14 +227,6 @@ export default function LoginScreen({
         loading={loading}
         disabled={loading}
       />
-
-      <View style={styles.altAuth}>
-        <AuthLink
-          label="Sign in with phone"
-          onPress={() => openPath("/auth/login-phone")}
-          testID="link-login-phone"
-        />
-      </View>
     </AuthShell>
   );
 }
@@ -237,10 +234,6 @@ export default function LoginScreen({
 const styles = StyleSheet.create({
   field: {
     gap: 6,
-  },
-  altAuth: {
-    marginTop: 12,
-    alignItems: "center",
   },
   labelRow: {
     flexDirection: "row",
@@ -250,8 +243,9 @@ const styles = StyleSheet.create({
   },
   label: {
     color: AUTH.fg,
-    fontSize: 13,
-    fontWeight: "600",
+    // Web FormLabel ≈ 14px
+    fontSize: 14,
+    fontWeight: "500",
   },
   input: {
     minHeight: 48,

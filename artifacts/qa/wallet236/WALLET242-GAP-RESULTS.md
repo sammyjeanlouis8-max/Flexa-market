@@ -30,6 +30,6 @@
 
 ## Test APK commit
 
-_(pinned after push)_
+`d2a88e63655e5f67f8cb7b948576be825c5e4c6a`
 
 **No release AAB** until Sammy approves.

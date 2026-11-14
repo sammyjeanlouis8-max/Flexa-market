@@ -19,6 +19,49 @@
 
 PR dependency is **not** blocking verification: #243 tip contains #242 wallet/agents changes.
 
+
+## Secrets investigation (this turn)
+
+See `SECRETS-TRACE.md` for the full matrix.
+
+| Check performed | Result |
+|---|---|
+| `CLOUD_AGENT_*_SECRET_NAMES` | Only `EXPO_TOKEN` injected into VM |
+| `FLEXA_TEST_*` in process env | **Absent** (0 keys) |
+| `list-available-secrets` / `bind-app-secrets` | Names registered; **values missing**; secure form re-prompted (12 names) |
+| Buyer personal wallet APIs | Still **200** empty (not a secret failure) |
+| Platform revenue as buyer | Still **403** (correct) |
+| `POST /api/boost/1/renew` | Still **404** on DO |
+
+**Action for Sammy (phone):** Cursor → Environment Secrets → add the 12 `FLEXA_TEST_*` names → reply here. Prefer Cloud Agent environment secrets (not only publish-app bindings).
+
+## Retest of former FAIL items
+
+| Fix | Result | Evidence |
+|---|---|---|
+| Promo `?tab=promo` | **PASS** — Promo Account tab selected, code Audit99 | `a243-fix-promo-tab.png` |
+| Moderator Panel route | **PASS** (buyer) — Access denied / support access required | `a243-fix-moderator-panel.png` |
+
+## Partial upgrades this turn
+
+Opened and exercised UI (empty/eligible states OK) on vc59:
+
+| # | Screen | New status | Evidence |
+|---:|---|---|---|
+| 25 | Flex Card repay | **PASS** | `a243-partial-flex-card-repay.png` — no debt |
+| 26 | BNPL | **PASS** | `a243-partial-bnpl.png` — providers + not eligible; title truncation fixed (`showBrand={false}`) |
+| 51 | Edit Product | **PASS** | `a243-partial-sell-edit.png` — listing 160 form |
+| 55 | Sales | **PASS** | `a243-partial-sales.png` — $0 empty seller OK |
+| 56 | Seller analytics | **PASS** | `a243-partial-analytics.png` |
+| 59 | Boost wizard | **PASS** (UI) | `a243-partial-boost.png` — paid purchase still BLOCKED |
+| 64 | My Drafts | **PASS** | `a243-partial-drafts.png` — empty |
+| 70 | Loans | **PASS** | `a243-partial-loans.png` |
+| 71 | Credit score | **PASS** | `a243-partial-credit.png` |
+| 11 | Checkout | **PARTIAL** | Empty cart gate `a243-partial-checkout.png` — pay still BLOCKED |
+| 13 | Stripe checkout | **PARTIAL** | `a243-partial-stripe.png` |
+| 23 | Transfer | **PASS** | `a243-partial-transfer.png` |
+
+
 ## 2. Scoreboard reconciliation (84 vs “~50”)
 
 Canonical checklist = **84** features (`native-84-page-map.md` / table below). Prior narrative “~50” counted only PASS+BLOCKED buckets without listing every PARTIAL as its own scoreboard row. This report scores **all 84**.
@@ -27,10 +70,10 @@ Canonical checklist = **84** features (`native-84-page-map.md` / table below). P
 
 | Status | Count | Rule |
 |---|---:|---|
-| **PASS** | **48** | Layout + nav + exercised controls (or intentional empty/auth gate) |
+| **PASS** | **57** | Layout + nav + exercised controls (or intentional empty/auth gate) |
 | **FAIL (fixed)** | **2** | Promo `?tab=promo`; Moderator Panel label — verified fixed |
 | **BLOCKED** | **16** | Secrets / Play Billing / renew 404 / eSIM / manager / pay E2E |
-| **PARTIAL** | **18** | Opens but role data, device FCM, or polish incomplete |
+| **PARTIAL** | **9** | Opens but role data, device FCM, or polish incomplete |
 | **NOT TESTED** | **0** | Every checklist ID has a status |
 | **Total** | **84** | |
 
@@ -104,8 +147,8 @@ Secrets still **unbound** in Cursor (bindings exist, values empty). Exact names:
 | 22 | Wallet top-up | Deposit | `/wallet` | `/wallet` | auth | **BLOCKED** | Play policy (expected) |
 | 23 | Wallet transfer | Send | `/wallet-transfer` | transfer | auth | **PASS** | |
 | 24 | Transaction history | History | `/wallet-history` | `/wallet/history` | auth | **PASS** | empty ledger OK |
-| 25 | Flex Card repay | FM Card | `/flex-card-repay` | repay | buyer | **PASS** | route + CTA |
-| 26 | BNPL | CTA | `/bnpl` | `/bnpl` | buyer | **PARTIAL** | eligibility |
+| 25 | Flex Card repay | FM Card | `/flex-card-repay` | repay | buyer | **PASS** | `a243-partial-flex-card-repay.png` |
+| 26 | BNPL | CTA | `/bnpl` | `/bnpl` | buyer | **PASS** | providers + not eligible; title fix |
 | 27 | Account hub | tab | `/profile` | settings hub | any | **PASS** | |
 | 28 | Public shop | My Shop | `/shop/[id]` | `/profile/:id` | any | **PASS** | |
 | 29 | Edit Profile | settings | `/edit-profile` | edit | auth | **PASS** | |
@@ -130,27 +173,27 @@ Secrets still **unbound** in Cursor (bindings exist, values empty). Exact names:
 | 48 | FlexaBot | drawer | `/chatbot` | `/chatbot` | auth | **PASS** | |
 | 49 | Add Product / Sell | drawer | `/sell` | `/sell` | seller | **PARTIAL** | form **PASS**; photo/draft video pending |
 | 50 | My Listings | drawer | `/my-listings` | profile | seller | **PASS** | listing `#160` visible |
-| 51 | Edit Product | Edit | `/sell-edit/[id]` | edit | seller | **PARTIAL** | CTA present |
+| 51 | Edit Product | Edit | `/sell-edit/[id]` | edit | seller | **PASS** | `a243-partial-sell-edit.png` |
 | 52 | Image upload | Sell | `/sell` | Sell | seller | **PARTIAL** | picker present |
 | 53 | Video upload | videos | `/videos` | videos | seller | **PARTIAL** | player PASS |
 | 54 | Inventory | My listings | `/my-listings` | listings | seller | **PASS** | stock on `#160` |
-| 55 | Sales | drawer | `/sales` | `/sales` | seller | **PARTIAL** | nav |
-| 56 | Seller analytics | analytics | `/analytics` | analytics | seller | **PARTIAL** | nav |
+| 55 | Sales | drawer | `/sales` | `/sales` | seller | **PASS** | `a243-partial-sales.png` empty OK |
+| 56 | Seller analytics | analytics | `/analytics` | analytics | seller | **PASS** | `a243-partial-analytics.png` |
 | 57 | Seller orders | sales | `/sales` | sales | seller | **PARTIAL** | |
 | 58 | Earnings / payouts | payments | `/settings/payments` | payments | seller | **PASS** | |
-| 59 | Boost campaigns | Boost | `/boost` | boost | seller | **PARTIAL** | wizard |
+| 59 | Boost campaigns | Boost | `/boost` | boost | seller | **PASS** | wizard UI; paid still #60 BLOCKED |
 | 60 | Paid Boost | pay | `/boost` | boost | seller | **BLOCKED** | Play / wallet charge |
 | 61 | Boost Analytics | drawer | `/boost-analytics` | analytics | seller | **PASS** | |
 | 62 | My Active Boosts | drawer | `/my-boosts` | booster | seller | **PASS** | |
 | 63 | Promo videos / player | drawer | `/videos` | `/videos` | any | **PASS** | promo236 + autoplay shot |
-| 64 | My Drafts | drawer | `/my-drafts` | drafts | seller | **PARTIAL** | |
+| 64 | My Drafts | drawer | `/my-drafts` | drafts | seller | **PASS** | empty drafts OK |
 | 65 | Store Manager | manager | `/manager` | `/manager` | manager | **BLOCKED** | role secret |
 | 66 | Seller registration | Sell | `/sell` | sell | seller | **PASS** | buyer can create listing `#160` |
 | 67 | Driver apply | drawer | `/driver-apply` | apply | Haiti | **PASS** | |
 | 68 | Driver dashboard | drawer | `/driver-dashboard` | dashboard | driver | **BLOCKED** | driver secret |
 | 69 | Cash agents | Contacts | `/agents` | `/wallet/agents` | Haiti | **PASS** | #242 directory |
-| 70 | Loans | deep link | `/loans` | `/loans` | seller | **PARTIAL** | hidden drawer (web parity) |
-| 71 | Credit score | deep link | `/credit-score` | credit | seller | **PARTIAL** | hidden drawer |
+| 70 | Loans | deep link | `/loans` | `/loans` | seller | **PASS** | screen opens; hidden from drawer |
+| 71 | Credit score | deep link | `/credit-score` | credit | seller | **PASS** | screen opens; hidden from drawer |
 | 72 | Flexa TV | drawer | `/tv` | `/tv` | any | **PASS** | |
 | 73 | Flexa Music | drawer | `/music` | `/music` | any | **PASS** | |
 | 74 | Music purchase | CTA | `/music` | `/music` | any | **BLOCKED** | Play Billing |

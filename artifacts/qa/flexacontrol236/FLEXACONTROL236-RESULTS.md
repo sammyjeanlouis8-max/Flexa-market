@@ -33,8 +33,32 @@ Verified with a regular account: API returns **403** `{ "error": "support access
 | Promo videos (`/admin/boosts` approve/reject) | Wired | Wired | Hidden | denied |
 | Push / Team / Security / Deliveries / etc. | Routes + best-effort API | Perm-gated | Limited | denied |
 
-Staff Super Admin / Admin / Support dashboard screenshots and write proofs remain **BLOCKED** until `FLEXA_TEST_{SUPERADMIN,ADMIN,SUPPORT}_*` secrets are available in the environment.
+Staff Super Admin / Admin / Support dashboard screenshots and write proofs remain **BLOCKED** until secrets are filled (see `STAFF-SECRETS.md`).
 
-## Test APK commit
+### Eight secure inputs (why not six)
 
-`dca7b9ac11964b4594e7356c4e41e07f425d5717`
+| # | Name | Why |
+|---:|---|---|
+| 1–2 | `FLEXA_TEST_SUPERADMIN_EMAIL` / `_PASSWORD` | Super Admin Control + All Countries |
+| 3–4 | `FLEXA_TEST_ADMIN_EMAIL` / `_PASSWORD` | Country-scoped Admin |
+| 5–6 | `FLEXA_TEST_SUPPORT_EMAIL` / `_PASSWORD` | Support modules |
+| 7–8 | `FLEXA_TEST_BUYER_EMAIL` / `_PASSWORD` | Regular-user Access denied baseline |
+
+No staff session exists in this environment today. Reused only ephemeral regular buyers for denial proofs. Add the eight values in the Cursor secure form; do not paste into chat.
+
+## Role results (latest)
+
+| Role / check | Status | Evidence |
+|---|---|---|
+| Logged out → `/admin` | **PASS** | `signin-required-logged-out.png` / `gate-after-deeplink.png` |
+| Regular user → `/admin` | **PASS** | `buyer-access-denied.png` · also `artifacts/qa/audit84/audit84-admin.png` |
+| Super Admin → drawer Flexa Control → modules + write | **BLOCKED** | secrets missing |
+| Country Admin → scoped country + out-of-scope deny | **BLOCKED** | secrets missing |
+| Support → authorized modules + write | **BLOCKED** | secrets missing |
+
+## Test APK commits
+
+- Flexa Control gate PR (#241): `dca7b9ac11964b4594e7356c4e41e07f425d5717` · versionCode **56**
+- Audit stack retest (#243): `5f23848dc3a2e9380c92d77c5e61496d0da2fecf` · versionCode **58** · package `com.flexamarket.app`
+
+**No release build** until staff E2E is unblocked and Sammy approves.

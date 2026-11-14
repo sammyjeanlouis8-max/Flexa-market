@@ -241,7 +241,17 @@ Evidence: `a243-wallet-empty.png`, `a243-fm-card-empty.png`, `a243-wallet-tx.png
 | Boost rotation + vertical player | **PASS** (player) / **PARTIAL** (seller campaign) | promo236 |
 | Authorized admin action | **PASS** (Super Admin) | Command Center + modules; Admin/Support role accounts still need secrets |
 
-## 7. Remaining blockers (exact unblock)
+## 7. Native admin gap fill (post-audit)
+
+Wired former `generic` Flexa Control stubs to real `/api/admin/*` (and wallet) endpoints in native:
+
+- Loans, Flex Card, Transactions, Driver/Agent applications, TV, Music, VIP, Rates, Broadcast Email/SMS
+- Added catalog modules: Reports, Appeals, Flagged Users, Live Support
+- Music falls back to public `/music` when `GET /admin/music` is missing on prod
+
+Device retest of these modules still needs emulator/SDK (currently unavailable on this agent).
+
+## 8. Remaining blockers (exact unblock)
 
 1. Fill Cursor **Environment** Secrets for **Admin / Support / Buyer / Seller / Driver** pairs (Super Admin already present).  
 2. Funded wallet account for non-zero SBS + pagination.  
@@ -249,6 +259,7 @@ Evidence: `a243-wallet-empty.png`, `a243-fm-card-empty.png`, `a243-wallet-tx.png
 4. Deploy `POST /api/boost/:id/renew` (still 404 on DO).  
 5. Play Billing policy items stay **BLOCKED** on Android by design.  
 6. Optional: improve emulator IME/clipboard so soft Sign In form can be driven without session restore.
+   7. Rebuild release APK + device retest of newly wired admin modules.
 
 ## Evidence index
 

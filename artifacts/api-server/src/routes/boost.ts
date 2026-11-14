@@ -1228,4 +1228,218 @@ router.post("/boost/verify-stripe-payment", requireAuth, async (req, res): Promi
   }
 });
 
+/**
+ * POST /api/boost/:boostId/renew
+ * Renew an expired (or completed) owned campaign with the same listing video.
+ * Idempotent via `Idempotency-Key` header — retries after timeout return the
+ * first successful renewal (at most one charge).
+ */
+router.post("/boost/:boostId/renew", requireAuth, requireNotRestricted, requireCardNotBlocked, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const sourceBoostId = parseInt(String(req.params.boostId), 10);
+  if (!Number.isFinite(sourceBoostId)) {
+    res.status(400).json({ error: "Invalid boost id" });
+    return;
+  }
+
+  const idempotencyKey = String(req.get("Idempotency-Key") || req.body?.idempotencyKey || "")
+    .trim()
+    .slice(0, 120);
+  if (!idempotencyKey) {
+    res.status(400).json({ error: "Idempotency-Key required" });
+    return;
+  }
+  const paymentRef = `RENEW-${idempotencyKey}`;
+
+  const [existingByKey] = await db
+    .select()
+    .from(boostsTable)
+    .where(and(eq(boostsTable.userId, userId), eq(boostsTable.paymentRef, paymentRef)))
+    .limit(1);
+  if (existingByKey) {
+    res.json({
+      renewed: true,
+      idempotent: true,
+      boostId: existingByKey.id,
+      listingId: existingByKey.listingId,
+      status: existingByKey.paymentStatus === "paid" ? "active" : existingByKey.paymentStatus,
+      expiresAt: existingByKey.expiresAt?.toISOString?.() ?? existingByKey.expiresAt,
+      paymentRef,
+    });
+    return;
+  }
+
+  const [source] = await db.select().from(boostsTable).where(eq(boostsTable.id, sourceBoostId));
+  if (!source) {
+    res.status(404).json({ error: "Boost not found" });
+    return;
+  }
+  if (source.userId !== userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, source.listingId));
+  if (!listing || listing.sellerId !== userId) {
+    res.status(403).json({ error: "Listing not found" });
+    return;
+  }
+  if (!listing.boostVideoUrl) {
+    res.status(400).json({ error: "Original video is missing; upload a video before renewing" });
+    return;
+  }
+
+  const now = new Date();
+  const expired =
+    source.expiresAt <= now ||
+    (!!listing.boostExpiresAt && listing.boostExpiresAt <= now) ||
+    source.paymentStatus === "paid" && listing.boostExpiresAt != null && listing.boostExpiresAt <= now;
+  const canRenew =
+    expired ||
+    source.paymentStatus === "cancelled" ||
+    source.campaignStatus === "completed" ||
+    source.campaignStatus === "expired";
+  if (!canRenew && source.paymentStatus === "paid" && listing.boostExpiresAt && listing.boostExpiresAt > now) {
+    res.status(400).json({ error: "Campaign is still active; wait until it expires to renew" });
+    return;
+  }
+
+  const plan = (
+    (VALID_PLANS as readonly string[]).includes(String(req.body?.plan ?? ""))
+      ? String(req.body.plan)
+      : source.plan
+  ) as Plan;
+  const planMeta = PLAN_META[plan];
+  const budgetCheck = validateBudget(req.body?.budget ?? source.budget ?? planMeta.basePrice, plan);
+  if (!budgetCheck.ok) {
+    res.status(400).json({ error: budgetCheck.error });
+    return;
+  }
+  const budget = budgetCheck.budget;
+  const audienceCheck = validateAudience(
+    {
+      country: req.body?.audience?.country ?? source.audienceCountry ?? listing.country ?? req.user?.country,
+      state: req.body?.audience?.state ?? source.audienceState,
+      city: req.body?.audience?.city ?? source.audienceCity,
+      cities: req.body?.audience?.cities ?? source.audienceCities,
+      audienceType: req.body?.audience?.audienceType ?? source.audienceType ?? "advantage_plus",
+    },
+    req.user?.country,
+  );
+  if (!audienceCheck.ok) {
+    res.status(400).json({ error: audienceCheck.error });
+    return;
+  }
+  const audience = audienceCheck.audience;
+  const days = planMeta.days;
+  const expiresAt = new Date(now.getTime() + days * 86_400_000);
+  const dailyBudget = dailyBudgetFromTotal(budget, plan);
+  const reach = estimateReach(budget, plan, audience);
+
+  // In-flight renewals for same listing (2 min)
+  const [inflight] = await db
+    .select({ id: boostsTable.id })
+    .from(boostsTable)
+    .where(
+      and(
+        eq(boostsTable.userId, userId),
+        eq(boostsTable.listingId, listing.id),
+        eq(boostsTable.paymentStatus, "processing"),
+        gt(boostsTable.createdAt, new Date(Date.now() - 2 * 60_000)),
+      ),
+    )
+    .limit(1);
+  if (inflight) {
+    res.status(429).json({ error: "Renewal already in progress", code: "RENEW_IN_FLIGHT" });
+    return;
+  }
+
+  const [boost] = await db
+    .insert(boostsTable)
+    .values({
+      listingId: listing.id,
+      userId,
+      plan,
+      price: budget,
+      budget,
+      dailyBudget,
+      durationDays: days,
+      estimatedReach: reach,
+      audienceType: audience.audienceType ?? "advantage_plus",
+      audienceName: audience.audienceName ?? null,
+      audienceCountry: audience.country,
+      audienceState: audience.state ?? null,
+      audienceCity: audience.city ?? null,
+      audienceCities: audience.cities ?? null,
+      audienceNeighborhood: audience.neighborhood ?? null,
+      audienceRadiusKm: audience.radiusKm ?? null,
+      audienceAgeMin: audience.ageMin ?? 18,
+      audienceAgeMax: audience.ageMax ?? 65,
+      audienceGender: audience.gender ?? "all",
+      objective: audience.objective ?? "auto",
+      paymentMethod: "wallet",
+      paymentStatus: "processing",
+      paymentRef,
+      campaignStatus: "pending",
+      adFormat: listing.boostAdFormat ?? "video",
+      adTitle: source.adTitle ?? listing.title,
+      adDescription: source.adDescription ?? null,
+      startsAt: now,
+      expiresAt,
+    })
+    .returning();
+
+  const result = await deductWalletHybrid(
+    userId,
+    budget,
+    `Renew boost #${listing.id}`,
+    "boost_debit",
+    userId,
+  );
+  if (!result.ok) {
+    await db
+      .update(boostsTable)
+      .set({ paymentStatus: "pending", paymentRef: null })
+      .where(eq(boostsTable.id, boost.id))
+      .catch(() => {});
+    const total = result.promoBalance + result.realBalance;
+    res.status(402).json({
+      error: "Insufficient wallet balance",
+      code: "INSUFFICIENT_WALLET",
+      promoBalance: parseFloat(result.promoBalance.toFixed(2)),
+      realBalance: parseFloat(result.realBalance.toFixed(2)),
+      totalBalance: parseFloat(total.toFixed(2)),
+      requiredUsd: parseFloat(budget.toFixed(2)),
+      shortfallUsd: parseFloat((budget - total).toFixed(2)),
+    });
+    return;
+  }
+
+  await db
+    .update(boostsTable)
+    .set({ paymentStatus: "paid", campaignStatus: "active", paymentRef })
+    .where(eq(boostsTable.id, boost.id));
+  await db.update(listingsTable).set({
+    isBoosted: true,
+    boostStartAt: now,
+    boostExpiresAt: expiresAt,
+    boostAudienceCountry: audience.country,
+    boostAudienceState: audience.state ?? null,
+    boostAudienceCities: audience.cities ?? null,
+    boostAudienceCity: audience.city ?? null,
+    boostDailyBudget: dailyBudget,
+  }).where(eq(listingsTable.id, listing.id));
+
+  res.status(201).json({
+    renewed: true,
+    idempotent: false,
+    boostId: boost.id,
+    listingId: listing.id,
+    status: "active",
+    expiresAt: expiresAt.toISOString(),
+    amountCharged: budget,
+    paymentRef,
+  });
+});
+
 export default router;

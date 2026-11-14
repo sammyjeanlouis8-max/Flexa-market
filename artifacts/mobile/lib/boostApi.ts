@@ -156,6 +156,177 @@ export async function cancelBoost(boostId: number, opts: AuthOpts): Promise<void
   if (!res.ok) throw new Error(data.error || `Cancel boost failed (${res.status})`);
 }
 
+export type BoosterCampaign = {
+  boostId: number;
+  listingId: number;
+  title: string;
+  description?: string | null;
+  thumbnail: string | null;
+  boostVideoUrl: string | null;
+  boostImageUrl?: string | null;
+  adFormat?: string | null;
+  status: string;
+  impressions: number;
+  clicks: number;
+  skips?: number;
+  videoViews?: number;
+  budget: number;
+  plan: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt?: string | null;
+  canRenew?: boolean;
+  durationSec?: number | null;
+};
+
+export type MyVideosTab = "active" | "under_review" | "rejected" | "expired";
+
+export function campaignTab(
+  status: string,
+  endsAt?: string | null,
+): MyVideosTab | "draft" | null {
+  const s = (status || "").toLowerCase();
+  if (s === "draft") return "draft";
+  if (s === "rejected") return "rejected";
+  if (s === "expired" || s === "completed" || s === "cancelled") return "expired";
+  const pastEnd = endsAt ? new Date(endsAt).getTime() <= Date.now() : false;
+  // Backend may still report active/paused after the campaign end date.
+  if (pastEnd && (s === "active" || s === "paused" || !s)) return "expired";
+  if (s === "active" || s === "paused") return "active";
+  // pending / pending_review / processing → Under Review
+  return "under_review";
+}
+
+export async function fetchBoosterCampaigns(opts: AuthOpts): Promise<BoosterCampaign[]> {
+  const res = await authed("/booster/campaigns", opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Booster campaigns failed (${res.status})`);
+  const rows = Array.isArray(data.campaigns) ? data.campaigns : [];
+  return rows.map((r: any) => {
+    let status = String(r.status || "pending");
+    const endsAt = r.endsAt ?? null;
+    const expired = endsAt ? new Date(endsAt).getTime() <= Date.now() : false;
+    if (expired && (status === "active" || status === "paused")) {
+      status = "expired";
+    }
+    return {
+      boostId: Number(r.boostId),
+      listingId: Number(r.listingId),
+      title: r.title || `Campaign #${r.boostId}`,
+      description: r.description ?? null,
+      thumbnail: r.thumbnail ?? null,
+      boostVideoUrl: r.boostVideoUrl ?? null,
+      boostImageUrl: r.boostImageUrl ?? null,
+      adFormat: r.adFormat ?? "video",
+      status,
+      impressions: r.impressions ?? 0,
+      clicks: r.clicks ?? 0,
+      skips: r.skips ?? 0,
+      videoViews: r.videoViews ?? 0,
+      budget: Number(r.budget ?? 0),
+      plan: r.plan ?? null,
+      startsAt: r.startsAt ?? null,
+      endsAt,
+      createdAt: r.createdAt ?? null,
+      canRenew: status === "expired" || status === "completed" || status === "cancelled",
+      durationSec: r.durationSec ?? null,
+    } as BoosterCampaign;
+  });
+}
+
+export async function fetchBoosterMeta(opts: AuthOpts): Promise<{
+  haitiDepartments: string[];
+  communesByDepartment: Record<string, string[]>;
+}> {
+  const res = await authed("/booster/meta", opts);
+  const data = await readJson(res);
+  if (!res.ok) {
+    // Fallback: methods endpoint has departments only
+    const methods = await fetchBoostMethods(opts);
+    return {
+      haitiDepartments: methods.haitiDepartments || [],
+      communesByDepartment: {},
+    };
+  }
+  return {
+    haitiDepartments: Array.isArray(data.haitiDepartments) ? data.haitiDepartments : [],
+    communesByDepartment:
+      data.communesByDepartment && typeof data.communesByDepartment === "object"
+        ? data.communesByDepartment
+        : {},
+  };
+}
+
+export async function saveBoosterCampaign(
+  body: Record<string, unknown>,
+  opts: AuthOpts,
+): Promise<{ boostId: number; listingId: number; status: string }> {
+  const res = await authed("/booster/campaigns", { ...opts, method: "POST", body });
+  const data = await readJson(res);
+  if (!res.ok) throw new ApiError(data.error || `Save campaign failed (${res.status})`, res.status, data);
+  return {
+    boostId: Number(data.boostId),
+    listingId: Number(data.listingId),
+    status: String(data.status || "draft"),
+  };
+}
+
+export async function renewBoost(
+  boostId: number,
+  body: {
+    plan?: string;
+    budget?: number;
+    audience?: Record<string, unknown>;
+    idempotencyKey: string;
+  },
+  opts: AuthOpts,
+): Promise<{
+  renewed: boolean;
+  idempotent: boolean;
+  boostId: number;
+  listingId: number;
+  status: string;
+  expiresAt?: string;
+  amountCharged?: number;
+  httpStatus: number;
+}> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    Authorization: `Bearer ${opts.token}`,
+    "Content-Type": "application/json",
+    "Idempotency-Key": body.idempotencyKey,
+  };
+  const res = await fetch(`${getApiBase()}/boost/${boostId}/renew`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      plan: body.plan,
+      budget: body.budget,
+      audience: body.audience,
+      idempotencyKey: body.idempotencyKey,
+    }),
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new ApiError(data.error || `Renew failed (${res.status})`, res.status, data);
+  return {
+    renewed: !!data.renewed,
+    idempotent: !!data.idempotent,
+    boostId: Number(data.boostId),
+    listingId: Number(data.listingId),
+    status: String(data.status || "active"),
+    expiresAt: data.expiresAt,
+    amountCharged: data.amountCharged != null ? Number(data.amountCharged) : undefined,
+    httpStatus: res.status,
+  };
+}
+
+export async function cancelBoosterCampaign(boostId: number, opts: AuthOpts): Promise<void> {
+  const res = await authed(`/boost/${boostId}/cancel`, { ...opts, method: "POST", body: {} });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Cancel failed (${res.status})`);
+}
+
 export async function fetchBoostAnalytics(
   opts: AuthOpts,
   params?: { range?: string; status?: string },

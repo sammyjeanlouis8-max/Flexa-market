@@ -1,6 +1,6 @@
 import { Redirect } from "expo-router";
 
-/** WebView `/booster` → native My Boosts. */
+/** WebView `/booster` → native Boost Video flow. */
 export default function BoosterRedirect() {
-  return <Redirect href="/my-boosts" />;
+  return <Redirect href="/boost-video" />;
 }

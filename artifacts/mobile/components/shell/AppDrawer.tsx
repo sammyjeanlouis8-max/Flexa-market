@@ -201,7 +201,7 @@ export function AppDrawer() {
           { icon: "shopping-bag", label: "My Shop", href: `/shop/${user.id}`, testID: "drawer-my-shop" },
           { icon: "package", label: "My listings", href: "/my-listings", testID: "drawer-my-products" },
           { icon: "plus-square", label: "Add a product", href: "/sell", testID: "drawer-add-product" },
-          { icon: "video", label: "My videos", href: "/videos", testID: "drawer-my-videos" },
+          { icon: "video", label: "My videos", href: "/my-videos", testID: "drawer-my-videos" },
           { icon: "zap", label: "My Active Boosts", href: "/my-boosts", testID: "drawer-shop-my-boosts" },
           { icon: "bar-chart-2", label: "Boost Analytics", href: "/boost-analytics", testID: "drawer-boost-analytics" },
           { icon: "settings", label: "Shop settings", href: "/settings", testID: "drawer-shop-settings" },

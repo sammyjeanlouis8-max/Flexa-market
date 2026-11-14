@@ -8,6 +8,7 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { PushBootstrap } from "@/components/PushBootstrap";
+import { BoostAdOverlayHost } from "@/components/BoostAdOverlay";
 import { AppDrawer } from "@/components/shell/AppDrawer";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
@@ -33,6 +34,7 @@ export default function RootLayout() {
               <CartProvider>
                 <NavigationProvider>
                   <PushBootstrap />
+                  <BoostAdOverlayHost />
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="(tabs)" />
                     <Stack.Screen name="auth/login" />
@@ -76,6 +78,9 @@ export default function RootLayout() {
                     <Stack.Screen name="boost" />
                     <Stack.Screen name="boost-analytics" />
                     <Stack.Screen name="videos" />
+                    <Stack.Screen name="videos/watch" options={{ animation: "fade" }} />
+                    <Stack.Screen name="my-videos" />
+                    <Stack.Screen name="boost-video" />
                     <Stack.Screen name="offers" />
                     <Stack.Screen name="sales" />
                     <Stack.Screen name="kyc" />

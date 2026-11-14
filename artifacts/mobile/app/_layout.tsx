@@ -54,6 +54,8 @@ export default function RootLayout() {
                     <Stack.Screen name="wallet" />
                     <Stack.Screen name="wallet-transfer" />
                     <Stack.Screen name="wallet-history" />
+                    <Stack.Screen name="wallet-card" />
+                    <Stack.Screen name="wallet-cashout" />
                     <Stack.Screen name="chat/[id]" />
                     <Stack.Screen name="addresses" />
                     <Stack.Screen name="edit-profile" />

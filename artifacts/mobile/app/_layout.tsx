@@ -14,6 +14,7 @@ import { CartProvider } from "@/context/CartContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { MarketplaceProvider } from "@/context/MarketplaceContext";
 import { NavigationProvider } from "@/context/NavigationContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -26,6 +27,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
+          <ThemeProvider>
           <LanguageProvider>
             <MarketplaceProvider>
               <CartProvider>
@@ -109,6 +111,7 @@ export default function RootLayout() {
               </CartProvider>
             </MarketplaceProvider>
           </LanguageProvider>
+          </ThemeProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

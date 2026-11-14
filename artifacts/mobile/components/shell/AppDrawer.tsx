@@ -336,7 +336,7 @@ export function AppDrawer() {
               ? ([
                   {
                     icon: "flag",
-                    label: "Moderation",
+                    label: "Moderator Panel",
                     href: "/admin/moderation",
                     testID: "drawer-moderator",
                   },

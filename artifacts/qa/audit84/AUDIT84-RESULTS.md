@@ -9,7 +9,7 @@
 | PR | [#243](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/243) stacked on [#242](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/242) |
 | Branch | `cursor/native-84-screen-audit-9d45` |
 | Includes #242 | **Yes** — merged `a31b4506` (Contacts → Agent directory, enlarged action orbs) |
-| Test commit | `1166467bbab6e35bded63ea877e7ecd02c133f31` (PR #243 head) |
+| Test commit | `4b1d599e557df1c1afbb47dc7a0dfb6fcff256d5` (PR #243 head) |
 | Package | `com.flexamarket.app` (**verified installed**) |
 | versionName | `1.0.1` |
 | versionCode | **59** (local `assembleRelease` from this commit) |
@@ -263,4 +263,4 @@ Evidence: `a243-wallet-empty.png`, `a243-fm-card-empty.png`, `a243-wallet-tx.png
 
 ---
 
-**Test APK commit:** `1166467bbab6e35bded63ea877e7ecd02c133f31` · versionCode **59** · package `com.flexamarket.app` · no release AAB.
+**Test APK commit:** `4b1d599e557df1c1afbb47dc7a0dfb6fcff256d5` · versionCode **59** · package `com.flexamarket.app` · no release AAB.

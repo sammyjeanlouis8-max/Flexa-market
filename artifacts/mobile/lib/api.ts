@@ -19,6 +19,7 @@ export type Listing = {
   location?: string | null;
   country?: string | null;
   category?: string | null;
+  categorySlug?: string | null;
   condition?: string | null;
   status?: string | null;
   isBoosted?: boolean;
@@ -28,8 +29,13 @@ export type Listing = {
   sellerName?: string | null;
   sellerAvatar?: string | null;
   sellerIsVerified?: boolean;
+  /** 0–5 seller rating from listing detail API */
+  sellerRating?: number | null;
+  sellerReviewCount?: number | null;
   createdAt?: string;
   stockQuantity?: number | null;
+  listingVideoUrl?: string | null;
+  boostVideoUrl?: string | null;
 };
 
 export type HomeStats = {

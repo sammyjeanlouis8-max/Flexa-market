@@ -8,12 +8,14 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { PushBootstrap } from "@/components/PushBootstrap";
+import { BoostAdOverlayHost } from "@/components/BoostAdOverlay";
 import { AppDrawer } from "@/components/shell/AppDrawer";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { MarketplaceProvider } from "@/context/MarketplaceContext";
 import { NavigationProvider } from "@/context/NavigationContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -26,18 +28,23 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AuthProvider>
+          <ThemeProvider>
           <LanguageProvider>
             <MarketplaceProvider>
               <CartProvider>
                 <NavigationProvider>
                   <PushBootstrap />
+                  <BoostAdOverlayHost />
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="(tabs)" />
                     <Stack.Screen name="auth/login" />
                     <Stack.Screen name="auth/register" />
                     <Stack.Screen name="auth/login-phone" />
                     <Stack.Screen name="auth/forgot-password" />
-                    <Stack.Screen name="listing/[id]" />
+                    <Stack.Screen
+                      name="listing/[id]"
+                      options={{ animation: "slide_from_right", gestureEnabled: true }}
+                    />
                     <Stack.Screen name="cart" />
                     <Stack.Screen name="checkout" />
                     <Stack.Screen name="checkout-success" />
@@ -71,6 +78,9 @@ export default function RootLayout() {
                     <Stack.Screen name="boost" />
                     <Stack.Screen name="boost-analytics" />
                     <Stack.Screen name="videos" />
+                    <Stack.Screen name="videos/watch" options={{ animation: "fade" }} />
+                    <Stack.Screen name="my-videos" />
+                    <Stack.Screen name="boost-video" />
                     <Stack.Screen name="offers" />
                     <Stack.Screen name="sales" />
                     <Stack.Screen name="kyc" />
@@ -106,6 +116,7 @@ export default function RootLayout() {
               </CartProvider>
             </MarketplaceProvider>
           </LanguageProvider>
+          </ThemeProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

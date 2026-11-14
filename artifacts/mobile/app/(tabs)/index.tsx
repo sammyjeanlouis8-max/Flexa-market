@@ -170,22 +170,24 @@ export default function HomeTab() {
 
   const header = (
     <View style={styles.homeBody}>
-      <View style={styles.countryRow}>
+      {/* Compact country + search so the 2×2 product grid fits above the tab bar. */}
+      <View style={styles.topTools}>
         <Pressable style={styles.countryChip} onPress={() => router.push("/settings")}>
-          <Feather name="map-pin" size={14} color={colors.flexaOrange} />
+          <Feather name="map-pin" size={12} color={colors.flexaOrange} />
           <Text style={styles.countryText}>
             {COUNTRY_FLAGS[country] ?? ""} {country}
           </Text>
-          <Feather name="chevron-down" size={14} color={colors.flexaGreen} />
+          <Feather name="chevron-down" size={12} color={colors.flexaGreen} />
         </Pressable>
+        <View style={styles.searchWrap}>
+          <SearchBar
+            value={query}
+            onChangeText={setQuery}
+            onSubmit={runSearch}
+            placeholder="Search products..."
+          />
+        </View>
       </View>
-
-      <SearchBar
-        value={query}
-        onChangeText={setQuery}
-        onSubmit={runSearch}
-        placeholder="Search products..."
-      />
 
       {/* Category filter chips live under Shop by Category / Categories tab so the
           first viewport can show a full 2×2 product grid without scrolling. */}
@@ -203,7 +205,9 @@ export default function HomeTab() {
 
   const heroBanner = hero ? (
     <Pressable
-      onPress={() => router.push(`/listing/${hero.id}`)}
+      onPress={() =>
+        router.push({ pathname: "/listing/[id]", params: { id: String(hero.id) } })
+      }
       style={{ marginHorizontal: 12, marginTop: 8 }}
     >
       <LinearGradient
@@ -341,20 +345,22 @@ export default function HomeTab() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#FFFFFF" },
-  homeBody: { paddingHorizontal: 12, paddingTop: 6, gap: 6 },
-  countryRow: { flexDirection: "row" },
+  homeBody: { paddingHorizontal: 12, paddingTop: 2, gap: 4 },
+  topTools: { gap: 4 },
+  searchWrap: { width: "100%" },
   countryChip: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 3,
     borderWidth: 1.5,
     borderColor: colors.flexaOrange,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     backgroundColor: "#FFF7ED",
   },
-  countryText: { color: colors.flexaGreen, fontWeight: "700", fontSize: 12 },
+  countryText: { color: colors.flexaGreen, fontWeight: "700", fontSize: 11 },
   catTabs: { gap: 2, paddingVertical: 0 },
   catTab: {
     paddingHorizontal: 10,
@@ -405,12 +411,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 2,
-    marginBottom: 2,
+    marginTop: 0,
+    marginBottom: 0,
   },
-  sectionTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
+  sectionTitle: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
   seeAll: { flexDirection: "row", alignItems: "center", gap: 2 },
-  seeAllText: { color: colors.flexaGreen, fontSize: 12, fontWeight: "700" },
+  seeAllText: { color: colors.flexaGreen, fontSize: 11, fontWeight: "700" },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   catTile: {
     width: "23%",
@@ -442,22 +448,24 @@ const styles = StyleSheet.create({
   signInText: { flex: 1, color: "#9A3412", fontSize: 13, fontWeight: "600" },
   error: { color: "#B91C1C", fontSize: 13 },
   empty: { textAlign: "center", color: "#64748B", marginTop: 24, marginBottom: 40 },
-  listContent: { paddingBottom: 24 },
-  gridRow: { paddingHorizontal: 8, gap: 8, marginBottom: 4 },
+  listContent: { paddingBottom: 8 },
+  // Match web home-product-grid: gap 10, inset 12 (remeasured 2026-11-14)
+  gridRow: { paddingHorizontal: 12, gap: 10, marginBottom: 10 },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    paddingHorizontal: 8,
-    gap: 8,
+    paddingHorizontal: 12,
+    gap: 10,
   },
   skeletons: { flex: 1 },
   fab: {
     position: "absolute",
-    right: 16,
-    bottom: 24,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    right: 10,
+    // Keep FAB clear of the 2×2 product meta on short viewports
+    bottom: 88,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: colors.flexaOrange,
     alignItems: "center",
     justifyContent: "center",

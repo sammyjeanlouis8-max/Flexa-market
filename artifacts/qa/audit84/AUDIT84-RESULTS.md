@@ -7,7 +7,7 @@
 | Field | Value |
 |---|---|
 | Branch | `cursor/native-84-screen-audit-9d45` |
-| Test commit | _(pinned after push — see footer)_ |
+| Test commit | `b2a11109f1a27c27990c0f65160e3fea8470d29e` |
 | Package | `com.flexamarket.app` |
 | versionName | `1.0.1` |
 | versionCode | `58` |
@@ -185,4 +185,4 @@ Also bound for later sell/checkout/driver work (not required for Control-only):
 
 ---
 
-_Test APK commit SHA will be pinned in a follow-up commit after push._
+**Test APK commit:** `b2a11109f1a27c27990c0f65160e3fea8470d29e` (versionCode 58, package com.flexamarket.app).

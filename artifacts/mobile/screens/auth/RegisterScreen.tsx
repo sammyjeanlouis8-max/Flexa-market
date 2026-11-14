@@ -4,6 +4,7 @@ import {
   FlatList,
   Linking,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -16,6 +17,12 @@ import AuthShell, {
 } from "../../components/auth/AuthShell";
 import { registerAccount } from "../../lib/authApi";
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES } from "../../lib/countries";
+import {
+  COUNTRY_TO_ISO,
+  getPhoneCountry,
+  ISO_TO_COUNTRY,
+  PHONE_COUNTRIES,
+} from "../../lib/phoneCountries";
 
 type RegisterScreenProps = {
   onSuccess: (token: string) => Promise<void> | void;
@@ -35,11 +42,14 @@ export default function RegisterScreen({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [country, setCountry] = useState("");
-  const [phone, setPhone] = useState("");
+  const [location, setLocation] = useState("");
+  const [phoneIso, setPhoneIso] = useState("US");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [promoCode, setPromoCode] = useState(initialPromoCode);
   const [eulaAccepted, setEulaAccepted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [countryOpen, setCountryOpen] = useState(false);
+  const [dialOpen, setDialOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -52,6 +62,8 @@ export default function RegisterScreen({
       })),
     [],
   );
+
+  const selectedPhone = getPhoneCountry(phoneIso) ?? PHONE_COUNTRIES[1];
 
   const openPath = (path: string) => {
     if (onOpenWebsite) {
@@ -66,7 +78,7 @@ export default function RegisterScreen({
     const trimmedName = name.trim();
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPassword = password.trim();
-    const normalizedPhone = phone.trim().replace(/[\s\-().]/g, "");
+    const digits = phoneNumber.trim().replace(/[\s\-().]/g, "");
 
     if (trimmedName.length < 2) next.name = "Name must be at least 2 characters";
     if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
@@ -81,8 +93,8 @@ export default function RegisterScreen({
       next.confirmPassword = "Passwords don't match";
     }
     if (!country) next.country = "Please select your country";
-    if (normalizedPhone && !/^\+?[0-9]{8,16}$/.test(normalizedPhone)) {
-      next.phone = "Use an international number, e.g. +50934455823";
+    if (digits && !/^[0-9]{6,15}$/.test(digits)) {
+      next.phone = "Enter digits only for your national number";
     }
     if (!eulaAccepted) {
       next.eulaAccepted = "You must accept the EULA and Terms of Service";
@@ -96,18 +108,14 @@ export default function RegisterScreen({
 
     setLoading(true);
     setError(null);
+    const phone = digits ? `${selectedPhone.dialCode}${digits}` : undefined;
     const result = await registerAccount({
       name: trimmedName,
       email: trimmedEmail,
       password: trimmedPassword,
       country,
-      ...(normalizedPhone
-        ? {
-            phone: normalizedPhone.startsWith("+")
-              ? normalizedPhone
-              : `+${normalizedPhone}`,
-          }
-        : {}),
+      ...(phone ? { phone } : {}),
+      ...(location.trim() ? { location: location.trim() } : {}),
       ...(promoCode.trim()
         ? { promoCode: promoCode.trim().toUpperCase() }
         : {}),
@@ -171,45 +179,65 @@ export default function RegisterScreen({
         editable={!loading}
       />
 
-      <Field
-        label="Password"
-        error={fieldErrors.password}
-        value={password}
-        onChangeText={setPassword}
-        placeholder="••••••••"
-        secureTextEntry={!showPassword}
-        autoCapitalize="none"
-        autoComplete="password-new"
-        testID="input-password"
-        editable={!loading}
-        right={
-          <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={8}>
-            <Feather
-              name={showPassword ? "eye-off" : "eye"}
-              size={18}
-              color={AUTH.muted}
-            />
-          </Pressable>
-        }
-      />
-      <Text style={styles.hint}>Password must be at least 6 characters</Text>
-
-      <Field
-        label="Confirm Password"
-        error={fieldErrors.confirmPassword}
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        placeholder="••••••••"
-        secureTextEntry={!showPassword}
-        autoCapitalize="none"
-        testID="input-confirm-password"
-        editable={!loading}
-      />
+      {/* Web: grid-cols-2 password + confirm */}
+      <View style={styles.passwordRow}>
+        <View style={styles.passwordCol}>
+          <Field
+            label="Password"
+            error={fieldErrors.password}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="••••••••"
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoComplete="password-new"
+            testID="input-password"
+            editable={!loading}
+            right={
+              <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={8}>
+                <Feather
+                  name={showPassword ? "eye-off" : "eye"}
+                  size={18}
+                  color={AUTH.muted}
+                />
+              </Pressable>
+            }
+          />
+        </View>
+        <View style={styles.passwordCol}>
+          <Field
+            label="Confirm Password"
+            error={fieldErrors.confirmPassword}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            placeholder="••••••••"
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            testID="input-confirm-password"
+            editable={!loading}
+            right={
+              <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={8}>
+                <Feather
+                  name={showPassword ? "eye-off" : "eye"}
+                  size={18}
+                  color={AUTH.muted}
+                />
+              </Pressable>
+            }
+          />
+        </View>
+      </View>
+      {!fieldErrors.password && !fieldErrors.confirmPassword ? (
+        <Text style={styles.hint}>Password must be at least 6 characters</Text>
+      ) : null}
 
       <View style={styles.divider} />
       <Text style={styles.sectionLabel}>Location & contact</Text>
 
-      <Text style={styles.label}>Country</Text>
+      <Text style={styles.label}>
+        Your Country{" "}
+        <Text style={styles.labelHint}>You&apos;ll see listings from your country</Text>
+      </Text>
       <Pressable
         testID="select-country"
         onPress={() => setCountryOpen(true)}
@@ -228,25 +256,71 @@ export default function RegisterScreen({
       ) : null}
 
       <Field
-        label="Phone Number (optional)"
-        error={fieldErrors.phone}
-        value={phone}
-        onChangeText={setPhone}
-        placeholder="+509..."
-        keyboardType="phone-pad"
-        testID="input-phone"
+        label="City"
+        labelHint="(Optional)"
+        value={location}
+        onChangeText={setLocation}
+        placeholder="e.g. Port-au-Prince"
+        autoComplete="postal-address-locality"
+        testID="input-register-city"
         editable={!loading}
       />
+      <Text style={styles.hintBelow}>
+        Street address is only needed when you place your first order.
+      </Text>
 
-      <Field
-        label="Promo Code (optional)"
-        value={promoCode}
-        onChangeText={setPromoCode}
-        placeholder="e.g. FXAB1234"
-        autoCapitalize="characters"
-        testID="input-promo"
-        editable={!loading}
-      />
+      <Text style={styles.label}>
+        Phone <Text style={styles.labelHint}>(Optional)</Text>
+      </Text>
+      <View style={styles.phoneRow}>
+        <Pressable
+          testID="select-calling-code"
+          onPress={() => setDialOpen(true)}
+          style={[styles.input, styles.dialSelect]}
+          disabled={loading}
+        >
+          <Text style={styles.dialText} numberOfLines={1}>
+            {selectedPhone.flag} {selectedPhone.dialCode}
+          </Text>
+          <Feather name="chevron-down" size={16} color={AUTH.muted} />
+        </Pressable>
+        <View style={styles.phoneInputWrap}>
+          <TextInput
+            testID="input-phone"
+            value={phoneNumber}
+            onChangeText={setPhoneNumber}
+            placeholder={selectedPhone.example}
+            placeholderTextColor="#9ca3af"
+            keyboardType="phone-pad"
+            editable={!loading}
+            style={[styles.input, fieldErrors.phone ? styles.inputError : null]}
+          />
+        </View>
+      </View>
+      {fieldErrors.phone ? (
+        <Text style={styles.fieldError}>{fieldErrors.phone}</Text>
+      ) : null}
+
+      <View style={styles.promoBlock}>
+        <Text style={styles.label}>
+          <Feather name="gift" size={14} color={AUTH.accent} /> Promo Code{" "}
+          <Text style={styles.labelHint}>(Optional)</Text>
+        </Text>
+        <TextInput
+          testID="input-promo"
+          value={promoCode}
+          onChangeText={(v) => setPromoCode(v.toUpperCase())}
+          placeholder="e.g. FXAB1234"
+          placeholderTextColor="#9ca3af"
+          autoCapitalize="characters"
+          maxLength={16}
+          editable={!loading}
+          style={[styles.input, styles.promoInput]}
+        />
+        <Text style={styles.hintBelow}>
+          Enter a referral or promo code if you have one.
+        </Text>
+      </View>
 
       {error ? (
         <View style={styles.errorBox} accessibilityRole="alert">
@@ -307,11 +381,47 @@ export default function RegisterScreen({
                   style={styles.countryRow}
                   onPress={() => {
                     setCountry(item.name);
+                    const iso = COUNTRY_TO_ISO[item.name];
+                    if (iso) setPhoneIso(iso);
                     setCountryOpen(false);
                   }}
                 >
                   <Text style={styles.countryFlag}>{item.flag}</Text>
                   <Text style={styles.countryName}>{item.name}</Text>
+                </Pressable>
+              )}
+            />
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={dialOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setDialOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setDialOpen(false)}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Calling code</Text>
+            <FlatList
+              data={[...PHONE_COUNTRIES]}
+              keyExtractor={(item) => item.iso}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <Pressable
+                  style={styles.countryRow}
+                  onPress={() => {
+                    setPhoneIso(item.iso);
+                    const mapped = ISO_TO_COUNTRY[item.iso];
+                    if (mapped) setCountry(mapped);
+                    setDialOpen(false);
+                  }}
+                >
+                  <Text style={styles.countryFlag}>{item.flag}</Text>
+                  <Text style={styles.countryName}>
+                    {item.name} ({item.dialCode})
+                  </Text>
                 </Pressable>
               )}
             />
@@ -324,18 +434,23 @@ export default function RegisterScreen({
 
 function Field({
   label,
+  labelHint,
   error,
   right,
   style,
   ...inputProps
 }: {
   label: string;
+  labelHint?: string;
   error?: string;
   right?: ReactNode;
 } & ComponentProps<typeof TextInput>) {
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+        {labelHint ? <Text style={styles.labelHint}> {labelHint}</Text> : null}
+      </Text>
       <View style={styles.inputWrap}>
         <TextInput
           placeholderTextColor="#9ca3af"
@@ -368,8 +483,13 @@ const styles = StyleSheet.create({
   },
   label: {
     color: AUTH.fg,
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  labelHint: {
+    color: AUTH.muted,
+    fontSize: 12,
+    fontWeight: "400",
   },
   inputWrap: {
     position: "relative",
@@ -397,6 +517,14 @@ const styles = StyleSheet.create({
     height: 48,
     justifyContent: "center",
   },
+  passwordRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  passwordCol: {
+    flex: 1,
+    minWidth: 0,
+  },
   select: {
     flexDirection: "row",
     alignItems: "center",
@@ -405,15 +533,55 @@ const styles = StyleSheet.create({
   selectValue: {
     color: AUTH.fg,
     fontSize: 16,
+    flex: 1,
+    minWidth: 0,
   },
   selectPlaceholder: {
     color: "#9ca3af",
     fontSize: 16,
+    flex: 1,
+  },
+  phoneRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  dialSelect: {
+    width: "38%",
+    maxWidth: 148,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    gap: 4,
+  },
+  dialText: {
+    color: AUTH.fg,
+    fontSize: 14,
+    flex: 1,
+    minWidth: 0,
+  },
+  phoneInputWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  promoBlock: {
+    gap: 6,
+  },
+  promoInput: {
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: undefined }),
+    letterSpacing: 2,
   },
   hint: {
     marginTop: -8,
     color: AUTH.muted,
     fontSize: 12,
+  },
+  hintBelow: {
+    marginTop: -6,
+    color: AUTH.muted,
+    fontSize: 12,
+    lineHeight: 16,
   },
   fieldError: {
     color: "#b91c1c",
@@ -509,5 +677,6 @@ const styles = StyleSheet.create({
   countryName: {
     fontSize: 16,
     color: AUTH.fg,
+    flex: 1,
   },
 });

@@ -186,3 +186,9 @@ Also bound for later sell/checkout/driver work (not required for Control-only):
 ---
 
 **Test APK commit:** `b2a11109f1a27c27990c0f65160e3fea8470d29e` (versionCode 58, package com.flexamarket.app).
+
+## Computer-use drawer smoke (supplement)
+
+[Emulator drawer smoke](bc-b798d204-b238-5fc3-8d64-279a077fc025) hit a session wipe after debug→release APK swap (expected). Drawer taps were unreliable under that signed-out modal; authenticated deep-link smoke on versionCode **58** supersedes those destination failures.
+
+Unique salvage: `audit84-boost-autoplay-launch.png` — promotional video auto-opens with Sound / View Product / Message / Skip controls (supports checklist #63).

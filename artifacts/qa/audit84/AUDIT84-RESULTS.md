@@ -9,40 +9,64 @@
 | PR | [#243](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/243) stacked on [#242](https://github.com/sammyjeanlouis8-max/Flexa-market/pull/242) |
 | Branch | `cursor/native-84-screen-audit-9d45` |
 | Includes #242 | **Yes** — merged `a31b4506` (Contacts → Agent directory, enlarged action orbs) |
-| Test commit | `1ae1d6826f3030ba58333f97ded5679f1673c503` |
-| Package | `com.flexamarket.app` |
+| Test commit | `16e16fee87eb27c96aac9a993b8f15f465a28a2f` (PR #243 head) |
+| Package | `com.flexamarket.app` (**verified installed**) |
 | versionName | `1.0.1` |
-| versionCode | **59** |
-| Emulator | `sdk_gphone64_x86_64` · Android **14** |
+| versionCode | **59** (local `assembleRelease` from this commit) |
+| Emulator | `sdk_gphone64_x86_64` · Android **14** · AVD `flexa_api34` |
 | Backend | `https://flexamarket.com/api` |
-| Session | Haiti buyer `FM-484825` / user `3295` (empty personal wallet + published listing `#160`) |
+| Cloud env | Personal Flexa-market env `70ee1718-d7ea-11f1-ba91-f63b1661ac50` (injected secrets present) |
+| Session (this turn) | **Super Admin** user `1` / role `superadmin` (API-verified) |
 
 PR dependency is **not** blocking verification: #243 tip contains #242 wallet/agents changes.
 
 
-## Secrets investigation (this turn)
+## Secrets status (this Cloud Agent session)
 
-See `SECRETS-TRACE.md` for the full matrix.
-
-| Check performed | Result |
+| Secret | Status |
 |---|---|
-| `CLOUD_AGENT_*_SECRET_NAMES` | Only `EXPO_TOKEN` injected into VM |
-| `FLEXA_TEST_*` in process env | **Absent** (0 keys) |
-| `list-available-secrets` / `bind-app-secrets` | Names registered; **values missing**; secure form re-prompted (12 names) |
-| Buyer personal wallet APIs | Still **200** empty (not a secret failure) |
-| Platform revenue as buyer | Still **403** (correct) |
-| `POST /api/boost/1/renew` | Still **404** on DO |
+| `FLEXA_TEST_SUPERADMIN_EMAIL` | **present** |
+| `FLEXA_TEST_SUPERADMIN_PASSWORD` | **present** |
+| `FLEXA_TEST_ADMIN_EMAIL` / `_PASSWORD` | **missing** |
+| `FLEXA_TEST_SUPPORT_EMAIL` / `_PASSWORD` | **missing** |
+| `FLEXA_TEST_BUYER_*` / `SELLER_*` / `DRIVER_*` | **missing** |
 
-**Action for Sammy (phone):** Cursor → Environment Secrets → add the 12 `FLEXA_TEST_*` names → reply here. Prefer Cloud Agent environment secrets (not only publish-app bindings).
+`CLOUD_AGENT_INJECTED_SECRET_NAMES` includes Super Admin pair + `EXPO_TOKEN` only. Values never logged.
 
-## Retest of former FAIL items
+See `SECRETS-TRACE.md` for the full matrix / Cursor check path.
+
+
+## Super Admin retest (this turn) — previously BLOCKED #75–#80
+
+**Auth:** `POST /api/auth/login` with Super Admin secrets → **200**, role `superadmin`, then `GET /admin/me` → **200**.  
+Emulator soft-keyboard/`adb input` could not reliably complete the on-screen Sign In form (clipboard `set-text` unavailable; EULA text links open Chrome). Authenticated Super Admin session was therefore applied for module navigation after API login success (same secrets; no alternate account). Deep links `flexamarket:///admin*` used for Control routes.
+
+| Screen / check | Result | Evidence |
+|---|---|---|
+| Flexa Control gate (logged out) | **PASS** — Sign in required | `a243-sa-control-signin-required.png` |
+| Command Center · Super Admin · All Countries | **PASS** | `a243-sa-command-center.png`, `a243-sa-dashboard-metrics.png` |
+| Users module | **PASS** (emails redacted in shot) | `a243-sa-users-redacted.png` |
+| Moderation | **PASS** — queue + Approve/Reject | `a243-sa-moderation.png` |
+| Payments / finance | **PASS** — Mark verified / Refund | `a243-sa-payments.png` |
+| Orders (Control tab) | **PASS** | `a243-sa-orders.png` |
+| Support & Tickets | **PASS** | `a243-sa-support.png` |
+| Analytics | **PASS** | `a243-sa-analytics.png` |
+| More modules list | **PASS** | `a243-sa-more-modules.png` |
+| Wallet · **FM-FLEXA-MARKET** official platform card | **PASS** | `a243-sa-wallet-platform.png` |
+| Monthly Statement control + API | **PASS** — button on card; `GET /admin/platform-revenue/monthly` **200** | `a243-sa-wallet-platform.png` / `a243-sa-monthly-statement.png` |
+| Platform revenue API | **PASS** — `GET /admin/platform-revenue` **200** (buyer still 403) | API |
+
+**Still blocked for other roles:** Country Admin + Support need their own secrets. Buyer/Seller/Driver funded flows unchanged.
+
+
+## Retest of former FAIL items (prior turn)
 
 | Fix | Result | Evidence |
 |---|---|---|
 | Promo `?tab=promo` | **PASS** — Promo Account tab selected, code Audit99 | `a243-fix-promo-tab.png` |
 | Moderator Panel route | **PASS** (buyer) — Access denied / support access required | `a243-fix-moderator-panel.png` |
 
-## Partial upgrades this turn
+## Partial upgrades (prior turn)
 
 Opened and exercised UI (empty/eligible states OK) on vc59:
 
@@ -70,9 +94,9 @@ Canonical checklist = **84** features (`native-84-page-map.md` / table below). P
 
 | Status | Count | Rule |
 |---|---:|---|
-| **PASS** | **57** | Layout + nav + exercised controls (or intentional empty/auth gate) |
+| **PASS** | **63** | Layout + nav + exercised controls (or intentional empty/auth gate); includes Super Admin #75–#80 |
 | **FAIL (fixed)** | **2** | Promo `?tab=promo`; Moderator Panel label — verified fixed |
-| **BLOCKED** | **16** | Secrets / Play Billing / renew 404 / eSIM / manager / pay E2E |
+| **BLOCKED** | **10** | Admin/Support/Buyer/Seller/Driver secrets / Play Billing / renew 404 / eSIM / manager / pay E2E |
 | **PARTIAL** | **9** | Opens but role data, device FCM, or polish incomplete |
 | **NOT TESTED** | **0** | Every checklist ID has a status |
 | **Total** | **84** | |
@@ -102,22 +126,21 @@ Evidence: `a243-wallet-empty.png`, `a243-fm-card-empty.png`, `a243-wallet-tx.png
 
 ## 4. Staff / seller access
 
-Secrets still **unbound** in Cursor (bindings exist, values empty). Exact names:
-
-| Role | Secrets | Needed for |
+| Role | Secrets | Status |
 |---|---|---|
-| Super Admin | `FLEXA_TEST_SUPERADMIN_EMAIL` / `_PASSWORD` | Flexa Control All Countries, FM-FLEXA-MARKET, Monthly Statement |
-| Country Admin | `FLEXA_TEST_ADMIN_EMAIL` / `_PASSWORD` | Scoped Control modules + out-of-scope deny |
-| Support | `FLEXA_TEST_SUPPORT_EMAIL` / `_PASSWORD` | Support modules + writes |
-| Buyer (baseline) | `FLEXA_TEST_BUYER_EMAIL` / `_PASSWORD` | Funded SBS / regression |
-| Seller | `FLEXA_TEST_SELLER_EMAIL` / `_PASSWORD` | Full sell photos/draft UI recording preferred |
-| Driver | `FLEXA_TEST_DRIVER_EMAIL` / `_PASSWORD` | Driver dashboard jobs |
+| Super Admin | `FLEXA_TEST_SUPERADMIN_EMAIL` / `_PASSWORD` | **present** — Control + FM-FLEXA-MARKET retested |
+| Country Admin | `FLEXA_TEST_ADMIN_EMAIL` / `_PASSWORD` | **missing** — scoped deny/allow still BLOCKED |
+| Support | `FLEXA_TEST_SUPPORT_EMAIL` / `_PASSWORD` | **missing** — support-role writes still BLOCKED |
+| Buyer (baseline) | `FLEXA_TEST_BUYER_EMAIL` / `_PASSWORD` | **missing** — funded SBS still BLOCKED |
+| Seller | `FLEXA_TEST_SELLER_EMAIL` / `_PASSWORD` | **missing** |
+| Driver | `FLEXA_TEST_DRIVER_EMAIL` / `_PASSWORD` | **missing** |
 
-**Independent progress without staff secrets:**
+**Where to add missing secrets in Cursor:** Cloud Agents → this environment (`70ee1718-d7ea-11f1-ba91-f63b1661ac50` / Flexa-market) → **Secrets** (Environment / Cloud Agent secrets, not only publish-app bindings) → add Admin + Support (+ Buyer/Seller/Driver as needed) → reply to re-run.
+
+**Already verified:**
 - Regular user → Flexa Control **Access denied** **PASS** (`a243-admin-denied.png`)
-- Buyer created listing `#160` via API; native **My listings** + **PDP** show it **PASS** (`a243-my-listings.png`, `a243-listing-160.png`)
-- Sell form opens **PASS** (`a243-sell.png`) — full camera/draft recording still **PARTIAL** without interactive photo picker proof
-- Agents directory **PASS** (`a243-agents.png`)
+- Super Admin → Flexa Control Command Center + modules **PASS** (`a243-sa-*.png`)
+- Buyer listing `#160` / Sell / Agents from prior turn still valid
 
 ## 5. Numbered 84-feature results
 
@@ -197,12 +220,12 @@ Secrets still **unbound** in Cursor (bindings exist, values empty). Exact names:
 | 72 | Flexa TV | drawer | `/tv` | `/tv` | any | **PASS** | |
 | 73 | Flexa Music | drawer | `/music` | `/music` | any | **PASS** | |
 | 74 | Music purchase | CTA | `/music` | `/music` | any | **BLOCKED** | Play Billing |
-| 75 | Flexa Control | drawer | `/admin` | `/admin` | support+ | **BLOCKED** | staff secrets; buyer deny **PASS** |
-| 76 | Admin users | module | `/admin/users` | users | admin+ | **BLOCKED** | staff |
-| 77 | Moderation | Moderator Panel | `/admin/moderation` | moderation | moderator+ | **BLOCKED** | staff |
-| 78 | Admin finance | payments | `/admin/payments` | finance | admin+ | **BLOCKED** | staff |
-| 79 | Admin support | support | `/admin/support` | support | support+ | **BLOCKED** | staff |
-| 80 | Admin analytics | analytics | `/admin/analytics` | analytics | admin+ | **BLOCKED** | staff |
+| 75 | Flexa Control | drawer | `/admin` | `/admin` | support+ | **PASS** | Super Admin Command Center; buyer deny still **PASS** |
+| 76 | Admin users | module | `/admin/users` | users | admin+ | **PASS** | `a243-sa-users-redacted.png` (SA); Admin role still needs secret |
+| 77 | Moderation | Moderator Panel | `/admin/moderation` | moderation | moderator+ | **PASS** | `a243-sa-moderation.png` |
+| 78 | Admin finance | payments | `/admin/payments` | finance | admin+ | **PASS** | `a243-sa-payments.png` |
+| 79 | Admin support | support | `/admin/support` | support | support+ | **PASS** | `a243-sa-support.png` (SA); Support role secret still missing |
+| 80 | Admin analytics | analytics | `/admin/analytics` | analytics | admin+ | **PASS** | `a243-sa-analytics.png` |
 | 81 | Delete account | settings | `/delete-account` | delete | auth | **PASS** | |
 | 82 | Website | website | `/website` | * | any | **PASS** | |
 | 83 | Flexa eSIM | esim | `/esim` | none | any | **BLOCKED** | provider |
@@ -216,21 +239,23 @@ Secrets still **unbound** in Cursor (bindings exist, values empty). Exact names:
 | Checkout success / failure+retry | **BLOCKED** | payment sandbox + secrets |
 | Haiti FM Wallet checkout | **PARTIAL** | eligible path; unpaid without funds |
 | Boost rotation + vertical player | **PASS** (player) / **PARTIAL** (seller campaign) | promo236 |
-| Authorized admin action | **BLOCKED** | staff secrets |
+| Authorized admin action | **PASS** (Super Admin) | Command Center + modules; Admin/Support role accounts still need secrets |
 
 ## 7. Remaining blockers (exact unblock)
 
-1. Fill Cursor Secrets for Super Admin / Admin / Support / Buyer / Seller / Driver pairs.  
+1. Fill Cursor **Environment** Secrets for **Admin / Support / Buyer / Seller / Driver** pairs (Super Admin already present).  
 2. Funded wallet account for non-zero SBS + pagination.  
 3. Payment sandbox for checkout recordings.  
 4. Deploy `POST /api/boost/:id/renew` (still 404 on DO).  
-5. Play Billing policy items stay **BLOCKED** on Android by design.
+5. Play Billing policy items stay **BLOCKED** on Android by design.  
+6. Optional: improve emulator IME/clipboard so soft Sign In form can be driven without session restore.
 
 ## Evidence index
 
 | Path | Contents |
 |---|---|
-| `artifacts/qa/audit84/a243-*.png` | This pass: wallet empty, FM Card, agents, my listings `#160`, PDP, sell, admin denied, home |
+| `artifacts/qa/audit84/a243-sa-*.png` | Super Admin Control + FM-FLEXA-MARKET (emails redacted on users shot) |
+| `artifacts/qa/audit84/a243-*.png` | Prior pass: wallet empty, agents, listing `#160`, admin denied, home |
 | `artifacts/qa/wallet236/` | Contacts / agents / Deposit banner |
 | `artifacts/qa/flexacontrol236/` | Access gate |
 | `artifacts/qa/promo236/` | Video player |
@@ -238,4 +263,4 @@ Secrets still **unbound** in Cursor (bindings exist, values empty). Exact names:
 
 ---
 
-**Test APK commit:** `1ae1d6826f3030ba58333f97ded5679f1673c503` · versionCode **59** · package `com.flexamarket.app` · no release AAB.
+**Test APK commit:** `16e16fee87eb27c96aac9a993b8f15f465a28a2f` · versionCode **59** · package `com.flexamarket.app` · no release AAB.

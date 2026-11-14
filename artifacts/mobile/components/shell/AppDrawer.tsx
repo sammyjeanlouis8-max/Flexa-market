@@ -19,6 +19,7 @@ import { LANGUAGES, useLanguage } from "@/context/LanguageContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
 import { useNavigationChrome } from "@/context/NavigationContext";
 import { useTheme } from "@/context/ThemeContext";
+import { apiRequest } from "@/lib/request";
 import { fetchWalletBalance } from "@/lib/walletApi";
 
 type IconName = React.ComponentProps<typeof Feather>["name"];
@@ -36,9 +37,27 @@ type DrawerSection = {
   items: DrawerItem[];
 };
 
+type DriverStatus = "loading" | "none" | "pending" | "approved" | "rejected" | "suspended";
+
 /** Haiti-only FM delivery links — matches web `canShowFMDeliveryLinks`. */
 function canShowFMDeliveryLinks(country: string | null | undefined): boolean {
   return country === "Haiti";
+}
+
+/** WebView `PremiumSideMenu` apply-row labels by driver application status. */
+function driverApplyLabel(status: DriverStatus): string {
+  switch (status) {
+    case "pending":
+      return "Application Pending";
+    case "approved":
+      return "My Driver Profile";
+    case "rejected":
+      return "Application Rejected";
+    case "suspended":
+      return "Account Suspended";
+    default:
+      return "Apply as Driver";
+  }
 }
 
 function isPathActive(pathname: string, href: string): boolean {
@@ -56,9 +75,19 @@ function isPathActive(pathname: string, href: string): boolean {
   }
   if (path === base || path.startsWith(`${base}/`)) return true;
   // Expo tabs / aliases
-  if (base === "/favorites" && path.includes("favorites")) return true;
-  if (base === "/my-boosts" && (path.includes("my-boosts") || path.includes("boost"))) return true;
-  if (base === "/shop" && path.includes("/shop/")) return true;
+  if ((base === "/favorites" || base === "/saved") && path.includes("favorites")) return true;
+  if (
+    (base === "/my-boosts" || base === "/booster") &&
+    (path.includes("my-boosts") || path.includes("boost") || path.includes("booster"))
+  ) {
+    return true;
+  }
+  if ((base === "/shop" || base.startsWith("/profile/")) && (path.includes("/shop/") || path.includes("/profile/"))) {
+    return true;
+  }
+  if (base.includes("driver") || base.includes("delivery")) {
+    if (path.includes("driver") || path.includes("delivery")) return true;
+  }
   return false;
 }
 
@@ -78,6 +107,7 @@ export function AppDrawer() {
   const { drawerOpen, closeDrawer } = useNavigationChrome();
   const [promoTotal, setPromoTotal] = useState<number | null>(null);
   const [langOpen, setLangOpen] = useState(false);
+  const [driverStatus, setDriverStatus] = useState<DriverStatus>("none");
 
   const sheetWidth = Math.min(width * 0.92, 360);
   const langMeta = LANGUAGES.find((l) => l.code === lang) ?? LANGUAGES.find((l) => l.code === "en");
@@ -114,6 +144,38 @@ export function AppDrawer() {
       cancelled = true;
     };
   }, [drawerOpen, token]);
+
+  // Match web `useDriverStatus` for Delivery & Services labels / My Deliveries.
+  useEffect(() => {
+    if (!user || !token || !canShowFMDeliveryLinks(deliveryCountry)) {
+      setDriverStatus("none");
+      return;
+    }
+    let cancelled = false;
+    setDriverStatus("loading");
+    apiRequest<{ driver?: { status?: string }; application?: { status?: string } }>("/delivery/application", {
+      token,
+    })
+      .then((data) => {
+        if (cancelled) return;
+        if (data.driver?.status === "active") {
+          setDriverStatus("approved");
+          return;
+        }
+        const s = data.application?.status;
+        if (s === "pending" || s === "approved" || s === "rejected" || s === "suspended") {
+          setDriverStatus(s);
+          return;
+        }
+        setDriverStatus("none");
+      })
+      .catch(() => {
+        if (!cancelled) setDriverStatus("none");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, token, deliveryCountry, drawerOpen]);
 
   const sections: DrawerSection[] = useMemo(() => {
     const discover: DrawerSection = {
@@ -157,14 +219,38 @@ export function AppDrawer() {
       });
 
       if (canShowFMDeliveryLinks(deliveryCountry)) {
+        const deliveryItems: DrawerItem[] = [
+          {
+            icon: "truck",
+            label: "Available Deliveries",
+            href: "/driver-dashboard",
+            testID: "drawer-deliveries",
+          },
+          {
+            icon: "user-plus",
+            label: driverApplyLabel(driverStatus),
+            href: "/driver-apply",
+            testID: "drawer-driver-apply",
+          },
+        ];
+        if (driverStatus === "approved") {
+          deliveryItems.push({
+            icon: "map-pin",
+            label: "My Deliveries",
+            href: "/driver-dashboard",
+            testID: "drawer-my-deliveries",
+          });
+        }
+        deliveryItems.push({
+          icon: "search",
+          label: "Order tracking",
+          href: "/track",
+          testID: "drawer-tracking",
+        });
         out.push({
           id: "delivery",
-          heading: "DELIVERY",
-          items: [
-            { icon: "truck", label: "Available deliveries", href: "/driver-dashboard", testID: "drawer-deliveries" },
-            { icon: "user-plus", label: "Apply as driver", href: "/driver-apply", testID: "drawer-driver-apply" },
-            { icon: "map-pin", label: "Order tracking", href: "/track", testID: "drawer-tracking" },
-          ],
+          heading: "DELIVERY & SERVICES",
+          items: deliveryItems,
         });
       }
 
@@ -230,7 +316,7 @@ export function AppDrawer() {
     }
 
     return out;
-  }, [user, deliveryCountry]);
+  }, [user, deliveryCountry, driverStatus]);
 
   const roleLabel = user?.isSuperAdmin
     ? "Super Admin"

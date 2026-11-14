@@ -208,7 +208,7 @@ export function AppDrawer() {
         ...(user
           ? ([{ icon: "award", label: "Referral Program", href: "/leaderboard", testID: "drawer-referral" }] as DrawerItem[])
           : []),
-        { icon: "message-circle", label: "FlexaBot AI", href: "/chatbot", testID: "drawer-chatbot" },
+        { icon: "star", label: "FlexaBot AI", href: "/chatbot", testID: "drawer-chatbot" },
         { icon: "help-circle", label: "Support & Help", href: "/support", testID: "drawer-support" },
       ],
     });

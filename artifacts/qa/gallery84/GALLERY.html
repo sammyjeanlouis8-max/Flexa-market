@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Flexa Market — 84 native screens</title>
+<style>
+:root { --bg:#0f172a; --card:#1e293b; --text:#f8fafc; --muted:#94a3b8; --accent:#146C43; }
+* { box-sizing:border-box; }
+body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:linear-gradient(180deg,#0f172a,#146C43 140%); color:var(--text); }
+header { padding:20px 16px 8px; position:sticky; top:0; background:rgba(15,23,42,.92); backdrop-filter:blur(8px); z-index:2; }
+h1 { margin:0; font-size:1.25rem; }
+p { margin:6px 0 0; color:var(--muted); font-size:.85rem; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:12px; padding-bottom:40px; }
+@media(min-width:720px){ .grid { grid-template-columns:1fr 1fr 1fr; max-width:980px; margin:0 auto; } }
+.card { display:block; background:var(--card); border-radius:14px; overflow:hidden; text-decoration:none; color:inherit; border:1px solid #334155; }
+.card img { width:100%; aspect-ratio:9/16; object-fit:cover; object-position:top; background:#000; display:block; }
+.meta { padding:8px 10px 12px; font-size:.78rem; line-height:1.35; }
+.num { color:#4ade80; font-weight:800; }
+.totals { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.pill { background:#146C43; padding:4px 10px; border-radius:999px; font-size:.75rem; font-weight:700; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Flexa Market · 84 native screens</h1>
+  <p>com.flexamarket.app · v1.0.1 · versionCode 61 · Android 14 emulator</p>
+  <div class="totals">
+    <span class="pill">PASS 78</span>
+    <span class="pill" style="background:#b45309">BLOCKED 6</span>
+    <span class="pill" style="background:#b91c1c">FAIL 0</span>
+  </div>
+</header>
+<div class="grid">
+<a class="card" href="01-auth-login.png">
+  <img src="01-auth-login.png" alt="01 Login" loading="lazy"/>
+  <div class="meta"><span class="num">01</span> Login<br/><small>PASS · /auth/login</small></div>
+</a><a class="card" href="02-auth-register.png">
+  <img src="02-auth-register.png" alt="02 Signup" loading="lazy"/>
+  <div class="meta"><span class="num">02</span> Signup<br/><small>PASS · /auth/register</small></div>
+</a><a class="card" href="03-auth-globe.png">
+  <img src="03-auth-globe.png" alt="03 Animated Auth Globe" loading="lazy"/>
+  <div class="meta"><span class="num">03</span> Animated Auth Globe<br/><small>PASS · components/auth/AuthGlobe</small></div>
+</a><a class="card" href="04-auth-phone-login.png">
+  <img src="04-auth-phone-login.png" alt="04 Phone login" loading="lazy"/>
+  <div class="meta"><span class="num">04</span> Phone login<br/><small>PASS · /auth/login-phone</small></div>
+</a><a class="card" href="05-auth-forgot-password.png">
+  <img src="05-auth-forgot-password.png" alt="05 Forgot password" loading="lazy"/>
+  <div class="meta"><span class="num">05</span> Forgot password<br/><small>PASS · /auth/forgot-password</small></div>
+</a><a class="card" href="06-home.png">
+  <img src="06-home.png" alt="06 Home" loading="lazy"/>
+  <div class="meta"><span class="num">06</span> Home<br/><small>PASS · /</small></div>
+</a><a class="card" href="07-search.png">
+  <img src="07-search.png" alt="07 Search" loading="lazy"/>
+  <div class="meta"><span class="num">07</span> Search<br/><small>PASS · /search</small></div>
+</a><a class="card" href="08-categories.png">
+  <img src="08-categories.png" alt="08 Categories" loading="lazy"/>
+  <div class="meta"><span class="num">08</span> Categories<br/><small>PASS · /search</small></div>
+</a><a class="card" href="09-listing-detail.png">
+  <img src="09-listing-detail.png" alt="09 Product details" loading="lazy"/>
+  <div class="meta"><span class="num">09</span> Product details<br/><small>PASS · /listing/[id]</small></div>
+</a><a class="card" href="10-cart.png">
+  <img src="10-cart.png" alt="10 Shopping Cart" loading="lazy"/>
+  <div class="meta"><span class="num">10</span> Shopping Cart<br/><small>PASS · /cart</small></div>
+</a><a class="card" href="11-checkout.png">
+  <img src="11-checkout.png" alt="11 Checkout (wallet / Card FM)" loading="lazy"/>
+  <div class="meta"><span class="num">11</span> Checkout (wallet / Card FM)<br/><small>PASS · /checkout</small></div>
+</a><a class="card" href="12-checkout-success.png">
+  <img src="12-checkout-success.png" alt="12 Order confirmation" loading="lazy"/>
+  <div class="meta"><span class="num">12</span> Order confirmation<br/><small>PASS · /checkout-success</small></div>
+</a><a class="card" href="13-stripe-single-item.png">
+  <img src="13-stripe-single-item.png" alt="13 Stripe single-item checkout" loading="lazy"/>
+  <div class="meta"><span class="num">13</span> Stripe single-item checkout<br/><small>PASS · /stripe-checkout</small></div>
+</a><a class="card" href="14-favorites.png">
+  <img src="14-favorites.png" alt="14 Favorites / Saved" loading="lazy"/>
+  <div class="meta"><span class="num">14</span> Favorites / Saved<br/><small>PASS · /favorites</small></div>
+</a><a class="card" href="15-orders.png">
+  <img src="15-orders.png" alt="15 Orders" loading="lazy"/>
+  <div class="meta"><span class="num">15</span> Orders<br/><small>PASS · /orders</small></div>
+</a><a class="card" href="16-order-detail.png">
+  <img src="16-order-detail.png" alt="16 Order Details" loading="lazy"/>
+  <div class="meta"><span class="num">16</span> Order Details<br/><small>PASS · /orders/[id]</small></div>
+</a><a class="card" href="17-delivery-tracking.png">
+  <img src="17-delivery-tracking.png" alt="17 Order / Delivery Tracking" loading="lazy"/>
+  <div class="meta"><span class="num">17</span> Order / Delivery Tracking<br/><small>PASS · /delivery-tracking</small></div>
+</a><a class="card" href="18-public-tracking.png">
+  <img src="18-public-tracking.png" alt="18 Public tracking" loading="lazy"/>
+  <div class="meta"><span class="num">18</span> Public tracking<br/><small>PASS · /track/[trackingNumber]</small></div>
+</a><a class="card" href="19-delivery-confirm.png">
+  <img src="19-delivery-confirm.png" alt="19 Delivery Confirmation" loading="lazy"/>
+  <div class="meta"><span class="num">19</span> Delivery Confirmation<br/><small>PASS · /orders/[id]</small></div>
+</a><a class="card" href="20-addresses.png">
+  <img src="20-addresses.png" alt="20 Addresses" loading="lazy"/>
+  <div class="meta"><span class="num">20</span> Addresses<br/><small>PASS · /addresses</small></div>
+</a><a class="card" href="21-wallet.png">
+  <img src="21-wallet.png" alt="21 Wallet" loading="lazy"/>
+  <div class="meta"><span class="num">21</span> Wallet<br/><small>PASS · /wallet</small></div>
+</a><a class="card" href="22-wallet-topup.png">
+  <img src="22-wallet-topup.png" alt="22 Wallet top-up / Card FM recharge" loading="lazy"/>
+  <div class="meta"><span class="num">22</span> Wallet top-up / Card FM recharge<br/><small>BLOCKED · /wallet</small></div>
+</a><a class="card" href="23-wallet-transfer.png">
+  <img src="23-wallet-transfer.png" alt="23 Wallet P2P transfer" loading="lazy"/>
+  <div class="meta"><span class="num">23</span> Wallet P2P transfer<br/><small>PASS · /wallet-transfer</small></div>
+</a><a class="card" href="24-wallet-history.png">
+  <img src="24-wallet-history.png" alt="24 Transaction History" loading="lazy"/>
+  <div class="meta"><span class="num">24</span> Transaction History<br/><small>PASS · /wallet-history</small></div>
+</a><a class="card" href="25-flex-card-repay.png">
+  <img src="25-flex-card-repay.png" alt="25 Flex Card repay" loading="lazy"/>
+  <div class="meta"><span class="num">25</span> Flex Card repay<br/><small>PASS · /flex-card-repay</small></div>
+</a><a class="card" href="26-bnpl.png">
+  <img src="26-bnpl.png" alt="26 BNPL" loading="lazy"/>
+  <div class="meta"><span class="num">26</span> BNPL<br/><small>PASS · /bnpl</small></div>
+</a><a class="card" href="27-profile-account.png">
+  <img src="27-profile-account.png" alt="27 Account / Profile hub" loading="lazy"/>
+  <div class="meta"><span class="num">27</span> Account / Profile hub<br/><small>PASS · /profile</small></div>
+</a><a class="card" href="28-shop-profile.png">
+  <img src="28-shop-profile.png" alt="28 Public seller shop" loading="lazy"/>
+  <div class="meta"><span class="num">28</span> Public seller shop<br/><small>PASS · /shop/[id]</small></div>
+</a><a class="card" href="29-edit-profile.png">
+  <img src="29-edit-profile.png" alt="29 Edit Profile" loading="lazy"/>
+  <div class="meta"><span class="num">29</span> Edit Profile<br/><small>PASS · /edit-profile</small></div>
+</a><a class="card" href="30-settings.png">
+  <img src="30-settings.png" alt="30 Settings (marketplace country)" loading="lazy"/>
+  <div class="meta"><span class="num">30</span> Settings (marketplace country)<br/><small>PASS · /settings</small></div>
+</a><a class="card" href="31-settings-subpages.png">
+  <img src="31-settings-subpages.png" alt="31 Settings subpages (identity, security, privacy, preferences, help, payments, notifications prefs)" loading="lazy"/>
+  <div class="meta"><span class="num">31</span> Settings subpages (identity, security, privacy, preferences, help, payments, notifications prefs)<br/><small>PASS · /settings/*</small></div>
+</a><a class="card" href="32-notifications.png">
+  <img src="32-notifications.png" alt="32 Notifications" loading="lazy"/>
+  <div class="meta"><span class="num">32</span> Notifications<br/><small>PASS · /notifications</small></div>
+</a><a class="card" href="33-push-fcm.png">
+  <img src="33-push-fcm.png" alt="33 Android push (FCM)" loading="lazy"/>
+  <div class="meta"><span class="num">33</span> Android push (FCM)<br/><small>BLOCKED · expo-notifications</small></div>
+</a><a class="card" href="34-kyc.png">
+  <img src="34-kyc.png" alt="34 Account Verification (KYC)" loading="lazy"/>
+  <div class="meta"><span class="num">34</span> Account Verification (KYC)<br/><small>PASS · /kyc</small></div>
+</a><a class="card" href="35-language-picker.png">
+  <img src="35-language-picker.png" alt="35 Language picker" loading="lazy"/>
+  <div class="meta"><span class="num">35</span> Language picker<br/><small>PASS · /language-picker</small></div>
+</a><a class="card" href="36-offers.png">
+  <img src="36-offers.png" alt="36 Offers" loading="lazy"/>
+  <div class="meta"><span class="num">36</span> Offers<br/><small>PASS · /offers</small></div>
+</a><a class="card" href="37-subscription.png">
+  <img src="37-subscription.png" alt="37 Subscription / VIP" loading="lazy"/>
+  <div class="meta"><span class="num">37</span> Subscription / VIP<br/><small>PASS · /subscription</small></div>
+</a><a class="card" href="38-subscription-billing.png">
+  <img src="38-subscription-billing.png" alt="38 Subscription digital purchase" loading="lazy"/>
+  <div class="meta"><span class="num">38</span> Subscription digital purchase<br/><small>BLOCKED · /subscription</small></div>
+</a><a class="card" href="39-referrals.png">
+  <img src="39-referrals.png" alt="39 Referral System / Leaderboard" loading="lazy"/>
+  <div class="meta"><span class="num">39</span> Referral System / Leaderboard<br/><small>PASS · /leaderboard</small></div>
+</a><a class="card" href="40-commission-promo.png">
+  <img src="40-commission-promo.png" alt="40 Commission promo" loading="lazy"/>
+  <div class="meta"><span class="num">40</span> Commission promo<br/><small>PASS · /commission-promo</small></div>
+</a><a class="card" href="41-jobs.png">
+  <img src="41-jobs.png" alt="41 Jobs board" loading="lazy"/>
+  <div class="meta"><span class="num">41</span> Jobs board<br/><small>PASS · /jobs</small></div>
+</a><a class="card" href="42-calculator.png">
+  <img src="42-calculator.png" alt="42 CalcAI calculator" loading="lazy"/>
+  <div class="meta"><span class="num">42</span> CalcAI calculator<br/><small>PASS · /calculator</small></div>
+</a><a class="card" href="43-help-center.png">
+  <img src="43-help-center.png" alt="43 Help Center / FAQ / Contact" loading="lazy"/>
+  <div class="meta"><span class="num">43</span> Help Center / FAQ / Contact<br/><small>PASS · /help-center</small></div>
+</a><a class="card" href="44-legal.png">
+  <img src="44-legal.png" alt="44 Legal pages (privacy, terms, EULA, policies)" loading="lazy"/>
+  <div class="meta"><span class="num">44</span> Legal pages (privacy, terms, EULA, policies)<br/><small>PASS · /legal/[slug]</small></div>
+</a><a class="card" href="45-inbox.png">
+  <img src="45-inbox.png" alt="45 Kominike / Inbox / Messages" loading="lazy"/>
+  <div class="meta"><span class="num">45</span> Kominike / Inbox / Messages<br/><small>PASS · /inbox</small></div>
+</a><a class="card" href="46-chat-thread.png">
+  <img src="46-chat-thread.png" alt="46 Private / Product Chat" loading="lazy"/>
+  <div class="meta"><span class="num">46</span> Private / Product Chat<br/><small>PASS · /chat/[id]</small></div>
+</a><a class="card" href="47-support-tickets.png">
+  <img src="47-support-tickets.png" alt="47 Support Center / Tickets" loading="lazy"/>
+  <div class="meta"><span class="num">47</span> Support Center / Tickets<br/><small>PASS · /support</small></div>
+</a><a class="card" href="48-chatbot.png">
+  <img src="48-chatbot.png" alt="48 FlexaBot Chatbot" loading="lazy"/>
+  <div class="meta"><span class="num">48</span> FlexaBot Chatbot<br/><small>PASS · /chatbot</small></div>
+</a><a class="card" href="49-sell.png">
+  <img src="49-sell.png" alt="49 Add Product / Sell" loading="lazy"/>
+  <div class="meta"><span class="num">49</span> Add Product / Sell<br/><small>PASS · /sell</small></div>
+</a><a class="card" href="50-my-listings.png">
+  <img src="50-my-listings.png" alt="50 Product Management / My Listings" loading="lazy"/>
+  <div class="meta"><span class="num">50</span> Product Management / My Listings<br/><small>PASS · /my-listings</small></div>
+</a><a class="card" href="51-edit-listing.png">
+  <img src="51-edit-listing.png" alt="51 Edit Product" loading="lazy"/>
+  <div class="meta"><span class="num">51</span> Edit Product<br/><small>PASS · /sell-edit/[id]</small></div>
+</a><a class="card" href="52-image-upload.png">
+  <img src="52-image-upload.png" alt="52 Image Upload" loading="lazy"/>
+  <div class="meta"><span class="num">52</span> Image Upload<br/><small>PASS · /sell</small></div>
+</a><a class="card" href="53-video-upload.png">
+  <img src="53-video-upload.png" alt="53 Video Upload" loading="lazy"/>
+  <div class="meta"><span class="num">53</span> Video Upload<br/><small>PASS · /videos</small></div>
+</a><a class="card" href="54-inventory.png">
+  <img src="54-inventory.png" alt="54 Inventory / Restock" loading="lazy"/>
+  <div class="meta"><span class="num">54</span> Inventory / Restock<br/><small>PASS · /my-listings</small></div>
+</a><a class="card" href="55-sales.png">
+  <img src="55-sales.png" alt="55 Seller Dashboard / Sales" loading="lazy"/>
+  <div class="meta"><span class="num">55</span> Seller Dashboard / Sales<br/><small>PASS · /sales</small></div>
+</a><a class="card" href="56-seller-analytics.png">
+  <img src="56-seller-analytics.png" alt="56 Sales Analytics" loading="lazy"/>
+  <div class="meta"><span class="num">56</span> Sales Analytics<br/><small>PASS · /analytics</small></div>
+</a><a class="card" href="57-seller-orders.png">
+  <img src="57-seller-orders.png" alt="57 Seller Orders Management" loading="lazy"/>
+  <div class="meta"><span class="num">57</span> Seller Orders Management<br/><small>PASS · /sales</small></div>
+</a><a class="card" href="58-earnings-payouts.png">
+  <img src="58-earnings-payouts.png" alt="58 Earnings / Commissions / Payouts" loading="lazy"/>
+  <div class="meta"><span class="num">58</span> Earnings / Commissions / Payouts<br/><small>PASS · /settings/payments</small></div>
+</a><a class="card" href="59-boost.png">
+  <img src="59-boost.png" alt="59 Boost Campaigns" loading="lazy"/>
+  <div class="meta"><span class="num">59</span> Boost Campaigns<br/><small>PASS · /boost</small></div>
+</a><a class="card" href="60-boost-paid.png">
+  <img src="60-boost-paid.png" alt="60 Paid Boost purchase" loading="lazy"/>
+  <div class="meta"><span class="num">60</span> Paid Boost purchase<br/><small>BLOCKED · /boost</small></div>
+</a><a class="card" href="61-boost-analytics.png">
+  <img src="61-boost-analytics.png" alt="61 Boost Analytics" loading="lazy"/>
+  <div class="meta"><span class="num">61</span> Boost Analytics<br/><small>PASS · /boost-analytics</small></div>
+</a><a class="card" href="62-my-boosts.png">
+  <img src="62-my-boosts.png" alt="62 My Boosts" loading="lazy"/>
+  <div class="meta"><span class="num">62</span> My Boosts<br/><small>PASS · /my-boosts</small></div>
+</a><a class="card" href="63-promo-videos.png">
+  <img src="63-promo-videos.png" alt="63 Promotional Videos / Video Discover" loading="lazy"/>
+  <div class="meta"><span class="num">63</span> Promotional Videos / Video Discover<br/><small>PASS · /videos</small></div>
+</a><a class="card" href="64-drafts.png">
+  <img src="64-drafts.png" alt="64 My Drafts / Bouillon" loading="lazy"/>
+  <div class="meta"><span class="num">64</span> My Drafts / Bouillon<br/><small>PASS · /my-drafts</small></div>
+</a><a class="card" href="65-store-manager.png">
+  <img src="65-store-manager.png" alt="65 Store Manager Dashboard" loading="lazy"/>
+  <div class="meta"><span class="num">65</span> Store Manager Dashboard<br/><small>PASS · /manager</small></div>
+</a><a class="card" href="66-seller-registration.png">
+  <img src="66-seller-registration.png" alt="66 Seller Registration / Stripe Connect" loading="lazy"/>
+  <div class="meta"><span class="num">66</span> Seller Registration / Stripe Connect<br/><small>PASS · /sell</small></div>
+</a><a class="card" href="67-driver-apply.png">
+  <img src="67-driver-apply.png" alt="67 Driver Registration" loading="lazy"/>
+  <div class="meta"><span class="num">67</span> Driver Registration<br/><small>PASS · /driver-apply</small></div>
+</a><a class="card" href="68-driver-dashboard.png">
+  <img src="68-driver-dashboard.png" alt="68 Driver Dashboard / Jobs" loading="lazy"/>
+  <div class="meta"><span class="num">68</span> Driver Dashboard / Jobs<br/><small>PASS · /driver-dashboard</small></div>
+</a><a class="card" href="69-cash-agent.png">
+  <img src="69-cash-agent.png" alt="69 Cash Agent directory / dashboard" loading="lazy"/>
+  <div class="meta"><span class="num">69</span> Cash Agent directory / dashboard<br/><small>PASS · /agents</small></div>
+</a><a class="card" href="70-loans.png">
+  <img src="70-loans.png" alt="70 Business Loans" loading="lazy"/>
+  <div class="meta"><span class="num">70</span> Business Loans<br/><small>PASS · /loans</small></div>
+</a><a class="card" href="71-credit-score.png">
+  <img src="71-credit-score.png" alt="71 Credit Score" loading="lazy"/>
+  <div class="meta"><span class="num">71</span> Credit Score<br/><small>PASS · /credit-score</small></div>
+</a><a class="card" href="72-flexa-tv.png">
+  <img src="72-flexa-tv.png" alt="72 Flexa TV" loading="lazy"/>
+  <div class="meta"><span class="num">72</span> Flexa TV<br/><small>PASS · /tv</small></div>
+</a><a class="card" href="73-flexa-music.png">
+  <img src="73-flexa-music.png" alt="73 Flexa Music" loading="lazy"/>
+  <div class="meta"><span class="num">73</span> Flexa Music<br/><small>PASS · /music</small></div>
+</a><a class="card" href="74-music-purchase.png">
+  <img src="74-music-purchase.png" alt="74 Music digital purchase" loading="lazy"/>
+  <div class="meta"><span class="num">74</span> Music digital purchase<br/><small>BLOCKED · /music</small></div>
+</a><a class="card" href="75-admin-panel.png">
+  <img src="75-admin-panel.png" alt="75 Flexa Control / Super Admin Dashboard" loading="lazy"/>
+  <div class="meta"><span class="num">75</span> Flexa Control / Super Admin Dashboard<br/><small>PASS · /admin</small></div>
+</a><a class="card" href="76-admin-users.png">
+  <img src="76-admin-users.png" alt="76 User / Seller / Driver Management" loading="lazy"/>
+  <div class="meta"><span class="num">76</span> User / Seller / Driver Management<br/><small>PASS · /admin/users</small></div>
+</a><a class="card" href="77-admin-moderation.png">
+  <img src="77-admin-moderation.png" alt="77 Product Moderation / Reports / Disputes" loading="lazy"/>
+  <div class="meta"><span class="num">77</span> Product Moderation / Reports / Disputes<br/><small>PASS · /admin/moderation</small></div>
+</a><a class="card" href="78-admin-finance.png">
+  <img src="78-admin-finance.png" alt="78 Financial Management / Payments / Wallet Ops / Refunds" loading="lazy"/>
+  <div class="meta"><span class="num">78</span> Financial Management / Payments / Wallet Ops / Refunds<br/><small>PASS · payments</small></div>
+</a><a class="card" href="79-admin-support.png">
+  <img src="79-admin-support.png" alt="79 Support Agent Management / Live Support / Tickets" loading="lazy"/>
+  <div class="meta"><span class="num">79</span> Support Agent Management / Live Support / Tickets<br/><small>PASS · /admin/support</small></div>
+</a><a class="card" href="80-admin-analytics.png">
+  <img src="80-admin-analytics.png" alt="80 Admin Analytics / Announcements / Role Management" loading="lazy"/>
+  <div class="meta"><span class="num">80</span> Admin Analytics / Announcements / Role Management<br/><small>PASS · /admin/analytics`, `/admin/more</small></div>
+</a><a class="card" href="81-delete-account.png">
+  <img src="81-delete-account.png" alt="81 Delete Account / Data Deletion" loading="lazy"/>
+  <div class="meta"><span class="num">81</span> Delete Account / Data Deletion<br/><small>PASS · /delete-account</small></div>
+</a><a class="card" href="82-website-embed.png">
+  <img src="82-website-embed.png" alt="82 Website WebView shell" loading="lazy"/>
+  <div class="meta"><span class="num">82</span> Website WebView shell<br/><small>PASS · /website</small></div>
+</a><a class="card" href="83-esim.png">
+  <img src="83-esim.png" alt="83 Flexa eSIM" loading="lazy"/>
+  <div class="meta"><span class="num">83</span> Flexa eSIM<br/><small>BLOCKED · /esim</small></div>
+</a><a class="card" href="84-smart-notifications.png">
+  <img src="84-smart-notifications.png" alt="84 Smart notification deep-links" loading="lazy"/>
+  <div class="meta"><span class="num">84</span> Smart notification deep-links<br/><small>PASS · PushBootstrap</small></div>
+</a>
+</div>
+</body>
+</html>

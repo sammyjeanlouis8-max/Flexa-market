@@ -261,6 +261,23 @@ Release APK rebuilt **versionCode 63** (`com.flexamarket.app` / `1.0.1`) after a
 6. Optional: improve emulator IME/clipboard so soft Sign In form can be driven without session restore.
 7. Device retest of newly wired admin modules on vc63 APK.
 
+
+## 9. vc63 emulator screenshots (Super Admin)
+
+Installed `flexa-release-vc63.apk` on `sdk_gphone64_x86_64` (API 34), session via RKStorage inject.
+
+| Shot | Module |
+|---|---|
+| `a243-vc63-admin-home.png` | Command Center dashboard |
+| `a243-vc63-more.png` / `a243-vc63-more-lower.png` | More catalog (incl. Reports/Appeals/Flagged/Live Support) |
+| `a243-vc63-loans.png` | Loan Requests (empty queue) |
+| `a243-vc63-music.png` | Flexa Music (public catalog fallback) |
+| `a243-vc63-rates.png` | Rates + HTG update |
+| `a243-vc63-tv.png` | Flexa TV programs |
+| `a243-vc63-reports.png` / `a243-vc63-appeals.png` | Reports / Appeals |
+| `a243-vc63-broadcast-email.png` / `a243-vc63-broadcast-sms.png` | Broadcast compose |
+| `a243-vc63-*-redacted.png` | Transactions / Flex Card / Flagged / Live Support / apps / VIP (list bodies blacked out) |
+
 ## Evidence index
 
 | Path | Contents |

@@ -155,8 +155,8 @@ export async function translateMessage(
   };
 }
 
-/** Upload image for chat attachment via existing Wasabi put-proxy flow. */
-export async function uploadChatImage(
+/** Upload chat media (image / video / audio) via existing Wasabi put-proxy flow. */
+export async function uploadChatMedia(
   localUri: string,
   opts: AuthOpts & { contentType?: string; fileName?: string },
 ): Promise<string> {
@@ -165,7 +165,7 @@ export async function uploadChatImage(
   const fileRes = await fetch(localUri);
   const blob = await fileRes.blob();
   const size = blob.size;
-  if (!size) throw new Error("Could not read image");
+  if (!size) throw new Error("Could not read media file");
 
   const reqRes = await authedFetch("/storage/uploads/request-url", {
     ...opts,
@@ -199,17 +199,66 @@ export async function uploadChatImage(
   return url;
 }
 
+/** @deprecated Prefer uploadChatMedia */
+export async function uploadChatImage(
+  localUri: string,
+  opts: AuthOpts & { contentType?: string; fileName?: string },
+): Promise<string> {
+  return uploadChatMedia(localUri, opts);
+}
+
+/** Inbox row time: "35 min ago", "4 days ago", "Nov 10". */
 export function formatMessageTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (sameDay) {
-    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 0) {
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "1 day ago";
+  if (days < 7) return `${days} days ago`;
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** Bubble clock "20:34". */
+export function formatBubbleClock(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+/** Centered date pill label. */
+export function formatDateSeparator(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function sameCalendarDay(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const da = new Date(a);
+  const db = new Date(b);
+  if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return false;
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
 }

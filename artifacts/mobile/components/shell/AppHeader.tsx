@@ -20,13 +20,17 @@ type Props = {
   showCart?: boolean;
   showProfile?: boolean;
   rightExtra?: React.ReactNode;
+  /** Marketplace chrome: green (default) or white Messages/inbox style. */
+  variant?: "green" | "light";
+  /** Unread notifications for the bell badge (light header uses red). */
+  bellBadge?: number;
 };
 
 /** Typical Android status-bar content height in density-independent pixels. */
 const ANDROID_STATUS_DP = 24;
 
 /**
- * Top inset for the green chrome — apply once (no outer SafeAreaView).
+ * Top inset for the chrome — apply once (no outer SafeAreaView).
  *
  * Android note: `StatusBar.currentHeight` is in **physical pixels**, while
  * `useSafeAreaInsets()` and style padding are in **dp**. Mixing them made a
@@ -55,12 +59,18 @@ export function AppHeader({
   showCart = true,
   showProfile = true,
   rightExtra,
+  variant = "green",
+  bellBadge = 0,
 }: Props) {
   const topInset = useHeaderTopInset();
   const router = useRouter();
   const { token } = useAuth();
   const { count } = useCart();
   const { openDrawer } = useNavigationChrome();
+  const light = variant === "light";
+  const iconColor = light ? "#0F172A" : "#FFFFFF";
+  const brandColor = light ? "#0F172A" : "#FFFFFF";
+  const bg = light ? "#FFFFFF" : colors.flexaGreen;
 
   const handleBack = () => {
     if (onBack) {
@@ -72,10 +82,13 @@ export function AppHeader({
   };
 
   return (
-    <View style={[styles.wrap, { paddingTop: topInset }]} testID="app-header">
+    <View
+      style={[styles.wrap, { paddingTop: topInset, backgroundColor: bg }, light && styles.wrapLight]}
+      testID="app-header"
+    >
       <StatusBar
-        barStyle="light-content"
-        backgroundColor={colors.flexaGreen}
+        barStyle={light ? "dark-content" : "light-content"}
+        backgroundColor={bg}
         translucent={Platform.OS === "android"}
       />
       <View style={styles.bar}>
@@ -87,7 +100,7 @@ export function AppHeader({
               accessibilityLabel="Go back"
               testID="app-header-back"
             >
-              <Feather name="arrow-left" size={22} color="#FFFFFF" />
+              <Feather name="arrow-left" size={22} color={iconColor} />
             </Pressable>
           ) : showMenu ? (
             <Pressable
@@ -98,7 +111,7 @@ export function AppHeader({
               accessibilityLabel="Open menu"
               testID="nav-hamburger"
             >
-              <Feather name="menu" size={22} color="#FFFFFF" />
+              <Feather name="menu" size={22} color={iconColor} />
             </Pressable>
           ) : (
             <View style={styles.iconBtn} />
@@ -112,13 +125,13 @@ export function AppHeader({
                 contentFit="contain"
               />
               <View style={{ minWidth: 0, flexShrink: 1 }}>
-                <Text style={styles.brandTitle} numberOfLines={1}>
+                <Text style={[styles.brandTitle, { color: brandColor }]} numberOfLines={1}>
                   {title || "Flexa Market"}
                 </Text>
               </View>
             </View>
           ) : title ? (
-            <Text style={styles.pageTitle} numberOfLines={1}>
+            <Text style={[styles.pageTitle, { color: brandColor }]} numberOfLines={1}>
               {title}
             </Text>
           ) : null}
@@ -132,7 +145,7 @@ export function AppHeader({
               style={styles.iconBtn}
               accessibilityLabel="Account"
             >
-              <Feather name="user" size={20} color="#FFFFFF" />
+              <Feather name="user" size={20} color={iconColor} />
             </Pressable>
           ) : null}
           {showBell ? (
@@ -142,7 +155,14 @@ export function AppHeader({
               accessibilityLabel="Notifications"
               testID="nav-bell"
             >
-              <Feather name="bell" size={20} color="#FFFFFF" />
+              <Feather name="bell" size={20} color={iconColor} />
+              {bellBadge > 0 ? (
+                <View style={[styles.badge, light ? styles.badgeRed : styles.badgeOrange]}>
+                  <Text style={styles.badgeText}>
+                    {bellBadge > 99 ? "99+" : String(bellBadge)}
+                  </Text>
+                </View>
+              ) : null}
             </Pressable>
           ) : null}
           {showCart ? (
@@ -152,9 +172,9 @@ export function AppHeader({
               accessibilityLabel="Cart"
               testID="nav-cart"
             >
-              <Feather name="shopping-cart" size={20} color="#FFFFFF" />
+              <Feather name="shopping-cart" size={20} color={iconColor} />
               {count > 0 ? (
-                <View style={styles.badge}>
+                <View style={[styles.badge, light ? styles.badgeRed : styles.badgeOrange]}>
                   <Text style={styles.badgeText}>{count > 99 ? "99+" : String(count)}</Text>
                 </View>
               ) : null}
@@ -169,6 +189,10 @@ export function AppHeader({
 const styles = StyleSheet.create({
   wrap: {
     backgroundColor: colors.flexaGreen,
+  },
+  wrapLight: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E5E7EB",
   },
   // Compact toolbar — matches mobile-web chrome height under the status bar.
   bar: {
@@ -205,10 +229,11 @@ const styles = StyleSheet.create({
     minWidth: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: colors.flexaOrange,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 3,
   },
+  badgeOrange: { backgroundColor: colors.flexaOrange },
+  badgeRed: { backgroundColor: "#EF4444" },
   badgeText: { color: "#FFFFFF", fontSize: 9, fontWeight: "800" },
 });

@@ -5,6 +5,9 @@ const TOKEN_KEY = "flexamarket_token";
 const USER_CACHE_KEY = "flexamarket_user_cache";
 
 export function getBaseUrl() {
+  // Full API origin override (e.g. adb reverse tunnel http://127.0.0.1:8787/api).
+  const explicit = process.env.EXPO_PUBLIC_API_BASE?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
   if (domain) return `https://${domain}/api`;
   // Production marketplace ingress (DigitalOcean App Platform behind flexamarket.com).

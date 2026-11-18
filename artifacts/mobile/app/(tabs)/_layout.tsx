@@ -113,6 +113,8 @@ export default function TabLayout() {
         name="inbox"
         options={{
           title: "Messages",
+          // Messages tab uses blue when selected (web/iOS Messages reference).
+          tabBarActiveTintColor: "#2563EB",
           tabBarLabel: ({ color }) => (
             <TabLabel label="Messages" color={color} />
           ),

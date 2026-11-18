@@ -37,7 +37,7 @@
         "NSPhotoLibraryUsageDescription": "Flexa Market uses your photo library so you can choose existing photos of items you want to sell and attach them to your listings.",
         "NSPhotoLibraryAddUsageDescription": "Flexa Market saves photos to your library after you take them for your listings.",
         "NSLocationWhenInUseUsageDescription": "Flexa Market uses your location to show you nearby listings and to automatically set the location for items you are selling, helping local buyers find your products.",
-        "NSMicrophoneUsageDescription": "Flexa Market uses your microphone to record short video clips of items you want to sell, so buyers can get a better view of your products.",
+        "NSMicrophoneUsageDescription": "Flexa Market uses your microphone to record voice messages in buyer–seller chat and short video clips of items you want to sell.",
         "NSFaceIDUsageDescription": "Flexa Market uses Face ID so you can sign in quickly and securely without typing your password.",
         "UIBackgroundModes": [
           "remote-notification",
@@ -48,7 +48,7 @@
     "android": {
       "package": "com.flexamarket.app",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 63,
+      "versionCode": 64,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0F172A"

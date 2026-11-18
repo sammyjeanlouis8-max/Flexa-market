@@ -43,8 +43,21 @@ test("music player wires natural finish to ad break helper", () => {
   assert.match(src, /didJustFinish/);
   assert.match(src, /recordNaturalSongCompletion/);
   assert.match(src, /setMusicAdBreakHandler/);
+  assert.match(src, /resetAdCounter/);
+  // Count always; only skip playing an ad into silence.
   assert.match(src, /Queue ending into silence/);
+  const countIdx = src.indexOf("recordNaturalSongCompletion");
+  const silenceIdx = src.indexOf("if (!hasNext) return");
+  assert.ok(countIdx > 0 && silenceIdx > countIdx, "count before silence gate");
   assert.doesNotMatch(src, /export async function next\(\)[\s\S]*recordNaturalSongCompletion/);
+});
+
+test("natural completion increments without resetting; reset is caller-owned", () => {
+  const src = read("lib/musicAdBreak.ts");
+  const fn = src.slice(src.indexOf("export async function recordNaturalSongCompletion"));
+  const body = fn.slice(0, fn.indexOf("export async function resetAdCounter"));
+  assert.match(body, /writeCompletedSongCounter\(next\)/);
+  assert.doesNotMatch(body, /writeCompletedSongCounter\(0\)/);
 });
 
 test("Watch replay pauses music and does not touch ad counter", () => {

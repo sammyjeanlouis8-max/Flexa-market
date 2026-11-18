@@ -73,19 +73,16 @@ async function writeCompletedSongCounter(value: number): Promise<void> {
 /**
  * Call only when a track finishes naturally (didJustFinish).
  * Skips / next() / manual Watch replays must never call this.
- * Always increments. Returns true when the counter reached SONGS_PER_AD
- * (caller must still require a next song before playing an ad — queue-end
- * silence must not call this so the counter is not burned).
+ * Always increments (including when the queue ends into silence).
+ * Returns true when the counter reached SONGS_PER_AD — the caller must
+ * still require a next song before playing an ad, and should reset via
+ * `resetAdCounter` only when an ad break is attempted.
  */
 export async function recordNaturalSongCompletion(): Promise<boolean> {
   const current = await readCompletedSongCounter();
   const next = current + 1;
-  if (next >= SONGS_PER_AD) {
-    await writeCompletedSongCounter(0);
-    return true;
-  }
   await writeCompletedSongCounter(next);
-  return false;
+  return next >= SONGS_PER_AD;
 }
 
 export async function resetAdCounter(): Promise<void> {

@@ -7,7 +7,7 @@ import {
   fetchMusicStreamUrl,
   type MusicTrack,
 } from "./musicApi";
-import { recordNaturalSongCompletion } from "./musicAdBreak";
+import { recordNaturalSongCompletion, resetAdCounter } from "./musicAdBreak";
 
 export type PlayerState = {
   queue: MusicTrack[];
@@ -135,8 +135,16 @@ async function handleNaturalTrackEnd() {
   const intendsPlay = isPlaying;
   const hasNext = queueHasNextAfterCurrent();
 
-  // Queue ending into silence — skip ads and do not burn the counter.
+  // Always count natural completions — including the final song in a queue.
   // Skips / next() never reach here (only didJustFinish).
+  let shouldBreak = false;
+  try {
+    shouldBreak = await recordNaturalSongCompletion();
+  } catch {
+    shouldBreak = false;
+  }
+
+  // Queue ending into silence — never burn an ad; leave the counter as-is.
   if (!hasNext) return;
 
   // Avoid back-to-back breaks if a prior ad is still winding down.
@@ -145,13 +153,10 @@ async function handleNaturalTrackEnd() {
     return;
   }
 
-  let shouldBreak = false;
-  try {
-    shouldBreak = await recordNaturalSongCompletion();
-  } catch {
-    shouldBreak = false;
-  }
   if (shouldBreak && adBreakHandler) {
+    // Reset only when we attempt a break (fail-open still clears the slot —
+    // do not stack missed ads).
+    await resetAdCounter();
     await pause();
     setAdBreakActive(true);
     try {

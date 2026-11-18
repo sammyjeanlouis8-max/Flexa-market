@@ -108,7 +108,7 @@ export default function LoginPhoneScreen() {
         throw new Error(loginData.error || "Phone login failed");
       }
       if (!loginData.token) throw new Error("Login failed");
-      await login(loginData.token);
+      await login(loginData.token, loginData.user);
       router.replace("/");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");

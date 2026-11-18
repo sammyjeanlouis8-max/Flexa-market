@@ -13,6 +13,8 @@ type Props = {
   title?: string;
   showBrand?: boolean;
   showBack?: boolean;
+  /** When set with showBack, called instead of router.back(). */
+  onBack?: () => void;
   showMenu?: boolean;
   showBell?: boolean;
   showCart?: boolean;
@@ -47,6 +49,7 @@ export function AppHeader({
   title,
   showBrand = true,
   showBack = false,
+  onBack,
   showMenu = true,
   showBell = true,
   showCart = true,
@@ -59,6 +62,15 @@ export function AppHeader({
   const { count } = useCart();
   const { openDrawer } = useNavigationChrome();
 
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+      return;
+    }
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  };
+
   return (
     <View style={[styles.wrap, { paddingTop: topInset }]} testID="app-header">
       <StatusBar
@@ -70,9 +82,10 @@ export function AppHeader({
         <View style={styles.left}>
           {showBack ? (
             <Pressable
-              onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
+              onPress={handleBack}
               style={styles.iconBtn}
               accessibilityLabel="Go back"
+              testID="app-header-back"
             >
               <Feather name="arrow-left" size={22} color="#FFFFFF" />
             </Pressable>

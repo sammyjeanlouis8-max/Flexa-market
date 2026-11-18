@@ -16,7 +16,10 @@ import AuthShell, {
 import { loginWithEmail } from "../../lib/authApi";
 
 type LoginScreenProps = {
-  onSuccess: (token: string) => Promise<void> | void;
+  onSuccess: (
+    token: string,
+    user?: import("../../lib/authApi").AuthUser | null,
+  ) => Promise<void> | void;
   onGoRegister: () => void;
   onOpenWebsite?: (path: string) => void;
 };
@@ -93,7 +96,7 @@ export default function LoginScreen({
       return;
     }
 
-    await onSuccess(result.data.token);
+    await onSuccess(result.data.token, result.data.user);
   };
 
   return (

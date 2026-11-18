@@ -80,7 +80,7 @@ export default function BnplScreen() {
 
   return (
     <View style={styles.root}>
-      <AppHeader title="Buy Now, Pay Later" showBack />
+      <AppHeader title="Buy Now, Pay Later" showBack showBrand={false} showCart={false} />
       {!settings && !error ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.flexaGreen} />

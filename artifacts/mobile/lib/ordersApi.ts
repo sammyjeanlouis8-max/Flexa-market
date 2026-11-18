@@ -195,3 +195,40 @@ export async function confirmDelivery(
   if (!res.ok) return { ok: false, error: data.error || `Confirm failed (${res.status})` };
   return { ok: true };
 }
+
+export type ShipOrderBody = {
+  useFmDriver?: boolean;
+  /** Client field; also sent as `fmVehicleType` for the API. */
+  vehicleType?: "motorcycle" | "car";
+  deliveryDescription: string;
+  driverPhone?: string;
+  driverName?: string;
+  deliveryNote?: string;
+};
+
+export async function shipOrder(
+  orderId: number | string,
+  body: ShipOrderBody,
+  opts: AuthOpts,
+): Promise<{ ok: boolean; orderStatus?: string; error?: string }> {
+  const payload: Record<string, unknown> = {
+    deliveryDescription: body.deliveryDescription,
+    useFmDriver: body.useFmDriver,
+    vehicleType: body.vehicleType,
+    // Server currently reads fmVehicleType for the FM driver pool path.
+    fmVehicleType: body.vehicleType,
+    driverPhone: body.driverPhone,
+    driverName: body.driverName,
+    deliveryNote: body.deliveryNote,
+  };
+  const res = await authed(`/orders/${orderId}/ship`, {
+    ...opts,
+    method: "POST",
+    body: payload,
+  });
+  const data = await readJson(res);
+  if (!res.ok) {
+    return { ok: false, error: data.error || `Ship failed (${res.status})` };
+  }
+  return { ok: true, orderStatus: data.orderStatus };
+}

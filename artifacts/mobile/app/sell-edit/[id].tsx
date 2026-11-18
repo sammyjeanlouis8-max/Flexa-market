@@ -49,6 +49,16 @@ export default function SellEditScreen() {
         const cond = String(listing.condition || "good") as CreateListingInput["condition"];
         const currency = (String(listing.currency || "USD") as CreateListingInput["currency"]) || "USD";
         if (!cancelled) {
+          const dm = (listing as any).deliveryMethod as
+            | "motorcycle"
+            | "car"
+            | "bus"
+            | "self_delivery"
+            | null
+            | undefined;
+          const listingCountry = listing.country || country || "Haiti";
+          const local =
+            listingCountry === "Haiti" || listingCountry === "Dominican Republic";
           setInitial({
             title: listing.title || "",
             description: listing.description || "",
@@ -57,8 +67,14 @@ export default function SellEditScreen() {
             categoryId: match?.id ?? null,
             condition: ["new", "like_new", "good", "fair", "poor"].includes(cond) ? cond : "good",
             city: listing.city || listing.location || "",
-            country: listing.country || country || "Haiti",
+            country: listingCountry,
             images: listing.images || [],
+            deliveryMethod:
+              dm === "motorcycle" || dm === "car" || dm === "bus" || dm === "self_delivery"
+                ? dm
+                : local
+                  ? "motorcycle"
+                  : null,
           });
         }
       } catch (e) {

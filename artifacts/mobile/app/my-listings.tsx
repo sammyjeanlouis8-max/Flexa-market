@@ -79,9 +79,16 @@ export default function MyListingsScreen() {
     ]);
   };
 
+  const currencyFallback = () => {
+    if (user?.country === "Haiti") return "HTG";
+    if (user?.country === "Dominican Republic") return "DOP";
+    return "USD";
+  };
+
   const renderItem = ({ item }: { item: SellerListing }) => {
     const img = item.images?.[0];
     const mod = item.moderationStatus || "approved";
+    const currency = item.currency || currencyFallback();
     return (
       <View style={styles.card}>
         <Pressable
@@ -100,7 +107,7 @@ export default function MyListingsScreen() {
               {item.title}
             </Text>
             <Text style={styles.price}>
-              {formatMoney(Number(item.price), item.currency)}
+              {formatMoney(Number(item.price), currency)}
             </Text>
             <Text style={styles.sub}>
               {item.status || "available"} · {mod}

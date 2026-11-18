@@ -249,7 +249,7 @@ Wired former `generic` Flexa Control stubs to real `/api/admin/*` (and wallet) e
 - Added catalog modules: Reports, Appeals, Flagged Users, Live Support
 - Music falls back to public `/music` when `GET /admin/music` is missing on prod
 
-Device retest of these modules still needs emulator/SDK (currently unavailable on this agent).
+Release APK rebuilt **versionCode 63** (`com.flexamarket.app` / `1.0.1`) after admin gap fill. Local artifact: `artifacts/qa/audit84/flexa-release-vc63.apk` (not committed; 72MB). Device retest of new admin modules still pending emulator install.
 
 ## 8. Remaining blockers (exact unblock)
 
@@ -259,7 +259,7 @@ Device retest of these modules still needs emulator/SDK (currently unavailable o
 4. Deploy `POST /api/boost/:id/renew` (still 404 on DO).  
 5. Play Billing policy items stay **BLOCKED** on Android by design.  
 6. Optional: improve emulator IME/clipboard so soft Sign In form can be driven without session restore.
-   7. Rebuild release APK + device retest of newly wired admin modules.
+7. Device retest of newly wired admin modules on vc63 APK.
 
 ## Evidence index
 
@@ -274,4 +274,4 @@ Device retest of these modules still needs emulator/SDK (currently unavailable o
 
 ---
 
-**Test APK commit:** `4b1d599e557df1c1afbb47dc7a0dfb6fcff256d5` · versionCode **59** · package `com.flexamarket.app` · no release AAB.
+**Test APK:** versionCode **63** · versionName `1.0.1` · package `com.flexamarket.app` · path `artifacts/qa/audit84/flexa-release-vc63.apk` · no release AAB.

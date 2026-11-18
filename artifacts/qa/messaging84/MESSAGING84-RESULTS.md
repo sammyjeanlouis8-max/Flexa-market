@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | Branch | `cursor/native-messaging-screens-9753` |
-| Commit | _(see git after push)_ |
+| Commit | `cc726edac9069f0eb72eb8c35ae84ae90a4858aa` |
 | Android device | `sdk_gphone64_x86_64` · Android 14 · AVD `flexa_api34` (TCG `-accel off`; KVM broken on host) |
 | iOS | **BLOCKED** — Linux Cloud Agent has no Xcode / iOS Simulator |
 | APK | `flexa-release-vc64.apk` (versionCode 64) — proof shots used tunnel build + `adb reverse` |

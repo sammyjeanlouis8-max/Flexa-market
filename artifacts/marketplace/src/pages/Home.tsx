@@ -15,6 +15,7 @@ import PromoVideoPoster from "@/components/PromoVideoPoster";
 import {
   HOME_PROMO_VIDEO_CARD_LIMIT,
   HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT,
+  selectHomePromoCompanionProduct,
   selectHomePromoVideos,
 } from "@/lib/boostAdControls";
 import { selectTodaysDealSlots } from "@/lib/todaysDeals";
@@ -96,9 +97,9 @@ type NormalListing = {
   nearYou?: boolean;
 };
 
-// ─── Video promo grid items ───────────────────────────────────────────────────
-// Active boosted videos participate in the same continuous grid as products so
-// they never reserve a separate row or leave product-sized holes beside them.
+// ─── Video promo strip ────────────────────────────────────────────────────────
+// Cap at 2 videos. When exactly one video is eligible, fill the empty right
+// column with one Home-catalog product card (prefer a different listing).
 
 interface PromoVideoItem {
   id: number;
@@ -111,7 +112,15 @@ interface PromoVideoItem {
   boostStartAt?: string | null;
 }
 
-function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) {
+function VideoPromoSection({
+  countryFilter,
+  catalogListings,
+  skipCountryFilter = false,
+}: {
+  countryFilter: string | null;
+  catalogListings: NormalListing[];
+  skipCountryFilter?: boolean;
+}) {
   const { t } = useTranslation();
   const { token } = useAuth();
   const [videos, setVideos] = useState<PromoVideoItem[]>([]);
@@ -151,6 +160,14 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
   // Belt-and-suspenders: never render more than the Home hard cap, even if
   // state somehow holds a larger array (stale cache, race, etc.).
   const cards = videos.slice(0, HOME_PROMO_VIDEO_CARD_LIMIT);
+  const companionProduct = useMemo(() => {
+    if (cards.length !== 1) return null;
+    return selectHomePromoCompanionProduct(catalogListings, {
+      excludeListingIds: cards.map((v) => v.id),
+      activeCountry: countryFilter,
+      skipCountryFilter,
+    });
+  }, [cards, catalogListings, countryFilter, skipCountryFilter]);
 
   if (loading) {
     return (
@@ -160,7 +177,7 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
         aria-busy="true"
         aria-label={t("home.videoPromo", { defaultValue: "Video Promo" })}
       >
-        <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 items-start">
           {Array.from({ length: HOME_PROMO_VIDEO_CARD_LIMIT }).map((_, i) => (
             <Skeleton
               key={`promo-skel-${i}`}
@@ -175,62 +192,83 @@ function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) 
 
   if (cards.length === 0) return null;
 
+  const soloCentered = cards.length === 1 && !companionProduct;
+
+  const renderVideoCard = (v: PromoVideoItem, className?: string) => (
+    <Link
+      key={`promo-video-${v.id}`}
+      href={`/videos?video=${v.id}`}
+      className={cn(
+        "group relative block h-full min-h-[360px] w-full overflow-hidden rounded-2xl bg-black shadow-lg transition-transform duration-300 hover:scale-[1.015] active:scale-[0.98] md:min-h-[420px]",
+        className,
+      )}
+      style={{ textDecoration: "none" }}
+      data-testid={`button-promo-video-${v.id}`}
+      data-home-promo-video-card="true"
+      data-promax-group="video_promo"
+    >
+      <PromoVideoPoster
+        videoUrl={v.videoUrl}
+        thumbnailUrl={v.thumbnailUrl}
+        title={v.title}
+        className="transition-transform duration-700 group-hover:scale-105"
+      />
+
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-black/25 transition-colors group-hover:via-black/30" />
+
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/60 bg-black/25 shadow-xl backdrop-blur-md transition-transform group-hover:scale-110">
+          <Play className="h-5 w-5 text-white fill-white ml-0.5" />
+        </div>
+      </div>
+
+      <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+        <span className="inline-flex items-center gap-1 rounded-full border border-white/25 bg-primary/80 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white backdrop-blur-md">
+          <Video className="h-3 w-3" />
+          {t("home.videoPromo", { defaultValue: "Video Promo" })}
+        </span>
+        <span className="rounded-full border border-white/25 bg-black/35 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white backdrop-blur-md">
+          {t("boostAd.sponsored", { defaultValue: "Sponsored" })}
+        </span>
+      </div>
+
+      <div className="absolute bottom-0 inset-x-0 px-3 pb-3">
+        {v.sellerName && (
+          <p className="mb-1 truncate text-[10px] font-semibold text-white/70">@{v.sellerName}</p>
+        )}
+        <p className="line-clamp-2 text-sm font-black leading-tight text-white">{v.title}</p>
+      </div>
+    </Link>
+  );
+
   return (
     <section
       data-testid="home-promo-video-strip"
       data-promo-card-count={cards.length}
       data-promo-card-limit={HOME_PROMO_VIDEO_CARD_LIMIT}
+      data-promo-companion={companionProduct ? String(companionProduct.id) : "none"}
       aria-label={t("home.videoPromo", { defaultValue: "Video Promo" })}
     >
-      <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-        {cards.map((v) => (
-          <Link
-            key={`promo-video-${v.id}`}
-            href={`/videos?video=${v.id}`}
-            className="group relative block h-full min-h-[360px] w-full overflow-hidden rounded-2xl bg-black shadow-lg transition-transform duration-300 hover:scale-[1.015] active:scale-[0.98] md:min-h-[420px]"
-            style={{ textDecoration: "none" }}
-            data-testid={`button-promo-video-${v.id}`}
-            data-home-promo-video-card="true"
-            data-promax-group="video_promo"
-          >
-            <PromoVideoPoster
-              videoUrl={v.videoUrl}
-              thumbnailUrl={v.thumbnailUrl}
-              title={v.title}
-              className="transition-transform duration-700 group-hover:scale-105"
-            />
-
-            {/* Dark gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-black/25 transition-colors group-hover:via-black/30" />
-
-            {/* Play button */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/60 bg-black/25 shadow-xl backdrop-blur-md transition-transform group-hover:scale-110">
-                <Play className="h-5 w-5 text-white fill-white ml-0.5" />
-              </div>
+      {soloCentered ? (
+        <div className="flex justify-center" data-testid="home-promo-video-solo">
+          <div className="w-1/2 min-w-0 max-w-full">
+            {renderVideoCard(cards[0])}
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 items-start">
+          {cards.map((v) => renderVideoCard(v))}
+          {companionProduct && (
+            <div
+              className="min-w-0"
+              data-testid="home-promo-companion-product"
+              data-companion-listing-id={companionProduct.id}
+            >
+              <ListingCard listing={companionProduct} priority showAddToCart />
             </div>
-
-            {/* Sponsored badge */}
-            <div className="absolute left-2 top-2 flex flex-wrap gap-1">
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/25 bg-primary/80 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white backdrop-blur-md">
-                <Video className="h-3 w-3" />
-                {t("home.videoPromo", { defaultValue: "Video Promo" })}
-              </span>
-              <span className="rounded-full border border-white/25 bg-black/35 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white backdrop-blur-md">
-                {t("boostAd.sponsored", { defaultValue: "Sponsored" })}
-              </span>
-            </div>
-
-            {/* Title at bottom */}
-            <div className="absolute bottom-0 inset-x-0 px-3 pb-3">
-              {v.sellerName && (
-                <p className="mb-1 truncate text-[10px] font-semibold text-white/70">@{v.sellerName}</p>
-              )}
-              <p className="line-clamp-2 text-sm font-black leading-tight text-white">{v.title}</p>
-            </div>
-          </Link>
-        ))}
-      </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -1193,8 +1231,12 @@ export default function Home() {
           </section>
         )}
 
-        {/* === HOME PROMO STRIP — exactly ≤2 cards; full feed opens on tap === */}
-        <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : (activeCountry ?? null)} />
+        {/* === HOME PROMO STRIP — ≤2 videos; 1 video fills right col with a product === */}
+        <VideoPromoSection
+          countryFilter={isAdmin ? effectiveAdminCountry : (activeCountry ?? null)}
+          catalogListings={allListings}
+          skipCountryFilter={Boolean(isAdmin && !effectiveAdminCountry)}
+        />
 
         {/* === FEATURED PRODUCTS (2-col mobile) — shared PROMAX order === */}
         <div className="flex items-center justify-between">

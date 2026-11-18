@@ -267,7 +267,8 @@ function BrowserMusicUpload() {
         <div className="flex flex-col gap-2 w-full">
           <button
             onClick={() => { setDone(false); setTitle(""); setArtist(user?.name ?? ""); setAlbum(""); setGenre(""); setAudioFile(null); removeCover(); setProgress(0); }}
-            className="w-full py-3 rounded-2xl bg-violet-600 text-white font-bold hover:bg-violet-700 transition-colors"
+            className="w-full py-3 rounded-2xl font-bold text-[#111] transition-colors"
+            style={{ background: "#FF6B00" }}
           >
             {t("upload.uploadAnother")}
           </button>
@@ -282,36 +283,30 @@ function BrowserMusicUpload() {
     );
   }
 
-  const inp = "w-full border border-border rounded-xl px-3.5 py-3 text-sm bg-background outline-none focus:ring-2 focus:ring-violet-500/40 transition";
-  const lbl = "block text-xs font-bold text-muted-foreground mb-1.5 uppercase tracking-wide";
+  const inp = "w-full border rounded-xl px-3.5 py-3 text-sm outline-none transition text-white";
+  const lbl = "block text-xs font-bold text-white/70 mb-1.5";
 
   return (
-    <div className="max-w-lg mx-auto px-3 pb-24">
+    <div className="flexa-music-shell min-h-screen" data-testid="music-add-track">
+    <div className="max-w-lg mx-auto px-3 pb-24 pt-3">
 
-      {/* ── Header ── */}
-      <div
-        className="relative rounded-3xl overflow-hidden mb-6 p-5"
-        style={{ background: "linear-gradient(135deg,#0f0c29,#302b63,#24243e)" }}
-      >
-        <div className="absolute top-0 left-0 w-40 h-40 rounded-full bg-violet-600/30 blur-3xl -translate-x-1/4 -translate-y-1/4" />
-        <div className="absolute bottom-0 right-0 w-32 h-32 rounded-full bg-fuchsia-600/30 blur-3xl translate-x-1/4 translate-y-1/4" />
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-1">
-            <button
-              onClick={() => setLocation("/music")}
-              className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0"
-            >
-              <ArrowLeft size={16} className="text-white" />
-            </button>
-            <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center border border-white/20">
-              <Music2 size={22} className="text-violet-300" />
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-white">{t("upload.title")}</h1>
-              <p className="text-white/50 text-xs">{t("upload.subtitle")}</p>
-            </div>
+      {/* ── Header — Add Music mockup ── */}
+      <div className="relative mb-6 p-1">
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={() => setLocation("/music")}
+            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+            style={{ background: "rgba(255,255,255,0.08)" }}
+          >
+            <ArrowLeft size={16} className="text-white" />
+          </button>
+          <div className="music-brand-mark text-base flex-1 justify-center">
+            <span className="eq" aria-hidden><span /><span /><span /><span /></span>
+            <span>Flexa <span className="name-music">Music</span></span>
           </div>
+          <div className="w-8" />
         </div>
+        <h1 className="text-3xl font-black text-white px-1">Add Music</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -482,7 +477,9 @@ function BrowserMusicUpload() {
         <button
           type="submit"
           disabled={uploading}
-          className="w-full py-4 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white font-black text-base flex items-center justify-center gap-2 shadow-xl shadow-violet-500/25 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+          data-testid="music-upload-track"
+          className="w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed text-[#111]"
+          style={{ background: "#FF6B00", boxShadow: "0 10px 28px rgba(255,107,0,0.28)" }}
         >
           {uploading
             ? <><Loader2 size={18} className="animate-spin" /> {t("upload.uploading")}…</>
@@ -495,6 +492,7 @@ function BrowserMusicUpload() {
         </p>
 
       </form>
+    </div>
     </div>
   );
 }

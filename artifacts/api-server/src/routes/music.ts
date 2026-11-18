@@ -414,6 +414,80 @@ router.get("/music/purchased", requireAuth, async (req: any, res) => {
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
+// GET /api/music/playlists — public catalog of curated playlists (consumer Home / Explore)
+router.get("/music/playlists", async (req, res) => {
+  try {
+    const { featured, search, limit = "50", offset = "0" } = req.query as Record<string, string>;
+    let where = "WHERE 1=1";
+    if (featured === "1") where += " AND p.is_featured = TRUE";
+    if (search?.trim()) {
+      const s = esc(search.trim());
+      where += ` AND (p.title ILIKE '%${s}%' OR COALESCE(p.description,'') ILIKE '%${s}%')`;
+    }
+    const playlists = await q(`
+      SELECT p.id, p.title, p.description, p.cover_url, p.is_featured, p.is_trending,
+             p.created_at, COUNT(pt.track_id)::int AS track_count
+      FROM music_playlists p
+      LEFT JOIN music_playlist_tracks pt ON pt.playlist_id = p.id
+      ${where}
+      GROUP BY p.id
+      ORDER BY p.is_featured DESC, p.is_trending DESC, p.updated_at DESC
+      LIMIT ${Math.min(Number(limit) || 50, 100)} OFFSET ${Number(offset) || 0}
+    `);
+    res.json({ playlists });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/music/playlists/:id — playlist detail + ordered tracks
+router.get("/music/playlists/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid id" });
+    const [playlist] = await q(`
+      SELECT p.id, p.title, p.description, p.cover_url, p.is_featured, p.is_trending, p.created_at,
+             COUNT(pt.track_id)::int AS track_count
+      FROM music_playlists p
+      LEFT JOIN music_playlist_tracks pt ON pt.playlist_id = p.id
+      WHERE p.id = ${id}
+      GROUP BY p.id
+    `);
+    if (!playlist) return res.status(404).json({ error: "Playlist not found" });
+    const rows = await q(`
+      SELECT mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.cover_storage_key,
+             mt.audio_url, mt.storage_key, mt.duration_seconds, mt.type, mt.monetization_type,
+             mt.price_usd, mt.is_featured, mt.play_count, mt.valid_impressions, mt.is_artist_verified,
+             mt.total_impressions, mt.estimated_revenue_usd, mt.artist_user_id, mt.created_at, mt.lyrics,
+             u.name AS uploader_name, pt.position
+      FROM music_playlist_tracks pt
+      JOIN music_tracks mt ON mt.id = pt.track_id AND mt.is_active = TRUE
+      LEFT JOIN users u ON u.id = mt.artist_user_id
+      WHERE pt.playlist_id = ${id}
+      ORDER BY pt.position ASC, pt.added_at ASC
+    `);
+    res.json({ playlist, tracks: rows.map(toClientTrack) });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/music/library — authenticated user's liked tracks (Favorites / Library)
+router.get("/music/library", requireAuth, async (req: any, res) => {
+  try {
+    const rows = await q(`
+      SELECT mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.cover_storage_key,
+             mt.audio_url, mt.storage_key, mt.duration_seconds, mt.type, mt.monetization_type,
+             mt.price_usd, mt.is_featured, mt.play_count, mt.valid_impressions, mt.is_artist_verified,
+             mt.total_impressions, mt.estimated_revenue_usd, mt.artist_user_id, mt.created_at, mt.lyrics,
+             u.name AS uploader_name, ml.created_at AS liked_at
+      FROM music_likes ml
+      JOIN music_tracks mt ON mt.id = ml.track_id AND mt.is_active = TRUE
+      LEFT JOIN users u ON u.id = mt.artist_user_id
+      WHERE ml.user_id = ${req.user.id}
+      ORDER BY ml.created_at DESC
+      LIMIT 200
+    `);
+    res.json({ tracks: rows.map(toClientTrack) });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
 // GET /api/music/artist/plan — authoritative upload eligibility and plan state.
 // Named route must stay before /music/:id.
 router.get("/music/artist/plan", requireAuth, async (req: any, res) => {

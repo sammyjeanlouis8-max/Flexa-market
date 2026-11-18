@@ -74,37 +74,70 @@ function formatLastSeen(lastSeenAt: string | null, t: (k: string, o?: any) => st
   return t("messages.lastSeenDays", { n: Math.floor(diff / 86400) });
 }
 
-async function uploadMedia(file: Blob, contentType: string, token: string): Promise<string> {
-  const presignRes = await fetch("/api/storage/uploads/request-url", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ name: "media", size: file.size, contentType }),
-  });
-  if (!presignRes.ok) {
-    const err = await presignRes.json().catch(() => ({}));
-    throw new Error((err as any).error || "Presign failed");
+function normalizeUploadMime(raw: string, fallback: string): string {
+  const base = String(raw || "").split(";")[0].trim().toLowerCase();
+  if (base.startsWith("audio/") || base.startsWith("image/") || base.startsWith("video/")) {
+    return base;
   }
-  const { uploadURL, objectPath } = await presignRes.json();
-  const putRes = await fetch(uploadURL, {
-    method: "PUT",
-    headers: { "Content-Type": contentType, Authorization: `Bearer ${token}` },
-    body: file,
-  });
-  if (!putRes.ok) throw new Error("Upload failed");
-  // The upload proxy returns the real persisted-media URL. Wasabi URLs are
-  // same-origin `/api/storage/...` paths, while legacy Cloudinary responses
-  // may be absolute HTTPS URLs. Do not discard the Wasabi path and fall back
-  // to `objectPath`: that value is only a pre-upload placeholder.
+  return fallback;
+}
+
+async function uploadMedia(
+  file: Blob,
+  contentType: string,
+  token: string,
+  timeoutMs = 45_000,
+): Promise<string> {
+  if (!file.size || file.size < 1) {
+    throw new Error("Empty media file");
+  }
+  const mime = normalizeUploadMime(contentType || file.type, "application/octet-stream");
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const data = await putRes.json();
-    if (
-      typeof data?.url === "string" &&
-      (/^https:\/\//i.test(data.url) || data.url.startsWith("/api/storage/"))
-    ) {
-      return data.url;
+    const presignRes = await fetch("/api/storage/uploads/request-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: "media", size: file.size, contentType: mime }),
+      signal: controller.signal,
+    });
+    if (!presignRes.ok) {
+      const err = await presignRes.json().catch(() => ({}));
+      throw new Error((err as any).error || "Presign failed");
     }
-  } catch { /* non-JSON response — fall back */ }
-  return `/api/storage/objects${(objectPath as string).replace(/^\/objects/, "")}`;
+    const { uploadURL, objectPath } = await presignRes.json();
+    const putRes = await fetch(uploadURL, {
+      method: "PUT",
+      headers: { "Content-Type": mime, Authorization: `Bearer ${token}` },
+      body: file,
+      signal: controller.signal,
+    });
+    if (!putRes.ok) {
+      const err = await putRes.json().catch(() => ({}));
+      throw new Error((err as any).error || "Upload failed");
+    }
+    // The upload proxy returns the real persisted-media URL. Wasabi URLs are
+    // same-origin `/api/storage/...` paths, while legacy Cloudinary responses
+    // may be absolute HTTPS URLs. Do not discard the Wasabi path and fall back
+    // to `objectPath`: that value is only a pre-upload placeholder.
+    try {
+      const data = await putRes.json();
+      if (
+        typeof data?.url === "string" &&
+        (/^https:\/\//i.test(data.url) || data.url.startsWith("/api/storage/"))
+      ) {
+        return data.url;
+      }
+    } catch { /* non-JSON response — fall back */ }
+    return `/api/storage/objects${(objectPath as string).replace(/^\/objects/, "")}`;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Upload timed out");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 // ─── Context Menu ─────────────────────────────────────────────────────────────
@@ -1006,6 +1039,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   const [promoDraft, setPromoDraft] = useState<PromoChatDraftPayload | null>(null);
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [attachMenuPos, setAttachMenuPos] = useState<{ left: number; bottom: number } | null>(null);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
 
   // Prefill composer from promotional-video contact (user reviews before send).
@@ -1014,6 +1048,12 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     if (!draft) return;
     setPromoDraft(draft);
     setText((prev) => (prev.trim() ? prev : draft.text));
+  }, [convId]);
+
+  // Older voice-upload code set the shared `uploading` flag and could leave the
+  // composer stuck on "Uploading..." with + disabled. Reset on thread open.
+  useEffect(() => {
+    setUploading(false);
   }, [convId]);
   const [blockingUser, setBlockingUser] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -1062,6 +1102,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       const target = event.target as HTMLElement | null;
       if (target?.closest("[data-attach-menu], [data-attach-trigger]")) return;
       setShowAttachMenu(false);
+      setAttachMenuPos(null);
     };
     document.addEventListener("pointerdown", closeWhenTappingOutside);
     return () => document.removeEventListener("pointerdown", closeWhenTappingOutside);
@@ -1089,6 +1130,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const audioCaptureInputRef = useRef<HTMLInputElement>(null);
+  const attachTriggerRef = useRef<HTMLButtonElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socket = useSocket();
@@ -1567,7 +1609,10 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           if (blob.size < 100) return;
           try {
             // Persist before uploading so a weak connection cannot destroy the recording.
-            const uploadMime = session.recordedMime.split(";")[0].trim();
+            const uploadMime = normalizeUploadMime(
+              session.recordedMime,
+              /iPad|iPhone|iPod/.test(navigator.userAgent) ? "audio/mp4" : "audio/webm",
+            );
             const queuedVoice = await savePendingVoice({ conversationId: convId, blob, mimeType: uploadMime });
             setPendingVoices(current => [...current.filter(item => item.id !== queuedVoice.id), queuedVoice]);
             setTimeout(() => scrollToBottom(true), 50);
@@ -1616,8 +1661,17 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   };
 
   const sendQueuedVoice = useCallback((body: { messageType: "audio"; mediaUrl: string; content: string }) => new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timer = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error("Voice send timed out"));
+      }, 30_000);
       sendMsg.mutate({ id: convId, data: body as any }, {
         onSuccess: (createdMessage: any) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
             // Put the confirmed message into the cache before removing its local
             // outbox bubble. This prevents a successful voice send from
             // disappearing in the gap before the refetch returns.
@@ -1634,7 +1688,12 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             setTimeout(() => scrollToBottom(true), 100);
             resolve();
           },
-        onError: reject,
+        onError: (error) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timer);
+          reject(error);
+        },
       });
     }), [convId, queryClient, sendMsg]);
 
@@ -1650,10 +1709,15 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           try {
             let mediaUrl = item.mediaUrl;
             if (!mediaUrl) {
-              setUploading(true);
+              // Do NOT set the shared `uploading` flag here — that disables the
+              // + / gallery composer while a voice retry is in flight.
               const token = localStorage.getItem("flexamarket_token") ?? "";
-              const blob = new Blob([item.bytes], { type: item.mimeType });
-              mediaUrl = await uploadMedia(blob, item.mimeType, token);
+              const mime = normalizeUploadMime(
+                item.mimeType,
+                /iPad|iPhone|iPod/.test(navigator.userAgent) ? "audio/mp4" : "audio/webm",
+              );
+              const blob = new Blob([item.bytes], { type: mime });
+              mediaUrl = await uploadMedia(blob, mime, token);
               await updatePendingVoice(item.id, { mediaUrl });
             }
             await sendQueuedVoice({ messageType: "audio", mediaUrl, content: "" });
@@ -1669,7 +1733,6 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             break;
           } finally {
             setSendingVoiceId(null);
-            setUploading(false);
           }
         }
       } catch (error) {
@@ -1778,7 +1841,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       return;
     }
     try {
-      const contentType = file.type || "audio/mp4";
+      const contentType = normalizeUploadMime(file.type || "audio/mp4", "audio/mp4");
       const queuedVoice = await savePendingVoice({
         conversationId: convId,
         blob: file,
@@ -1786,8 +1849,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       });
       setPendingVoices(current => [...current.filter(item => item.id !== queuedVoice.id), queuedVoice]);
       setTimeout(() => scrollToBottom(true), 50);
-      void flushPendingVoices();
-    } catch {
+      void flushPendingVoices();    } catch {
       alert(t("messages.uploadFailed"));
     }
   };
@@ -2383,7 +2445,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         borderTop: `1px solid ${c.headerBorder}`,
         paddingTop: "8px", paddingLeft: "10px", paddingRight: "10px",
         /* paddingBottom intentionally omitted — CSS class handles safe-area */
-        maxWidth: "100vw", overflow: "hidden",
+        // overflow must stay visible so the + Camera/Gallery menu is not clipped.
+        maxWidth: "100vw", overflow: "visible",
       }}>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} />
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
@@ -2558,19 +2621,38 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           }}>
 
             {/* Add attachment — mint-green circle; Camera + Gallery live here (all platforms) */}
-            <div data-attach-menu style={{ position: "relative", flexShrink: 0 }}>
+            <div data-attach-menu style={{ position: "relative", flexShrink: 0, zIndex: 30 }}>
               <button
+                ref={attachTriggerRef}
                 type="button"
                 data-attach-trigger
                 onClick={() => {
                   setShowEmojiPanel(false);
-                  setShowAttachMenu((v) => !v);
+                  setShowAttachMenu((open) => {
+                    if (open) {
+                      setAttachMenuPos(null);
+                      return false;
+                    }
+                    const rect = attachTriggerRef.current?.getBoundingClientRect();
+                    if (rect) {
+                      setAttachMenuPos({
+                        left: Math.max(8, rect.left),
+                        bottom: Math.max(8, window.innerHeight - rect.top + 8),
+                      });
+                    } else {
+                      // Fallback: open gallery directly if we cannot place the menu.
+                      fileInputRef.current?.click();
+                      return false;
+                    }
+                    return true;
+                  });
                 }}
                 disabled={uploading}
                 aria-label={t("messages.attach")}
+                aria-expanded={showAttachMenu}
                 style={{
-                  width: isAndroidMobile ? 40 : 40,
-                  height: isAndroidMobile ? 40 : 40,
+                  width: 40,
+                  height: 40,
                   borderRadius: "50%",
                   background: c.isDark ? c.iconActiveBg : "#D1FAE5",
                   border: "none", cursor: "pointer",
@@ -2580,20 +2662,21 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               >
                 <Plus style={{ width: 22, height: 22, strokeWidth: 2 }} />
               </button>
-              {showAttachMenu && (
+              {showAttachMenu && attachMenuPos && (
                 <div
                   role="menu"
+                  data-attach-menu
                   style={{
-                    position: "absolute",
-                    left: 0,
-                    bottom: "calc(100% + 8px)",
+                    position: "fixed",
+                    left: attachMenuPos.left,
+                    bottom: attachMenuPos.bottom,
                     minWidth: 168,
                     background: c.isDark ? c.cardBg : "#FFFFFF",
                     border: `1px solid ${c.isDark ? c.listBorder : "#E5E7EB"}`,
                     borderRadius: 12,
                     boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
                     padding: 6,
-                    zIndex: 40,
+                    zIndex: 1200,
                   }}
                 >
                   <button
@@ -2602,6 +2685,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                     disabled={uploading}
                     onClick={() => {
                       setShowAttachMenu(false);
+                      setAttachMenuPos(null);
+                      // Must stay synchronous — iOS only opens the picker in this gesture.
                       cameraInputRef.current?.click();
                     }}
                     style={{
@@ -2620,6 +2705,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                     disabled={uploading}
                     onClick={() => {
                       setShowAttachMenu(false);
+                      setAttachMenuPos(null);
+                      // Must stay synchronous — iOS only opens the picker in this gesture.
                       fileInputRef.current?.click();
                     }}
                     style={{

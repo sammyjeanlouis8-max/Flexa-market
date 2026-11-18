@@ -116,12 +116,16 @@ export default function MusicUploadScreen() {
       if (!audioBytes) throw new Error("Could not read audio file size");
       const sig = await requestMusicUploadSignature(
         {
-          audio: { size: audioBytes, contentType: audioType, name: audio.name },
+          audio: {
+            size: audioBytes,
+            contentType: audioType,
+            name: audio.name ?? undefined,
+          },
           cover: cover
             ? {
                 size: cover.fileSize ?? 0,
                 contentType: cover.mimeType || "image/jpeg",
-                name: cover.fileName,
+                name: cover.fileName ?? undefined,
               }
             : null,
         },

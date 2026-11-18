@@ -1063,9 +1063,9 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   micBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.flexaOrange,
     alignItems: "center",
     justifyContent: "center",

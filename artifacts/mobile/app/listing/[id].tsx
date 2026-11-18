@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
-import { fetchListing, type Listing } from "@/lib/api";
+import { fetchListing, resolveMediaUrl, type Listing } from "@/lib/api";
 import { isDominicanListingCountry } from "@/lib/checkoutApi";
 import { createConversation } from "@/lib/chatApi";
 import {
@@ -69,7 +69,9 @@ export default function ListingDetailScreen() {
     };
   }, [id, token]);
 
-  const images = listing?.images?.length ? listing.images : [];
+  const images = (listing?.images?.length ? listing.images : [])
+    .map((u) => resolveMediaUrl(u))
+    .filter((u): u is string => Boolean(u));
   const price = Number(listing?.price || 0);
   const currency =
     listing?.currency === "HTG"
@@ -159,7 +161,7 @@ export default function ListingDetailScreen() {
       title: listing.title,
       price,
       currency: listing.currency ?? "USD",
-      image: listing.images?.[0] ?? null,
+      image: resolveMediaUrl(listing.images?.[0]) ?? null,
       country: listing.country ?? null,
       city: listing.city ?? listing.location ?? null,
       sellerId: listing.sellerId,

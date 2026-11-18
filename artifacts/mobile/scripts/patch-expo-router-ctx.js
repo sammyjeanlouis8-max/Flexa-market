@@ -26,26 +26,8 @@ for (const p of fsPatchCandidates) {
   }
 }
 
-const candidates = [
-  path.resolve(__dirname, "../node_modules/expo-router/_ctx.android.js"),
-  path.resolve(__dirname, "../../../node_modules/expo-router/_ctx.android.js"),
-  path.resolve(__dirname, "../node_modules/expo-router/_ctx.ios.js"),
-  path.resolve(__dirname, "../../../node_modules/expo-router/_ctx.ios.js"),
-  path.resolve(__dirname, "../node_modules/expo-router/_ctx.js"),
-  path.resolve(__dirname, "../../../node_modules/expo-router/_ctx.js"),
-];
-
-for (const p of candidates) {
-  if (fs.existsSync(p)) {
-    let content = fs.readFileSync(p, "utf8");
-    const patched = content
-      .replace(/process\.env\.EXPO_ROUTER_APP_ROOT/g, "'app'")
-      .replace(/process\.env\.EXPO_ROUTER_IMPORT_MODE/g, "'sync'");
-    if (patched !== content) {
-      fs.writeFileSync(p, patched, "utf8");
-      console.log("Patched expo-router _ctx.android.js at", p);
-    } else {
-      console.log("expo-router _ctx.android.js already patched at", p);
-    }
-  }
-}
+// NOTE: Do NOT rewrite expo-router `_ctx*.js` to hardcode `'app'`.
+// babel-preset-expo's expo-router plugin must see
+// `process.env.EXPO_ROUTER_APP_ROOT` so it can inline the correct relative
+// path from the transformed file to the project `app/` directory. Hardcoding
+// `'app'` breaks require.context under pnpm/EAS and yields "No routes found".

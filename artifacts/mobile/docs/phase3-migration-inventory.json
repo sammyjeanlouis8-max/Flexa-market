@@ -12,7 +12,7 @@
     "typecheck": "pass",
     "focusedTestsPass": 19,
     "placeholderRouteCount": 12,
-    "fullyNativeRouteCount": 29,
+    "fullyNativeRouteCount": 30,
     "partiallyNativeRouteCount": 5,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
@@ -93,10 +93,10 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 29,
+    "FULLY_NATIVE": 30,
     "PARTIALLY_NATIVE": 5,
     "PLACEHOLDER": 12,
-    "MISSING": 31,
+    "MISSING": 30,
     "BLOCKED": 5
   },
   "features": [
@@ -1242,16 +1242,14 @@
       "name": "Flexa Music",
       "domain": "media",
       "webRoute": "/music,/music/upload,/music/earnings,/music/play/:id",
-      "nativeRoute": null,
+      "nativeRoute": "/(tabs)/music,/music/search,/music/library,/music/playlists,/music/playlist/[id],/music/now-playing,/music/upload",
       "role": "guest+/artist",
       "apis": [
         "/api/music/*"
       ],
-      "status": "MISSING",
-      "missing": [
-        "player + upload"
-      ],
-      "work": "Music buys BLOCKED on Android digital guard"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native Expo AV player + upload-signature/register; public /api/music/playlists may 404 until API ships"
     },
     {
       "id": "music-purchase",

@@ -5,8 +5,10 @@
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { MusicMiniPlayer } from "@/components/music/MusicMiniPlayer";
 import { PushBootstrap } from "@/components/PushBootstrap";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
@@ -28,7 +30,8 @@ export default function RootLayout() {
             <MarketplaceProvider>
               <CartProvider>
                 <PushBootstrap />
-                <Stack screenOptions={{ headerShown: false }}>
+                <View style={{ flex: 1 }}>
+                  <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="(tabs)" />
                   <Stack.Screen name="auth/login" />
                   <Stack.Screen name="auth/register" />
@@ -55,8 +58,16 @@ export default function RootLayout() {
                   <Stack.Screen name="notifications" />
                   <Stack.Screen name="settings" />
                   <Stack.Screen name="delivery-tracking" />
+                  <Stack.Screen name="music/search" />
+                  <Stack.Screen name="music/library" />
+                  <Stack.Screen name="music/playlists" />
+                  <Stack.Screen name="music/playlist/[id]" />
+                  <Stack.Screen name="music/now-playing" />
+                  <Stack.Screen name="music/upload" />
                   <Stack.Screen name="+not-found" />
-                </Stack>
+                  </Stack>
+                  <MusicMiniPlayer />
+                </View>
               </CartProvider>
             </MarketplaceProvider>
           </LanguageProvider>

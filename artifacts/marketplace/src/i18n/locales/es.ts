@@ -852,6 +852,10 @@ export default {
     listingLabel: "Publicación",
     uploading: "Subiendo…",
     recordVoice: "Grabar mensaje de voz",
+    attach: "Adjuntar foto o video",
+    camera: "Cámara",
+    gallery: "Galería",
+    sticker: "Stickers y emoji",
   },
   saved: {
     title: "Artículos guardados",

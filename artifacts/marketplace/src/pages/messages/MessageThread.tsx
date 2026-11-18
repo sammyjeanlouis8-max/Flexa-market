@@ -1005,6 +1005,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   const [text, setText] = useState("");
   const [promoDraft, setPromoDraft] = useState<PromoChatDraftPayload | null>(null);
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
 
   // Prefill composer from promotional-video contact (user reviews before send).
@@ -1054,6 +1055,17 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     document.addEventListener("pointerdown", closeWhenTappingOutside);
     return () => document.removeEventListener("pointerdown", closeWhenTappingOutside);
   }, [showEmojiPanel]);
+
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const closeWhenTappingOutside = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-attach-menu], [data-attach-trigger]")) return;
+      setShowAttachMenu(false);
+    };
+    document.addEventListener("pointerdown", closeWhenTappingOutside);
+    return () => document.removeEventListener("pointerdown", closeWhenTappingOutside);
+  }, [showAttachMenu]);
 
   useEffect(() => {
     if (!showHeaderMenu) return;
@@ -2545,35 +2557,93 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             minHeight: isAndroidMobile ? 48 : 53,
           }}>
 
-            {/* Add attachment — soft green circle (ref composer) */}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              aria-label={t("messages.attach")}
-              style={{
-                flexShrink: 0,
-                width: isAndroidMobile ? 36 : 38,
-                height: isAndroidMobile ? 36 : 38,
-                borderRadius: "50%",
-                background: c.isDark ? c.iconActiveBg : "rgba(4, 77, 44, 0.12)",
-                border: "none", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: c.isDark ? composerActionColor : FLEXA.green, opacity: uploading ? 0.4 : 1,
-              }}
-            >
-              <Plus style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
-            </button>
+            {/* Add attachment — mint-green circle; Camera + Gallery live here (all platforms) */}
+            <div data-attach-menu style={{ position: "relative", flexShrink: 0 }}>
+              <button
+                type="button"
+                data-attach-trigger
+                onClick={() => {
+                  setShowEmojiPanel(false);
+                  setShowAttachMenu((v) => !v);
+                }}
+                disabled={uploading}
+                aria-label={t("messages.attach")}
+                style={{
+                  width: isAndroidMobile ? 40 : 40,
+                  height: isAndroidMobile ? 40 : 40,
+                  borderRadius: "50%",
+                  background: c.isDark ? c.iconActiveBg : "#D1FAE5",
+                  border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: c.isDark ? composerActionColor : FLEXA.green, opacity: uploading ? 0.4 : 1,
+                }}
+              >
+                <Plus style={{ width: 22, height: 22, strokeWidth: 2 }} />
+              </button>
+              {showAttachMenu && (
+                <div
+                  role="menu"
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    bottom: "calc(100% + 8px)",
+                    minWidth: 168,
+                    background: c.isDark ? c.cardBg : "#FFFFFF",
+                    border: `1px solid ${c.isDark ? c.listBorder : "#E5E7EB"}`,
+                    borderRadius: 12,
+                    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",
+                    padding: 6,
+                    zIndex: 40,
+                  }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={uploading}
+                    onClick={() => {
+                      setShowAttachMenu(false);
+                      cameraInputRef.current?.click();
+                    }}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", gap: 10,
+                      padding: "10px 12px", border: "none", borderRadius: 8,
+                      background: "transparent", cursor: "pointer",
+                      color: c.isDark ? c.inputText : "#0F172A", fontSize: 14, fontWeight: 600,
+                    }}
+                  >
+                    <Camera style={{ width: 18, height: 18, color: composerActionColor }} />
+                    {t("messages.camera")}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={uploading}
+                    onClick={() => {
+                      setShowAttachMenu(false);
+                      fileInputRef.current?.click();
+                    }}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", gap: 10,
+                      padding: "10px 12px", border: "none", borderRadius: 8,
+                      background: "transparent", cursor: "pointer",
+                      color: c.isDark ? c.inputText : "#0F172A", fontSize: 14, fontWeight: 600,
+                    }}
+                  >
+                    <Image style={{ width: 18, height: 18, color: composerActionColor }} />
+                    {t("messages.gallery")}
+                  </button>
+                </div>
+              )}
+            </div>
 
-            {/* Text pill — bordered rounded pill with cream/white background */}
+            {/* Text pill — light-gray field with emoji only (Camera/Gallery on +) */}
             <div style={{
-              minHeight: isAndroidMobile ? 44 : 46, minWidth: 0, flex: 1,
+              minHeight: isAndroidMobile ? 44 : 44, minWidth: 0, flex: 1,
               display: "flex", alignItems: "flex-end",
-              border: `1.5px solid ${c.isDark ? c.listBorder : "#d7ddd7"}`,
-              borderRadius: 24,
-              background: c.isDark ? c.inputBg : "#fff",
-              boxShadow: c.isDark ? "none" : "0 2px 10px rgba(27, 44, 35, 0.05)",
-              padding: "5px 5px 5px 2px",
+              border: `1px solid ${c.isDark ? c.listBorder : "#E5E7EB"}`,
+              borderRadius: 22,
+              background: c.isDark ? c.inputBg : "#F3F4F6",
+              padding: "4px 6px 4px 2px",
             }}>
               <textarea
                 ref={chatInputRef}
@@ -2603,67 +2673,34 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   fontFamily: "inherit",
                 }}
               />
-              <div style={{ display: "flex", alignItems: "center", flexShrink: 0, height: 34 }}>
-                <button
-                  type="button"
-                  data-emoji-trigger
-                  onClick={() => {
-                    const next = !showEmojiPanel;
-                    setShowEmojiPanel(next);
-                    if (next) {
-                      chatInputRef.current?.blur();
-                      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
-                    } else {
-                      chatInputRef.current?.focus();
-                    }
-                  }}
-                  style={{
-                    width: 34, height: 34, borderRadius: "50%",
-                    background: showEmojiPanel ? "rgba(249,115,22,0.12)" : "none",
-                    border: "none", cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    color: composerActionColor,
-                  }}
-                  aria-label={t("messages.sticker")}
-                >
-                  <Smile style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
-                </button>
-                {!isAndroidMobile && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => cameraInputRef.current?.click()}
-                      disabled={uploading}
-                      aria-label={t("messages.camera")}
-                      style={{
-                        width: 34, height: 34, borderRadius: "50%",
-                        background: "none", border: "none", cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        color: composerActionColor, opacity: uploading ? 0.4 : 1,
-                      }}
-                    >
-                      <Camera style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                      aria-label={t("messages.attach")}
-                      style={{
-                        width: 34, height: 34, borderRadius: "50%",
-                        background: "none", border: "none", cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        color: composerActionColor, opacity: uploading ? 0.4 : 1,
-                      }}
-                    >
-                      <Image style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
-                    </button>
-                  </>
-                )}
-              </div>
+              <button
+                type="button"
+                data-emoji-trigger
+                onClick={() => {
+                  setShowAttachMenu(false);
+                  const next = !showEmojiPanel;
+                  setShowEmojiPanel(next);
+                  if (next) {
+                    chatInputRef.current?.blur();
+                    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
+                  } else {
+                    chatInputRef.current?.focus();
+                  }
+                }}
+                style={{
+                  width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                  background: showEmojiPanel ? "rgba(249,115,22,0.12)" : "none",
+                  border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: composerActionColor,
+                }}
+                aria-label={t("messages.sticker")}
+              >
+                <Smile style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
+              </button>
             </div>
 
-            {/* Send / Mic — coral circle matching mockup */}
+            {/* Send / Mic — orange circle matching mint + (all platforms) */}
             {text.trim() ? (
               <button
                 type="button"
@@ -2671,13 +2708,12 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 disabled={uploading}
                 style={{
                   flexShrink: 0,
-                  width: isAndroidMobile ? 41 : 43,
-                  height: isAndroidMobile ? 41 : 43,
+                  width: 40,
+                  height: 40,
                   borderRadius: "50%",
                   background: c.sendBg, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#fff", opacity: uploading ? 0.3 : 1,
-                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(249,115,22,0.28)",
                 }}
               >
                 <Send style={{ width: 17, height: 17 }} />
@@ -2689,13 +2725,12 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 disabled={uploading || voiceFinalizing}
                 style={{
                   flexShrink: 0,
-                  width: isAndroidMobile ? 41 : 43,
-                  height: isAndroidMobile ? 41 : 43,
+                  width: 40,
+                  height: 40,
                   borderRadius: "50%",
                   background: c.sendBg, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#fff", opacity: uploading || voiceFinalizing ? 0.4 : 1,
-                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(249,115,22,0.28)",
                 }}
                 aria-label={t("messages.recordVoice")}
               >

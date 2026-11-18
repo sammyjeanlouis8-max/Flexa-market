@@ -164,14 +164,26 @@ export default function DriverDashboardScreen() {
                   style={[styles.btn, busyId === item.id && { opacity: 0.6 }]}
                   disabled={busyId === item.id}
                   onPress={() => void accept(item.id)}
+                  testID={`driver-accept-${item.id}`}
                 >
                   <Text style={styles.btnText}>{busyId === item.id ? "Accepting…" : "Accept"}</Text>
                 </Pressable>
-              ) : item.trackingNumber ? (
-                <Pressable onPress={() => router.push(`/track/${item.trackingNumber}`)}>
-                  <Text style={styles.link}>Track</Text>
-                </Pressable>
-              ) : null}
+              ) : (
+                <View style={{ marginTop: 10, gap: 8 }}>
+                  <Pressable
+                    style={styles.btn}
+                    onPress={() => router.push(`/delivery/job/${item.id}`)}
+                    testID={`driver-open-job-${item.id}`}
+                  >
+                    <Text style={styles.btnText}>Open job · milestones & PIN</Text>
+                  </Pressable>
+                  {item.trackingNumber ? (
+                    <Pressable onPress={() => router.push(`/track/${item.trackingNumber}`)}>
+                      <Text style={styles.link}>Track</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              )}
             </View>
           )}
         />

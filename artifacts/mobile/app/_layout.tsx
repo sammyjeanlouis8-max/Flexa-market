@@ -90,6 +90,7 @@ export default function RootLayout() {
                     <Stack.Screen name="admin" />
                     <Stack.Screen name="driver-apply" />
                     <Stack.Screen name="driver-dashboard" />
+                    <Stack.Screen name="delivery/job/[id]" />
                     <Stack.Screen name="calculator" />
                     <Stack.Screen name="help-center" />
                     <Stack.Screen name="support" />

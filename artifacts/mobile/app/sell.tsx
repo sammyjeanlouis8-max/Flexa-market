@@ -5,7 +5,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/components/shell/AppHeader";
 import { ListingEditor, type ListingEditorValues } from "@/components/seller/ListingEditor";
 import colors from "@/constants/colors";
@@ -121,6 +121,24 @@ export default function SellScreen() {
       /* ignore */
     }
   }, []);
+
+  // WebView parity: flush draft on background / hide (pagehide / visibilitychange)
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "background" || state === "inactive") {
+        void persistDraft();
+      }
+    });
+    return () => sub.remove();
+  }, [persistDraft]);
+
+  // Debounced autosave while editing
+  useEffect(() => {
+    const t = setInterval(() => {
+      void persistDraft();
+    }, 4000);
+    return () => clearInterval(t);
+  }, [persistDraft]);
 
   const clearDraft = useCallback(async () => {
     try {

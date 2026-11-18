@@ -37,7 +37,7 @@
         "NSPhotoLibraryUsageDescription": "Flexa Market uses your photo library so you can choose existing photos of items you want to sell and attach them to your listings.",
         "NSPhotoLibraryAddUsageDescription": "Flexa Market saves photos to your library after you take them for your listings.",
         "NSLocationWhenInUseUsageDescription": "Flexa Market uses your location to show you nearby listings and to automatically set the location for items you are selling, helping local buyers find your products.",
-        "NSMicrophoneUsageDescription": "Flexa Market uses your microphone to record short video clips of items you want to sell, so buyers can get a better view of your products.",
+        "NSMicrophoneUsageDescription": "Flexa Market uses your microphone to record voice messages in chat and short video clips of items you want to sell. Playing messages and attaching existing photos or videos does not require the microphone.",
         "NSFaceIDUsageDescription": "Flexa Market uses Face ID so you can sign in quickly and securely without typing your password.",
         "UIBackgroundModes": [
           "remote-notification",
@@ -46,9 +46,9 @@
       }
     },
     "android": {
-      "package": "com.flexa.market",
+      "package": "com.flexamarket.app",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 39,
+      "versionCode": 55,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0F172A"
@@ -56,8 +56,6 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.VIBRATE",
@@ -70,8 +68,13 @@
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
       ]
     },
@@ -107,7 +110,17 @@
       "./plugins/withOptionalGoogleServices.js",
       "expo-asset",
       "expo-font",
-      "./plugins/withAndroidAdaptiveLayout.js"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Flexa Market uses your photo library so you can choose existing photos of items you want to sell and attach them to your listings.",
+          "cameraPermission": "Flexa Market uses your camera to take photos and videos of items you want to sell.",
+          "microphonePermission": "Flexa Market uses your microphone when you record a video or a voice message."
+        }
+      ],
+      "expo-document-picker",
+      "./plugins/withAndroidAdaptiveLayout.js",
+      "./plugins/withPlay64BitAbis.js"
     ],
     "experiments": {},
     "extra": {
@@ -123,6 +136,11 @@
       "url": "https://u.expo.dev/45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e",
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
+    },
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#146C43",
+      "translucent": true
     }
   }
 }

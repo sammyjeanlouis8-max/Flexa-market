@@ -155,7 +155,7 @@ export async function translateMessage(
   };
 }
 
-/** Upload image for chat attachment via existing Wasabi put-proxy flow. */
+/** Upload image/audio/video for chat attachment via existing Wasabi put-proxy flow. */
 export async function uploadChatImage(
   localUri: string,
   opts: AuthOpts & { contentType?: string; fileName?: string },
@@ -165,7 +165,7 @@ export async function uploadChatImage(
   const fileRes = await fetch(localUri);
   const blob = await fileRes.blob();
   const size = blob.size;
-  if (!size) throw new Error("Could not read image");
+  if (!size) throw new Error("Could not read media file");
 
   const reqRes = await authedFetch("/storage/uploads/request-url", {
     ...opts,

@@ -2,7 +2,7 @@
  * Native Edit Profile — PUT /api/users/:id, language, password, avatar upload.
  */
 import { Feather } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
+import { pickExistingMedia } from "@/lib/pickMedia";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -64,19 +64,18 @@ export default function EditProfileScreen() {
 
   const onPickAvatar = async () => {
     if (!token) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow photo library access to update your picture.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+    const assets = await pickExistingMedia({
+      kind: "images",
+      selectionLimit: 1,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.85,
+      persist: true,
+      persistPrefix: "avatar",
+      permissionMessage: "Allow photo library access to update your picture.",
     });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
+    if (!assets[0]) return;
+    const asset = assets[0];
     setUploading(true);
     try {
       const url = await uploadAvatarImage(asset.uri, {

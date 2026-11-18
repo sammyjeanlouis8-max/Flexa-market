@@ -1,0 +1,498 @@
+[
+  {
+    "route": "/",
+    "file": "native390_home.png",
+    "status": "OPEN",
+    "white": 0.0,
+    "green": 0.06,
+    "navy": 0.2
+  },
+  {
+    "route": "/search",
+    "file": "native390_search.png",
+    "status": "OPEN",
+    "white": 0.37,
+    "green": 0.0,
+    "navy": 0.02
+  },
+  {
+    "route": "/cart",
+    "file": "native390_cart.png",
+    "status": "BLANK?",
+    "white": 0.94,
+    "green": 0.0,
+    "navy": 0.0
+  },
+  {
+    "route": "/inbox",
+    "file": "native390_inbox.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/profile",
+    "file": "native390_profile.png",
+    "status": "OPEN",
+    "white": 0.9,
+    "green": 0.0,
+    "navy": 0.01
+  },
+  {
+    "route": "/auth/login",
+    "file": "native390_auth__login.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/auth/register",
+    "file": "native390_auth__register.png",
+    "status": "OPEN",
+    "white": 0.82,
+    "green": 0.0,
+    "navy": 0.12
+  },
+  {
+    "route": "/auth/forgot-password",
+    "file": "native390_auth__forgot-password.png",
+    "status": "OPEN",
+    "white": 0.69,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/listing/32",
+    "file": "native390_listing__32.png",
+    "status": "OPEN",
+    "white": 0.59,
+    "green": 0.0,
+    "navy": 0.07
+  },
+  {
+    "route": "/videos",
+    "file": "native390_videos.png",
+    "status": "OPEN",
+    "white": 0.62,
+    "green": 0.0,
+    "navy": 0.0
+  },
+  {
+    "route": "/videos/watch?id=32&autoplay=1",
+    "file": "native390_videos__watch_id-32_autoplay-1.png",
+    "status": "OPEN",
+    "white": 0.0,
+    "green": 0.06,
+    "navy": 0.2
+  },
+  {
+    "route": "/my-videos",
+    "file": "native390_my-videos.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/boost-video",
+    "file": "native390_boost-video.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/offers",
+    "file": "native390_offers.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/orders",
+    "file": "native390_orders.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/checkout",
+    "file": "native390_checkout.png",
+    "status": "BLANK?",
+    "white": 0.94,
+    "green": 0.0,
+    "navy": 0.0
+  },
+  {
+    "route": "/wallet",
+    "file": "native390_wallet.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/settings",
+    "file": "native390_settings.png",
+    "status": "BLANK?",
+    "white": 0.94,
+    "green": 0.0,
+    "navy": 0.01
+  },
+  {
+    "route": "/support",
+    "file": "native390_support.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/chatbot",
+    "file": "native390_chatbot.png",
+    "status": "BLANK?",
+    "white": 0.97,
+    "green": 0.02,
+    "navy": 0.02
+  },
+  {
+    "route": "/tv",
+    "file": "native390_tv.png",
+    "status": "OPEN",
+    "white": 0.88,
+    "green": 0.0,
+    "navy": 0.03
+  },
+  {
+    "route": "/music",
+    "file": "native390_music.png",
+    "status": "OPEN",
+    "white": 0.85,
+    "green": 0.0,
+    "navy": 0.07
+  },
+  {
+    "route": "/jobs",
+    "file": "native390_jobs.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/sell",
+    "file": "native390_sell.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/my-listings",
+    "file": "native390_my-listings.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/my-boosts",
+    "file": "native390_my-boosts.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/favorites",
+    "file": "native390_favorites.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/notifications",
+    "file": "native390_notifications.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/edit-profile",
+    "file": "native390_edit-profile.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/language-picker",
+    "file": "native390_language-picker.png",
+    "status": "BLANK?",
+    "white": 0.93,
+    "green": 0.0,
+    "navy": 0.01
+  },
+  {
+    "route": "/help-center",
+    "file": "native390_help-center.png",
+    "status": "OPEN",
+    "white": 0.91,
+    "green": 0.0,
+    "navy": 0.01
+  },
+  {
+    "route": "/subscription",
+    "file": "native390_subscription.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/commission-promo",
+    "file": "native390_commission-promo.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/leaderboard",
+    "file": "native390_leaderboard.png",
+    "status": "BLANK?",
+    "white": 0.93,
+    "green": 0.0,
+    "navy": 0.01
+  },
+  {
+    "route": "/calculator",
+    "file": "native390_calculator.png",
+    "status": "BLANK?",
+    "white": 0.97,
+    "green": 0.02,
+    "navy": 0.02
+  },
+  {
+    "route": "/kyc",
+    "file": "native390_kyc.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/addresses",
+    "file": "native390_addresses.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/track",
+    "file": "native390_track.png",
+    "status": "OPEN",
+    "white": 0.89,
+    "green": 0.1,
+    "navy": 0.1
+  },
+  {
+    "route": "/driver-apply",
+    "file": "native390_driver-apply.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/driver-dashboard",
+    "file": "native390_driver-dashboard.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/delivery/apply",
+    "file": "native390_delivery__apply.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/admin",
+    "file": "native390_admin.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/manager",
+    "file": "native390_manager.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/agents",
+    "file": "native390_agents.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/analytics",
+    "file": "native390_analytics.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/boost-analytics",
+    "file": "native390_boost-analytics.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/sales",
+    "file": "native390_sales.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/bnpl",
+    "file": "native390_bnpl.png",
+    "status": "OPEN",
+    "white": 0.86,
+    "green": 0.1,
+    "navy": 0.1
+  },
+  {
+    "route": "/loans",
+    "file": "native390_loans.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/credit-score",
+    "file": "native390_credit-score.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/wallet-history",
+    "file": "native390_wallet-history.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/wallet-transfer",
+    "file": "native390_wallet-transfer.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/delete-account",
+    "file": "native390_delete-account.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/my-drafts",
+    "file": "native390_my-drafts.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/settings/security",
+    "file": "native390_settings__security.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/settings/videos",
+    "file": "native390_settings__videos.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/legal/eula",
+    "file": "native390_legal__eula.png",
+    "status": "OPEN",
+    "white": 0.89,
+    "green": 0.0,
+    "navy": 0.01
+  },
+  {
+    "route": "/shop/2",
+    "file": "native390_shop__2.png",
+    "status": "OPEN",
+    "white": 0.55,
+    "green": 0.02,
+    "navy": 0.05
+  },
+  {
+    "route": "/profile/2",
+    "file": "native390_profile__2.png",
+    "status": "OPEN",
+    "white": 0.55,
+    "green": 0.02,
+    "navy": 0.05
+  },
+  {
+    "route": "/checkout-success",
+    "file": "native390_checkout-success.png",
+    "status": "OPEN",
+    "white": 0.77,
+    "green": 0.0,
+    "navy": 0.0
+  },
+  {
+    "route": "/boost",
+    "file": "native390_boost.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  },
+  {
+    "route": "/booster",
+    "file": "native390_booster.png",
+    "status": "OPEN",
+    "white": 0.75,
+    "green": 0.0,
+    "navy": 0.11
+  }
+]

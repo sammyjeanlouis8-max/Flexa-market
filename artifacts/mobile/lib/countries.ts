@@ -34,3 +34,90 @@ export const COUNTRY_FLAGS: Record<string, string> = {
 };
 
 export const SUPPORTED_COUNTRIES = Object.keys(COUNTRY_FLAGS);
+
+/** Cities accepted by listing create validation (aligned with api-server). */
+export const CITIES_BY_COUNTRY: Record<string, string[]> = {
+  Haiti: [
+    "Port-au-Prince",
+    "Cap-Haïtien",
+    "Pétion-Ville",
+    "Delmas",
+    "Carrefour",
+    "Jacmel",
+    "Les Cayes",
+    "Gonaïves",
+    "Jérémie",
+    "Port-de-Paix",
+  ],
+  USA: [
+    "New York, NY",
+    "Brooklyn, NY",
+    "Queens, NY",
+    "Los Angeles, CA",
+    "Miami, FL",
+    "Orlando, FL",
+    "Boston, MA",
+    "Chicago, IL",
+    "Houston, TX",
+    "Atlanta, GA",
+    "Washington, DC",
+    "Philadelphia, PA",
+    "Newark, NJ",
+  ],
+  "Dominican Republic": [
+    "Santo Domingo",
+    "Santiago",
+    "La Romana",
+    "Punta Cana",
+    "San Pedro de Macorís",
+    "Higüey",
+    "Puerto Plata",
+    "Bávaro",
+  ],
+  Canada: [
+    "Montréal, QC",
+    "Toronto, ON",
+    "Ottawa, ON",
+    "Vancouver, BC",
+    "Calgary, AB",
+    "Edmonton, AB",
+    "Québec, QC",
+    "Mississauga, ON",
+    "Laval, QC",
+  ],
+  Mexico: [
+    "Ciudad de México",
+    "Mexico City",
+    "Guadalajara",
+    "Monterrey",
+    "Cancún",
+    "Tijuana",
+    "Puebla",
+    "Mérida",
+    "León",
+  ],
+  Brazil: [
+    "São Paulo",
+    "Rio de Janeiro",
+    "Brasília",
+    "Salvador",
+    "Belo Horizonte",
+    "Fortaleza",
+    "Curitiba",
+    "Recife",
+  ],
+  Chile: [
+    "Santiago",
+    "Valparaíso",
+    "Viña del Mar",
+    "Concepción",
+    "Antofagasta",
+    "La Serena",
+    "Temuco",
+    "Iquique",
+  ],
+};
+
+export function citiesForCountry(country: string): string[] {
+  return CITIES_BY_COUNTRY[country] ?? [];
+}

@@ -148,7 +148,7 @@ See PR CI / local vitest output in commit notes. Never claim unrun suites passed
 - ILIKE search without FTS  
 - No Redis → rate limits / presence not cluster-safe  
 - Interval jobs duplicate if &gt;1 API instance  
-- Vercel checks on other branches are blocked (unrelated deploy config)
+- Legacy Vercel GitHub App status checks are noise; production hosting is DigitalOcean only (see `docs/HOSTING.md`)
 
 ---
 

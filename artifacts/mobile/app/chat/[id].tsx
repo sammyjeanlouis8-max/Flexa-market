@@ -1,7 +1,7 @@
 /**
  * Conversation thread — matches Flexa Market chat reference (IMG_6349).
  * Dark-green header, pinned product card, bubbles, Translate, checks,
- * composer with + / emoji / camera / gallery / mic→Send.
+ * composer: mint + (Camera/Gallery), light-gray field + emoji, orange mic→Send.
  */
 import { Feather } from "@expo/vector-icons";
 import { Audio } from "expo-av";
@@ -84,12 +84,13 @@ export default function ChatThreadScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
-  const { lang } = useLanguage();
+  const { lang, t } = useLanguage();
 
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [meta, setMeta] = useState<Conversation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [sending, setSending] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
   const [translations, setTranslations] = useState<Record<number, string>>({});
@@ -222,6 +223,29 @@ export default function ChatThreadScreen() {
     }, 1200);
   };
 
+  const insertEmojiAtCursor = (emoji: string) => {
+    const start = selection.start ?? draft.length;
+    const end = selection.end ?? start;
+    const next = draft.slice(0, start) + emoji + draft.slice(end);
+    const caret = start + emoji.length;
+    setDraft(next);
+    setSelection({ start: caret, end: caret });
+    setEmojiOpen(false);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setNativeProps?.({
+        selection: { start: caret, end: caret },
+      });
+    });
+    if (user?.id && Number.isFinite(convId)) {
+      emitTyping(convId, user.id);
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      typingTimer.current = setTimeout(() => {
+        emitStopTyping(convId, user.id);
+      }, 1200);
+    }
+  };
+
   const onSend = async () => {
     if (!token || !user || !Number.isFinite(convId)) return;
     const content = draft.trim();
@@ -351,10 +375,11 @@ export default function ChatThreadScreen() {
   };
 
   const onPlus = () => {
+    // Camera + Gallery live on the + menu (not inside the text field).
     Alert.alert("Attach", undefined, [
       { text: "Camera", onPress: () => void onPickCamera() },
-      { text: "Photo or video", onPress: () => void onPickGallery() },
-      { text: "Cancel", style: "cancel" },
+      { text: "Gallery", onPress: () => void onPickGallery() },
+      { text: t("cancel"), style: "cancel" },
     ]);
   };
 
@@ -721,7 +746,7 @@ export default function ChatThreadScreen() {
       ) : null}
 
       <View
-        style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}
+        style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 8) }]}
         testID="chat-composer"
       >
         <Pressable
@@ -729,6 +754,7 @@ export default function ChatThreadScreen() {
           onPress={onPlus}
           disabled={sending}
           accessibilityLabel="Attach"
+          testID="chat-attach"
         >
           <Feather name="plus" size={22} color={colors.flexaGreen} />
         </Pressable>
@@ -738,36 +764,23 @@ export default function ChatThreadScreen() {
             style={styles.input}
             value={draft}
             onChangeText={onChangeDraft}
-            placeholder="Type a message..."
+            onSelectionChange={(e) => setSelection(e.nativeEvent.selection)}
+            placeholder={t("typeMessage") || "Type a message..."}
             placeholderTextColor="#94A3B8"
             multiline
             maxLength={4000}
+            textAlignVertical="center"
             testID="chat-input"
           />
-          <View style={styles.inputIcons}>
-            <Pressable
-              onPress={() => setEmojiOpen(true)}
-              hitSlop={6}
-              accessibilityLabel="Emoji"
-            >
-              <Feather name="smile" size={20} color={colors.flexaOrange} />
-            </Pressable>
-            <Pressable
-              onPress={() => void onPickCamera()}
-              hitSlop={6}
-              accessibilityLabel="Camera"
-            >
-              <Feather name="camera" size={20} color={colors.flexaOrange} />
-            </Pressable>
-            <Pressable
-              onPress={() => void onPickGallery()}
-              hitSlop={6}
-              accessibilityLabel="Gallery"
-              testID="chat-gallery"
-            >
-              <Feather name="image" size={20} color={colors.flexaOrange} />
-            </Pressable>
-          </View>
+          <Pressable
+            style={styles.emojiBtn}
+            onPress={() => setEmojiOpen(true)}
+            hitSlop={8}
+            accessibilityLabel="Emoji"
+            testID="chat-emoji"
+          >
+            <Feather name="smile" size={22} color={colors.flexaOrange} />
+          </Pressable>
         </View>
         {hasText ? (
           <Pressable
@@ -802,16 +815,12 @@ export default function ChatThreadScreen() {
 
       <Modal visible={emojiOpen} transparent animationType="fade" onRequestClose={() => setEmojiOpen(false)}>
         <Pressable style={styles.emojiBackdrop} onPress={() => setEmojiOpen(false)}>
-          <View style={styles.emojiSheet}>
+          <View style={[styles.emojiSheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
             {EMOJIS.map((e) => (
               <Pressable
                 key={e}
                 style={styles.emojiCell}
-                onPress={() => {
-                  setDraft((d) => d + e);
-                  setEmojiOpen(false);
-                  inputRef.current?.focus();
-                }}
+                onPress={() => insertEmojiAtCursor(e)}
               >
                 <Text style={styles.emojiText}>{e}</Text>
               </Pressable>
@@ -1009,7 +1018,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingTop: 8,
     backgroundColor: "#FFFFFF",
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -1031,10 +1040,10 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F3F4F6",
     paddingLeft: 14,
-    paddingRight: 8,
-    paddingVertical: 6,
+    paddingRight: 6,
+    paddingVertical: 4,
     minHeight: 44,
   },
   input: {
@@ -1042,14 +1051,16 @@ const styles = StyleSheet.create({
     maxHeight: 120,
     color: "#0F172A",
     fontSize: 15,
-    paddingVertical: 6,
-    marginRight: 4,
+    lineHeight: 20,
+    paddingVertical: Platform.OS === "ios" ? 10 : 8,
+    marginRight: 2,
   },
-  inputIcons: {
-    flexDirection: "row",
+  emojiBtn: {
+    width: 36,
+    height: 36,
     alignItems: "center",
-    gap: 10,
-    paddingBottom: 6,
+    justifyContent: "center",
+    marginBottom: 2,
   },
   micBtn: {
     width: 44,

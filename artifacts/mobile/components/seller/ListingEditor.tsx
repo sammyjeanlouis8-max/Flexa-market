@@ -4,7 +4,7 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -34,6 +34,19 @@ const CONDITIONS: CreateListingInput["condition"][] = [
 ];
 const CURRENCIES: NonNullable<CreateListingInput["currency"]>[] = ["USD", "HTG", "DOP"];
 
+export type DeliveryMethodOption = NonNullable<CreateListingInput["deliveryMethod"]>;
+
+const DELIVERY_METHODS: { id: DeliveryMethodOption; label: string }[] = [
+  { id: "motorcycle", label: "Motorcycle" },
+  { id: "car", label: "Car" },
+  { id: "bus", label: "Bus" },
+  { id: "self_delivery", label: "Self delivery" },
+];
+
+function isLocalDeliveryCountry(country: string): boolean {
+  return country === "Haiti" || country === "Dominican Republic";
+}
+
 export type ListingEditorValues = {
   title: string;
   description: string;
@@ -44,6 +57,7 @@ export type ListingEditorValues = {
   city: string;
   country: string;
   images: string[];
+  deliveryMethod?: DeliveryMethodOption | null;
 };
 
 type Props = {
@@ -52,9 +66,23 @@ type Props = {
   submitLabel: string;
   busy?: boolean;
   onSubmit: (payload: CreateListingInput) => Promise<void>;
+  /** Reports live form values (ref-guarded so parent setters do not loop). */
+  onValuesChange?: (values: ListingEditorValues) => void;
 };
 
-export function ListingEditor({ token, initial, submitLabel, busy, onSubmit }: Props) {
+export function ListingEditor({
+  token,
+  initial,
+  submitLabel,
+  busy,
+  onSubmit,
+  onValuesChange,
+}: Props) {
+  const showDelivery = isLocalDeliveryCountry(initial.country);
+  const defaultDelivery: DeliveryMethodOption | null = showDelivery
+    ? initial.deliveryMethod || "motorcycle"
+    : initial.deliveryMethod ?? null;
+
   const [title, setTitle] = useState(initial.title);
   const [description, setDescription] = useState(initial.description);
   const [price, setPrice] = useState(initial.price);
@@ -64,11 +92,17 @@ export function ListingEditor({ token, initial, submitLabel, busy, onSubmit }: P
   const [city, setCity] = useState(initial.city);
   const [country] = useState(initial.country);
   const [images, setImages] = useState<string[]>(initial.images);
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethodOption | null>(
+    defaultDelivery,
+  );
   const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [loadingCats, setLoadingCats] = useState(true);
   const [catOpen, setCatOpen] = useState(false);
   const [cityOpen, setCityOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  const onValuesChangeRef = useRef(onValuesChange);
+  onValuesChangeRef.current = onValuesChange;
 
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +130,37 @@ export function ListingEditor({ token, initial, submitLabel, busy, onSubmit }: P
     setCondition(initial.condition);
     setCity(initial.city);
     setImages(initial.images);
+    const nextShow = isLocalDeliveryCountry(initial.country);
+    setDeliveryMethod(
+      nextShow ? initial.deliveryMethod || "motorcycle" : initial.deliveryMethod ?? null,
+    );
   }, [initial]);
+
+  useEffect(() => {
+    onValuesChangeRef.current?.({
+      title,
+      description,
+      price,
+      currency,
+      categoryId,
+      condition,
+      city,
+      country,
+      images,
+      deliveryMethod,
+    });
+  }, [
+    title,
+    description,
+    price,
+    currency,
+    categoryId,
+    condition,
+    city,
+    country,
+    images,
+    deliveryMethod,
+  ]);
 
   const cities = useMemo(() => citiesForCountry(country), [country]);
   const selectedCategory = useMemo(
@@ -178,6 +242,7 @@ export function ListingEditor({ token, initial, submitLabel, busy, onSubmit }: P
       city: city.trim(),
       country,
       images,
+      deliveryMethod: showDelivery ? deliveryMethod || "motorcycle" : null,
     });
   };
 
@@ -272,6 +337,29 @@ export function ListingEditor({ token, initial, submitLabel, busy, onSubmit }: P
         <Text style={styles.selectText}>{city || "Select city"}</Text>
         <Feather name="chevron-down" size={18} color="#64748B" />
       </Pressable>
+
+      {showDelivery ? (
+        <>
+          <Text style={styles.label}>Delivery method</Text>
+          <Text style={styles.hint}>
+            Choose how buyers in {country} can receive this item.
+          </Text>
+          <View style={styles.chipRowWrap}>
+            {DELIVERY_METHODS.map((m) => (
+              <Pressable
+                key={m.id}
+                style={[styles.chip, deliveryMethod === m.id && styles.chipOn]}
+                onPress={() => setDeliveryMethod(m.id)}
+                testID={`seller-delivery-${m.id}`}
+              >
+                <Text style={[styles.chipText, deliveryMethod === m.id && styles.chipTextOn]}>
+                  {m.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : null}
 
       <Pressable
         style={[styles.submit, (busy || uploading) && styles.submitDisabled]}
@@ -380,6 +468,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#334155",
   },
+  hint: { fontSize: 12, color: "#64748B", marginBottom: 8, marginTop: -2 },
   input: {
     borderWidth: 1,
     borderColor: colors.light.border,

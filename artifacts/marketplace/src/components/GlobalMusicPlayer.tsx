@@ -41,7 +41,7 @@ function CoverThumb({ src, title }: { src: string | null; title: string }) {
   }
   return (
     <div className="w-full h-full flex items-center justify-center text-white font-bold text-base"
-      style={{ background: "linear-gradient(135deg,#00D9FF,#A020F0)" }}>
+      style={{ background: "linear-gradient(135deg,#0B3022,#FF6B00)" }}>
       {char}
     </div>
   );
@@ -235,13 +235,13 @@ export default function GlobalMusicPlayer() {
       className="fixed left-0 right-0 mx-3 z-[60] rounded-2xl select-none"
       style={{
         bottom: "calc(4rem + env(safe-area-inset-bottom, 0px) + 8px)",
-        background: "linear-gradient(135deg, rgba(8,16,40,0.94), rgba(12,20,48,0.96))",
+        background: "linear-gradient(135deg, rgba(11,48,34,0.96), rgba(15,61,44,0.98))",
         border: isDragging
-          ? "1.5px solid rgba(0,217,255,0.55)"
-          : "1px solid rgba(0,217,255,0.28)",
+          ? "1.5px solid rgba(255,107,0,0.7)"
+          : "1px solid rgba(255,107,0,0.28)",
         boxShadow: isDragging
-          ? "0 0 0 4px rgba(0,217,255,0.15), 0 16px 40px rgba(0,0,0,0.7)"
-          : "0 0 0 1px rgba(160,32,240,0.12), 0 8px 28px rgba(0,0,0,0.45)",
+          ? "0 0 0 4px rgba(255,107,0,0.18), 0 16px 40px rgba(0,0,0,0.7)"
+          : "0 8px 28px rgba(0,0,0,0.45)",
         backdropFilter: "blur(18px)",
         transform,
         transition: isDragging || isSwiping ? "none" : "transform 0.25s cubic-bezier(0.34,1.56,0.64,1)",
@@ -258,10 +258,10 @@ export default function GlobalMusicPlayer() {
         className="absolute -top-5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1 rounded-full cursor-grab active:cursor-grabbing"
         style={{
           background: isDragging
-            ? "linear-gradient(90deg,#00D9FF,#A020F0)"
-            : "rgba(0,217,255,0.22)",
+            ? "#FF6B00"
+            : "rgba(255,107,0,0.28)",
           backdropFilter: "blur(8px)",
-          boxShadow: isDragging ? "0 2px 12px rgba(0,217,255,0.45)" : "none",
+          boxShadow: isDragging ? "0 2px 12px rgba(255,107,0,0.45)" : "none",
           transition: "background 0.2s, box-shadow 0.2s",
         }}
         onTouchStart={onGripTouchStart}
@@ -326,8 +326,8 @@ export default function GlobalMusicPlayer() {
             style={{
               width: `calc(${isSwiping ? previewPct : pct}% - 4px)`,
               background: isSwiping
-                ? "linear-gradient(90deg,#F02DDB,#00D9FF)"
-                : "linear-gradient(90deg,#00D9FF,#A020F0)",
+                ? "#FF6B00"
+                : "#FF6B00",
               transition: isSwiping ? "none" : "width 0.1s linear",
             }} />
           <div className="absolute w-4 h-4 rounded-full bg-white"
@@ -356,7 +356,7 @@ export default function GlobalMusicPlayer() {
               <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
               <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
                 {!isMinimized && <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[9px] font-mono tabular-nums" style={{ color: "#00D9FF" }}>
+                <span className="text-[9px] font-mono tabular-nums" style={{ color: "#FF6B00" }}>
                   {fmtDur(Math.floor(isSwiping ? previewTime : currentTime))}
                 </span>
                 {duration > 0 && (
@@ -369,7 +369,7 @@ export default function GlobalMusicPlayer() {
                   </span>
                 )}
                 {isDragging && (
-                  <span className="text-[9px] font-bold animate-pulse" style={{ color: "#00D9FF" }}>
+                  <span className="text-[9px] font-bold animate-pulse" style={{ color: "#FF6B00" }}>
                     {t("music.playerDraggingTip")}
                   </span>
                 )}
@@ -384,7 +384,7 @@ export default function GlobalMusicPlayer() {
             </button>}
             <button onClick={musicTogglePlay}
               className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-              style={{ background: "linear-gradient(135deg,#00D9FF,#A020F0)", boxShadow: "0 4px 12px rgba(0,217,255,0.28)" }}>
+              style={{ background: "#FF6B00", boxShadow: "0 4px 12px rgba(255,107,0,0.32)" }}>
               {playing
                 ? <Pause size={15} className="text-white" />
                 : <Play  size={15} className="text-white ml-0.5" />}

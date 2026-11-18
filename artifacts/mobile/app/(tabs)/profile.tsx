@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
 
 const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap }[] = [
+  { label: "Flexa Music", href: "/(tabs)/music", icon: "music" },
   { label: "Edit profile", href: "/edit-profile", icon: "edit-2" },
   { label: "My orders", href: "/orders", icon: "package" },
   { label: "Seller sales", href: "/sales", icon: "bar-chart-2" },

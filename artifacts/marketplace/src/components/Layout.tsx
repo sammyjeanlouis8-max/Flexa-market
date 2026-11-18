@@ -720,6 +720,26 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     );
   }
 
+  // Flexa Music — immersive shell (owns brand chrome + music bottom nav).
+  const isMusicImmersive = /^\/music(?:\/|$)/.test(location);
+  if (isMusicImmersive) {
+    return (
+      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
+        <div
+          className="app-shell music-immersive-shell flexa-music-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col h-dvh overflow-clip"
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            background: "#121212",
+          }}
+          data-testid="music-immersive-shell"
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+        </div>
+      </DeliveryMenuCountryContext.Provider>
+    );
+  }
+
   return (
     <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
     <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col ${isMessages || isPromoVideosSection ? "h-dvh overflow-clip" : "min-h-dvh"} ${isPromoVideosSection ? "bg-black" : isCommissionPromoPage ? "bg-[#0B1B3A]" : "bg-background"}`}>
@@ -936,7 +956,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isPromoVideosSection || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isPromoVideosSection || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) || /^\/music(?:\/|$)/.test(location) ? "hidden" : ""}`}
         aria-label="Main navigation"
         data-testid="mobile-bottom-nav"
       >

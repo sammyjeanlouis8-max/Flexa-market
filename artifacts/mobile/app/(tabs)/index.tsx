@@ -171,6 +171,14 @@ export default function HomeTab() {
               Cart{cartCount > 0 ? ` (${cartCount})` : ""}
             </Text>
           </Pressable>
+          <Pressable
+            style={styles.chip}
+            onPress={() => router.push("/(tabs)/music")}
+            accessibilityRole="button"
+          >
+            <Feather name="music" size={14} color="#0B3022" />
+            <Text style={styles.chipText}>Music</Text>
+          </Pressable>
         </View>
         {!user ? (
           <Pressable

@@ -1,15 +1,17 @@
 /**
  * Flexa Chat Pro Max — conversation thread
  * GET/POST /api/conversations/:id/messages + Socket.IO realtime + polling fallback.
+ * Android: Photo Picker for attachments; RECORD_AUDIO only when recording voice.
  */
 import { Feather } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
+import { Audio } from "expo-av";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -22,6 +24,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
+import {
+  prepareAudioSessionForRecording,
+  requestMicForVoiceRecord,
+  restoreAudioSessionForPlayback,
+} from "@/lib/audioPermission";
 import {
   fetchConversations,
   fetchMessages,
@@ -43,6 +50,7 @@ import {
   onTyping,
   presenceJoin,
 } from "@/lib/chatSocket";
+import { pickExistingMedia } from "@/lib/pickMedia";
 
 function mediaUri(msg: ChatMessage): string | null {
   const raw = msg.imageUrl || msg.mediaUrl;
@@ -51,6 +59,8 @@ function mediaUri(msg: ChatMessage): string | null {
   if (raw.startsWith("/")) return `https://flexamarket.com${raw}`;
   return raw;
 }
+
+type VoicePhase = "idle" | "recording" | "preview" | "sending";
 
 export default function ChatThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -67,8 +77,70 @@ export default function ChatThreadScreen() {
   const [sending, setSending] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
   const [translations, setTranslations] = useState<Record<number, string>>({});
+  const [voicePhase, setVoicePhase] = useState<VoicePhase>("idle");
+  const [voiceSecs, setVoiceSecs] = useState(0);
+  const [voiceUri, setVoiceUri] = useState<string | null>(null);
+  const [playingId, setPlayingId] = useState<number | null>(null);
+
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const voiceTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const playbackRef = useRef<Audio.Sound | null>(null);
+  const inflightVoiceIds = useRef<Set<string>>(new Set());
+
+  const stopVoiceTicker = () => {
+    if (voiceTickRef.current) {
+      clearInterval(voiceTickRef.current);
+      voiceTickRef.current = null;
+    }
+  };
+
+  const discardRecording = useCallback(async () => {
+    stopVoiceTicker();
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    if (rec) {
+      try {
+        const status = await rec.getStatusAsync();
+        if (status.isRecording || status.canRecord) {
+          await rec.stopAndUnloadAsync();
+        }
+      } catch {
+        /* already stopped / unloaded */
+      }
+    }
+    setVoiceUri(null);
+    setVoiceSecs(0);
+    setVoicePhase("idle");
+    await restoreAudioSessionForPlayback();
+  }, []);
+
+  const stopRecordingToPreview = useCallback(async () => {
+    stopVoiceTicker();
+    const rec = recordingRef.current;
+    recordingRef.current = null;
+    if (!rec) {
+      setVoicePhase("idle");
+      return;
+    }
+    try {
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI();
+      if (!uri) {
+        setVoicePhase("idle");
+        await restoreAudioSessionForPlayback();
+        return;
+      }
+      setVoiceUri(uri);
+      setVoicePhase("preview");
+      await restoreAudioSessionForPlayback();
+    } catch {
+      setVoicePhase("idle");
+      setVoiceUri(null);
+      await restoreAudioSessionForPlayback();
+    }
+  }, []);
 
   const loadMeta = useCallback(async () => {
     if (!token || !Number.isFinite(convId)) return;
@@ -149,8 +221,25 @@ export default function ChatThreadScreen() {
       offStop();
       clearInterval(poll);
       if (user?.id) emitStopTyping(convId, user.id);
+      void discardRecording();
+      void playbackRef.current?.unloadAsync();
+      playbackRef.current = null;
     };
-  }, [authLoading, token, user?.id, convId, router, loadMeta, loadMessages]);
+  }, [authLoading, token, user?.id, convId, router, loadMeta, loadMessages, discardRecording]);
+
+  // Stop recording when leaving screen or backgrounding the app.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active" && recordingRef.current) {
+        void stopRecordingToPreview();
+      }
+      if (state !== "active") {
+        void playbackRef.current?.stopAsync().catch(() => {});
+        setPlayingId(null);
+      }
+    });
+    return () => sub.remove();
+  }, [stopRecordingToPreview]);
 
   useEffect(() => {
     if (!messages?.length) return;
@@ -216,25 +305,25 @@ export default function ChatThreadScreen() {
 
   const onPickImage = async () => {
     if (!token || !user || !Number.isFinite(convId) || sending) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow photo access to send images.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+    // Gallery attach must NOT request microphone or broad READ_MEDIA_*.
+    const assets = await pickExistingMedia({
+      kind: "images",
+      selectionLimit: 1,
       quality: 0.8,
+      persist: true,
+      persistPrefix: "chat",
+      permissionMessage: "Allow photo access to send images.",
     });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
+    if (!assets[0]) return;
+    const asset = assets[0];
     setSending(true);
+    const clientMessageId = `i-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try {
       const url = await uploadChatImage(asset.uri, {
         token,
         contentType: asset.mimeType || "image/jpeg",
         fileName: asset.fileName || "chat.jpg",
       });
-      const clientMessageId = `i-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const saved = await sendMessage(
         convId,
         {
@@ -248,13 +337,120 @@ export default function ChatThreadScreen() {
       );
       setMessages((prev) => {
         const list = prev ?? [];
-        if (list.some((m) => m.id === saved.id)) return list;
+        if (list.some((m) => m.id === saved.id || m.clientMessageId === clientMessageId)) {
+          return list.map((m) =>
+            m.clientMessageId === clientMessageId || m.id === saved.id ? saved : m,
+          );
+        }
         return [...list, saved];
       });
     } catch (e) {
       Alert.alert("Image failed", e instanceof Error ? e.message : "Could not send image");
     } finally {
       setSending(false);
+    }
+  };
+
+  const startVoiceRecord = async () => {
+    if (!token || !user || sending || voicePhase === "sending") return;
+    const perm = await requestMicForVoiceRecord();
+    if (!perm.granted) return; // typing + attachments remain usable
+
+    try {
+      await prepareAudioSessionForRecording();
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+      );
+      recordingRef.current = recording;
+      setVoiceSecs(0);
+      setVoiceUri(null);
+      setVoicePhase("recording");
+      stopVoiceTicker();
+      voiceTickRef.current = setInterval(() => {
+        setVoiceSecs((s) => s + 1);
+      }, 1000);
+    } catch (e) {
+      Alert.alert(
+        "Recording failed",
+        e instanceof Error ? e.message : "Could not start microphone",
+      );
+      setVoicePhase("idle");
+      await restoreAudioSessionForPlayback();
+    }
+  };
+
+  const sendVoice = async () => {
+    if (!token || !user || !voiceUri || !Number.isFinite(convId)) return;
+    const clientMessageId = `a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (inflightVoiceIds.current.has(clientMessageId)) return;
+    inflightVoiceIds.current.add(clientMessageId);
+    setVoicePhase("sending");
+    setSending(true);
+    try {
+      const url = await uploadChatImage(voiceUri, {
+        token,
+        contentType: Platform.OS === "ios" ? "audio/m4a" : "audio/mp4",
+        fileName: Platform.OS === "ios" ? "voice.m4a" : "voice.mp4",
+      });
+      const saved = await sendMessage(
+        convId,
+        {
+          content: "",
+          messageType: "audio",
+          mediaUrl: url,
+          clientMessageId,
+        },
+        { token },
+      );
+      setMessages((prev) => {
+        const list = prev ?? [];
+        if (list.some((m) => m.id === saved.id || m.clientMessageId === clientMessageId)) {
+          return list.map((m) =>
+            m.clientMessageId === clientMessageId || m.id === saved.id ? saved : m,
+          );
+        }
+        return [...list, saved];
+      });
+      setVoiceUri(null);
+      setVoiceSecs(0);
+      setVoicePhase("idle");
+    } catch (e) {
+      // Keep preview so user can retry without duplicating on success path.
+      setVoicePhase("preview");
+      Alert.alert(
+        "Voice failed",
+        e instanceof Error ? e.message : "Could not send. Tap send to retry.",
+      );
+    } finally {
+      inflightVoiceIds.current.delete(clientMessageId);
+      setSending(false);
+    }
+  };
+
+  const playAudioMessage = async (msg: ChatMessage) => {
+    const uri = mediaUri(msg);
+    if (!uri) return;
+    // Playback must work without microphone permission.
+    try {
+      if (playbackRef.current) {
+        await playbackRef.current.unloadAsync();
+        playbackRef.current = null;
+      }
+      await restoreAudioSessionForPlayback();
+      const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
+      playbackRef.current = sound;
+      setPlayingId(msg.id);
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (!status.isLoaded) return;
+        if (status.didJustFinish) {
+          setPlayingId(null);
+          void sound.unloadAsync();
+          if (playbackRef.current === sound) playbackRef.current = null;
+        }
+      });
+    } catch (e) {
+      Alert.alert("Playback failed", e instanceof Error ? e.message : "Could not play");
+      setPlayingId(null);
     }
   };
 
@@ -281,6 +477,12 @@ export default function ChatThreadScreen() {
   const subtitle = meta?.listingTitle;
 
   const data = useMemo(() => messages ?? [], [messages]);
+
+  const formatSecs = (s: number) => {
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${r.toString().padStart(2, "0")}`;
+  };
 
   return (
     <KeyboardAvoidingView
@@ -352,6 +554,7 @@ export default function ChatThreadScreen() {
           renderItem={({ item }) => {
             const mine = item.senderId === myId;
             const img = item.messageType === "image" ? mediaUri(item) : null;
+            const audio = item.messageType === "audio" ? mediaUri(item) : null;
             const deleted = item.isDeleted;
             return (
               <View style={[styles.bubbleWrap, mine ? styles.mine : styles.theirs]}>
@@ -361,20 +564,30 @@ export default function ChatThreadScreen() {
                       void onTranslate(item);
                     }
                   }}
+                  onPress={() => {
+                    if (audio) void playAudioMessage(item);
+                  }}
                   style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
                 >
                   {deleted ? (
                     <Text style={styles.deleted}>Message deleted</Text>
                   ) : img ? (
                     <Image source={{ uri: img }} style={styles.msgImage} contentFit="cover" />
+                  ) : audio ? (
+                    <View style={styles.voiceRow}>
+                      <Feather
+                        name={playingId === item.id ? "pause" : "play"}
+                        size={18}
+                        color={mine ? "#fff" : "#0F172A"}
+                      />
+                      <Text style={[styles.msgText, mine && styles.msgTextMine]}>
+                        Voice message
+                      </Text>
+                    </View>
                   ) : (
                     <Text style={[styles.msgText, mine && styles.msgTextMine]}>
                       {item.content ||
-                        (item.messageType === "audio"
-                          ? "🎤 Voice message"
-                          : item.messageType === "video"
-                            ? "🎥 Video"
-                            : "")}
+                        (item.messageType === "video" ? "🎥 Video" : "")}
                     </Text>
                   )}
                   {translations[item.id] ? (
@@ -390,31 +603,90 @@ export default function ChatThreadScreen() {
         />
       )}
 
-      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-        <Pressable style={styles.attach} onPress={() => void onPickImage()} disabled={sending}>
-          <Feather name="image" size={20} color="#0F172A" />
-        </Pressable>
-        <TextInput
-          style={styles.input}
-          value={draft}
-          onChangeText={onChangeDraft}
-          placeholder="Type a message"
-          placeholderTextColor="#94A3B8"
-          multiline
-          maxLength={4000}
-        />
-        <Pressable
-          style={[styles.send, (!draft.trim() || sending) && styles.sendDisabled]}
-          onPress={() => void onSend()}
-          disabled={!draft.trim() || sending}
-        >
-          {sending ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Feather name="send" size={18} color="#fff" />
-          )}
-        </Pressable>
-      </View>
+      {voicePhase === "recording" || voicePhase === "preview" || voicePhase === "sending" ? (
+        <View style={[styles.voiceBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+          <Text style={styles.voiceLabel}>
+            {voicePhase === "recording"
+              ? `Recording ${formatSecs(voiceSecs)}`
+              : voicePhase === "sending"
+                ? "Sending voice…"
+                : `Voice ready ${formatSecs(voiceSecs)}`}
+          </Text>
+          <View style={styles.voiceActions}>
+            {voicePhase === "recording" ? (
+              <Pressable
+                style={styles.attach}
+                onPress={() => void stopRecordingToPreview()}
+                testID="chat-voice-stop"
+              >
+                <Feather name="square" size={18} color="#B91C1C" />
+              </Pressable>
+            ) : null}
+            {voicePhase === "preview" ? (
+              <>
+                <Pressable
+                  style={styles.attach}
+                  onPress={() => void discardRecording()}
+                  testID="chat-voice-cancel"
+                >
+                  <Feather name="trash-2" size={18} color="#B91C1C" />
+                </Pressable>
+                <Pressable
+                  style={styles.send}
+                  onPress={() => void sendVoice()}
+                  disabled={sending}
+                  testID="chat-voice-send"
+                >
+                  <Feather name="send" size={18} color="#fff" />
+                </Pressable>
+              </>
+            ) : null}
+            {voicePhase === "sending" ? (
+              <ActivityIndicator color="#F97316" />
+            ) : null}
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+          <Pressable
+            style={styles.attach}
+            onPress={() => void onPickImage()}
+            disabled={sending}
+            testID="chat-attach-image"
+          >
+            <Feather name="image" size={20} color="#0F172A" />
+          </Pressable>
+          <Pressable
+            style={styles.attach}
+            onPress={() => void startVoiceRecord()}
+            disabled={sending}
+            testID="chat-voice-record"
+            accessibilityLabel="Record voice message"
+          >
+            <Feather name="mic" size={20} color="#0F172A" />
+          </Pressable>
+          <TextInput
+            style={styles.input}
+            value={draft}
+            onChangeText={onChangeDraft}
+            placeholder="Type a message"
+            placeholderTextColor="#94A3B8"
+            multiline
+            maxLength={4000}
+          />
+          <Pressable
+            style={[styles.send, (!draft.trim() || sending) && styles.sendDisabled]}
+            onPress={() => void onSend()}
+            disabled={!draft.trim() || sending}
+          >
+            {sending ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Feather name="send" size={18} color="#fff" />
+            )}
+          </Pressable>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -480,6 +752,7 @@ const styles = StyleSheet.create({
   },
   msgText: { color: "#0F172A", fontSize: 15, lineHeight: 21 },
   msgTextMine: { color: "#FFFFFF" },
+  voiceRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   deleted: { color: "#94A3B8", fontStyle: "italic", fontSize: 13 },
   translated: {
     marginTop: 6,
@@ -508,6 +781,19 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#E2E8F0",
   },
+  voiceBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    backgroundColor: "#FFF7ED",
+    borderTopWidth: 1,
+    borderTopColor: "#FED7AA",
+  },
+  voiceLabel: { flex: 1, fontWeight: "700", color: "#9A3412" },
+  voiceActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   attach: {
     width: 40,
     height: 40,

@@ -4,7 +4,7 @@
  */
 import { Feather } from "@expo/vector-icons";
 import { Audio, ResizeMode, Video } from "expo-av";
-import * as ImagePicker from "expo-image-picker";
+import { pickExistingMedia } from "@/lib/pickMedia";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -176,18 +176,18 @@ export default function BoostVideoScreen() {
   const accountCountry = user?.country || country || "Haiti";
 
   const pickVideo = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow photo library access to pick a video.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["videos"],
+    const assets = await pickExistingMedia({
+      kind: "videos",
+      selectionLimit: 1,
       quality: 1,
       videoMaxDuration: 120,
+      persist: true,
+      persistPrefix: "boost-video",
+      permissionMessage: "Allow photo library access to pick a video.",
     });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
+    if (!assets[0]) return;
+    const asset = assets[0];
+    // duration from ImagePicker is ms; DocumentPicker may omit it.
     if (asset.duration && asset.duration > MAX_VIDEO_MS) {
       Alert.alert("Too long", "Videos must be 2 minutes or less.");
       return;

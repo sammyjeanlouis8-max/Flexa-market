@@ -1,11 +1,15 @@
 /**
  * Support ticket thread — GET/POST /api/support/threads/:id
+ * Attachments: text, images, video (no voice — server rejects audio).
+ * Android uses system Photo Picker; no RECORD_AUDIO on this screen.
  */
 import { Feather } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -18,6 +22,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/shell/AppHeader";
 import colors from "@/constants/colors";
+import { uploadChatImage } from "@/lib/chatApi";
+import { pickExistingMedia } from "@/lib/pickMedia";
 import { useAuth } from "@/context/AuthContext";
 import { apiRequest, formatWhen } from "@/lib/request";
 
@@ -28,6 +34,9 @@ type Message = {
   senderRole?: string;
   senderName?: string;
   createdAt: string;
+  messageType?: string;
+  mediaUrl?: string | null;
+  mediaName?: string | null;
 };
 
 type Thread = {
@@ -37,6 +46,13 @@ type Thread = {
   status: string;
   messages: Message[];
 };
+
+function resolveMedia(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith("http")) return url;
+  if (url.startsWith("/")) return `https://flexamarket.com${url}`;
+  return url;
+}
 
 export default function SupportThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -49,6 +65,7 @@ export default function SupportThreadScreen() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
+  const inflightAttach = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     if (!token || !Number.isFinite(threadId)) return;
@@ -76,7 +93,7 @@ export default function SupportThreadScreen() {
       await apiRequest(`/support/threads/${threadId}/messages`, {
         token,
         method: "POST",
-        body: { content: draft.trim() },
+        body: { content: draft.trim(), messageType: "text" },
       });
       setDraft("");
       await load();
@@ -84,6 +101,59 @@ export default function SupportThreadScreen() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Send failed");
     } finally {
+      setSending(false);
+    }
+  };
+
+  const attachMedia = async (kind: "images" | "videos") => {
+    if (!token || sending) return;
+    const assets = await pickExistingMedia({
+      kind,
+      selectionLimit: 1,
+      quality: kind === "images" ? 0.85 : 1,
+      persist: true,
+      persistPrefix: "support",
+      permissionMessage: "Allow photo access to attach files to this ticket.",
+    });
+    if (!assets[0]) return;
+    const asset = assets[0];
+    const clientMessageId = `s-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (inflightAttach.current.has(clientMessageId)) return;
+    inflightAttach.current.add(clientMessageId);
+    setSending(true);
+    try {
+      const messageType = kind === "videos" ? "video" : "image";
+      const contentType =
+        asset.mimeType || (kind === "videos" ? "video/mp4" : "image/jpeg");
+      const fileName =
+        asset.fileName || (kind === "videos" ? "support.mp4" : "support.jpg");
+      const mediaUrl = await uploadChatImage(asset.uri, {
+        token,
+        contentType,
+        fileName,
+      });
+      await apiRequest(`/support/threads/${threadId}/messages`, {
+        token,
+        method: "POST",
+        body: {
+          content: draft.trim() || `[Attachment] ${fileName}`,
+          messageType,
+          mediaUrl,
+          mediaName: fileName,
+          mediaMime: contentType,
+          clientMessageId,
+        },
+      });
+      setDraft("");
+      await load();
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (e) {
+      Alert.alert(
+        "Attachment failed",
+        e instanceof Error ? e.message : "Could not upload. Try again.",
+      );
+    } finally {
+      inflightAttach.current.delete(clientMessageId);
       setSending(false);
     }
   };
@@ -147,11 +217,21 @@ export default function SupportThreadScreen() {
           }
           renderItem={({ item }) => {
             const mine = !item.isAdminReply && item.senderRole !== "bot";
+            const media = resolveMedia(item.mediaUrl);
+            const isImage = item.messageType === "image" && media;
             return (
               <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
                 {!mine ? (
                   <Text style={styles.sender}>
                     {item.senderRole === "bot" ? "FlexaBot" : item.senderName || "Support"}
+                  </Text>
+                ) : null}
+                {isImage ? (
+                  <Image source={{ uri: media }} style={styles.attachImg} contentFit="cover" />
+                ) : null}
+                {item.messageType === "video" && media ? (
+                  <Text style={[styles.body, mine && { color: "#fff" }]}>
+                    🎥 {item.mediaName || "Video attachment"}
                   </Text>
                 ) : null}
                 <Text style={[styles.body, mine && { color: "#fff" }]}>{item.content}</Text>
@@ -171,6 +251,24 @@ export default function SupportThreadScreen() {
           </View>
         ) : (
           <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+            <Pressable
+              style={styles.attach}
+              onPress={() => void attachMedia("images")}
+              disabled={sending}
+              testID="support-attach-image"
+              accessibilityLabel="Attach image"
+            >
+              <Feather name="image" size={20} color={colors.light.text} />
+            </Pressable>
+            <Pressable
+              style={styles.attach}
+              onPress={() => void attachMedia("videos")}
+              disabled={sending}
+              testID="support-attach-video"
+              accessibilityLabel="Attach video"
+            >
+              <Feather name="video" size={20} color={colors.light.text} />
+            </Pressable>
             <TextInput
               style={styles.input}
               value={draft}
@@ -226,6 +324,7 @@ const styles = StyleSheet.create({
   },
   sender: { fontSize: 11, fontWeight: "700", color: colors.flexaGreen, marginBottom: 4 },
   body: { fontSize: 15, lineHeight: 21, color: colors.light.text },
+  attachImg: { width: 200, height: 160, borderRadius: 10, marginBottom: 6 },
   time: { marginTop: 6, fontSize: 10, color: "#94A3B8" },
   composer: {
     flexDirection: "row",
@@ -236,6 +335,17 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.light.border,
     backgroundColor: "#fff",
+  },
+  attach: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    marginBottom: 2,
   },
   input: {
     flex: 1,

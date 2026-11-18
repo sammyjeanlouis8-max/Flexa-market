@@ -3,7 +3,7 @@
  */
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
+import { pickExistingMedia } from "@/lib/pickMedia";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -105,33 +105,45 @@ export function ListingEditor({ token, initial, submitLabel, busy, onSubmit }: P
   );
 
   const pickImages = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow photo library access to add product photos.");
+    const remaining = Math.max(0, 8 - images.length);
+    if (remaining < 1) {
+      Alert.alert("Limit reached", "You can add up to 8 product photos.");
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsMultipleSelection: true,
+    // Android: system Photo Picker (no READ_MEDIA_*). Enforce 8-image cap in app code.
+    const assets = await pickExistingMedia({
+      kind: "images",
+      selectionLimit: remaining,
       quality: 0.85,
-      selectionLimit: 8,
+      persist: true,
+      persistPrefix: "listing",
+      permissionMessage: "Allow photo library access to add product photos.",
     });
-    if (result.canceled || !result.assets?.length) return;
+    if (!assets.length) return;
 
     setUploading(true);
     try {
       const uploaded: string[] = [];
-      for (const asset of result.assets) {
-        const url = await uploadListingImage(asset.uri, {
-          token,
-          contentType: asset.mimeType || "image/jpeg",
-          fileName: asset.fileName || `listing-${Date.now()}.jpg`,
-        });
-        uploaded.push(url);
+      for (const asset of assets) {
+        try {
+          const url = await uploadListingImage(asset.uri, {
+            token,
+            contentType: asset.mimeType || "image/jpeg",
+            fileName: asset.fileName || `listing-${Date.now()}.jpg`,
+          });
+          uploaded.push(url);
+        } catch (e) {
+          // Keep already-uploaded images; allow retry for the failed one.
+          Alert.alert(
+            "Upload failed",
+            e instanceof Error ? e.message : "Could not upload one photo. Try again.",
+          );
+          break;
+        }
       }
-      setImages((prev) => [...prev, ...uploaded].slice(0, 8));
-    } catch (e) {
-      Alert.alert("Upload failed", e instanceof Error ? e.message : "Could not upload photos");
+      if (uploaded.length) {
+        setImages((prev) => [...prev, ...uploaded].slice(0, 8));
+      }
     } finally {
       setUploading(false);
     }

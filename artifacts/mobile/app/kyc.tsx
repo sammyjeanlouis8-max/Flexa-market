@@ -3,7 +3,7 @@
  */
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import * as ImagePicker from "expo-image-picker";
+import { pickExistingMedia } from "@/lib/pickMedia";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
@@ -62,19 +62,19 @@ export default function KycScreen() {
   );
 
   const pick = async (kind: "document" | "selfie") => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow photo access to upload KYC documents.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+    // Persist into app documents so draft KYC photos survive restart.
+    const assets = await pickExistingMedia({
+      kind: "images",
+      selectionLimit: 1,
       quality: 0.85,
       allowsEditing: true,
+      persist: true,
+      persistPrefix: `kyc-${kind}`,
+      permissionMessage: "Allow photo access to upload KYC documents.",
     });
-    if (result.canceled || !result.assets?.[0]) return;
-    if (kind === "document") setDocumentUri(result.assets[0].uri);
-    else setSelfieUri(result.assets[0].uri);
+    if (!assets[0]) return;
+    if (kind === "document") setDocumentUri(assets[0].uri);
+    else setSelfieUri(assets[0].uri);
   };
 
   const onSubmit = async () => {

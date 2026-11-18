@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | Branch | `cursor/native-chat-composer-9753` |
-| Commit | _(filled after commit)_ |
+| Commit | `d78356f91aa0b00ee578eddd9acae13690c25ae1` |
 | Android | `sdk_gphone64_x86_64` · Android 14 · AVD `flexa_api34` (TCG) |
 | iOS | **BLOCKED** — no Xcode/simulator on this Linux Cloud Agent |
 

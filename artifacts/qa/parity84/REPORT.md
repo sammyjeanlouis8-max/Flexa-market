@@ -8,7 +8,7 @@
 - **Policy BLOCKED on Android (6):** Play Billing / FCM device / eSIM — need store/device/provider access.
 
 ## Builds
-- **Commit:** (filled after git)
+- **Commit:** 76a9aad0200313254f3738bdb1b11fc27e0f0048
 - **Android QA:** `com.flexamarket.app` · `1.0.1` · **versionCode 62** · emulator `sdk_gphone64_x86_64` (API 34)
 - **iPhone QA:** **BLOCKED** — no Xcode/iOS Simulator on this Linux Cloud Agent. Shared RN changes apply to both platforms once built on a Mac runner.
 - **Backend:** `https://flexamarket.com/api`

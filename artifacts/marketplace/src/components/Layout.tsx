@@ -16,10 +16,14 @@ import { FlexCardDebtBanner } from "@/components/FlexCardDebtBanner";
 import OfflineBar from "@/components/OfflineBar";
 import BoostVideoOverlay from "@/components/BoostVideoOverlay";
 import {
-  clearBoostAdCooldown,
+  BOOST_AD_IDLE_MS,
+  BOOST_AD_TICK_MS,
+  canDeliverBoostAd,
   getBoostExcludeIds,
   getBoostViewerScopeKey,
-  shouldShowBoostAd,
+  getBoostViewerTimingKey,
+  markBoostAdPlacementConsumed,
+  tickBoostBrowsing,
 } from "@/lib/boostAdRotation";
 import { useAdminCountry } from "@/contexts/admin-country";
 import { adminVideoFeedParamsKey } from "@/lib/adminCountryAccess";
@@ -112,11 +116,8 @@ function CartIconButton({ light = false }: { light?: boolean }) {
 
 // ─── Sponsored video trigger ──────────────────────────────────────────────────
 // Timer fires 10 s after the user FIRST enters any browsing route.
-// Navigating between browsing routes does NOT reset the countdown — only
-// leaving all browsing routes (e.g. going to /messages) cancels the pending
-// timer.  This prevents the common case where clicking on listings repeatedly
-// keeps resetting the 10-s window so the ad never fires.
-const BOOST_AD_DELAY_MS = 10_000;
+// Active marketplace browsing only. Checkout, payment, chat, sell/forms, and
+// admin shells are intentionally excluded so automatic promos never interrupt them.
 const BROWSING_ROUTES: RegExp[] = [
   /^\/$/,
   /^\/search/,
@@ -154,10 +155,11 @@ function useBoostAdTrigger(): {
   const { videoFeedParams, isAdminViewer, effectiveCountry } = useAdminCountry();
   const { country: shoppingCountry, city: shoppingCity } = useShoppingLocation();
   const [listing, setListing] = useState<BoostAdListing | null>(null);
-  const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingRef  = useRef(false); // true while the timer is armed
   const fetchGenRef = useRef(0);
   const listingRef = useRef<BoostAdListing | null>(null);
+  const placementConsumedRef = useRef(false);
+  const fetchingRef = useRef(false);
+  const lastInteractionRef = useRef(Date.now());
   const prevDeliveryScopeKeyRef = useRef<string | null>(null);
   const viewerUserId = user?.id ?? null;
   // Manual guest selection / admin preview / account country — never IP alone.
@@ -165,20 +167,16 @@ function useBoostAdTrigger(): {
     ? (effectiveCountry || videoFeedParams.country || null)
     : (user?.country ?? shoppingCountry ?? null);
   const browsingCity = isAdminViewer ? null : (user?.location ?? shoppingCity ?? null);
-  const rotationScopeKey = getBoostViewerScopeKey(viewerUserId, browsingCountry);
+  const timingKey = getBoostViewerTimingKey(viewerUserId);
   const deliveryScopeKey = isAdminViewer
     ? adminVideoFeedParamsKey(videoFeedParams)
     : `user|${browsingCountry ?? ""}|${browsingCity ?? ""}`;
 
-  const cancelTimer = useCallback(() => {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    pendingRef.current = false;
-  }, []);
-
-  const fetchRandomAd = useCallback(async (generation: number, opts?: { force?: boolean }) => {
+  const fetchRandomAd = useCallback(async (generation: number) => {
     const scopeKey = getBoostViewerScopeKey(viewerUserId, browsingCountry);
-    if (!opts?.force && !shouldShowBoostAd(scopeKey)) return;
-    if (listingRef.current) return; // already displaying an interstitial
+    if (!canDeliverBoostAd(timingKey)) return;
+    if (listingRef.current || fetchingRef.current) return;
+    fetchingRef.current = true;
     try {
       const tk = localStorage.getItem("flexamarket_token");
       const params = new URLSearchParams();
@@ -207,76 +205,100 @@ function useBoostAdTrigger(): {
       if (generation !== fetchGenRef.current) return;
       const data = await res.json();
       if (generation !== fetchGenRef.current) return;
+      // None eligible → skip placement (do not consume timer / rolling cap).
       if (!data?.listing) return;
-      if (!opts?.force && !shouldShowBoostAd(scopeKey)) return;
+      if (!canDeliverBoostAd(timingKey)) return;
       if (listingRef.current) return;
-      // Do NOT mark cooldown / rotation here — only when playback begins.
+      placementConsumedRef.current = false;
       listingRef.current = data.listing as BoostAdListing;
       setListing(data.listing as BoostAdListing);
     } catch { /* non-critical */ }
-  }, [isAdminViewer, videoFeedParams, browsingCountry, browsingCity, viewerUserId]);
-
-  const armTimer = useCallback(() => {
-    if (pendingRef.current) return;           // already armed — keep existing countdown
-    if (listingRef.current) return;           // interstitial already on screen
-    if (!shouldShowBoostAd(rotationScopeKey)) return; // still within cooldown window
-    pendingRef.current = true;
-    const generation = fetchGenRef.current;
-    timerRef.current = setTimeout(() => {
-      timerRef.current  = null;
-      pendingRef.current = false;
-      void fetchRandomAd(generation);
-    }, BOOST_AD_DELAY_MS);
-  }, [fetchRandomAd, rotationScopeKey]);
-
-  // Unmount cleanup
-  useEffect(() => () => cancelTimer(), [cancelTimer]);
-
-  useEffect(() => {
-    const isBrowsing = BROWSING_ROUTES.some(rx => rx.test(location));
-    if (!isBrowsing) {
-      // Left all browsing routes — cancel any pending timer
-      cancelTimer();
-      return;
+    finally {
+      fetchingRef.current = false;
     }
-    // Entered (or moved between) browsing routes — arm once; do not reset if already armed
-    armTimer();
-  }, [location, armTimer, cancelTimer]);
+  }, [isAdminViewer, videoFeedParams, browsingCountry, browsingCity, viewerUserId, timingKey]);
 
-  // Browsing country / admin preview changed → drop any on-screen or in-flight
-  // ad from the previous market and force a fresh eligible fetch (no-store).
-  // Skip the initial mount — the normal 10s browsing arm handles first paint.
+  // Track user interaction so idle browsing pauses the accumulator.
+  useEffect(() => {
+    const bump = () => {
+      lastInteractionRef.current = Date.now();
+    };
+    const opts: AddEventListenerOptions = { capture: true, passive: true };
+    window.addEventListener("pointerdown", bump, opts);
+    window.addEventListener("keydown", bump, opts);
+    window.addEventListener("touchstart", bump, opts);
+    window.addEventListener("scroll", bump, opts);
+    return () => {
+      window.removeEventListener("pointerdown", bump, opts);
+      window.removeEventListener("keydown", bump, opts);
+      window.removeEventListener("touchstart", bump, opts);
+      window.removeEventListener("scroll", bump, opts);
+    };
+  }, []);
+
+  // Accumulate active browsing time; pause when backgrounded / idle / ad / non-browse.
+  useEffect(() => {
+    const isBrowsingRoute = () => BROWSING_ROUTES.some((rx) => rx.test(location));
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      const visible =
+        typeof document === "undefined" || document.visibilityState === "visible";
+      const idle = now - lastInteractionRef.current >= BOOST_AD_IDLE_MS;
+      const adPlaying = !!listingRef.current;
+      const active = isBrowsingRoute() && visible && !idle && !adPlaying;
+      tickBoostBrowsing(timingKey, now, active);
+      if (
+        active &&
+        canDeliverBoostAd(timingKey, now) &&
+        !listingRef.current &&
+        !fetchingRef.current
+      ) {
+        void fetchRandomAd(fetchGenRef.current);
+      }
+    }, BOOST_AD_TICK_MS);
+
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        tickBoostBrowsing(timingKey, Date.now(), false);
+      } else {
+        lastInteractionRef.current = Date.now();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+      tickBoostBrowsing(timingKey, Date.now(), false);
+    };
+  }, [location, timingKey, fetchRandomAd]);
+
+  // Browsing country / admin preview changed → drop on-screen / in-flight ads
+  // from the previous market. Keep browsing time + rolling cap; only refresh
+  // eligibility for the new country (no-store, new generation).
   useEffect(() => {
     const prev = prevDeliveryScopeKeyRef.current;
     prevDeliveryScopeKeyRef.current = deliveryScopeKey;
     if (prev === null || prev === deliveryScopeKey) return;
 
     fetchGenRef.current += 1;
-    const generation = fetchGenRef.current;
     listingRef.current = null;
+    placementConsumedRef.current = false;
     setListing(null);
-    cancelTimer();
-    pendingRef.current = false;
-    // Clear previous-market cooldown so the new country can deliver immediately.
-    clearBoostAdCooldown(getBoostViewerScopeKey(viewerUserId, browsingCountry));
-    const isBrowsing = BROWSING_ROUTES.some((rx) => rx.test(location));
-    if (!isBrowsing) return;
-    pendingRef.current = true;
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      pendingRef.current = false;
-      void fetchRandomAd(generation, { force: true });
-    }, 500);
+    fetchingRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when delivery scope changes
   }, [deliveryScopeKey]);
 
   const dismiss = useCallback(() => {
+    // Finish / skip / dismiss always starts the 15-minute browsing interval.
+    // Exposure recording may already have consumed the placement (idempotent).
+    if (!placementConsumedRef.current) {
+      placementConsumedRef.current = true;
+      markBoostAdPlacementConsumed(timingKey);
+    }
     listingRef.current = null;
     setListing(null);
-    // Re-arm for next session after cooldown clears (armTimer will no-op if
-    // shouldShowBoostAd is still false, which is correct)
-    armTimer();
-  }, [armTimer]);
+  }, [timingKey]);
 
   return { listing, dismiss, viewerUserId, browsingCountry };
 }

@@ -3,9 +3,33 @@
  *
  * Advantage+ (automatic) targeting is country-wide: never pin a campaign to the
  * advertiser's home department/city. Custom targeting keeps explicit geo.
+ *
+ * Country eligibility uses Flexa Market's central SUPPORTED_COUNTRIES list so
+ * newly added markets work without delivery-code changes.
  */
 
+import { SUPPORTED_COUNTRIES } from "../../../marketplace/src/lib/countries";
+
 export type BoostAudienceType = "advantage_plus" | "custom" | string | null | undefined;
+
+/** Re-export central marketplace country list for interstitial tests + callers. */
+export { SUPPORTED_COUNTRIES as BOOST_SUPPORTED_COUNTRIES };
+
+/** Canonicalize a free-form country name against the central config. */
+export function canonicalizeBoostCountry(
+  country: string | null | undefined,
+): string | null {
+  const raw = (country ?? "").trim();
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  return SUPPORTED_COUNTRIES.find((c) => c.toLowerCase() === lower) ?? null;
+}
+
+export function isSupportedBoostCountry(
+  country: string | null | undefined,
+): boolean {
+  return canonicalizeBoostCountry(country) != null;
+}
 
 /** True when regional (department/city) filters should apply for this campaign. */
 export function usesRegionalBoostGeo(audienceType: BoostAudienceType): boolean {
@@ -107,13 +131,60 @@ export function audienceCityMatchesViewer(
   return false;
 }
 
+/**
+ * CF-IPCountry ISO → canonical Flexa Market country name.
+ * Only values that appear in SUPPORTED_COUNTRIES are used as browsing markets;
+ * other ISO hits are ignored so delivery stays on the central config.
+ */
 const CF_COUNTRY: Record<string, string> = {
-  HT: "Haiti", DO: "Dominican Republic", US: "USA", FR: "France", CA: "Canada",
-  MX: "Mexico", BR: "Brazil", CL: "Chile", GB: "United Kingdom", DE: "Germany",
-  ES: "Spain", IT: "Italy", MQ: "Martinique", GP: "Guadeloupe",
-  GF: "French Guiana", CU: "Cuba", JM: "Jamaica", PR: "Puerto Rico",
+  HT: "Haiti",
+  DO: "Dominican Republic",
+  US: "USA",
+  CA: "Canada",
+  MX: "Mexico",
+  BR: "Brazil",
+  CL: "Chile",
+  GB: "United Kingdom",
+  DE: "Germany",
+  ZA: "South Africa",
+  IN: "India",
+  PH: "Philippines",
+  AU: "Australia",
+  JM: "Jamaica",
+  IT: "Italy",
+  NL: "Netherlands",
+  BE: "Belgium",
+  CH: "Switzerland",
+  PT: "Portugal",
+  SE: "Sweden",
+  NO: "Norway",
+  AE: "United Arab Emirates",
+  SA: "Saudi Arabia",
+  JP: "Japan",
+  KR: "South Korea",
+  KE: "Kenya",
+  GH: "Ghana",
+  BS: "Bahamas",
   TT: "Trinidad and Tobago",
+  BB: "Barbados",
+  PR: "Puerto Rico",
+  // Nearby CF codes that map into a supported market when present:
+  FR: "France",
+  ES: "Spain",
+  MQ: "Martinique",
+  GP: "Guadeloupe",
+  GF: "French Guiana",
+  CU: "Cuba",
 };
+
+/** Resolve CF ISO to a supported browsing country, or null when unsupported. */
+export function resolveCfBoostCountry(
+  cfIpCountry?: string | null,
+): string | null {
+  const iso = String(cfIpCountry ?? "").trim().toUpperCase();
+  if (!iso) return null;
+  return canonicalizeBoostCountry(CF_COUNTRY[iso] ?? null);
+}
 
 function normalizeCountryName(raw: string | null | undefined): string | null {
   const c = (raw ?? "").trim().toLowerCase();
@@ -221,15 +292,18 @@ export function resolveInterstitialViewerScope(input: {
   assignedAdminCountries?: string[];
   isGlobalCountryAdmin?: boolean;
 }): InterstitialViewerScope {
-  const requestedCountry = (input.requestedCountry ?? "").trim();
+  const requestedCountry =
+    canonicalizeBoostCountry(input.requestedCountry) ??
+    (input.requestedCountry ?? "").trim();
   const role = (input.user?.role ?? "").toString().toLowerCase();
   const isSuperAdmin = !!input.user?.isSuperAdmin || role === "superadmin";
   const isAdmin = (!!input.user?.isAdmin || role === "admin") && !isSuperAdmin;
   const isGlobalCountryAdmin = !!input.isGlobalCountryAdmin;
+  const cfCountry = resolveCfBoostCountry(input.cfIpCountry);
   const fallbackCountry =
-    CF_COUNTRY[String(input.cfIpCountry ?? "").trim().toUpperCase()] ?? "Haiti";
+    canonicalizeBoostCountry("Haiti") ?? SUPPORTED_COUNTRIES[0] ?? "Haiti";
   const assigned = (input.assignedAdminCountries ?? [])
-    .map((c) => c.trim())
+    .map((c) => canonicalizeBoostCountry(c) ?? c.trim())
     .filter(Boolean);
 
   let visibleCountries: string[];
@@ -240,21 +314,37 @@ export function resolveInterstitialViewerScope(input: {
       visibleCountries = [];
       globalCountryAccess = true;
     } else {
-      visibleCountries = [requestedCountry];
+      // Admin preview country — prefer central-config canonical name.
+      visibleCountries = [
+        canonicalizeBoostCountry(requestedCountry) ?? requestedCountry,
+      ];
     }
   } else if (isAdmin) {
     if (requestedCountry) {
-      const match = assigned.find((c) => c.toLowerCase() === requestedCountry.toLowerCase());
+      const match = assigned.find(
+        (c) => c.toLowerCase() === requestedCountry.toLowerCase(),
+      );
       visibleCountries = match ? [match] : ["__denied__"];
     } else {
       visibleCountries = assigned.length > 0 ? assigned : ["__denied__"];
     }
   } else if (input.user) {
-    // Regular customers: account country only (ignore spoofed ?country=).
-    visibleCountries = [input.user.country?.trim() || fallbackCountry];
+    // Existing location rules: signed-in shoppers browse their account country.
+    // Manual guest selection does not override a logged-in profile country.
+    const account =
+      canonicalizeBoostCountry(input.user.country) ??
+      input.user.country?.trim() ??
+      cfCountry ??
+      fallbackCountry;
+    visibleCountries = [account];
   } else {
-    // Guests: browsing ?country= or CF / Haiti — never empty (sql false).
-    visibleCountries = [requestedCountry || fallbackCountry];
+    // Guests: manual browsing ?country= wins over CF, then Haiti fallback.
+    // Only supported markets from the central config enter rotation.
+    const browsing =
+      canonicalizeBoostCountry(requestedCountry) ??
+      cfCountry ??
+      fallbackCountry;
+    visibleCountries = [browsing];
   }
 
   return {

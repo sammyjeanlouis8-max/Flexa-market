@@ -60,6 +60,13 @@ function injectChatAnimations() {
     @keyframes recordWave { from { transform: scaleY(0.55); } to { transform: scaleY(1); } }
     .msg-bubble-anim { animation: msgIn 120ms ease-out; }
     .menu-anim { animation: menuIn 100ms ease-out; }
+    /* iOS/WebView: long-press must open our menu, not native blue text handles */
+    .chat-msg-bubble, .chat-msg-bubble * {
+      -webkit-user-select: none !important;
+      user-select: none !important;
+      -webkit-touch-callout: none !important;
+      -webkit-tap-highlight-color: transparent;
+    }
   `;
   document.head.appendChild(el);
 }
@@ -551,16 +558,28 @@ function PendingVoiceBubble({
   theme,
   isSending,
   onRetry,
+  onCancel,
 }: {
   item: PendingVoiceMessage;
   theme: (typeof T)[ChatTheme];
   isSending: boolean;
   onRetry: () => void;
+  onCancel: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const [src, setSrc] = useState("");
-  const failed = !!item.lastError && !isSending;
-  const statusLabel = t(isSending ? "messages.voiceSending" : failed ? "messages.voiceNotSent" : "messages.voiceWaiting");
+  const offline = typeof navigator !== "undefined" && !navigator.onLine;
+  const status = item.status
+    || (isSending ? (item.mediaUrl ? "sending" : "uploading") : item.lastError ? "failed" : offline ? "waiting_connection" : "queued");
+  const failed = status === "failed" && !isSending;
+  const waiting = status === "waiting_connection" || (offline && !isSending && !failed);
+  const statusLabel = t(
+    failed ? "messages.voiceNotSent"
+      : status === "uploading" ? "messages.voiceUploading"
+        : status === "sending" || isSending ? "messages.voiceSending"
+          : waiting ? "messages.voiceWaitingConnection"
+            : "messages.voiceWaiting",
+  );
 
   useEffect(() => {
     const objectUrl = URL.createObjectURL(new Blob([item.bytes], { type: item.mimeType }));
@@ -570,8 +589,9 @@ function PendingVoiceBubble({
 
   return (
     <div
-      className="msg-bubble-anim"
+      className="msg-bubble-anim chat-msg-bubble"
       style={{ display: "flex", alignItems: "flex-end", width: "100%", overflow: "hidden" }}
+      onContextMenu={(e) => e.preventDefault()}
     >
       <div style={{ flex: 1 }} />
       <div style={{
@@ -583,7 +603,9 @@ function PendingVoiceBubble({
         border: (theme as any).bubbleOutBorder ? `1px solid ${(theme as any).bubbleOutBorder}` : undefined,
         boxShadow: !theme.isDark ? "0 3px 10px rgba(34,55,41,0.055)" : undefined,
         overflow: "hidden",
-        opacity: 0.88,
+        opacity: 0.92,
+        WebkitUserSelect: "none",
+        userSelect: "none",
       }}>
         {src && (
           <AudioBubble
@@ -596,26 +618,36 @@ function PendingVoiceBubble({
                 title={statusLabel}
                 aria-label={statusLabel}
                 role="status"
-                style={{ fontSize: 13, lineHeight: 1, color: theme.timeOut }}
+                style={{ fontSize: 11, lineHeight: 1, color: theme.timeOut, fontWeight: 700 }}
               >
-                {isSending ? <Loader2 aria-hidden="true" className="animate-spin" style={{ width: 11, height: 11 }} /> : failed ? "!" : "◷"}
+                {isSending || status === "uploading" || status === "sending"
+                  ? <Loader2 aria-hidden="true" className="animate-spin" style={{ width: 11, height: 11 }} />
+                  : failed ? "!" : "◷"}
               </span>
             )}
             isListened={false}
           />
         )}
-        {failed && (
-          <button type="button" onClick={onRetry}
-            aria-label={`${t("messages.voiceNotSent")}. ${t("messages.voiceRetry")}`}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "flex-end",
-              width: "100%", minHeight: 36, padding: "2px 10px 7px",
-              border: "none", background: "transparent", cursor: "pointer",
-              color: theme.isDark ? "#FCA5A5" : "#991B1B", fontSize: 11, fontWeight: 600,
-            }}>
-            {t("messages.voiceNotSent")} · {t("messages.voiceRetry")}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10,
+          width: "100%", minHeight: 32, padding: "0 10px 8px",
+          color: failed ? (theme.isDark ? "#FCA5A5" : "#991B1B") : theme.timeOut,
+          fontSize: 11, fontWeight: 600,
+        }}>
+          <span>{statusLabel}</span>
+          {failed ? (
+            <button type="button" onClick={onRetry}
+              aria-label={t("messages.voiceRetry")}
+              style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", fontWeight: 700, textDecoration: "underline", padding: 0 }}>
+              {t("messages.voiceRetry")}
+            </button>
+          ) : null}
+          <button type="button" onClick={onCancel}
+            aria-label={t("messages.voiceCancelSend")}
+            style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", fontWeight: 700, textDecoration: "underline", padding: 0 }}>
+            {t("messages.voiceCancelSend")}
           </button>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -702,23 +734,24 @@ function MsgBubble({
     }
   };
 
-  // Read receipt: blue seen, grey sent
+  // Read / delivered / played — only after server confirmation (positive id).
   const StatusIcon = isMe ? (
-    msg.isRead
-      ? <CheckCheck style={{ width: 13, height: 13, color: c.seenColor }} />
-      : isLastSentByMe
-        ? <Check style={{ width: 13, height: 13, color: timeColor }} />
-        : <CheckCheck style={{ width: 13, height: 13, color: timeColor }} />
+    isAudio && msg.isListened
+      ? <span title={t("messages.voicePlayed")} aria-label={t("messages.voicePlayed")} style={{ fontSize: 10, fontWeight: 800, color: c.seenColor }}>♪</span>
+      : msg.isRead
+        ? <CheckCheck style={{ width: 13, height: 13, color: c.seenColor }} aria-label={t("messages.voiceDelivered")} />
+        : <Check style={{ width: 13, height: 13, color: timeColor }} aria-label={t("messages.voiceSent")} />
   ) : null;
 
   return (
     <div
-      className="msg-bubble-anim"
+      className="msg-bubble-anim chat-msg-bubble"
       style={{ display: "flex", alignItems: "flex-end", gap: 4, width: "100%", overflow: "hidden", position: "relative" }}
     >
       {isMe && <div style={{ flex: 1 }} />}
 
       <div
+        className="chat-msg-bubble"
         style={{
           position: "relative",
           display: "flex", flexDirection: "column",
@@ -731,13 +764,17 @@ function MsgBubble({
           overflow: isAudio ? "hidden" : "visible",
           // Allow native vertical scroll even while long-press timer is running
           touchAction: "pan-y",
-        }}
+          WebkitUserSelect: "none",
+          userSelect: "none",
+          WebkitTouchCallout: "none",
+        } as React.CSSProperties}
         onPointerDown={startLongPress}
         onPointerMove={onMoveCheck}
         onPointerUp={cancelLongPress}
         onPointerLeave={cancelLongPress}
         onPointerCancel={cancelLongPress}
         onContextMenu={e => { e.preventDefault(); setShowMenu(true); }}
+        onSelectCapture={e => { e.preventDefault(); }}
       >
         {/* Sender profile name — never internal IDs like ADM-0001 */}
         {!isMe && (
@@ -1660,7 +1697,12 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     }
   };
 
-  const sendQueuedVoice = useCallback((body: { messageType: "audio"; mediaUrl: string; content: string }) => new Promise<void>((resolve, reject) => {
+  const sendQueuedVoice = useCallback((body: {
+    messageType: "audio";
+    mediaUrl: string;
+    content: string;
+    clientMessageId: string;
+  }) => new Promise<void>((resolve, reject) => {
       let settled = false;
       const timer = window.setTimeout(() => {
         if (settled) return;
@@ -1697,13 +1739,29 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       });
     }), [convId, queryClient, sendMsg]);
 
+    const cancelPendingVoiceSend = useCallback(async (id: string) => {
+      await removePendingVoice(id).catch(() => {});
+      setPendingVoices((current) => current.filter((voice) => voice.id !== id));
+      if (sendingVoiceId === id) setSendingVoiceId(null);
+    }, [sendingVoiceId]);
+
     const flushPendingVoices = useCallback(async () => {
       if (voiceQueueBusyRef.current || isRestricted) return;
       voiceQueueBusyRef.current = true;
       try {
         const pending = await listPendingVoices(convId);
         setPendingVoices(pending);
-        if (typeof navigator !== "undefined" && !navigator.onLine) return;
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          for (const item of pending) {
+            if (item.status !== "waiting_connection") {
+              await updatePendingVoice(item.id, { status: "waiting_connection" }).catch(() => {});
+            }
+          }
+          setPendingVoices((current) =>
+            current.map((voice) => ({ ...voice, status: "waiting_connection" as const })),
+          );
+          return;
+        }
         for (const item of pending) {
           setSendingVoiceId(item.id);
           try {
@@ -1711,6 +1769,12 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             if (!mediaUrl) {
               // Do NOT set the shared `uploading` flag here — that disables the
               // + / gallery composer while a voice retry is in flight.
+              await updatePendingVoice(item.id, { status: "uploading", lastError: undefined });
+              setPendingVoices((current) =>
+                current.map((voice) =>
+                  voice.id === item.id ? { ...voice, status: "uploading", lastError: undefined } : voice,
+                ),
+              );
               const token = localStorage.getItem("flexamarket_token") ?? "";
               const mime = normalizeUploadMime(
                 item.mimeType,
@@ -1718,15 +1782,24 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               );
               const blob = new Blob([item.bytes], { type: mime });
               mediaUrl = await uploadMedia(blob, mime, token);
-              await updatePendingVoice(item.id, { mediaUrl });
+              await updatePendingVoice(item.id, { mediaUrl, status: "sending" });
+            } else {
+              await updatePendingVoice(item.id, { status: "sending", lastError: undefined });
             }
-            await sendQueuedVoice({ messageType: "audio", mediaUrl, content: "" });
+            // Same clientMessageId on every retry → server dedupes.
+            await sendQueuedVoice({
+              messageType: "audio",
+              mediaUrl,
+              content: "",
+              clientMessageId: item.id,
+            });
             await removePendingVoice(item.id);
             setPendingVoices(current => current.filter(voice => voice.id !== item.id));
           } catch (error) {
             const failure = {
               attempts: item.attempts + 1,
               lastError: error instanceof Error ? error.message : "Voice delivery failed",
+              status: "failed" as const,
             };
             await updatePendingVoice(item.id, failure).catch(() => {});
             setPendingVoices(current => current.map(voice => voice.id === item.id ? { ...voice, ...failure } : voice));
@@ -2376,7 +2449,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                     ) : entry.kind === "pending" ? (
                       <PendingVoiceBubble item={entry.item as PendingVoiceMessage} theme={c}
                         isSending={sendingVoiceId === entry.item.id}
-                        onRetry={() => void flushPendingVoices()} />
+                        onRetry={() => void flushPendingVoices()}
+                        onCancel={() => void cancelPendingVoiceSend(entry.item.id)} />
                     ) : (
                       <MsgBubble
                         msg={entry.item} isMe={Number(entry.item.senderId) === Number(user?.id)}

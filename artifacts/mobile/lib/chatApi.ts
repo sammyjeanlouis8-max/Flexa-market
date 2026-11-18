@@ -192,3 +192,15 @@ export function formatMessageTime(iso: string | null | undefined): string {
   }
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
+
+/** Bubble clock e.g. "11:48". */
+export function formatBubbleClock(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}

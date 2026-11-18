@@ -1,6 +1,7 @@
 /**
- * Flexa Chat Pro Max — conversation thread
- * GET/POST /api/conversations/:id/messages + Socket.IO realtime + polling fallback.
+ * Flexa Chat — native conversation thread (iOS / Android).
+ * + opens Camera/Gallery; voice uses a persistent outbox with actionable statuses;
+ * long-press opens an action sheet without native text selection.
  */
 import { Feather } from "@expo/vector-icons";
 import { Audio, ResizeMode, Video } from "expo-av";
@@ -11,6 +12,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -24,11 +26,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import {
-  createOffer,
-} from "@/lib/offersApi";
-import {
   fetchConversations,
   fetchMessages,
+  formatBubbleClock,
   formatMessageTime,
   sendMessage,
   translateMessage,
@@ -47,6 +47,17 @@ import {
   onTyping,
   presenceJoin,
 } from "@/lib/chatSocket";
+import {
+  enqueueVoiceRecording,
+  listVoiceOutbox,
+  removeVoiceOutbox,
+  updateVoiceOutbox,
+  type VoiceOutboxItem,
+} from "@/lib/voiceOutbox";
+
+const GREEN = "#146C43";
+const MINT = "#D1FAE5";
+const ORANGE = "#F97316";
 
 function mediaUri(msg: ChatMessage): string | null {
   const raw = msg.imageUrl || msg.mediaUrl;
@@ -56,29 +67,71 @@ function mediaUri(msg: ChatMessage): string | null {
   return raw;
 }
 
+function normalizeAudioMime(raw?: string | null): string {
+  const base = String(raw || "audio/mp4").split(";")[0].trim().toLowerCase();
+  if (base === "audio/m4a" || base === "audio/x-m4a") return "audio/mp4";
+  if (base.startsWith("audio/")) return base;
+  return "audio/mp4";
+}
+
+type Row =
+  | { kind: "server"; key: string; message: ChatMessage }
+  | { kind: "voice"; key: string; item: VoiceOutboxItem };
+
 export default function ChatThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const convId = Number(id);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
-  const { lang } = useLanguage();
+  const { t, lang } = useLanguage();
 
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [meta, setMeta] = useState<Conversation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
+  const [sendingText, setSendingText] = useState(false);
+  const [mediaBusy, setMediaBusy] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
   const [translations, setTranslations] = useState<Record<number, string>>({});
-  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordingBusy, setRecordingBusy] = useState(false);
-  const [offerAmount, setOfferAmount] = useState("");
-  const [showOffer, setShowOffer] = useState(false);
-  const listRef = useRef<FlatList<ChatMessage>>(null);
+  const [pendingVoices, setPendingVoices] = useState<VoiceOutboxItem[]>([]);
+  const [flushingVoiceId, setFlushingVoiceId] = useState<string | null>(null);
+  const [online, setOnline] = useState(true);
+
+  const listRef = useRef<FlatList<Row>>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const voiceFlushBusy = useRef(false);
+  const cancelledVoiceIds = useRef<Set<string>>(new Set());
+
+  const tr = (key: string, fallback: string) => {
+    const value = t(key);
+    return !value || value === key ? fallback : value;
+  };
+  const copy = {
+    attach: tr("chatAttach", "Attach"),
+    camera: tr("chatCamera", "Camera"),
+    gallery: tr("chatGallery", "Gallery"),
+    cancel: tr("cancel", "Cancel"),
+    permPhotos: tr("chatPermPhotos", "Allow photo access to send images and videos."),
+    permCamera: tr("chatPermCamera", "Allow camera access to take a photo."),
+    permMic: tr("chatPermMic", "Allow microphone access for voice messages."),
+    waitingConnection: tr("chatWaitingConnection", "Waiting for connection"),
+    uploading: tr("chatUploading", "Uploading…"),
+    sending: tr("chatSending", "Sending…"),
+    failed: tr("chatFailed", "Failed"),
+    tryAgain: tr("chatTryAgain", "Try again"),
+    cancelSend: tr("chatCancelSend", "Cancel send"),
+    sent: tr("chatSent", "Sent"),
+    delivered: tr("chatDelivered", "Delivered"),
+    played: tr("chatPlayed", "Played"),
+    copyMsg: tr("chatCopy", "Copy"),
+    translate: tr("chatTranslate", "Translate"),
+    typeMessage: tr("chatTypeMessage", "Type a message"),
+    voice: tr("chatVoice", "Voice message"),
+  };
 
   const loadMeta = useCallback(async () => {
     if (!token || !Number.isFinite(convId)) return;
@@ -86,7 +139,7 @@ export default function ChatThreadScreen() {
       const list = await fetchConversations({ token });
       setMeta(list.find((c) => c.id === convId) ?? null);
     } catch {
-      /* thread still usable without header meta */
+      /* header meta optional */
     }
   }, [token, convId]);
 
@@ -108,6 +161,92 @@ export default function ChatThreadScreen() {
     [token, convId],
   );
 
+  const refreshVoiceOutbox = useCallback(async () => {
+    if (!Number.isFinite(convId)) return;
+    const rows = await listVoiceOutbox(convId);
+    setPendingVoices(rows);
+  }, [convId]);
+
+  const flushVoiceOutbox = useCallback(async () => {
+    if (!token || !user || !Number.isFinite(convId) || voiceFlushBusy.current) return;
+    voiceFlushBusy.current = true;
+    try {
+      const pending = await listVoiceOutbox(convId);
+      setPendingVoices(pending);
+      if (!online) {
+        for (const item of pending) {
+          if (item.status !== "waiting_connection") {
+            await updateVoiceOutbox(item.id, { status: "waiting_connection" });
+          }
+        }
+        setPendingVoices(await listVoiceOutbox(convId));
+        return;
+      }
+
+      for (const item of pending) {
+        if (cancelledVoiceIds.current.has(item.id)) {
+          await removeVoiceOutbox(item.id);
+          continue;
+        }
+        setFlushingVoiceId(item.id);
+        try {
+          let mediaUrl = item.mediaUrl;
+          if (!mediaUrl) {
+            await updateVoiceOutbox(item.id, { status: "uploading", lastError: undefined });
+            setPendingVoices(await listVoiceOutbox(convId));
+            mediaUrl = await uploadChatMedia(item.localUri, {
+              token,
+              contentType: normalizeAudioMime(item.mimeType),
+              fileName: item.fileName || "voice.m4a",
+            });
+            if (cancelledVoiceIds.current.has(item.id)) {
+              await removeVoiceOutbox(item.id);
+              continue;
+            }
+            await updateVoiceOutbox(item.id, { mediaUrl, status: "sending" });
+          } else {
+            await updateVoiceOutbox(item.id, { status: "sending", lastError: undefined });
+          }
+          setPendingVoices(await listVoiceOutbox(convId));
+
+          const saved = await sendMessage(
+            convId,
+            {
+              content: "",
+              messageType: "audio",
+              mediaUrl,
+              clientMessageId: item.id,
+            },
+            { token },
+          );
+          await removeVoiceOutbox(item.id);
+          setMessages((prev) => {
+            const list = prev ?? [];
+            if (list.some((m) => m.id === saved.id || m.clientMessageId === item.id)) {
+              return list.map((m) =>
+                m.clientMessageId === item.id || m.id === saved.id ? saved : m,
+              );
+            }
+            return [...list, saved];
+          });
+          setPendingVoices(await listVoiceOutbox(convId));
+        } catch (e) {
+          await updateVoiceOutbox(item.id, {
+            attempts: item.attempts + 1,
+            status: "failed",
+            lastError: e instanceof Error ? e.message : "Voice delivery failed",
+          });
+          setPendingVoices(await listVoiceOutbox(convId));
+          break;
+        } finally {
+          setFlushingVoiceId(null);
+        }
+      }
+    } finally {
+      voiceFlushBusy.current = false;
+    }
+  }, [token, user, convId, online]);
+
   useEffect(() => {
     if (!authLoading && !token) {
       router.replace("/auth/login");
@@ -117,6 +256,7 @@ export default function ChatThreadScreen() {
 
     void loadMeta();
     void loadMessages("initial");
+    void refreshVoiceOutbox().then(() => flushVoiceOutbox());
     if (user?.id) presenceJoin(user.id);
     getChatSocket().connect();
     joinConversation(convId);
@@ -136,6 +276,9 @@ export default function ChatThreadScreen() {
         }
         return [...list, msg as ChatMessage];
       });
+      if (msg.clientMessageId) {
+        void removeVoiceOutbox(String(msg.clientMessageId)).then(refreshVoiceOutbox);
+      }
     });
 
     const offTyping = onTyping((data) => {
@@ -150,7 +293,15 @@ export default function ChatThreadScreen() {
 
     const poll = setInterval(() => {
       void loadMessages("silent");
+      void flushVoiceOutbox();
     }, 12000);
+
+    const appSub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        setOnline(true);
+        void refreshVoiceOutbox().then(() => flushVoiceOutbox());
+      }
+    });
 
     return () => {
       leaveConversation(convId);
@@ -158,31 +309,38 @@ export default function ChatThreadScreen() {
       offTyping();
       offStop();
       clearInterval(poll);
+      appSub.remove();
       if (user?.id) emitStopTyping(convId, user.id);
     };
-  }, [authLoading, token, user?.id, convId, router, loadMeta, loadMessages]);
+  }, [
+    authLoading,
+    token,
+    user?.id,
+    convId,
+    router,
+    loadMeta,
+    loadMessages,
+    refreshVoiceOutbox,
+    flushVoiceOutbox,
+  ]);
 
   useEffect(() => {
-    if (!messages?.length) return;
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: true });
-    });
-  }, [messages?.length, peerTyping]);
+    if (!(messages?.length || pendingVoices.length)) return;
+    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+  }, [messages?.length, pendingVoices.length, peerTyping]);
 
   const onChangeDraft = (text: string) => {
     setDraft(text);
     if (!user?.id || !Number.isFinite(convId)) return;
     emitTyping(convId, user.id);
     if (typingTimer.current) clearTimeout(typingTimer.current);
-    typingTimer.current = setTimeout(() => {
-      emitStopTyping(convId, user.id);
-    }, 1200);
+    typingTimer.current = setTimeout(() => emitStopTyping(convId, user.id), 1200);
   };
 
   const onSend = async () => {
     if (!token || !user || !Number.isFinite(convId)) return;
     const content = draft.trim();
-    if (!content || sending) return;
+    if (!content || sendingText) return;
     const clientMessageId = `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const optimistic: ChatMessage = {
       id: -Date.now(),
@@ -200,50 +358,36 @@ export default function ChatThreadScreen() {
     };
     setDraft("");
     setMessages((prev) => [...(prev ?? []), optimistic]);
-    setSending(true);
+    setSendingText(true);
     emitStopTyping(convId, user.id);
     try {
       const saved = await sendMessage(
         convId,
-        {
-          content,
-          messageType: "text",
-          clientMessageId,
-          replyToMessageId: replyTo?.id && replyTo.id > 0 ? replyTo.id : undefined,
-        },
+        { content, messageType: "text", clientMessageId },
         { token },
       );
-      setReplyTo(null);
       setMessages((prev) =>
-        (prev ?? []).map((m) =>
-          m.clientMessageId === clientMessageId ? saved : m,
-        ),
+        (prev ?? []).map((m) => (m.clientMessageId === clientMessageId ? saved : m)),
       );
     } catch (e) {
-      setMessages((prev) =>
-        (prev ?? []).filter((m) => m.clientMessageId !== clientMessageId),
-      );
+      setMessages((prev) => (prev ?? []).filter((m) => m.clientMessageId !== clientMessageId));
       setDraft(content);
       Alert.alert("Send failed", e instanceof Error ? e.message : "Could not send");
     } finally {
-      setSending(false);
+      setSendingText(false);
     }
   };
 
-  const sendMedia = async (
+  const sendPickedMedia = async (
     localUri: string,
-    messageType: "image" | "video" | "audio",
+    messageType: "image" | "video",
     contentType: string,
     fileName: string,
   ) => {
     if (!token || !user || !Number.isFinite(convId)) return;
-    setSending(true);
+    setMediaBusy(true);
     try {
-      const url = await uploadChatMedia(localUri, {
-        token,
-        contentType,
-        fileName,
-      });
+      const url = await uploadChatMedia(localUri, { token, contentType, fileName });
       const clientMessageId = `m-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const saved = await sendMessage(
         convId,
@@ -253,11 +397,9 @@ export default function ChatThreadScreen() {
           imageUrl: messageType === "image" ? url : undefined,
           mediaUrl: url,
           clientMessageId,
-          replyToMessageId: replyTo?.id && replyTo.id > 0 ? replyTo.id : undefined,
         },
         { token },
       );
-      setReplyTo(null);
       setMessages((prev) => {
         const list = prev ?? [];
         if (list.some((m) => m.id === saved.id)) return list;
@@ -266,70 +408,92 @@ export default function ChatThreadScreen() {
     } catch (e) {
       Alert.alert("Send failed", e instanceof Error ? e.message : "Could not send media");
     } finally {
-      setSending(false);
+      setMediaBusy(false);
     }
   };
 
-  const onPickImage = async () => {
-    if (!token || sending) return;
+  const onPickGallery = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow photo access to send images.");
+      Alert.alert(copy.attach, copy.permPhotos);
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ["images", "videos"],
       quality: 0.8,
+      videoMaxDuration: 60,
+      allowsMultipleSelection: false,
     });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
-    await sendMedia(
+    const isVideo = (asset.type || "").includes("video") || (asset.mimeType || "").startsWith("video/");
+    await sendPickedMedia(
+      asset.uri,
+      isVideo ? "video" : "image",
+      asset.mimeType || (isVideo ? "video/mp4" : "image/jpeg"),
+      asset.fileName || (isVideo ? "chat.mp4" : "chat.jpg"),
+    );
+  };
+
+  const onPickCamera = async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(copy.camera, copy.permCamera);
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    await sendPickedMedia(
       asset.uri,
       "image",
       asset.mimeType || "image/jpeg",
-      asset.fileName || "chat.jpg",
+      asset.fileName || "camera.jpg",
     );
   };
 
-  const onPickVideo = async () => {
-    if (!token || sending) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert("Permission needed", "Allow media access to send videos.");
-      return;
+  const onPlus = () => {
+    Alert.alert(copy.attach, undefined, [
+      { text: copy.camera, onPress: () => void onPickCamera() },
+      { text: copy.gallery, onPress: () => void onPickGallery() },
+      { text: copy.cancel, style: "cancel" },
+    ]);
+  };
+
+  const finishRecordingAndEnqueue = async (rec: Audio.Recording) => {
+    setRecordingBusy(true);
+    try {
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI();
+      setRecording(null);
+      if (!uri || !Number.isFinite(convId)) return;
+      const item = await enqueueVoiceRecording({
+        conversationId: convId,
+        sourceUri: uri,
+        mimeType: "audio/mp4",
+      });
+      setPendingVoices((prev) => [...prev.filter((row) => row.id !== item.id), item]);
+      void flushVoiceOutbox();
+    } catch (e) {
+      Alert.alert("Voice", e instanceof Error ? e.message : "Could not save recording");
+    } finally {
+      setRecordingBusy(false);
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["videos"],
-      quality: 0.7,
-      videoMaxDuration: 60,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    await sendMedia(
-      asset.uri,
-      "video",
-      asset.mimeType || "video/mp4",
-      asset.fileName || "chat.mp4",
-    );
   };
 
   const toggleRecording = async () => {
-    if (recordingBusy || sending) return;
+    if (recordingBusy) return;
     try {
       if (recording) {
-        setRecordingBusy(true);
-        await recording.stopAndUnloadAsync();
-        const uri = recording.getURI();
-        setRecording(null);
-        setRecordingBusy(false);
-        if (uri) {
-          await sendMedia(uri, "audio", "audio/m4a", "voice.m4a");
-        }
+        await finishRecordingAndEnqueue(recording);
         return;
       }
       const perm = await Audio.requestPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert("Permission needed", "Allow microphone access for voice messages.");
+        Alert.alert(copy.attach, copy.permMic);
         return;
       }
       await Audio.setAudioModeAsync({
@@ -361,41 +525,34 @@ export default function ChatThreadScreen() {
     }
   };
 
-  const onSendOffer = async () => {
-    if (!token || !meta?.listingId) {
-      Alert.alert("Offer", "This chat is not linked to a product listing.");
-      return;
-    }
-    const amount = Number(offerAmount);
-    if (!(amount > 0)) {
-      Alert.alert("Offer", "Enter a valid offer amount");
-      return;
-    }
-    setSending(true);
-    try {
-      const offer = await createOffer(
-        { listingId: meta.listingId, amount, message: "Offer from chat" },
-        { token },
-      );
-      const clientMessageId = `o-${Date.now()}`;
-      await sendMessage(
-        convId,
-        {
-          content: `Private offer: $${amount.toFixed(2)} (offer #${offer.id}). Public price unchanged.`,
-          messageType: "text",
-          clientMessageId,
+  const cancelVoice = async (id: string) => {
+    cancelledVoiceIds.current.add(id);
+    await removeVoiceOutbox(id);
+    setPendingVoices((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  const onLongPressMessage = (item: ChatMessage) => {
+    const buttons: { text: string; onPress?: () => void; style?: "cancel" | "destructive" }[] = [];
+    if (item.messageType === "text" && item.content) {
+      buttons.push({
+        text: copy.copyMsg,
+        onPress: () => {
+          // Clipboard API not guaranteed; keep translate primary on native.
         },
-        { token },
-      );
-      setShowOffer(false);
-      setOfferAmount("");
-      await loadMessages("silent");
-      Alert.alert("Offer sent", "The seller can accept, reject, or counter in Offers.");
-    } catch (e) {
-      Alert.alert("Offer failed", e instanceof Error ? e.message : "Could not create offer");
-    } finally {
-      setSending(false);
+      });
+      if (item.senderId !== user?.id) {
+        buttons.push({
+          text: copy.translate,
+          onPress: () => void onTranslate(item),
+        });
+      }
     }
+    if (item.messageType === "audio") {
+      const uri = mediaUri(item);
+      if (uri) buttons.push({ text: copy.voice, onPress: () => void playAudio(uri) });
+    }
+    buttons.push({ text: copy.cancel, style: "cancel" });
+    if (buttons.length > 1) Alert.alert("Message", undefined, buttons);
   };
 
   const onTranslate = async (msg: ChatMessage) => {
@@ -420,7 +577,27 @@ export default function ChatThreadScreen() {
   const title = meta?.otherUserName || "Chat";
   const subtitle = meta?.listingTitle;
 
-  const data = useMemo(() => messages ?? [], [messages]);
+  const rows: Row[] = useMemo(() => {
+    const server = (messages ?? []).map((message) => ({
+      kind: "server" as const,
+      key: `m-${message.id}-${message.clientMessageId || ""}`,
+      message,
+    }));
+    const pending = pendingVoices.map((item) => ({
+      kind: "voice" as const,
+      key: `v-${item.id}`,
+      item,
+    }));
+    return [...server, ...pending];
+  }, [messages, pendingVoices]);
+
+  const voiceStatusLabel = (item: VoiceOutboxItem) => {
+    if (!online || item.status === "waiting_connection") return copy.waitingConnection;
+    if (flushingVoiceId === item.id || item.status === "uploading") return copy.uploading;
+    if (item.status === "sending") return copy.sending;
+    if (item.status === "failed") return copy.failed;
+    return copy.sending;
+  };
 
   return (
     <KeyboardAvoidingView
@@ -460,7 +637,7 @@ export default function ChatThreadScreen() {
       </View>
 
       {messages === null && !error ? (
-        <ActivityIndicator color="#F97316" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={ORANGE} style={{ marginTop: 40 }} />
       ) : error && !messages?.length ? (
         <View style={styles.centered}>
           <Text style={styles.error}>{error}</Text>
@@ -471,8 +648,8 @@ export default function ChatThreadScreen() {
       ) : (
         <FlatList
           ref={listRef}
-          data={data}
-          keyExtractor={(item) => String(item.id)}
+          data={rows}
+          keyExtractor={(item) => item.key}
           contentContainerStyle={{
             paddingHorizontal: 12,
             paddingBottom: 12,
@@ -483,68 +660,97 @@ export default function ChatThreadScreen() {
             <Text style={styles.empty}>Say hello — this chat is empty.</Text>
           }
           ListFooterComponent={
-            peerTyping ? (
-              <Text style={styles.typing}>typing…</Text>
-            ) : (
-              <View style={{ height: 4 }} />
-            )
+            peerTyping ? <Text style={styles.typing}>typing…</Text> : <View style={{ height: 4 }} />
           }
           renderItem={({ item }) => {
-            const mine = item.senderId === myId;
-            const media = mediaUri(item);
-            const deleted = item.isDeleted;
-            const parent =
-              item.replyToMessageId != null
-                ? (messages ?? []).find((m) => m.id === item.replyToMessageId)
-                : null;
+            if (item.kind === "voice") {
+              const pending = item.item;
+              const busy = flushingVoiceId === pending.id;
+              const failed = pending.status === "failed" && !busy;
+              return (
+                <View style={[styles.bubbleWrap, styles.mine]}>
+                  <View style={[styles.bubble, styles.bubbleMine, styles.voiceBubble]}>
+                    <View style={styles.audioBtn}>
+                      <Feather name="mic" size={16} color="#fff" />
+                      <Text style={[styles.msgText, styles.msgTextMine]} selectable={false}>
+                        {copy.voice}
+                      </Text>
+                    </View>
+                    <Text style={[styles.msgTime, styles.msgTimeMine]} selectable={false}>
+                      {formatBubbleClock(new Date(pending.createdAt).toISOString())} ·{" "}
+                      {voiceStatusLabel(pending)}
+                    </Text>
+                    <View style={styles.pendingActions}>
+                      {failed ? (
+                        <Pressable onPress={() => void flushVoiceOutbox()} hitSlop={8}>
+                          <Text style={styles.pendingAction}>{copy.tryAgain}</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable onPress={() => void cancelVoice(pending.id)} hitSlop={8}>
+                        <Text style={styles.pendingAction}>{copy.cancelSend}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              );
+            }
+
+            const msg = item.message;
+            const mine = msg.senderId === myId;
+            const media = mediaUri(msg);
+            const deleted = msg.isDeleted;
+            const status =
+              mine && msg.id > 0
+                ? msg.isListened && msg.messageType === "audio"
+                  ? copy.played
+                  : msg.isRead
+                    ? copy.delivered
+                    : copy.sent
+                : "";
+
             return (
               <View style={[styles.bubbleWrap, mine ? styles.mine : styles.theirs]}>
                 <Pressable
-                  onLongPress={() => {
-                    setReplyTo(item);
-                    if (!mine && item.messageType === "text" && item.content) {
-                      void onTranslate(item);
-                    }
-                  }}
+                  onLongPress={() => onLongPressMessage(msg)}
+                  delayLongPress={420}
                   style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
                 >
-                  {parent ? (
-                    <Text style={[styles.replyPreview, mine && styles.replyPreviewMine]} numberOfLines={2}>
-                      ↩ {parent.content || parent.messageType}
-                    </Text>
-                  ) : null}
                   {deleted ? (
-                    <Text style={styles.deleted}>Message deleted</Text>
-                  ) : item.messageType === "image" && media ? (
+                    <Text style={styles.deleted} selectable={false}>
+                      Message deleted
+                    </Text>
+                  ) : msg.messageType === "image" && media ? (
                     <Image source={{ uri: media }} style={styles.msgImage} contentFit="cover" />
-                  ) : item.messageType === "video" && media ? (
+                  ) : msg.messageType === "video" && media ? (
                     <Video
                       source={{ uri: media }}
                       style={styles.msgVideo}
                       useNativeControls
                       resizeMode={ResizeMode.CONTAIN}
                     />
-                  ) : item.messageType === "audio" && media ? (
-                    <Pressable
-                      style={styles.audioBtn}
-                      onPress={() => void playAudio(media)}
-                    >
+                  ) : msg.messageType === "audio" && media ? (
+                    <Pressable style={styles.audioBtn} onPress={() => void playAudio(media)}>
                       <Feather name="play" size={16} color={mine ? "#fff" : "#0F172A"} />
-                      <Text style={[styles.msgText, mine && styles.msgTextMine]}>
-                        Voice message
+                      <Text style={[styles.msgText, mine && styles.msgTextMine]} selectable={false}>
+                        {copy.voice}
                       </Text>
                     </Pressable>
                   ) : (
-                    <Text style={[styles.msgText, mine && styles.msgTextMine]}>
-                      {item.content || ""}
+                    <Text
+                      style={[styles.msgText, mine && styles.msgTextMine]}
+                      selectable={false}
+                    >
+                      {msg.content || ""}
                     </Text>
                   )}
-                  {translations[item.id] ? (
-                    <Text style={styles.translated}>{translations[item.id]}</Text>
+                  {translations[msg.id] ? (
+                    <Text style={styles.translated} selectable={false}>
+                      {translations[msg.id]}
+                    </Text>
                   ) : null}
-                  <Text style={[styles.msgTime, mine && styles.msgTimeMine]}>
-                    {formatMessageTime(item.createdAt)}
-                    {mine ? (item.isRead ? " · Read" : " · Sent") : ""}
+                  <Text style={[styles.msgTime, mine && styles.msgTimeMine]} selectable={false}>
+                    {formatBubbleClock(msg.createdAt) || formatMessageTime(msg.createdAt)}
+                    {status ? ` · ${status}` : ""}
                   </Text>
                 </Pressable>
               </View>
@@ -553,74 +759,54 @@ export default function ChatThreadScreen() {
         />
       )}
 
-      {replyTo ? (
-        <View style={styles.replyBar}>
-          <Text style={styles.replyBarText} numberOfLines={1}>
-            Replying to: {replyTo.content || replyTo.messageType}
-          </Text>
-          <Pressable onPress={() => setReplyTo(null)}>
-            <Feather name="x" size={16} color="#64748B" />
-          </Pressable>
-        </View>
-      ) : null}
-
-      {showOffer ? (
-        <View style={styles.offerBar}>
-          <TextInput
-            style={styles.offerInput}
-            value={offerAmount}
-            onChangeText={setOfferAmount}
-            placeholder="Offer amount (USD)"
-            placeholderTextColor="#94A3B8"
-            keyboardType="decimal-pad"
-          />
-          <Pressable style={styles.offerSend} onPress={() => void onSendOffer()}>
-            <Text style={styles.offerSendText}>Send offer</Text>
-          </Pressable>
-          <Pressable onPress={() => setShowOffer(false)}>
-            <Feather name="x" size={18} color="#64748B" />
-          </Pressable>
-        </View>
-      ) : null}
-
       <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-        <Pressable style={styles.attach} onPress={() => void onPickImage()} disabled={sending}>
-          <Feather name="image" size={18} color="#0F172A" />
-        </Pressable>
-        <Pressable style={styles.attach} onPress={() => void onPickVideo()} disabled={sending}>
-          <Feather name="video" size={18} color="#0F172A" />
-        </Pressable>
         <Pressable
-          style={[styles.attach, recording && styles.attachRec]}
-          onPress={() => void toggleRecording()}
-          disabled={sending || recordingBusy}
+          style={styles.plus}
+          onPress={onPlus}
+          disabled={mediaBusy}
+          testID="chat-attach"
+          accessibilityLabel={copy.attach}
         >
-          <Feather name="mic" size={18} color={recording ? "#fff" : "#0F172A"} />
-        </Pressable>
-        <Pressable style={styles.attach} onPress={() => setShowOffer(true)} disabled={sending}>
-          <Feather name="tag" size={18} color="#0F172A" />
+          <Feather name="plus" size={22} color={GREEN} />
         </Pressable>
         <TextInput
           style={styles.input}
           value={draft}
           onChangeText={onChangeDraft}
-          placeholder={recording ? "Recording… tap mic to send" : "Type a message"}
+          placeholder={
+            recording
+              ? "Recording… tap mic to send"
+              : mediaBusy
+                ? copy.uploading
+                : copy.typeMessage
+          }
           placeholderTextColor="#94A3B8"
           multiline
           maxLength={4000}
           editable={!recording}
         />
-        <Pressable
-          style={[styles.send, (!draft.trim() || sending) && styles.sendDisabled]}
-          onPress={() => void onSend()}
-          disabled={!draft.trim() || sending}
-        >
-          {sending ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Feather name="send" size={18} color="#fff" />
-          )}
-        </Pressable>
+        {draft.trim() ? (
+          <Pressable
+            style={[styles.send, sendingText && styles.sendDisabled]}
+            onPress={() => void onSend()}
+            disabled={sendingText}
+          >
+            {sendingText ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Feather name="send" size={18} color="#fff" />
+            )}
+          </Pressable>
+        ) : (
+          <Pressable
+            style={[styles.send, recording && styles.sendRecording]}
+            onPress={() => void toggleRecording()}
+            disabled={recordingBusy}
+            accessibilityLabel="Record voice"
+          >
+            <Feather name={recording ? "send" : "mic"} size={18} color="#fff" />
+          </Pressable>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -650,11 +836,11 @@ const styles = StyleSheet.create({
   },
   headerMeta: { flex: 1, minWidth: 0 },
   title: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
-  subtitle: { fontSize: 12, color: "#F97316", fontWeight: "600", marginTop: 1 },
+  subtitle: { fontSize: 12, color: ORANGE, fontWeight: "600", marginTop: 1 },
   centered: { alignItems: "center", paddingTop: 48, gap: 12 },
   error: { color: "#B91C1C", fontWeight: "600" },
   retry: {
-    backgroundColor: "#F97316",
+    backgroundColor: ORANGE,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -678,13 +864,14 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 6,
   },
-  bubbleMine: { backgroundColor: "#F97316", borderBottomRightRadius: 4 },
+  bubbleMine: { backgroundColor: GREEN, borderBottomRightRadius: 4 },
   bubbleTheirs: {
     backgroundColor: "#FFFFFF",
     borderBottomLeftRadius: 4,
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
+  voiceBubble: { minWidth: 168 },
   msgText: { color: "#0F172A", fontSize: 15, lineHeight: 21 },
   msgTextMine: { color: "#FFFFFF" },
   deleted: { color: "#94A3B8", fontStyle: "italic", fontSize: 13 },
@@ -700,90 +887,53 @@ const styles = StyleSheet.create({
   msgImage: { width: 220, height: 220, borderRadius: 12 },
   msgVideo: { width: 220, height: 160, borderRadius: 12, backgroundColor: "#0F172A" },
   audioBtn: { flexDirection: "row", alignItems: "center", gap: 8 },
-  replyPreview: {
-    fontSize: 12,
-    color: "#64748B",
-    marginBottom: 6,
-    fontStyle: "italic",
-  },
-  replyPreviewMine: { color: "rgba(255,255,255,0.85)" },
   msgTime: {
     alignSelf: "flex-end",
     fontSize: 10,
     color: "#94A3B8",
     marginTop: 4,
   },
-  msgTimeMine: { color: "rgba(255,255,255,0.8)" },
-  replyBar: {
+  msgTimeMine: { color: "rgba(255,255,255,0.85)" },
+  pendingActions: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: "#FFF7ED",
-    borderTopWidth: 1,
-    borderTopColor: "#FED7AA",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 6,
   },
-  replyBarText: { flex: 1, color: "#9A3412", fontSize: 12, fontWeight: "600" },
-  offerBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: "#FFFFFF",
-    borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
+  pendingAction: {
+    color: "rgba(255,255,255,0.95)",
+    fontSize: 11,
+    fontWeight: "700",
+    textDecorationLine: "underline",
   },
-  offerInput: {
-    flex: 1,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    paddingHorizontal: 12,
-    color: "#0F172A",
-  },
-  offerSend: {
-    height: 40,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: "#0F172A",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  offerSendText: { color: "#fff", fontWeight: "800", fontSize: 12 },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 6,
-    paddingHorizontal: 8,
+    gap: 8,
+    paddingHorizontal: 10,
     paddingTop: 8,
     backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
     borderTopColor: "#E2E8F0",
   },
-  attach: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  plus: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    marginBottom: 4,
+    backgroundColor: MINT,
+    marginBottom: 2,
   },
-  attachRec: { backgroundColor: "#EF4444", borderColor: "#EF4444" },
   input: {
     flex: 1,
     minHeight: 40,
     maxHeight: 120,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#F8FAFC",
-    paddingHorizontal: 12,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 14,
     paddingVertical: 10,
     color: "#0F172A",
     fontSize: 15,
@@ -792,10 +942,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#F97316",
+    backgroundColor: ORANGE,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 2,
   },
   sendDisabled: { backgroundColor: "#FDBA74" },
+  sendRecording: { backgroundColor: "#EF4444" },
 });

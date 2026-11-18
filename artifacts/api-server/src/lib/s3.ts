@@ -61,6 +61,7 @@ export type AllowedMimeType =
   | "audio/webm"
   | "audio/webm;codecs=opus"
   | "audio/mp4"
+  | "audio/m4a"
   | "audio/mpeg"
   | "audio/ogg"
   | "audio/wav"
@@ -91,6 +92,7 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set<AllowedMimeType>([
   "audio/webm",
   "audio/webm;codecs=opus",
   "audio/mp4",
+  "audio/m4a",
   "audio/mpeg",
   "audio/ogg",
   "audio/wav",

@@ -7,6 +7,7 @@ import {
   fetchMusicStreamUrl,
   type MusicTrack,
 } from "./musicApi";
+import { recordNaturalSongCompletion } from "./musicAdBreak";
 
 export type PlayerState = {
   queue: MusicTrack[];
@@ -18,9 +19,17 @@ export type PlayerState = {
   shuffle: boolean;
   repeat: "off" | "all" | "one";
   loading: boolean;
+  adBreakActive: boolean;
+};
+
+export type MusicAdBreakRequest = {
+  intendsPlay: boolean;
+  continueQueue: () => Promise<void>;
 };
 
 type Listener = (state: PlayerState) => void;
+type AdBreakListener = (active: boolean) => void;
+type AdBreakHandler = (req: MusicAdBreakRequest) => Promise<void>;
 
 let sound: Audio.Sound | null = null;
 let queue: MusicTrack[] = [];
@@ -31,8 +40,11 @@ let isPlaying = false;
 let positionMillis = 0;
 let durationMillis = 0;
 let loading = false;
+let adBreakActive = false;
 const listeners = new Set<Listener>();
+const adBreakListeners = new Set<AdBreakListener>();
 let audioModeReady = false;
+let adBreakHandler: AdBreakHandler | null = null;
 
 function snapshot(): PlayerState {
   return {
@@ -45,6 +57,7 @@ function snapshot(): PlayerState {
     shuffle,
     repeat,
     loading,
+    adBreakActive,
   };
 }
 
@@ -53,14 +66,31 @@ function emit() {
   for (const l of listeners) l(s);
 }
 
+function setAdBreakActive(on: boolean) {
+  if (adBreakActive === on) return;
+  adBreakActive = on;
+  for (const l of adBreakListeners) l(on);
+  emit();
+}
+
 export function subscribeMusicPlayer(listener: Listener): () => void {
   listeners.add(listener);
   listener(snapshot());
   return () => listeners.delete(listener);
 }
 
+export function subscribeMusicAdBreak(listener: AdBreakListener): () => void {
+  adBreakListeners.add(listener);
+  listener(adBreakActive);
+  return () => adBreakListeners.delete(listener);
+}
+
 export function getPlayerState(): PlayerState {
   return snapshot();
+}
+
+export function setMusicAdBreakHandler(handler: AdBreakHandler | null) {
+  adBreakHandler = handler;
 }
 
 async function ensureAudioMode() {
@@ -89,6 +119,43 @@ async function unload() {
   }
 }
 
+function queueHasNextAfterCurrent(): boolean {
+  if (!queue.length) return false;
+  const nextIndex = index + 1;
+  if (nextIndex < queue.length) return true;
+  return repeat === "all" && queue.length > 0;
+}
+
+async function continueAfterAdBreak() {
+  if (!queueHasNextAfterCurrent()) return;
+  await nextInternal(true);
+}
+
+async function handleNaturalTrackEnd() {
+  const intendsPlay = isPlaying;
+  const hasNext = queueHasNextAfterCurrent();
+  let shouldBreak = false;
+  try {
+    shouldBreak = await recordNaturalSongCompletion();
+  } catch {
+    shouldBreak = false;
+  }
+  if (shouldBreak && hasNext && adBreakHandler) {
+    await pause();
+    setAdBreakActive(true);
+    try {
+      await adBreakHandler({
+        intendsPlay,
+        continueQueue: continueAfterAdBreak,
+      });
+    } finally {
+      setAdBreakActive(false);
+    }
+    return;
+  }
+  if (hasNext) await nextInternal(intendsPlay);
+}
+
 function onStatusUpdate(status: AVPlaybackStatus) {
   if (!status.isLoaded) return;
   const st = status as AVPlaybackStatusSuccess;
@@ -96,8 +163,9 @@ function onStatusUpdate(status: AVPlaybackStatus) {
   durationMillis = st.durationMillis ?? 0;
   isPlaying = st.isPlaying;
   emit();
+  if (adBreakActive) return;
   if (st.didJustFinish && !st.isLooping) {
-    void next();
+    void handleNaturalTrackEnd();
   }
 }
 
@@ -154,12 +222,14 @@ export async function playTrack(track: MusicTrack, more?: MusicTrack[]) {
 }
 
 export async function togglePlayPause() {
+  if (adBreakActive) return;
   if (!sound) return;
   if (isPlaying) await sound.pauseAsync();
   else await sound.playAsync();
 }
 
 export async function play() {
+  if (adBreakActive) return;
   if (!sound && queue.length) await loadIndex(index, true);
   else if (sound) await sound.playAsync();
 }
@@ -168,7 +238,8 @@ export async function pause() {
   if (sound) await sound.pauseAsync();
 }
 
-export async function next() {
+async function nextInternal(autoplay = true) {
+  if (adBreakActive) return;
   if (!queue.length) return;
   let nextIndex = index + 1;
   if (nextIndex >= queue.length) {
@@ -183,10 +254,15 @@ export async function next() {
     while (r === index) r = Math.floor(Math.random() * queue.length);
     nextIndex = r;
   }
-  await loadIndex(nextIndex, true);
+  await loadIndex(nextIndex, autoplay);
+}
+
+export async function next() {
+  await nextInternal(true);
 }
 
 export async function previous() {
+  if (adBreakActive) return;
   if (positionMillis > 3000 && sound) {
     await sound.setPositionAsync(0);
     return;
@@ -198,6 +274,7 @@ export async function previous() {
 }
 
 export async function seek(ms: number) {
+  if (adBreakActive) return;
   if (sound) await sound.setPositionAsync(Math.max(0, ms));
 }
 

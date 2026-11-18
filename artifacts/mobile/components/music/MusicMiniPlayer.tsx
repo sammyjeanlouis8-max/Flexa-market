@@ -24,6 +24,16 @@ export function MusicMiniPlayer() {
 
   const track = state.track;
   if (!track) return null;
+  if (state.adBreakActive) {
+    return (
+      <View style={[styles.wrap, { bottom: insets.bottom + 58, opacity: 0.55 }]} pointerEvents="none">
+        <View style={styles.bar}>
+          <Feather name="pause" size={20} color={musicTheme.muted} />
+          <Text style={[styles.title, { flex: 1 }]}>Sponsored break</Text>
+        </View>
+      </View>
+    );
+  }
 
   const cover = absoluteMusicUrl(track.cover_url);
   const pct =

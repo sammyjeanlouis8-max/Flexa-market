@@ -8,6 +8,7 @@ import React, { useEffect } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { MusicAdBreakHost } from "@/components/music/MusicSponsoredBreak";
 import { MusicMiniPlayer } from "@/components/music/MusicMiniPlayer";
 import { PushBootstrap } from "@/components/PushBootstrap";
 import { AuthProvider } from "@/context/AuthContext";
@@ -64,8 +65,10 @@ export default function RootLayout() {
                   <Stack.Screen name="music/playlist/[id]" />
                   <Stack.Screen name="music/now-playing" />
                   <Stack.Screen name="music/upload" />
+                  <Stack.Screen name="music/sponsored-ads" />
                   <Stack.Screen name="+not-found" />
                   </Stack>
+                  <MusicAdBreakHost />
                   <MusicMiniPlayer />
                 </View>
               </CartProvider>

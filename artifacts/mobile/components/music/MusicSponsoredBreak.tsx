@@ -1,5 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { Audio, AVPlaybackStatus, ResizeMode, Video } from "expo-av";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -20,6 +22,7 @@ import {
   resolveSponsoredVideoUrl,
   type MusicSponsoredAdListing,
 } from "@/lib/musicAdBreak";
+import { absoluteMusicUrl } from "@/lib/musicApi";
 import {
   getPlayerState,
   setMusicAdBreakHandler,
@@ -203,9 +206,11 @@ function MusicSponsoredBreakForeground({
 
   const pct = duration > 0 ? Math.min(1, position / duration) : 0;
   const showCta = !!(productPathForListing(ad.listing) || ad.listing.boostExternalLink);
+  const listingThumb = resolveSponsoredVideoUrl(ad.listing.thumbnail);
+  const trackCover = absoluteMusicUrl(player.track?.cover_url);
 
   return (
-    <View style={[styles.overlay, { paddingTop: insets.top }]}>
+    <View style={[styles.overlay, { paddingTop: insets.top }]} testID="music-sponsored-break">
       <View style={styles.brandRow}>
         <View style={styles.logoBars}>
           <View style={[styles.logoBar, { height: 8 }]} />
@@ -227,23 +232,34 @@ function MusicSponsoredBreakForeground({
             useNativeControls={false}
           />
           <Text style={styles.badge}>Sponsored</Text>
-          <View style={styles.controls}>
-            <Feather name="pause" size={16} color="#fff" />
-            <Text style={styles.time}>
-              {formatTime(position)}
-              {duration ? ` / ${formatTime(duration)}` : ""}
-            </Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${pct * 100}%` }]} />
+          <LinearGradient
+            colors={["transparent", "rgba(0,0,0,0.8)"]}
+            style={styles.controlsGradient}
+          >
+            <View style={styles.controls}>
+              <Feather name="pause" size={16} color="#fff" />
+              <Text style={styles.time}>
+                {formatTime(position)}
+                {duration ? ` / ${formatTime(duration)}` : ""}
+              </Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${pct * 100}%` }]}>
+                  <View style={styles.progressKnob} />
+                </View>
+              </View>
+              <Feather name="volume-2" size={16} color="#fff" />
             </View>
-            <Feather name="volume-2" size={16} color="#fff" />
-          </View>
+          </LinearGradient>
         </View>
         <View style={styles.advertiserRow}>
           <View style={styles.advLogo}>
-            <Text style={styles.advLogoText}>
-              {(ad.listing.sellerName || "Ad").slice(0, 1).toUpperCase()}
-            </Text>
+            {listingThumb ? (
+              <Image source={{ uri: listingThumb }} style={styles.advLogoImg} contentFit="cover" />
+            ) : (
+              <Text style={styles.advLogoText}>
+                {(ad.listing.sellerName || "Ad").slice(0, 1).toUpperCase()}
+              </Text>
+            )}
           </View>
           <View style={styles.miniMeta}>
             <Text style={styles.advertiser} numberOfLines={1}>
@@ -254,7 +270,12 @@ function MusicSponsoredBreakForeground({
             </Text>
           </View>
           {showCta ? (
-            <Pressable style={styles.cta} onPress={openProduct} accessibilityRole="button">
+            <Pressable
+              style={styles.cta}
+              onPress={openProduct}
+              accessibilityRole="button"
+              testID="music-sponsored-cta"
+            >
               <Text style={styles.ctaText}>{ad.listing.boostCtaText || "View product"}</Text>
               <Feather name="external-link" size={14} color={musicTheme.charcoal} />
             </Pressable>
@@ -262,14 +283,18 @@ function MusicSponsoredBreakForeground({
         </View>
       </View>
       <View style={[styles.miniPaused, { marginBottom: Math.max(insets.bottom, 12) + 8 }]}>
-        <View style={styles.miniCover} />
+        {trackCover ? (
+          <Image source={{ uri: trackCover }} style={styles.miniCover} contentFit="cover" />
+        ) : (
+          <View style={styles.miniCover} />
+        )}
         <View style={styles.miniMeta}>
-          <Text style={styles.miniSub}>Music paused</Text>
+          <Text style={styles.miniPausedLabel}>Music paused</Text>
           <Text style={styles.miniTitle} numberOfLines={1}>
             {player.track?.title ?? "Flexa Music"}
           </Text>
         </View>
-        <Feather name="more-vertical" size={18} color={musicTheme.muted} />
+        <Feather name="pause" size={16} color="rgba(255,255,255,0.4)" />
       </View>
     </View>
   );
@@ -361,36 +386,43 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 12,
     left: 12,
+    zIndex: 2,
     backgroundColor: musicTheme.orange,
     color: musicTheme.charcoal,
     fontWeight: "800",
     fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
     overflow: "hidden",
   },
-  controls: {
+  controlsGradient: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
+    paddingTop: 28,
+  },
+  controls: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingBottom: 12,
   },
   advertiserRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   advLogo: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 8,
     backgroundColor: musicTheme.forest,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
+  advLogoImg: { width: "100%", height: "100%" },
   advLogoText: { color: musicTheme.orange, fontWeight: "900" },
   advertiser: { color: musicTheme.white, fontWeight: "800", fontSize: 14 },
   video: {
@@ -400,19 +432,34 @@ const styles = StyleSheet.create({
   },
   progressTrack: {
     flex: 1,
-    height: 4,
+    height: 6,
     backgroundColor: "rgba(255,255,255,0.25)",
-    borderRadius: 2,
-    overflow: "hidden",
+    borderRadius: 3,
+    overflow: "visible",
+    justifyContent: "center",
   },
-  progressFill: { height: 4, backgroundColor: "#fff" },
-  time: { color: "#fff", fontSize: 11, fontWeight: "600" },
+  progressFill: {
+    height: 6,
+    backgroundColor: "#fff",
+    borderRadius: 3,
+    position: "relative",
+  },
+  progressKnob: {
+    position: "absolute",
+    right: -6,
+    top: -3,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: musicTheme.orange,
+  },
+  time: { color: "rgba(255,255,255,0.85)", fontSize: 11, fontWeight: "600", fontVariant: ["tabular-nums"] },
   cta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     backgroundColor: musicTheme.orange,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
   },
@@ -423,7 +470,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     backgroundColor: musicTheme.forest,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
@@ -437,5 +484,6 @@ const styles = StyleSheet.create({
   },
   miniMeta: { flex: 1, minWidth: 0 },
   miniTitle: { color: musicTheme.white, fontWeight: "800", fontSize: 14 },
-  miniSub: { color: musicTheme.muted, fontSize: 11, marginTop: 2 },
+  miniPausedLabel: { color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: "600" },
+  miniSub: { color: "rgba(255,255,255,0.45)", fontSize: 11, marginTop: 2 },
 });

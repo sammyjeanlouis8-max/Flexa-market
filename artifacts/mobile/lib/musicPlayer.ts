@@ -134,13 +134,24 @@ async function continueAfterAdBreak() {
 async function handleNaturalTrackEnd() {
   const intendsPlay = isPlaying;
   const hasNext = queueHasNextAfterCurrent();
+
+  // Queue ending into silence — skip ads and do not burn the counter.
+  // Skips / next() never reach here (only didJustFinish).
+  if (!hasNext) return;
+
+  // Avoid back-to-back breaks if a prior ad is still winding down.
+  if (adBreakActive) {
+    await nextInternal(intendsPlay);
+    return;
+  }
+
   let shouldBreak = false;
   try {
     shouldBreak = await recordNaturalSongCompletion();
   } catch {
     shouldBreak = false;
   }
-  if (shouldBreak && hasNext && adBreakHandler) {
+  if (shouldBreak && adBreakHandler) {
     await pause();
     setAdBreakActive(true);
     try {
@@ -153,7 +164,7 @@ async function handleNaturalTrackEnd() {
     }
     return;
   }
-  if (hasNext) await nextInternal(intendsPlay);
+  await nextInternal(intendsPlay);
 }
 
 function onStatusUpdate(status: AVPlaybackStatus) {

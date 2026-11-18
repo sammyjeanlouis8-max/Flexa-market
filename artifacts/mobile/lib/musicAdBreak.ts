@@ -72,12 +72,10 @@ async function writeCompletedSongCounter(value: number): Promise<void> {
 
 /**
  * Call only when a track finishes naturally (didJustFinish).
- * Returns true when an ad break should run (counter reached SONGS_PER_AD).
- */
-/**
- * Call only when a track finishes naturally (didJustFinish).
+ * Skips / next() / manual Watch replays must never call this.
  * Always increments. Returns true when the counter reached SONGS_PER_AD
- * (caller must still require a next song before playing an ad).
+ * (caller must still require a next song before playing an ad — queue-end
+ * silence must not call this so the counter is not burned).
  */
 export async function recordNaturalSongCompletion(): Promise<boolean> {
   const current = await readCompletedSongCounter();
@@ -94,7 +92,9 @@ export async function resetAdCounter(): Promise<void> {
   await writeCompletedSongCounter(0);
 }
 
-const FETCH_MS = 2500;
+/** Fail-open fetch budget for eligible music promo creatives. */
+export const MUSIC_AD_FETCH_TIMEOUT_MS = 2500;
+const FETCH_MS = MUSIC_AD_FETCH_TIMEOUT_MS;
 
 export async function fetchEligibleMusicAd(
   token?: string | null,

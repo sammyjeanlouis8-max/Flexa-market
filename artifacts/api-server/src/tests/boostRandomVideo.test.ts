@@ -13,6 +13,16 @@ const boostRoutes = readFileSync(
 );
 
 describe("boost/random-video first-visit safety", () => {
+  it("supports requireAudio for Flexa Music ad breaks", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const boostRoutes = readFileSync(join(here, "../routes/boost.ts"), "utf8");
+    expect(boostRoutes).toMatch(/requireAudio/);
+    expect(boostRoutes).toMatch(/requireAudio[\s\S]*boostAdFormat/);
+  });
+
   it("does not order by a bare SQL literal 0 when exclude is empty", () => {
     const handler = boostRoutes.slice(
       boostRoutes.indexOf('router.get("/boost/random-video"'),

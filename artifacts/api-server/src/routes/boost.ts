@@ -539,6 +539,10 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     .map((s) => parseInt(s, 10))
     .filter((n) => Number.isFinite(n) && n > 0)
     .slice(0, 20);
+  // Flexa Music ad breaks require a playable video with audio — never image-only.
+  const requireAudio = ["1", "true", "yes"].includes(
+    String(req.query.requireAudio ?? req.query.videoOnly ?? "").trim().toLowerCase(),
+  );
 
   // Hard-exclude is only for dead-creative retries (extraExclude). Client
   // `exclude` is a soft preference: never-seen first, then least-recently shown.
@@ -553,7 +557,12 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
         eq(listingsTable.status, "hidden"),
       ) as any,
       sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived', 'rejected')`,
-      or(isNotNull(listingsTable.boostVideoUrl), isNotNull(listingsTable.boostImageUrl)) as any,
+      ...(requireAudio
+        ? [
+            isNotNull(listingsTable.boostVideoUrl) as any,
+            sql`coalesce(${listingsTable.boostAdFormat}, 'video') <> 'image'`,
+          ]
+        : [or(isNotNull(listingsTable.boostVideoUrl), isNotNull(listingsTable.boostImageUrl)) as any]),
       gt(listingsTable.boostExpiresAt, now),
       sql`(${listingsTable.boostStartAt} IS NULL OR ${listingsTable.boostStartAt} <= ${now.toISOString()})`,
       ne(listingsTable.sellerId, viewerId),
@@ -719,6 +728,12 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
         res.json({ listing: null });
         return;
       }
+    }
+
+    // Music playback path: never return image-only creatives.
+    if (requireAudio && (adFormat !== "video" || !resolvedBoostVideoUrl)) {
+      res.json({ listing: null });
+      return;
     }
 
     res.json({

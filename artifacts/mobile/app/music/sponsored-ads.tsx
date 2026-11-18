@@ -19,12 +19,14 @@ import {
   loadSponsoredAdHistory,
   type SponsoredAdHistoryEntry,
 } from "@/lib/musicAdBreak";
+import { getPlayerState, pause, play, seek } from "@/lib/musicPlayer";
 import { musicTheme } from "@/lib/musicTheme";
 
 export default function SponsoredAdsScreen() {
   const router = useRouter();
   const [history, setHistory] = useState<SponsoredAdHistoryEntry[]>([]);
   const [watch, setWatch] = useState<SponsoredAdHistoryEntry | null>(null);
+  const resumeRef = React.useRef<{ ms: number; shouldResume: boolean } | null>(null);
 
   const refresh = useCallback(async () => {
     setHistory(await loadSponsoredAdHistory());
@@ -52,6 +54,29 @@ export default function SponsoredAdsScreen() {
     if (entry.productPath) router.push(entry.productPath as never);
   };
 
+  const openWatch = (entry: SponsoredAdHistoryEntry) => {
+    const st = getPlayerState();
+    resumeRef.current = {
+      ms: st.positionMillis,
+      shouldResume: st.isPlaying,
+    };
+    if (st.isPlaying) void pause();
+    setWatch(entry);
+  };
+
+  const closeWatch = () => {
+    setWatch(null);
+    const resume = resumeRef.current;
+    resumeRef.current = null;
+    if (!resume) return;
+    void (async () => {
+      try {
+        await seek(resume.ms);
+      } catch { /* */ }
+      if (resume.shouldResume) await play();
+    })();
+  };
+
   return (
     <MusicShell
       title="Recent Sponsored Ads"
@@ -64,6 +89,7 @@ export default function SponsoredAdsScreen() {
         ) : null
       }
     >
+      <Text style={styles.subtitle}>Heard while listening</Text>
       <ScrollView contentContainerStyle={styles.scroll}>
         {history.length === 0 ? (
           <Text style={styles.muted}>
@@ -81,14 +107,17 @@ export default function SponsoredAdsScreen() {
               )}
               <View style={styles.meta}>
                 <Text style={styles.title} numberOfLines={2}>
-                  {entry.title}
+                  {entry.advertiser || entry.title}
                 </Text>
-                <Text style={styles.sub} numberOfLines={1}>
-                  {entry.advertiser ? `by ${entry.advertiser}` : "Sponsored"}
-                  {entry.heardInBackground ? " · Heard in background" : ""}
-                </Text>
+                <View style={styles.subRow}>
+                  <Feather name="headphones" size={12} color={musicTheme.muted} />
+                  <Text style={styles.sub} numberOfLines={1}>
+                    {entry.heardInBackground ? "Heard in background." : "Heard."}
+                  </Text>
+                </View>
               </View>
-              <Pressable style={styles.watch} onPress={() => setWatch(entry)}>
+              <Pressable style={styles.watch} onPress={() => openWatch(entry)}>
+                <Feather name="play" size={12} color={musicTheme.charcoal} />
                 <Text style={styles.watchText}>Watch</Text>
               </Pressable>
               {entry.productPath ? (
@@ -101,9 +130,9 @@ export default function SponsoredAdsScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={!!watch} animationType="slide" onRequestClose={() => setWatch(null)}>
+      <Modal visible={!!watch} animationType="slide" onRequestClose={closeWatch}>
         <View style={styles.modal}>
-          <Pressable style={styles.modalClose} onPress={() => setWatch(null)}>
+          <Pressable style={styles.modalClose} onPress={closeWatch}>
             <Feather name="x" size={28} color={musicTheme.white} />
           </Pressable>
           {watch ? (
@@ -113,6 +142,9 @@ export default function SponsoredAdsScreen() {
               resizeMode={ResizeMode.CONTAIN}
               shouldPlay
               useNativeControls
+              onPlaybackStatusUpdate={(st) => {
+                if (st.isLoaded && st.didJustFinish) closeWatch();
+              }}
             />
           ) : null}
           <Text style={styles.modalNote}>Manual replays do not affect your listening ad schedule.</Text>
@@ -124,6 +156,12 @@ export default function SponsoredAdsScreen() {
 
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 16, paddingBottom: 120 },
+  subtitle: {
+    color: musicTheme.muted,
+    fontSize: 13,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
   clear: { color: musicTheme.orange, fontWeight: "700" },
   muted: { color: musicTheme.muted, marginTop: 12 },
   row: {
@@ -134,7 +172,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: musicTheme.line,
   },
-  thumb: { width: 52, height: 52, borderRadius: 8 },
+  thumb: { width: 72, height: 52, borderRadius: 8 },
   thumbFallback: {
     backgroundColor: musicTheme.surface,
     alignItems: "center",
@@ -142,16 +180,18 @@ const styles = StyleSheet.create({
   },
   meta: { flex: 1, minWidth: 0 },
   title: { color: musicTheme.white, fontWeight: "800", fontSize: 14 },
-  sub: { color: musicTheme.muted, fontSize: 12, marginTop: 4 },
+  subRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
+  sub: { color: musicTheme.muted, fontSize: 12, flex: 1 },
   watch: {
-    backgroundColor: musicTheme.forest,
+    backgroundColor: musicTheme.orange,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: musicTheme.line,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
-  watchText: { color: musicTheme.orange, fontWeight: "800", fontSize: 12 },
+  watchText: { color: musicTheme.charcoal, fontWeight: "800", fontSize: 12 },
   modal: {
     flex: 1,
     backgroundColor: musicTheme.charcoal,

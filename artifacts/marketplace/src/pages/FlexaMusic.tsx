@@ -24,6 +24,7 @@ import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { musicListeningIsFree, musicUploadsAreFree, MUSIC_COMMERCE_ENABLED } from "@/lib/musicCommerce";
 import { MUSIC_RECENTLY_PLAYED_KEY } from "@/lib/musicTheme";
+import { maybeStartMusicAdBreak } from "@/lib/musicAdBreak";
 import MusicHome from "@/components/music/MusicHome";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -2933,6 +2934,12 @@ export default function FlexaMusic() {
   const listenRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playNextRef = useRef<() => void>(() => {});
   const playNextFreeRef = useRef<() => void>(() => {});
+  const queueRef = useRef(queue);
+  const queueIdxRef = useRef(queueIdx);
+  const radioModeRef = useRef(radioMode);
+  useEffect(() => { queueRef.current = queue; }, [queue]);
+  useEffect(() => { queueIdxRef.current = queueIdx; }, [queueIdx]);
+  useEffect(() => { radioModeRef.current = radioMode; }, [radioMode]);
   // Re-entering /music while audio is already playing should reopen the
   // expanded player. Closing it intentionally falls back to MiniPlayer.
   const [showNowPlaying, setShowNowPlaying] = useState(
@@ -3097,7 +3104,26 @@ export default function FlexaMusic() {
       const d = audio.duration;
       if (d && isFinite(d)) setPlayerState(s => ({ ...s, duration: d }));
     };
-    const onEnd     = () => playNextRef.current();
+    const onEnd     = () => {
+      const store = getMusicState();
+      if (store.repeat === "one") {
+        playNextRef.current();
+        return;
+      }
+      const q = queueRef.current ?? store.queue;
+      const qi = queueIdxRef.current ?? store.queueIdx;
+      const hasQueued = q.slice(qi + 1).some((t: any) => !!t?.audio_url);
+      const hasNext =
+        hasQueued ||
+        store.repeat === "all" ||
+        radioModeRef.current;
+      void maybeStartMusicAdBreak({
+        hasNextSong: !!hasNext,
+        onContinue: () => playNextRef.current(),
+      }).then((started) => {
+        if (!started) playNextRef.current();
+      });
+    };
     // "play"    → intent to play (paused may still be true during buffering on iOS)
     // "playing" → audio is ACTUALLY playing (this is the reliable one on iOS Safari)
     const onPlay    = () => setPlayerState(s => ({ ...s, playing: true }));

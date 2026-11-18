@@ -21,6 +21,7 @@ import {
   getBoostViewerScopeKey,
   shouldShowBoostAd,
 } from "@/lib/boostAdRotation";
+import { isMusicAdBreakActive, subscribeMusicAdBreakActive } from "@/lib/musicAdBreak";
 import { useAdminCountry } from "@/contexts/admin-country";
 import { adminVideoFeedParamsKey } from "@/lib/adminCountryAccess";
 import { useShoppingLocation } from "@/contexts/shopping-location";
@@ -122,7 +123,8 @@ const BROWSING_ROUTES: RegExp[] = [
   /^\/search/,
   /^\/listings\/[^/]+$/,
   /^\/saved$/,
-  /^\/music(\/|$)/,   // FlexaMusic — boost should appear here too
+  // /music uses its own every-10-songs sponsored breaks — do not double-serve
+  // the marketplace browsing interstitial inside Flexa Music.
 ];
 
 interface BoostAdListing {
@@ -154,6 +156,7 @@ function useBoostAdTrigger(): {
   const { videoFeedParams, isAdminViewer, effectiveCountry } = useAdminCountry();
   const { country: shoppingCountry, city: shoppingCity } = useShoppingLocation();
   const [listing, setListing] = useState<BoostAdListing | null>(null);
+  const [musicAdActive, setMusicAdActive] = useState(() => isMusicAdBreakActive());
   const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef  = useRef(false); // true while the timer is armed
   const fetchGenRef = useRef(0);
@@ -174,6 +177,15 @@ function useBoostAdTrigger(): {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     pendingRef.current = false;
   }, []);
+
+  useEffect(() => subscribeMusicAdBreakActive(setMusicAdActive), []);
+  useEffect(() => {
+    if (!musicAdActive) return;
+    // Never stack a marketplace interstitial on top of a music ad break.
+    listingRef.current = null;
+    setListing(null);
+    cancelTimer();
+  }, [musicAdActive, cancelTimer]);
 
   const fetchRandomAd = useCallback(async (generation: number, opts?: { force?: boolean }) => {
     const scopeKey = getBoostViewerScopeKey(viewerUserId, browsingCountry);

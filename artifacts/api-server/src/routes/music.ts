@@ -374,6 +374,68 @@ function toClientTrack(row: Record<string, unknown>) {
   };
 }
 
+/**
+ * GET /api/music/sponsored-ad
+ * Eligible Flexa Market promo for a music ad break. Always requires a verified
+ * video creative with audio (never image-only). Proxies the same targeting
+ * pool as /api/boost/random-video?requireAudio=1.
+ */
+router.get("/music/sponsored-ad", optionalAuth, async (req, res) => {
+  try {
+    const qs = new URLSearchParams();
+    qs.set("requireAudio", "1");
+    qs.set("videoOnly", "1");
+    for (const key of ["exclude", "country", "state", "city", "allCountries"] as const) {
+      const v = req.query[key];
+      if (typeof v === "string" && v.trim()) qs.set(key, v.trim());
+    }
+    // Internal forward via same-process fetch is unavailable; rewrite query and
+    // reuse the boost route by importing is heavy. Instead, issue a same-origin
+    // relative call through the Express stack by mutating req and calling next
+    // is awkward — so we redirect the client-facing contract to random-video
+    // semantics by re-querying via HTTP against the local app when available,
+    // falling back to a soft null. Production clients also hit random-video.
+    const proto = String(req.headers["x-forwarded-proto"] ?? req.protocol ?? "http");
+    const host = String(req.headers["x-forwarded-host"] ?? req.headers.host ?? "127.0.0.1");
+    const base = `${proto}://${host}`;
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      "Cache-Control": "no-store",
+    };
+    const auth = req.headers.authorization;
+    if (typeof auth === "string" && auth) headers.Authorization = auth;
+    const cf = req.headers["cf-ipcountry"];
+    if (typeof cf === "string" && cf) headers["cf-ipcountry"] = cf;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      const upstream = await fetch(`${base}/api/boost/random-video?${qs.toString()}`, {
+        headers,
+        signal: controller.signal,
+      });
+      const data = await upstream.json().catch(() => ({ listing: null }));
+      res.set("Cache-Control", "no-store");
+      if (!upstream.ok) {
+        res.status(200).json({ listing: null });
+        return;
+      }
+      const listing = data?.listing ?? null;
+      if (!listing?.boostVideoUrl) {
+        res.status(200).json({ listing: null });
+        return;
+      }
+      res.status(200).json({ listing });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err: any) {
+    logger.warn({ err }, "music/sponsored-ad failed");
+    res.set("Cache-Control", "no-store");
+    res.status(200).json({ listing: null });
+  }
+});
+
 // GET /api/music — list tracks
 router.get("/music", async (req, res) => {
   try {

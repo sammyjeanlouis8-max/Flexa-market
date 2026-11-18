@@ -1,3 +1,5 @@
+import { maybeStartMusicAdBreak } from "@/lib/musicAdBreak";
+
 /**
  * Global singleton music store.
  * Lives outside React so the audio element and playback state survive
@@ -345,7 +347,15 @@ if (typeof window !== "undefined") {
         gAudio.currentTime = 0;
         musicRequestPlay().catch(() => {});
       } else {
-        musicPlayNext();
+        const hasNext =
+          !!_s.queue[_s.queueIdx + 1]?.audio_url ||
+          (_s.repeat === "all" && _s.queue.length > 0);
+        void maybeStartMusicAdBreak({
+          hasNextSong: hasNext,
+          onContinue: () => musicPlayNext(),
+        }).then((started) => {
+          if (!started) musicPlayNext();
+        });
       }
     }
   });

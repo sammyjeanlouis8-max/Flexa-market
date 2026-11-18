@@ -202,46 +202,74 @@ function MusicSponsoredBreakForeground({
   };
 
   const pct = duration > 0 ? Math.min(1, position / duration) : 0;
+  const showCta = !!(productPathForListing(ad.listing) || ad.listing.boostExternalLink);
 
   return (
-    <View style={[styles.overlay, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <View style={styles.frame}>
-        <View style={styles.badgeRow}>
-          <Text style={styles.badge}>Sponsored</Text>
-          <Text style={styles.advertiser} numberOfLines={1}>
-            {ad.listing.sellerName ? `by ${ad.listing.sellerName}` : ad.listing.title}
-          </Text>
+    <View style={[styles.overlay, { paddingTop: insets.top }]}>
+      <View style={styles.brandRow}>
+        <View style={styles.logoBars}>
+          <View style={[styles.logoBar, { height: 8 }]} />
+          <View style={[styles.logoBar, { height: 14 }]} />
+          <View style={[styles.logoBar, { height: 10 }]} />
         </View>
-        <Video
-          ref={videoRef}
-          source={{ uri: ad.videoUrl }}
-          style={styles.video}
-          resizeMode={ResizeMode.CONTAIN}
-          shouldPlay
-          isLooping={false}
-          onPlaybackStatusUpdate={onStatus}
-          useNativeControls={false}
-        />
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${pct * 100}%` }]} />
-        </View>
-        <Text style={styles.time}>
-          {formatTime(position)}
-          {duration ? ` / ${formatTime(duration)}` : ""}
-        </Text>
-        <Pressable style={styles.cta} onPress={openProduct} accessibilityRole="button">
-          <Text style={styles.ctaText}>{ad.listing.boostCtaText || "View product"}</Text>
-          <Feather name="external-link" size={16} color={musicTheme.charcoal} />
-        </Pressable>
+        <Text style={styles.brand}>Flexa Music</Text>
       </View>
-      <View style={[styles.miniPaused, { marginBottom: insets.bottom + 72 }]}>
-        <Feather name="pause" size={16} color={musicTheme.muted} />
-        <View style={styles.miniMeta}>
-          <Text style={styles.miniTitle} numberOfLines={1}>
-            {player.track?.title ?? "Music paused"}
-          </Text>
-          <Text style={styles.miniSub}>Sponsored break</Text>
+      <View style={styles.frame}>
+        <View style={styles.videoWrap}>
+          <Video
+            ref={videoRef}
+            source={{ uri: ad.videoUrl }}
+            style={styles.video}
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay
+            isLooping={false}
+            onPlaybackStatusUpdate={onStatus}
+            useNativeControls={false}
+          />
+          <Text style={styles.badge}>Sponsored</Text>
+          <View style={styles.controls}>
+            <Feather name="pause" size={16} color="#fff" />
+            <Text style={styles.time}>
+              {formatTime(position)}
+              {duration ? ` / ${formatTime(duration)}` : ""}
+            </Text>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${pct * 100}%` }]} />
+            </View>
+            <Feather name="volume-2" size={16} color="#fff" />
+          </View>
         </View>
+        <View style={styles.advertiserRow}>
+          <View style={styles.advLogo}>
+            <Text style={styles.advLogoText}>
+              {(ad.listing.sellerName || "Ad").slice(0, 1).toUpperCase()}
+            </Text>
+          </View>
+          <View style={styles.miniMeta}>
+            <Text style={styles.advertiser} numberOfLines={1}>
+              {ad.listing.sellerName || "Sponsored"}
+            </Text>
+            <Text style={styles.miniSub} numberOfLines={1}>
+              {ad.listing.title}
+            </Text>
+          </View>
+          {showCta ? (
+            <Pressable style={styles.cta} onPress={openProduct} accessibilityRole="button">
+              <Text style={styles.ctaText}>{ad.listing.boostCtaText || "View product"}</Text>
+              <Feather name="external-link" size={14} color={musicTheme.charcoal} />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+      <View style={[styles.miniPaused, { marginBottom: Math.max(insets.bottom, 12) + 8 }]}>
+        <View style={styles.miniCover} />
+        <View style={styles.miniMeta}>
+          <Text style={styles.miniSub}>Music paused</Text>
+          <Text style={styles.miniTitle} numberOfLines={1}>
+            {player.track?.title ?? "Flexa Music"}
+          </Text>
+        </View>
+        <Feather name="more-vertical" size={18} color={musicTheme.muted} />
       </View>
     </View>
   );
@@ -304,17 +332,35 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 200,
-    backgroundColor: musicTheme.charcoal,
+    backgroundColor: "#0A0A0A",
     justifyContent: "space-between",
   },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  logoBars: { flexDirection: "row", alignItems: "flex-end", gap: 2, height: 16 },
+  logoBar: { width: 3, borderRadius: 1, backgroundColor: musicTheme.orange },
+  brand: { color: musicTheme.white, fontWeight: "900", fontSize: 16 },
   frame: {
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 12,
-    gap: 10,
+    gap: 12,
   },
-  badgeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  videoWrap: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#000",
+  },
   badge: {
+    position: "absolute",
+    top: 12,
+    left: 12,
     backgroundColor: musicTheme.orange,
     color: musicTheme.charcoal,
     fontWeight: "800",
@@ -324,32 +370,53 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: "hidden",
   },
-  advertiser: { color: musicTheme.muted, flex: 1, fontWeight: "600", fontSize: 13 },
+  controls: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  advertiserRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  advLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: musicTheme.forest,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  advLogoText: { color: musicTheme.orange, fontWeight: "900" },
+  advertiser: { color: musicTheme.white, fontWeight: "800", fontSize: 14 },
   video: {
     flex: 1,
     width: "100%",
     backgroundColor: "#000",
-    borderRadius: 12,
   },
   progressTrack: {
+    flex: 1,
     height: 4,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.25)",
     borderRadius: 2,
     overflow: "hidden",
   },
-  progressFill: { height: 4, backgroundColor: musicTheme.orange },
-  time: { color: musicTheme.muted, fontSize: 12, fontWeight: "600" },
+  progressFill: { height: 4, backgroundColor: "#fff" },
+  time: { color: "#fff", fontSize: 11, fontWeight: "600" },
   cta: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    gap: 6,
     backgroundColor: musicTheme.orange,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 12,
-    marginBottom: 8,
   },
-  ctaText: { color: musicTheme.charcoal, fontWeight: "800", fontSize: 16 },
+  ctaText: { color: musicTheme.charcoal, fontWeight: "800", fontSize: 13 },
   miniPaused: {
     marginHorizontal: 16,
     flexDirection: "row",
@@ -362,7 +429,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: musicTheme.line,
   },
-  miniMeta: { flex: 1 },
+  miniCover: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: "#1A1A1A",
+  },
+  miniMeta: { flex: 1, minWidth: 0 },
   miniTitle: { color: musicTheme.white, fontWeight: "800", fontSize: 14 },
   miniSub: { color: musicTheme.muted, fontSize: 11, marginTop: 2 },
 });

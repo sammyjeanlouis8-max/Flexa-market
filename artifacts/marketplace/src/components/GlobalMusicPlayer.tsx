@@ -22,6 +22,7 @@ import {
   musicToggleMute,
   gAudio,
 } from "@/lib/musicStore";
+import { isMusicAdBreakActive, subscribeMusicAdBreakActive } from "@/lib/musicAdBreak";
 
 function fmtDur(s: number): string {
   if (!s || s < 0) return "0:00";
@@ -91,12 +92,14 @@ export default function GlobalMusicPlayer() {
   const swipeAxisLocked = useRef<"x" | "y" | null>(null);
   const barDragging    = useRef(false);
 
+  const [adBreak, setAdBreak] = useState(() => isMusicAdBreakActive());
   useEffect(() => subscribeMusicState(() => forceUpdate(n => n + 1)), []);
+  useEffect(() => subscribeMusicAdBreakActive(setAdBreak), []);
 
   const s = getMusicState();
   const [, navigate] = useLocation();
   const onMusicPage = /^\/music(\/|$)/.test(location);
-  if (!s.track || onMusicPage) return null;
+  if (!s.track || onMusicPage || adBreak) return null;
 
   const { track, playing, currentTime, duration, muted } = s;
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;

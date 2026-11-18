@@ -23,6 +23,11 @@ import {
   MUSIC_RECENTLY_PLAYED_KEY,
   MUSIC_RECENT_SEARCHES_KEY,
 } from "@/lib/musicTheme";
+import {
+  dismissSponsoredBanner,
+  getSponsoredBannerCount,
+  getSponsoredHistory,
+} from "@/lib/musicAdBreak";
 
 export type MusicHomeTrack = {
   id: number;
@@ -448,7 +453,8 @@ export default function MusicHome({
         </div>
       ) : tab === "library" ? (
         <div className="px-4 pt-3" id="music-library">
-          <p className="music-section-title mb-3">Favorites</p>
+          <SponsoredAdsLibraryBlock setLocation={setLocation} />
+          <p className="music-section-title mb-3 mt-5">Favorites</p>
           {libraryTracks.length === 0 ? (
             <div className="flex flex-col items-center py-16 gap-3 text-center">
               <Heart size={36} className="text-white/15" />
@@ -718,6 +724,82 @@ function PlaylistRow({
         aria-label={`Play ${playlist.title}`}
       >
         <Play size={15} fill="currentColor" className="ml-0.5" />
+      </button>
+    </div>
+  );
+}
+
+function SponsoredAdsLibraryBlock({ setLocation }: { setLocation: (path: string) => void }) {
+  const [banner, setBanner] = useState(() => getSponsoredBannerCount());
+  const [historyCount, setHistoryCount] = useState(() => getSponsoredHistory().length);
+
+  useEffect(() => {
+    const refresh = () => {
+      setBanner(getSponsoredBannerCount());
+      setHistoryCount(getSponsoredHistory().length);
+    };
+    refresh();
+    const onVis = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", refresh);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+
+  return (
+    <div className="space-y-3" data-testid="music-library-sponsored">
+      {banner > 0 ? (
+        <div
+          className="flex items-center gap-2 rounded-2xl px-3 py-2.5"
+          style={{ background: "var(--music-forest)", border: "1px solid var(--music-line)" }}
+        >
+          <button
+            type="button"
+            className="flex-1 text-left min-w-0"
+            onClick={() => {
+              dismissSponsoredBanner();
+              setBanner(0);
+              setLocation("/music/sponsored-ads");
+            }}
+          >
+            <p className="text-sm font-bold text-white">
+              {banner} ad{banner === 1 ? "" : "s"} you heard
+            </p>
+            <p className="text-[11px] text-white/45">Tap to watch from Recent Sponsored Ads</p>
+          </button>
+          <button
+            type="button"
+            className="text-white/50 px-2 text-lg leading-none"
+            aria-label="Dismiss"
+            onClick={() => {
+              dismissSponsoredBanner();
+              setBanner(0);
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() => setLocation("/music/sponsored-ads")}
+        className="w-full flex items-center justify-between rounded-2xl px-3.5 py-3.5 text-left"
+        style={{ background: "var(--music-elevated)", border: "1px solid var(--music-line)" }}
+      >
+        <div>
+          <p className="text-sm font-bold text-white">Recent Sponsored Ads</p>
+          <p className="text-xs text-white/45 mt-0.5">
+            {historyCount > 0
+              ? `${historyCount} saved · heard while listening`
+              : "Ads heard in the background"}
+          </p>
+        </div>
+        <span className="text-[var(--music-orange)] text-sm font-bold">Open</span>
       </button>
     </div>
   );

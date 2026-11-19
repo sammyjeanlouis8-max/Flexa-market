@@ -1,0 +1,35 @@
+# EAS uploads from the monorepo root for this workspace.
+# Keep artifacts/mobile (and its needed native sources); drop everything else heavy.
+
+node_modules/
+**/node_modules/
+.pnpm-store/
+.git/
+attached_assets/
+artifacts/qa/
+artifacts/api-server/
+artifacts/marketplace/
+artifacts/mockup-sandbox/
+lib/
+docs/
+scripts/
+**/.expo/
+**/dist/
+**/.gradle/
+**/android/app/build/
+**/android/build/
+**/ios/Pods/
+**/ios/build/
+**/*.apk
+**/*.aab
+**/*.ipa
+**/*.mp4
+**/*.mov
+**/*.zip
+**/*.png
+!artifacts/mobile/assets/**/*.png
+artifacts/mobile/docs/play-store-screenshots/
+artifacts/mobile/modules/**/android/build/
+*.log
+.env
+.env.*

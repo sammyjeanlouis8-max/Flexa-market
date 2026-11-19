@@ -62,12 +62,12 @@ requireCondition(
   "Production build-number auto-increment must remain enabled.",
 );
 requireCondition(
-  appConfig.android?.package === "com.flexa.market",
-  "Android package must remain com.flexa.market.",
+  appConfig.android?.package === "com.flexamarket.app",
+  "Android package must remain com.flexamarket.app.",
 );
 requireCondition(
   Number.isInteger(appConfig.android?.versionCode) &&
-    appConfig.android.versionCode >= 39,
+    appConfig.android.versionCode >= 52,
   "Android versionCode must be an integer at least 39.",
 );
 for (const permission of [

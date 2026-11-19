@@ -84,6 +84,7 @@ import flexCardRouter from "./flex-card";
 import tvRouter from "./tv";
 import musicRouter from "./music";
 import storeManagerRouter from "./storeManager";
+import listingVariantsRouter from "./listingVariants";
 import bridgeRouter from "./bridge";
 import { extractToken, verifyToken } from "../lib/auth";
 import { loadAuthUser } from "../middlewares/auth";
@@ -267,5 +268,6 @@ router.use(promoPurchaseCommissionsRouter);
 router.use(tvRouter);
 router.use(musicRouter);
 router.use(storeManagerRouter);
+router.use(listingVariantsRouter);
 
 export default router;

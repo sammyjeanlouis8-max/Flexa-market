@@ -28,6 +28,8 @@ export type CreateListingInput = {
   images: string[];
   listingVideoUrl?: string | null;
   deliveryMethod?: "motorcycle" | "car" | "bus" | "self_delivery";
+  /** Legacy free-text size until listing_variants schema is migrated. */
+  itemSize?: string | null;
 };
 
 export type SellerSaleOrder = {
@@ -176,4 +178,83 @@ export function validateListingDraft(input: Partial<CreateListingInput>): string
   if (!input.location?.trim()) return "Location is required";
   if (!input.images?.length) return "Add at least one product image";
   return null;
+}
+
+export type SalesSummary = {
+  orderCount: number;
+  totalSales: number;
+  totalCommission: number;
+  netEarnings: number;
+};
+
+export async function fetchSalesSummary(opts: AuthOpts): Promise<SalesSummary> {
+  const res = await authedFetch("/sales/summary", opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Sales summary failed (${res.status})`);
+  return {
+    orderCount: Number(data.orderCount ?? 0),
+    totalSales: Number(data.totalSales ?? 0),
+    totalCommission: Number(data.totalCommission ?? 0),
+    netEarnings: Number(data.netEarnings ?? 0),
+  };
+}
+
+export type PayoutAccount = {
+  moncashNumber?: string | null;
+  moncashVerified?: boolean;
+  bankName?: string | null;
+  bankAccountName?: string | null;
+  bankAccountNumber?: string | null;
+  bankVerified?: boolean;
+  cardPayoutMethod?: "fm_wallet" | "stripe" | string | null;
+  [key: string]: unknown;
+} | null;
+
+export async function fetchPayoutAccount(opts: AuthOpts): Promise<PayoutAccount> {
+  const res = await authedFetch("/seller/payout-account", opts);
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Payout account failed (${res.status})`);
+  return data ?? null;
+}
+
+export async function saveMoncashPayout(
+  moncashNumber: string,
+  opts: AuthOpts,
+): Promise<PayoutAccount> {
+  const res = await authedFetch("/seller/payout-account/moncash", {
+    ...opts,
+    method: "PUT",
+    body: { moncashNumber },
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `MonCash save failed (${res.status})`);
+  return data;
+}
+
+export async function saveBankPayout(
+  input: { bankName: string; bankAccountName: string; bankAccountNumber: string },
+  opts: AuthOpts,
+): Promise<PayoutAccount> {
+  const res = await authedFetch("/seller/payout-account/bank", {
+    ...opts,
+    method: "PUT",
+    body: input,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Bank save failed (${res.status})`);
+  return data;
+}
+
+export async function setCardPayoutMethod(
+  method: "fm_wallet" | "stripe",
+  opts: AuthOpts,
+): Promise<PayoutAccount> {
+  const res = await authedFetch("/seller/payout-account/card-method", {
+    ...opts,
+    method: "PATCH",
+    body: { method },
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Card method failed (${res.status})`);
+  return data;
 }

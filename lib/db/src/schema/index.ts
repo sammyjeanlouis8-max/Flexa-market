@@ -1,6 +1,7 @@
 export * from "./users";
 export * from "./categories";
 export * from "./listings";
+export * from "./listing_variants";
 export * from "./messages";
 export * from "./offers";
 export * from "./reviews";

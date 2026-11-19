@@ -98,13 +98,19 @@ export default function JobsScreen() {
           }
           contentContainerStyle={!(jobs && jobs.length) ? { flexGrow: 1, justifyContent: "center", padding: 24 } : { padding: 16 }}
           ListHeaderComponent={
-            error ? (
-              <View style={styles.banner}>
-                <Text style={styles.bannerText}>{error}</Text>
-              </View>
-            ) : (
-              <Text style={styles.intro}>Open gigs near you. Apply directly from the board.</Text>
-            )
+            <View>
+              {error ? (
+                <View style={styles.banner}>
+                  <Text style={styles.bannerText}>{error}</Text>
+                </View>
+              ) : (
+                <Text style={styles.intro}>Open gigs near you. Apply directly from the board.</Text>
+              )}
+              <Pressable style={styles.postBtn} onPress={() => router.push("/jobs/post" as any)}>
+                <Feather name="plus-circle" size={16} color="#fff" />
+                <Text style={styles.postBtnText}>Post a job</Text>
+              </Pressable>
+            </View>
           }
           ListEmptyComponent={
             <View style={styles.center}>
@@ -117,19 +123,21 @@ export default function JobsScreen() {
             const pay = item.budgetUsd ?? item.payAmount;
             return (
               <View style={styles.card}>
-                <Text style={styles.title}>{item.title}</Text>
-                {item.description ? (
-                  <Text style={styles.desc} numberOfLines={3}>
-                    {item.description}
-                  </Text>
-                ) : null}
-                <View style={styles.meta}>
-                  <Text style={styles.metaText}>
-                    {[item.city, item.country].filter(Boolean).join(", ") || "Location TBD"}
-                  </Text>
-                  {pay != null ? <Text style={styles.pay}>{money(pay)}</Text> : null}
-                </View>
-                <Text style={styles.when}>{formatWhen(item.createdAt)}</Text>
+                <Pressable onPress={() => router.push(`/jobs/${item.id}` as any)}>
+                  <Text style={styles.title}>{item.title}</Text>
+                  {item.description ? (
+                    <Text style={styles.desc} numberOfLines={3}>
+                      {item.description}
+                    </Text>
+                  ) : null}
+                  <View style={styles.meta}>
+                    <Text style={styles.metaText}>
+                      {[item.city, item.country].filter(Boolean).join(", ") || "Location TBD"}
+                    </Text>
+                    {pay != null ? <Text style={styles.pay}>{money(pay)}</Text> : null}
+                  </View>
+                  <Text style={styles.when}>{formatWhen(item.createdAt)}</Text>
+                </Pressable>
                 <Pressable
                   style={[styles.btn, applying === item.id && { opacity: 0.6 }]}
                   onPress={() => void apply(item.id)}
@@ -150,6 +158,17 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.light.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
   intro: { color: "#64748B", marginBottom: 12, fontSize: 13 },
+  postBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: colors.flexaGreen,
+    marginBottom: 14,
+  },
+  postBtnText: { color: "#fff", fontWeight: "800" },
   banner: { backgroundColor: "#FEF2F2", padding: 10, borderRadius: 10, marginBottom: 10 },
   bannerText: { color: "#B91C1C", fontSize: 13 },
   empty: { fontWeight: "800", color: colors.light.text, marginTop: 8 },

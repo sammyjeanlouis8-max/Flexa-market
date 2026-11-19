@@ -56,6 +56,7 @@ export default function RootLayout() {
                     <Stack.Screen name="wallet-history" />
                     <Stack.Screen name="wallet-card" />
                     <Stack.Screen name="wallet-cashout" />
+                    <Stack.Screen name="wallet-redeem" />
                     <Stack.Screen name="chat/[id]" />
                     <Stack.Screen name="addresses" />
                     <Stack.Screen name="edit-profile" />
@@ -74,6 +75,7 @@ export default function RootLayout() {
                     <Stack.Screen name="track/[trackingNumber]" />
                     <Stack.Screen name="sell" />
                     <Stack.Screen name="sell-edit/[id]" />
+                    <Stack.Screen name="product-variations" />
                     <Stack.Screen name="my-listings" />
                     <Stack.Screen name="my-drafts" />
                     <Stack.Screen name="my-boosts" />
@@ -85,6 +87,9 @@ export default function RootLayout() {
                     <Stack.Screen name="boost-video" />
                     <Stack.Screen name="offers" />
                     <Stack.Screen name="sales" />
+                    <Stack.Screen name="seller-earnings" />
+                    <Stack.Screen name="seller-registration" />
+                    <Stack.Screen name="store-manager" />
                     <Stack.Screen name="kyc" />
                     <Stack.Screen name="subscription" />
                     <Stack.Screen name="admin" />
@@ -98,7 +103,10 @@ export default function RootLayout() {
                     <Stack.Screen name="chatbot" />
                     <Stack.Screen name="legal/[slug]" />
                     <Stack.Screen name="jobs" />
+                    <Stack.Screen name="jobs/[id]" />
+                    <Stack.Screen name="jobs/post" />
                     <Stack.Screen name="leaderboard" />
+                    <Stack.Screen name="referrals" />
                     <Stack.Screen name="commission-promo" />
                     <Stack.Screen name="loans" />
                     <Stack.Screen name="credit-score" />

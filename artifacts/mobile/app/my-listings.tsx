@@ -124,6 +124,18 @@ export default function MyListingsScreen() {
           </Pressable>
           <Pressable
             style={styles.actionBtn}
+            onPress={() =>
+              router.push({
+                pathname: "/product-variations",
+                params: { listingId: String(item.id) },
+              })
+            }
+          >
+            <Feather name="layers" size={16} color={colors.flexaGreen} />
+            <Text style={styles.actionText}>Variants</Text>
+          </Pressable>
+          <Pressable
+            style={styles.actionBtn}
             onPress={() => router.push({ pathname: "/boost", params: { listingId: String(item.id) } })}
           >
             <Feather name="zap" size={16} color={colors.flexaOrange} />

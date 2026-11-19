@@ -36,6 +36,8 @@ export type Listing = {
   stockQuantity?: number | null;
   listingVideoUrl?: string | null;
   boostVideoUrl?: string | null;
+  /** Legacy free-text size (pre multi-SKU variants). */
+  itemSize?: string | null;
 };
 
 export type HomeStats = {

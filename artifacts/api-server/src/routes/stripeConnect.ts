@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth, requireFinanceAdmin } from "../middlewares/auth";
-import { getStripeClient, getStripePublishableKey } from "../lib/stripeClient";
+import { getStripeClient } from "../lib/stripeClient";
 import { deriveStripeConnectStatus } from "../lib/stripeConnectStatus";
 import { buildStripeSellerPrefill } from "../lib/stripeSellerPrefill";
 import { getStripeOnlySellerCountryCode, requireSupportedStripeSellerCountry } from "../lib/usSellerPayoutPolicy";
@@ -22,18 +22,10 @@ const BASE_URL = (() => {
 })();
 
 /**
- * GET /api/stripe/config
- * Returns the Stripe publishable key for frontend usage.
+ * GET /api/stripe/config lives in stripeCheckout.ts (publishable key +
+ * country-aware wallet capabilities). Do not redeclare it here — this router
+ * is mounted first and would shadow the capabilities payload.
  */
-router.get("/stripe/config", async (_req, res) => {
-  try {
-    const publishableKey = await getStripePublishableKey();
-    return res.json({ publishableKey });
-  } catch (err) {
-    logger.error({ err }, "stripe/config error");
-    return res.status(500).json({ error: "Stripe not configured" });
-  }
-});
 
 /**
  * GET /api/stripe/connect/status

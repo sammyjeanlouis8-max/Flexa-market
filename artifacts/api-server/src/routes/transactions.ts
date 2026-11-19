@@ -2772,6 +2772,13 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
     const l = listings.find(x => x.id === lid);
     if (!l) { res.status(404).json({ error: `Pwodwi #${lid} pa jwenn` }); return; }
     if (l.status !== "available") { res.status(409).json({ error: `Pwodwi "${l.title}" deja vann` }); return; }
+    if ((l as any).moderationStatus && (l as any).moderationStatus !== "approved") {
+      res.status(409).json({
+        error: `Pwodwi "${l.title}" poko apwouve pou achte`,
+        code: "LISTING_NOT_APPROVED",
+      });
+      return;
+    }
     if (l.sellerId === userId) { res.status(400).json({ error: `Ou pa ka achte pwòp pwodwi ou: "${l.title}"` }); return; }
   }
 

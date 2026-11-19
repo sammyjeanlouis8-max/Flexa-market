@@ -588,6 +588,8 @@ export default {
     fromProfile: "Desde tu perfil",
     location: "Ubicación",
     locationPlaceholder: "Barrio, zona...",
+    locationPrivacyNotice:
+      "Tu dirección exacta es privada y no será visible para los compradores. Solo pueden mostrarse tu ciudad, estado y país.",
     photos: "Fotos",
     camera: "Cámara",
     gallery: "Galería",

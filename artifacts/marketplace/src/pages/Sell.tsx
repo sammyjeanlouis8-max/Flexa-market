@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
 import { useRestriction } from "@/hooks/useRestriction";
 import { Children, type ReactNode, useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle, Package, Tag, Truck, Eye, Sparkles, FileText, Send, CircleAlert } from "lucide-react";
+import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle, Package, Tag, Truck, Eye, Sparkles, FileText, Send, CircleAlert, Lock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor, stateForCity, statesFor } from "@/lib/countries";
@@ -28,6 +28,7 @@ import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import sellPreviewCar from "@/assets/sell-preview-car.webp";
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
+import { createUserAddress, fetchUserAddresses, updateUserAddress } from "@/lib/userAddressesApi";
 import SellerCenterShell, { SellAccordionSection, SELL_STEPS } from "@/components/seller/SellerCenterShell";
 import {
   SELL_VALIDATION_EN,
@@ -581,10 +582,40 @@ export default function Sell() {
     const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
     const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery ? Number(intlShippingCost || 0) : null, shippingCarriers: !isLocalDelivery && !isDominicanSelfDelivery ? shippingCarriers : [], deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : isDominicanSelfDelivery ? "self_delivery" : null, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
 
+    const persistSellerShipFrom = () => {
+      const tk = localStorage.getItem("flexamarket_token") ?? "";
+      const phoneDigits = String(user?.phone || "").replace(/\D/g, "");
+      if (!tk || !user?.name || phoneDigits.length < 6) return;
+      const street = String(values.location || "").trim();
+      const city = String(values.city || "").trim();
+      const region = String(values.state || city || "").trim();
+      const country = String(values.country || user.country || "").trim();
+      if (street.length < 3 || city.length < 2 || !country) return;
+      const payload = {
+        kind: "ship_from" as const,
+        label: "Warehouse",
+        fullName: user.name,
+        phone: String(user.phone),
+        street,
+        city,
+        region,
+        country,
+        isDefault: true,
+      };
+      void fetchUserAddresses(tk, "ship_from")
+        .then(({ defaultAddress }) => {
+          if (defaultAddress) return updateUserAddress(tk, defaultAddress.id, payload);
+          return createUserAddress(tk, payload);
+        })
+        .catch(() => null);
+    };
+
     const handleSuccess = (_listing: any) => {
       publishInFlightRef.current = false;
       publishIdempotencyKeyRef.current = null;
       const l = _listing as any;
+      // Persist seller shipping origin separately from buyer delivery addresses.
+      persistSellerShipFrom();
       if (isEditMode && editId) {
         // Edit mode: invalidate ALL home-page feed caches so price/currency
         // changes appear immediately in the VIP section, boosted feed, and
@@ -2161,6 +2192,19 @@ export default function Sell() {
               </FormItem>
             )} />
           </div>
+
+          <p
+            className="flex items-start gap-1.5 text-[11px] leading-snug text-muted-foreground"
+            data-testid="sell-location-privacy-notice"
+          >
+            <Lock className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span>
+              {t("sell.locationPrivacyNotice", {
+                defaultValue:
+                  "Your exact address is private and will not be visible to buyers. Only your city, state, and country may be displayed.",
+              })}
+            </span>
+          </p>
 
           {/* ── Package weight & dimensions ───────────────────────────────────── */}
           {selectedCountry && (

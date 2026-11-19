@@ -124,7 +124,11 @@ export function AdaptiveVideoPlayer({
           .then(() => { if (!cancelled) setPlaying(true); })
           .catch(() => {});
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      // Stop audio if this preview unmounts or src changes mid-play.
+      try { el.pause(); } catch { /* ignore */ }
+    };
   }, [autoPlay, mutedProp, src]);
 
   const publishMeta = useCallback((el: HTMLVideoElement) => {

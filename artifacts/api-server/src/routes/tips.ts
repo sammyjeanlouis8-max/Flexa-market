@@ -10,6 +10,7 @@ import { Router } from "express";
 import { db, driversTable, deliveriesTable, usersTable, promoWalletTable, walletTransactionsTable, notificationsTable } from "@workspace/db";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireCardNotBlocked } from "../middlewares/auth";
+import { deductWalletHybrid } from "./wallet";
 
 const router = Router();
 
@@ -69,6 +70,11 @@ router.post("/delivery/:id/tip", requireAuth, requireCardNotBlocked, async (req,
     res.status(403).json({ error: "Only the buyer or seller can tip the driver" });
     return;
   }
+  // Never allow minting wallet balance by tipping yourself (seller self-delivery).
+  if (userId === delivery.driverUserId) {
+    res.status(400).json({ error: "You cannot tip yourself", code: "SELF_TIP_FORBIDDEN" });
+    return;
+  }
 
   // Anti-fraud: one tip per user per delivery
   const [existingTip] = await db.execute(sql`
@@ -79,6 +85,23 @@ router.post("/delivery/:id/tip", requireAuth, requireCardNotBlocked, async (req,
   const existing = (existingTip as any[])?.[0];
   if (existing) {
     res.status(409).json({ error: "You have already tipped for this delivery", alreadyTipped: true });
+    return;
+  }
+
+  // Debit tipper first — tips must never mint free wallet balance.
+  const debit = await deductWalletHybrid(
+    userId,
+    amountNum,
+    `Tip for delivery FL-${deliveryId}`,
+    "tip_debit",
+    userId,
+  );
+  if (!debit.ok) {
+    const available = Math.round((((debit as any).promoBalance ?? 0) + ((debit as any).realBalance ?? 0)) * 100) / 100;
+    res.status(402).json({
+      error: `Insufficient wallet balance to tip $${amountNum.toFixed(2)}. Available: $${available.toFixed(2)}`,
+      code: "INSUFFICIENT_BALANCE",
+    });
     return;
   }
 
@@ -137,7 +160,6 @@ router.post("/delivery/:id/tip", requireAuth, requireCardNotBlocked, async (req,
     message: `Ou resevwa yon poubwa $${amountNum.toFixed(2)} pou livrezon FL-${deliveryId}${tipper?.name ? ` de ${tipper.name}` : ""}`,
     isRead: false,
   } as any).catch(() => {});
-
   res.json({ success: true, amountUsd: amountNum });
 });
 

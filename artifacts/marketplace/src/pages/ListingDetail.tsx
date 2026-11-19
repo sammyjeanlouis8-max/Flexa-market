@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
 import { persistCheckoutAddress, type SavedUserAddress } from "@/lib/userAddressesApi";
 import { SavedAddressPicker } from "@/components/checkout/SavedAddressPicker";
+import { evaluateDeliveryEligibility } from "@/lib/deliveryEligibility";
 
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
 import { listingImageProps } from "@/lib/listingImage";
@@ -671,7 +672,8 @@ export default function ListingDetail() {
   };
 
   const rememberCheckoutAddress = () => {
-    const country = (shipCountry || (listing as any)?.country || user?.country || "").trim();
+    // Never silently replace the buyer's country with the listing's country.
+    const country = (shipCountry || user?.country || "").trim();
     saveCheckoutAddress((user as any)?.id, {
       name: shipName.trim(),
       phone: shipPhone.trim(),
@@ -686,14 +688,38 @@ export default function ListingDetail() {
         name: shipName.trim(),
         phone: shipPhone.trim(),
         email: shipEmail.trim() || undefined,
-        street: [shipStreet.trim(), shipApartment.trim()].filter(Boolean).join(", "),
+        street: shipStreet.trim(),
         apartment: shipApartment.trim() || undefined,
         city: shipCity.trim(),
-        region: shipRegion.trim(),
+        region: shipRegion.trim() || "N/A",
         zip: shipZip.trim() || undefined,
         country,
       }, { existingId: selectedAddressId });
     }
+  };
+
+  const listingOffersInternationalShipping = (() => {
+    const carriers = (listing as any)?.shippingCarriers;
+    const cost = Number((listing as any)?.shippingCost ?? 0);
+    return (Array.isArray(carriers) && carriers.length > 0) || cost > 0;
+  })();
+
+  const continueFromAddressStep = () => {
+    const eligibility = evaluateDeliveryEligibility({
+      listingCountry: (listing as any)?.country,
+      destinationCountry: shipCountry || user?.country,
+      listingOffersInternationalShipping,
+    });
+    if (!eligibility.ok) {
+      toast({
+        title: t("checkout.shippingUnavailableTitle", { defaultValue: "Shipping unavailable" }),
+        description: eligibility.message,
+        variant: "destructive",
+      });
+      return;
+    }
+    rememberCheckoutAddress();
+    setPayStep("delivery");
   };
 
   useEffect(() => {
@@ -1377,7 +1403,7 @@ export default function ListingDetail() {
         shippingCity: shipCity.trim(),
         shippingRegion: shipRegion.trim(),
         shippingZip: shipZip.trim() || undefined,
-        shippingCountry: (shipCountry || (listing as any)?.country || user?.country || undefined),
+        shippingCountry: (shipCountry || user?.country || undefined),
         deliveryType: deliverySpeedTier === "pickup" ? "pickup" : "delivery",
         buyerProposedDeliveryFee: deliverySpeedTier === "custom" && deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined,
         deliveryFeeUsd: deliverySpeedTier === "pickup" ? undefined : (deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined),
@@ -3441,12 +3467,13 @@ export default function ListingDetail() {
                         token={token}
                         listingCountry={(listing as any)?.country}
                         accountCountry={user?.country}
+                        listingOffersInternationalShipping={listingOffersInternationalShipping}
                         selectedId={selectedAddressId}
                         onSelect={applySavedAddress}
                         onNeedForm={() => {
                           setShowAddressForm(true);
                           setAddressEditMode(true);
-                          if (!shipCountry) setShipCountry(((listing as any)?.country || user?.country || "") as string);
+                          if (!shipCountry) setShipCountry((user?.country || "") as string);
                         }}
                         onCancelForm={() => { setShowAddressForm(false); setAddressEditMode(false); }}
                         showForm={showAddressForm || (!selectedAddressId && !addressIsComplete)}
@@ -3459,7 +3486,7 @@ export default function ListingDetail() {
                           city: shipCity,
                           region: shipRegion,
                           postalCode: shipZip,
-                          country: shipCountry || (listing as any)?.country || user?.country || "",
+                          country: shipCountry || user?.country || "",
                           label: "Home",
                         }}
                         onDraftChange={(patch) => {
@@ -3475,6 +3502,19 @@ export default function ListingDetail() {
                         }}
                         onSaved={(addr) => {
                           applySavedAddress(addr);
+                          const eligibility = evaluateDeliveryEligibility({
+                            listingCountry: (listing as any)?.country,
+                            destinationCountry: addr.country,
+                            listingOffersInternationalShipping,
+                          });
+                          if (!eligibility.ok) {
+                            toast({
+                              title: t("checkout.shippingUnavailableTitle", { defaultValue: "Shipping unavailable" }),
+                              description: eligibility.message,
+                              variant: "destructive",
+                            });
+                            return;
+                          }
                           rememberCheckoutAddress();
                           setPayStep("delivery");
                         }}
@@ -3483,10 +3523,7 @@ export default function ListingDetail() {
                       {!showAddressForm && selectedAddressId && addressIsComplete && (
                         <CheckoutPrimaryButton
                           testId="button-shipping-continue"
-                          onClick={() => {
-                            rememberCheckoutAddress();
-                            setPayStep("delivery");
-                          }}
+                          onClick={continueFromAddressStep}
                         >
                           {t("listing.continueBtn")}
                         </CheckoutPrimaryButton>

@@ -616,7 +616,7 @@
         "Device FCM end-to-end verification",
         "Do not claim push delivery"
       ],
-      "work": "Expo token registration wired; google-services present for com.flexa.market"
+      "work": "Expo token registration wired; google-services present for com.flexamarket.app"
     },
     {
       "id": "kyc",
@@ -1532,7 +1532,7 @@
     "firebase": {
       "googleServicesPresent": true,
       "projectId": "flexa-market-8873a",
-      "androidPackage": "com.flexa.market",
+      "androidPackage": "com.flexamarket.app",
       "pushDeliveryClaimed": false,
       "notes": "Push token registration prepared via expo-notifications + POST /api/push/expo-token. No simulated notifications."
     }

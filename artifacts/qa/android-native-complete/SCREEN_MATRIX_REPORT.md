@@ -1,10 +1,11 @@
 # Android native vs WebView screen matrix — PR #258
 
 - **Package:** `com.flexamarket.app`
-- **Branch tip SHA:** `a7329e26932816d27652bfff161f7dea9299937f`
-- **EAS preview build:** `5c113660-8889-4a7c-af26-37e1445e8a16` (queued/building)
+- **Branch tip SHA:** `432d6eb0684748c03b785557bbba61233cad3c73`
+- **EAS preview build:** `328f4ca0-d562-4beb-981b-fdfaf483ac64` (IN_QUEUE; obsolete `5c113660` canceled)
 - **Policy:** Digital purchases **verified disabled** (guard ON). Music free. Physical checkout OK.
 - **Device test rule:** A screen counts as tested only after running on Android.
+- **Blockers:** Cloud emulator black screencap / flaky UiAutomator; Play key secret still missing.
 
 ## Status legend
 - `PASS` — native opened via normal nav; main action exercised; API/state OK; compared to WebView

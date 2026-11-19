@@ -596,15 +596,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   starsRow: { flexDirection: "row", gap: 8, marginVertical: 4 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: "#0F172A",
-  },
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,

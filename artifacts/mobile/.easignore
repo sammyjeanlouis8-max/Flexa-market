@@ -1,3 +1,4 @@
+# Project-local ignores (EAS also uploads from monorepo root — exclude siblings)
 node_modules/
 .expo/
 dist/
@@ -15,12 +16,23 @@ docs/play-store-screenshots/
 **/*.test.ts
 **/*.test.tsx
 artifacts/
-../qa/
-../../artifacts/qa/
 modules/**/android/build/
 modules/**/android/.gradle/
 *.apk
 *.aab
 *.ipa
-.git/
-**/.DS_Store
+
+# Monorepo root noise (paths relative to this package)
+../../attached_assets/
+../../node_modules/
+../../artifacts/qa/
+../../artifacts/api-server/
+../../artifacts/marketplace/
+../../artifacts/mockup-sandbox/
+../../lib/
+../../docs/
+../../scripts/
+../qa/
+../api-server/
+../marketplace/
+../mockup-sandbox/

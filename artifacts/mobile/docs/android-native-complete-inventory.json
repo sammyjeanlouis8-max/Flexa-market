@@ -18,7 +18,7 @@
     "renamed": {
       "sales-dashboard": "sales"
     },
-    "detail": "Nov 9 phase3-migration-inventory.json lists 82 features. The native-84-page-map (PR #243) totals 84 by adding shop-profile (public seller shop) and my-boosts (split from boost-analytics which previously pointed at /my-boosts), and renaming sales-dashboard \u2192 sales (same feature, not a net +1)."
+    "detail": "Nov 9 phase3-migration-inventory.json lists 82 features. The native-84-page-map (PR #243) totals 84 by adding shop-profile (public seller shop) and my-boosts (split from boost-analytics which previously pointed at /my-boosts), and renaming sales-dashboard → sales (same feature, not a net +1)."
   },
   "expoRouterFilesOnBranch": [
     "(tabs)/inbox.tsx",
@@ -240,11 +240,11 @@
     "/wallet/transfer"
   ],
   "summaryCounts": {
-    "complete": 74,
+    "complete": 78,
     "partial": 5,
     "placeholder": 0,
     "missing": 0,
-    "blocked": 4,
+    "blocked": 0,
     "out_of_scope": 1,
     "total": 84
   },
@@ -255,7 +255,6 @@
     "listing-detail",
     "public-tracking",
     "delivery-confirm",
-    "wallet-topup",
     "wallet-transfer",
     "flex-card-repay",
     "bnpl",
@@ -264,8 +263,6 @@
     "settings-subpages",
     "push-fcm",
     "kyc",
-    "subscription",
-    "subscription-billing",
     "referrals",
     "commission-promo",
     "jobs",
@@ -277,8 +274,6 @@
     "inventory",
     "seller-analytics",
     "earnings-payouts",
-    "boost",
-    "boost-paid",
     "boost-analytics",
     "my-boosts",
     "promo-videos",
@@ -291,7 +286,6 @@
     "loans",
     "credit-score",
     "flexa-tv",
-    "music-purchase",
     "admin-panel",
     "admin-users",
     "admin-moderation",
@@ -531,7 +525,7 @@
       "status": "complete",
       "reachableViaNormalNav": "yes",
       "apiWired": "yes",
-      "notes": "Balance + history; top-up CTA explains Android block."
+      "notes": "Balance + history + deposit (card/MonCash) + promo/redeem."
     },
     {
       "id": "wallet-topup",
@@ -539,10 +533,10 @@
       "webRoute": "/wallet",
       "androidRoute": "/wallet",
       "requiredRole": "buyer",
-      "status": "blocked",
+      "status": "complete",
       "reachableViaNormalNav": "yes",
-      "apiWired": "no",
-      "notes": "Play Billing / digital-goods policy. Non-payment wallet UI is complete."
+      "apiWired": "yes",
+      "notes": "Card Stripe Checkout + Haiti MonCash initiate wired; Android digital purchase guard off by default (owner override 2026-11-19)."
     },
     {
       "id": "wallet-transfer",
@@ -674,7 +668,7 @@
       "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "NativePlaceholder \u2014 KYC upload queued. | Promoted after #243/#221 merge (app/kyc.tsx)"
+      "notes": "NativePlaceholder — KYC upload queued. | Promoted after #243/#221 merge (app/kyc.tsx)"
     },
     {
       "id": "language-picker",
@@ -706,8 +700,8 @@
       "requiredRole": "buyer",
       "status": "complete",
       "reachableViaNormalNav": "no",
-      "apiWired": "no",
-      "notes": "NativePlaceholder. Non-payment plans UI can be completed without Play Billing. | Promoted after #243/#221 merge (app/subscription.tsx)"
+      "apiWired": "yes",
+      "notes": "Plans + my subscription + wallet-pay. | Promoted after #243/#221 merge (app/subscription.tsx)"
     },
     {
       "id": "subscription-billing",
@@ -715,10 +709,10 @@
       "webRoute": "/subscription",
       "androidRoute": "/subscription",
       "requiredRole": "buyer",
-      "status": "blocked",
+      "status": "complete",
       "reachableViaNormalNav": "no",
-      "apiWired": "no",
-      "notes": "Play Billing required for purchase; browse/cancel UI can still ship."
+      "apiWired": "yes",
+      "notes": "Wallet-pay subscribed from native /subscription; guard off by default."
     },
     {
       "id": "referrals",
@@ -948,8 +942,8 @@
       "requiredRole": "seller",
       "status": "complete",
       "reachableViaNormalNav": "no",
-      "apiWired": "no",
-      "notes": "NativePlaceholder. Non-paid boost UI can be completed; paid path blocked. | Promoted after #243/#221 merge (app/boost.tsx)"
+      "apiWired": "yes",
+      "notes": "Plans/estimate + wallet launch. | Promoted after #243/#221 merge (app/boost.tsx)"
     },
     {
       "id": "boost-paid",
@@ -957,10 +951,10 @@
       "webRoute": "/boost/:id",
       "androidRoute": "/boost",
       "requiredRole": "seller",
-      "status": "blocked",
+      "status": "complete",
       "reachableViaNormalNav": "no",
-      "apiWired": "no",
-      "notes": "Play Billing / digital goods. Campaign browse UI can still ship."
+      "apiWired": "yes",
+      "notes": "Wallet boost initiate wired on /boost; guard off by default."
     },
     {
       "id": "boost-analytics",
@@ -1033,7 +1027,7 @@
       "name": "Driver Registration",
       "webRoute": "/delivery/apply",
       "androidRoute": "/driver-apply",
-      "requiredRole": "buyer\u2192driver",
+      "requiredRole": "buyer→driver",
       "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
@@ -1111,10 +1105,10 @@
       "webRoute": "/music",
       "androidRoute": "/music",
       "requiredRole": "buyer",
-      "status": "blocked",
+      "status": "complete",
       "reachableViaNormalNav": "yes",
-      "apiWired": "no",
-      "notes": "Play Billing for paid tracks/subs. Browse/play/upload UI is complete."
+      "apiWired": "yes",
+      "notes": "Buy-with-wallet on now-playing for priced tracks; guard off by default."
     },
     {
       "id": "admin-panel",
@@ -1202,7 +1196,7 @@
       "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Intentional NativePlaceholder \u2014 do not restore WebView shell. | Promoted after #243/#221 merge (app/website.tsx)"
+      "notes": "Intentional NativePlaceholder — do not restore WebView shell. | Promoted after #243/#221 merge (app/website.tsx)"
     },
     {
       "id": "esim",
@@ -1229,10 +1223,10 @@
   ],
   "package": "com.flexamarket.app",
   "verification": {
-    "fileLevelImplemented": 74,
+    "fileLevelImplemented": 78,
     "deviceTestedPassed": 0,
     "deviceTestedFailed": 0,
-    "blocked": 4,
+    "blocked": 0,
     "outOfScope": 1,
     "note": "File-level complete means Expo route exists without NativePlaceholder and is wired in drawer/stack. Page counts as release-complete only after emulator role testing + screenshot pair."
   }

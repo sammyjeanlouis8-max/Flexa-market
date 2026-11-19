@@ -59,3 +59,32 @@ export async function fetchMySubscription(opts: AuthOpts): Promise<MySubscriptio
   if (!res.ok) throw new Error(data.error || `Subscription failed (${res.status})`);
   return data as MySubscription;
 }
+
+/** Pay vendor subscription with FM Wallet (Android unblocked). */
+export async function paySubscriptionWithWallet(
+  plan: string,
+  opts: AuthOpts,
+): Promise<{ ok: boolean; plan: string; expiresAt?: string }> {
+  const res = await fetch(`${getApiBase()}/subscription/wallet-pay`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${opts.token}`,
+      "User-Agent": "FlexaMarketAndroid/1.0.1",
+    },
+    body: JSON.stringify({ plan }),
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) {
+    const err = new Error(data.error || `Wallet pay failed (${res.status})`) as Error & {
+      code?: string;
+      needed?: number;
+    };
+    err.code = data.code;
+    err.needed = data.needed;
+    throw err;
+  }
+  return data;
+}

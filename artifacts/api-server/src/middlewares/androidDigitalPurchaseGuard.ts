@@ -4,6 +4,15 @@ export const ANDROID_DIGITAL_PURCHASE_UNAVAILABLE =
   "ANDROID_DIGITAL_PURCHASE_UNAVAILABLE";
 
 /**
+ * Owner override (2026-11-19): digital purchases are allowed again on Android.
+ * Set ANDROID_DIGITAL_PURCHASE_GUARD=1 to re-enable the Play-policy block.
+ */
+export function isAndroidDigitalPurchaseGuardEnabled(): boolean {
+  const raw = String(process.env.ANDROID_DIGITAL_PURCHASE_GUARD || "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+/**
  * Contract shared with the native clients. The standalone marker supports the
  * current/new app UA, while the Android + WebView/app-marker branch preserves
  * detection of the legacy stock Android WebView UA.
@@ -77,6 +86,10 @@ export function androidDigitalPurchaseGuard(
   res: Response,
   next: NextFunction,
 ): void {
+  if (!isAndroidDigitalPurchaseGuardEnabled()) {
+    next();
+    return;
+  }
   if (
     isAndroidNativeApp(req.get("user-agent")) &&
     isDigitalPurchaseInitiation(req.method, normalizedApiPath(req))

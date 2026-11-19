@@ -1,6 +1,6 @@
 /**
  * Wallet / Card FM — balance, history, referral, promo, platform revenue.
- * Top-up initiate / card session remain blocked on Android by server guard.
+ * Top-up initiate / card session are allowed on Android (guard disabled by default).
  */
 import { getApiBase } from "./api";
 
@@ -180,6 +180,45 @@ export async function redeemWalletCard(opts: AuthOpts, code: string): Promise<vo
   });
   const data = await readJson(res);
   if (!res.ok) throw new Error(data.error || `Redeem failed (${res.status})`);
+}
+
+/** Stripe Checkout session for USD wallet recharge (opens in system browser). */
+export async function createWalletCardTopupSession(
+  amountUsd: number,
+  opts: AuthOpts,
+): Promise<{ sessionUrl: string; paymentRef: string; sessionId: string }> {
+  const res = await authed("/wallet/topup/card/session", {
+    ...opts,
+    method: "POST",
+    body: { amountUsd },
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Card top-up failed (${res.status})`);
+  if (!data.sessionUrl) throw new Error("No checkout URL returned");
+  return {
+    sessionUrl: String(data.sessionUrl),
+    paymentRef: String(data.paymentRef || ""),
+    sessionId: String(data.sessionId || ""),
+  };
+}
+
+/** Haiti MonCash top-up initiate (pending admin/provider confirm). */
+export async function initiateWalletMoncashTopup(
+  amountHtg: number,
+  opts: AuthOpts & { phone?: string },
+): Promise<{ paymentRef: string; totalUsd: number; amountHtg: number }> {
+  const res = await authed("/wallet/topup/initiate", {
+    ...opts,
+    method: "POST",
+    body: { amountHtg, phone: opts.phone },
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `MonCash top-up failed (${res.status})`);
+  return {
+    paymentRef: String(data.paymentRef || ""),
+    totalUsd: Number(data.totalUsd ?? 0),
+    amountHtg: Number(data.amountHtg ?? amountHtg),
+  };
 }
 
 export async function fetchPlatformRevenue(

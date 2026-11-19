@@ -1,6 +1,5 @@
 /**
- * Native Boost campaign UI — wallet path when allowed.
- * Play Store digital-purchase guard may block initiate; message shown honestly.
+ * Native Boost campaign UI — wallet path when allowed (Android digital purchases unblocked).
  */
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -131,7 +130,7 @@ export default function BoostScreen() {
     if (!walletAllowed) {
       Alert.alert(
         "Wallet boost unavailable",
-        "Wallet is not an allowed boost payment method for your country. Card/MonCash checkout is blocked in the Android app (Google Play digital goods policy).",
+        "Wallet is not an allowed boost payment method for your country. Use flexamarket.com for card/MonCash boost checkout, or switch account country where wallet is enabled.",
       );
       return;
     }
@@ -153,7 +152,7 @@ export default function BoostScreen() {
     } catch (e) {
       if (e instanceof ApiError && e.code === "ANDROID_DIGITAL_PURCHASE_UNAVAILABLE") {
         setBlockedNote(
-          "Paid boosts are unavailable in the Android app under Google Play digital goods rules. Use flexamarket.com on the web, or wait for Play Billing support.",
+          "Paid boosts are temporarily blocked by the server guard (ANDROID_DIGITAL_PURCHASE_GUARD). Ask ops to disable it, or use flexamarket.com.",
         );
       } else if (e instanceof ApiError && e.code === "INSUFFICIENT_WALLET") {
         Alert.alert(
@@ -246,8 +245,10 @@ export default function BoostScreen() {
           <View style={styles.noteBox}>
             <Feather name="info" size={16} color="#0369A1" />
             <Text style={styles.noteText}>
-              Android app uses wallet when available. Card/MonCash digital checkout is blocked by
-              Play policy. {walletAllowed ? "Wallet is allowed for your account country." : "Wallet is not listed for your country."}
+              Launch pays from your FM Wallet.{" "}
+              {walletAllowed
+                ? "Wallet is allowed for your account country."
+                : "Wallet is not listed for your country — top up or use web card/MonCash."}
             </Text>
           </View>
 

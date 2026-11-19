@@ -1,6 +1,6 @@
 /**
  * Native Subscription plans — GET /api/subscription/plans + /my.
- * Purchase via web checkout / wallet-pay is blocked on Android (honest message).
+ * Paid plans use FM Wallet (`/subscription/wallet-pay`) — Android digital purchases unblocked.
  */
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
@@ -21,6 +21,7 @@ import { formatMoney } from "@/lib/orderUi";
 import {
   fetchMySubscription,
   fetchSubscriptionPlans,
+  paySubscriptionWithWallet,
   type MySubscription,
   type SubscriptionPlan,
 } from "@/lib/subscriptionApi";
@@ -45,6 +46,7 @@ export default function SubscriptionScreen() {
   const [mine, setMine] = useState<MySubscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
@@ -84,9 +86,36 @@ export default function SubscriptionScreen() {
       Alert.alert("Basic plan", "The Basic plan is free and already available.");
       return;
     }
+    if (!token) {
+      router.replace("/auth/login");
+      return;
+    }
     Alert.alert(
-      "Purchase unavailable in app",
-      "Google Play digital goods policy blocks in-app subscription checkout and wallet-pay on Android. View plans here; subscribe on flexamarket.com or via Play Billing when available.",
+      `Subscribe — ${plan.name}`,
+      `Pay ${formatMoney(plan.priceUsd)}/mo from your FM Wallet?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Pay with wallet",
+          onPress: () => {
+            void (async () => {
+              setPaying(true);
+              try {
+                await paySubscriptionWithWallet(plan.id, { token });
+                await load("refresh");
+                Alert.alert("Subscribed", `${plan.name} is now active.`);
+              } catch (e) {
+                Alert.alert(
+                  "Payment failed",
+                  e instanceof Error ? e.message : "Try again or top up your wallet.",
+                );
+              } finally {
+                setPaying(false);
+              }
+            })();
+          },
+        },
+      ],
     );
   };
 
@@ -126,10 +155,14 @@ export default function SubscriptionScreen() {
 
           <View style={styles.notice}>
             <Text style={styles.noticeText}>
-              Plans are shown for transparency. In-app purchase is blocked on Android until Play
-              Billing is wired; web checkout remains available on flexamarket.com.
+              Paid plans debit your FM Wallet instantly. Top up the wallet first if balance is low.
             </Text>
           </View>
+          {paying ? (
+            <View style={styles.center}>
+              <ActivityIndicator color={colors.flexaGreen} />
+            </View>
+          ) : null}
 
           {plans.map((plan) => {
             const active = mine?.plan === plan.id && !mine.isExpired;

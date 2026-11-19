@@ -1,8 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,7 +11,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { absoluteMusicUrl } from "@/lib/musicApi";
+import { useAuth } from "@/context/AuthContext";
+import { absoluteMusicUrl, buyMusicTrackWithWallet } from "@/lib/musicApi";
 import {
   getPlayerState,
   next,
@@ -35,7 +37,9 @@ function fmt(ms: number) {
 export default function NowPlayingScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { token } = useAuth();
   const [state, setState] = useState<PlayerState>(getPlayerState());
+  const [buying, setBuying] = useState(false);
 
   useEffect(() => subscribeMusicPlayer(setState), []);
 
@@ -43,6 +47,50 @@ export default function NowPlayingScreen() {
   const cover = track ? absoluteMusicUrl(track.cover_url) : null;
   const progress =
     state.durationMillis > 0 ? state.positionMillis / state.durationMillis : 0;
+
+  const priceUsd = useMemo(() => {
+    if (!track) return 0;
+    const raw = track.price_usd;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  }, [track]);
+
+  const isPaidTrack = useMemo(() => {
+    if (!track) return false;
+    const mono = String(track.monetization_type || "").toLowerCase();
+    return priceUsd > 0 || mono === "paid" || mono === "purchase" || mono === "buy";
+  }, [track, priceUsd]);
+
+  const onBuyWithWallet = () => {
+    if (!track) return;
+    if (!token) {
+      router.push("/auth/login");
+      return;
+    }
+    const label = priceUsd > 0 ? `$${priceUsd.toFixed(2)}` : "the listed price";
+    Alert.alert("Buy track", `Pay ${label} from your FM Wallet?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Buy",
+        onPress: () => {
+          void (async () => {
+            setBuying(true);
+            try {
+              await buyMusicTrackWithWallet(track.id, { token });
+              Alert.alert("Purchased", "Track unlocked with your wallet.");
+            } catch (e) {
+              Alert.alert(
+                "Purchase failed",
+                e instanceof Error ? e.message : "Top up your wallet and try again.",
+              );
+            } finally {
+              setBuying(false);
+            }
+          })();
+        },
+      },
+    ]);
+  };
 
   const cycleRepeat = () => {
     const order: PlayerState["repeat"][] = ["off", "all", "one"];
@@ -88,6 +136,23 @@ export default function NowPlayingScreen() {
 
       <Text style={styles.title}>{track.title}</Text>
       <Text style={styles.artist}>{track.artist}</Text>
+
+      {isPaidTrack ? (
+        <Pressable
+          style={[styles.buyBtn, buying && { opacity: 0.6 }]}
+          disabled={buying}
+          onPress={onBuyWithWallet}
+        >
+          <Feather name="shopping-bag" size={16} color={musicTheme.white} />
+          <Text style={styles.buyText}>
+            {buying
+              ? "Buying…"
+              : priceUsd > 0
+                ? `Buy · $${priceUsd.toFixed(2)}`
+                : "Buy with wallet"}
+          </Text>
+        </Pressable>
+      ) : null}
 
       <View style={styles.scrubber}>
         <View style={styles.scrubTrack}>
@@ -176,7 +241,19 @@ const styles = StyleSheet.create({
   vinylArt: { width: 200, height: 200, borderRadius: 100 },
   vinylFb: { alignItems: "center", justifyContent: "center" },
   title: { color: musicTheme.white, fontSize: 24, fontWeight: "800", textAlign: "center" },
-  artist: { color: musicTheme.muted, textAlign: "center", marginTop: 6, marginBottom: 20 },
+  artist: { color: musicTheme.muted, textAlign: "center", marginTop: 6, marginBottom: 12 },
+  buyBtn: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: musicTheme.forest,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    marginBottom: 16,
+  },
+  buyText: { color: musicTheme.white, fontWeight: "800", fontSize: 13 },
   scrubber: { marginBottom: 8 },
   scrubTrack: { height: 4, backgroundColor: musicTheme.line, borderRadius: 2, overflow: "hidden" },
   scrubFill: { height: 4, backgroundColor: musicTheme.orange },

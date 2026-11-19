@@ -10,20 +10,20 @@ Nov 9 inventory = **82** features. The 84-page matrix adds:
 1. `shop-profile` (public seller shop)
 2. `my-boosts` (split from boost-analytics)
 
-## Summary (file-level after #243+#221+#248)
+## Summary (file-level after #243+#221+#248 + digital-purchase unblock)
 ```json
 {
-  "complete": 74,
+  "complete": 78,
   "partial": 5,
   "placeholder": 0,
   "missing": 0,
-  "blocked": 4,
+  "blocked": 0,
   "out_of_scope": 1,
   "total": 84
 }
 ```
 
-Blocked (Play Billing / digital goods): wallet-topup paid, subscription-billing, boost-paid, music-purchase — non-payment UI kept; purchases disabled on Android.
+Unblocked (owner override 2026-11-19): `wallet-topup`, `subscription-billing`, `boost-paid`, `music-purchase` — server guard off unless `ANDROID_DIGITAL_PURCHASE_GUARD=1`.
 
 Out of scope: `esim` (redirect home; removed from stack/menus).
 
@@ -266,7 +266,7 @@ Sources: `artifacts/mobile/docs/phase3-migration-inventory.json` (82); `origin/c
 | 19 | `delivery-confirm` | Delivery Confirmation | `/orders/:id/delivered` | `/orders/[id]` | buyer | **partial** | yes | partial | Confirm + tip on order detail; driver rating modal not polished. |
 | 20 | `addresses` | Addresses | `/settings/addresses` | `/addresses` | buyer | **complete** | yes | yes | CRUD addresses. |
 | 21 | `wallet` | Wallet | `/wallet` | `/wallet` | buyer | **complete** | yes | yes | Balance + history; top-up CTA explains Android block. |
-| 22 | `wallet-topup` | Wallet top-up / Card FM recharge | `/wallet` | `/wallet` | buyer | **blocked** | yes | no | Play Billing / digital-goods policy. Non-payment wallet UI is complete. |
+| 22 | `wallet-topup` | Wallet top-up / Card FM recharge | `/wallet` | `/wallet` | buyer | **complete** | yes | yes | Card Stripe + Haiti MonCash; guard off by default. |
 | 23 | `wallet-transfer` | Wallet P2P transfer | `/wallet/transfer` | `—` | buyer | **missing** | no | no | Web /wallet/transfer; no /wallet-transfer route. |
 | 24 | `wallet-history` | Transaction History | `/wallet/history` | `/wallet` | buyer | **complete** | yes | yes | Embedded in /wallet with filters. |
 | 25 | `flex-card-repay` | Flex Card repay | `/flex-card/repay` | `—` | buyer | **missing** | no | no | Web /flex-card/repay; no native route. |
@@ -282,7 +282,7 @@ Sources: `artifacts/mobile/docs/phase3-migration-inventory.json` (82); `origin/c
 | 35 | `language-picker` | Language picker | `(modal)` | `/language-picker` | guest+ | **complete** | yes | yes | Via Settings. |
 | 36 | `offers` | Offers | `/offers` | `/offers` | buyer | **complete** | yes | yes | Accept/reject/counter + Stripe offer checkout. |
 | 37 | `subscription` | Subscription / VIP | `/subscription` | `/subscription` | buyer | **placeholder** | no | no | NativePlaceholder. Non-payment plans UI can be completed without Play Billing. |
-| 38 | `subscription-billing` | Subscription digital purchase | `/subscription` | `/subscription` | buyer | **blocked** | no | no | Play Billing required for purchase; browse/cancel UI can still ship. |
+| 38 | `subscription-billing` | Subscription digital purchase | `/subscription` | `/subscription` | buyer | **complete** | no | yes | Wallet-pay from native subscription screen; guard off by default. |
 | 39 | `referrals` | Referral System / Leaderboard | `/leaderboard` | `—` | buyer | **missing** | no | no | Web /leaderboard; no native route. |
 | 40 | `commission-promo` | Commission promo | `/commission-promo` | `—` | buyer | **missing** | no | no | Web /commission-promo; no native route. |
 | 41 | `jobs` | Jobs board | `/jobs` | `—` | buyer | **missing** | no | no | Web /jobs; no native route. |
@@ -304,7 +304,7 @@ Sources: `artifacts/mobile/docs/phase3-migration-inventory.json` (82); `origin/c
 | 57 | `seller-orders` | Seller Orders Management | `/orders (sales tab)` | `/sales` | seller | **complete** | yes | yes | Seller orders listed on /sales via /api/orders/sales. |
 | 58 | `earnings-payouts` | Earnings / Commissions / Payouts | `/settings/payments, wallet` | `—` | seller | **missing** | no | no | No /settings/payments native. |
 | 59 | `boost` | Boost Campaigns | `/boost/:listingId,/booster/*` | `/boost` | seller | **placeholder** | no | no | NativePlaceholder. Non-paid boost UI can be completed; paid path blocked. |
-| 60 | `boost-paid` | Paid Boost purchase | `/boost/:id` | `/boost` | seller | **blocked** | no | no | Play Billing / digital goods. Campaign browse UI can still ship. |
+| 60 | `boost-paid` | Paid Boost purchase | `/boost/:id` | `/boost` | seller | **complete** | no | yes | Wallet boost initiate; guard off by default. |
 | 61 | `boost-analytics` | Boost Analytics | `/boost-analytics` | `/my-boosts` | seller | **placeholder** | no | no | No /boost-analytics; /my-boosts is placeholder. |
 | 62 | `my-boosts` | My Boosts | `/my-boosts` | `/my-boosts` | seller | **placeholder** | no | no | Added in 84-count (not in Nov 9 82). NativePlaceholder. |
 | 63 | `promo-videos` | Promotional Videos / Video Discover | `/videos,/videos/watch` | `/videos` | guest+ | **placeholder** | no | no | NativePlaceholder discover feed. |
@@ -318,7 +318,7 @@ Sources: `artifacts/mobile/docs/phase3-migration-inventory.json` (82); `origin/c
 | 71 | `credit-score` | Credit Score | `/credit-score` | `—` | buyer (HT/DR) | **missing** | no | no | Web /credit-score; no native route. |
 | 72 | `flexa-tv` | Flexa TV | `/tv` | `—` | guest+ | **missing** | no | no | Web /tv; no native route. |
 | 73 | `flexa-music` | Flexa Music | `/music,/music/upload,/music/earnings,/music/play/:id` | `/(tabs)/music (+ /music/*)` | guest+/artist | **complete** | yes | yes | Tab + search/library/playlists/upload/now-playing. |
-| 74 | `music-purchase` | Music digital purchase | `/music` | `/(tabs)/music` | buyer | **blocked** | yes | no | Play Billing for paid tracks/subs. Browse/play/upload UI is complete. |
+| 74 | `music-purchase` | Music digital purchase | `/music` | `/(tabs)/music` | buyer | **complete** | yes | yes | Buy-with-wallet on now-playing; guard off by default. |
 | 75 | `admin-panel` | Flexa Control / Super Admin Dashboard | `/admin,/admin/*` | `/admin` | admin/superadmin/moderator | **placeholder** | no | no | NativePlaceholder; admin remains web-first. |
 | 76 | `admin-users` | User / Seller / Driver Management | `/admin/users,/admin/driver-applications,/admin/agents` | `—` | admin+ | **missing** | no | no | No /admin/users module routes. |
 | 77 | `admin-moderation` | Product Moderation / Reports / Disputes | `/admin/moderation,/admin/reports,/admin/appeals` | `—` | moderator+ | **missing** | no | no | No /admin/moderation module. |
@@ -334,62 +334,12 @@ Sources: `artifacts/mobile/docs/phase3-migration-inventory.json` (82); `origin/c
 
 Statuses `partial` | `placeholder` | `missing` | `blocked` (excludes `out_of_scope` / `esim`):
 
-- `auth-phone-login` (missing)
-- `auth-forgot-password` (missing)
-- `categories` (partial)
-- `listing-detail` (partial)
-- `public-tracking` (missing)
-- `delivery-confirm` (partial)
-- `wallet-topup` (blocked)
-- `wallet-transfer` (missing)
-- `flex-card-repay` (missing)
-- `bnpl` (missing)
-- `profile-account` (partial)
-- `shop-profile` (missing)
-- `settings-subpages` (missing)
-- `push-fcm` (partial)
-- `kyc` (placeholder)
-- `subscription` (placeholder)
-- `subscription-billing` (blocked)
-- `referrals` (missing)
-- `commission-promo` (missing)
-- `jobs` (missing)
-- `calculator` (missing)
-- `help-center` (missing)
-- `legal` (missing)
-- `edit-listing` (missing)
-- `video-upload` (placeholder)
-- `inventory` (missing)
-- `seller-analytics` (missing)
-- `earnings-payouts` (missing)
-- `boost` (placeholder)
-- `boost-paid` (blocked)
-- `boost-analytics` (placeholder)
-- `my-boosts` (placeholder)
-- `promo-videos` (placeholder)
-- `drafts` (missing)
-- `store-manager` (missing)
-- `seller-registration` (missing)
-- `driver-apply` (placeholder)
-- `driver-dashboard` (placeholder)
-- `cash-agent` (missing)
-- `loans` (placeholder)
-- `credit-score` (missing)
-- `flexa-tv` (missing)
-- `music-purchase` (blocked)
-- `admin-panel` (placeholder)
-- `admin-users` (missing)
-- `admin-moderation` (missing)
-- `admin-finance` (missing)
-- `admin-support` (missing)
-- `admin-analytics` (missing)
-- `delete-account` (missing)
-- `website-embed` (placeholder)
+Remaining gaps are mostly `partial` device-verify items (see JSON `needsImplementationInScope`). Digital-purchase rows are **complete** after the 2026-11-19 unblock.
 
 ## Policy notes
 
 - **Flexa eSIM** → `out_of_scope` for Android native completion.
-- **Digital purchases** (`wallet-topup`, `subscription-billing`, `boost-paid`, `music-purchase`) → `blocked` for Play Billing purchase; non-payment UI can still be completed where noted.
+- **Digital purchases** (`wallet-topup`, `subscription-billing`, `boost-paid`, `music-purchase`) → **complete**; server guard off unless `ANDROID_DIGITAL_PURCHASE_GUARD=1`.
 - **website-embed** remains intentional placeholder (no WebView marketplace shell).
 
 ## Machine-readable

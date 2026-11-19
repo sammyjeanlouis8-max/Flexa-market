@@ -1,17 +1,21 @@
 /**
- * Sponsored video player — autoplay with sound ON, 9:16 / 16:9 contain,
- * Sponsored badge, sound toggle, View Product, Message, Skip (after 10s).
+ * Sponsored video feed pager — opens on the selected listing id, then lets the
+ * user scroll through remaining eligible promos (WebView VideoFeed parity).
+ * Home strip passes autoplay=1 after tap; cards themselves never autoplay.
  */
 import { Feather } from "@expo/vector-icons";
 import { Audio, ResizeMode, Video, AVPlaybackStatus } from "expo-av";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   AppState,
+  FlatList,
   Pressable,
   StyleSheet,
   Text,
   View,
+  ViewToken,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,38 +28,34 @@ import {
   formatDuration,
   trackBoosterEvent,
   trackVideoImpression,
+  type PromoVideo,
 } from "@/lib/videosApi";
 
 const SKIP_AFTER_SEC = 10;
 
-export default function VideoWatchScreen() {
+type WatchItem = PromoVideo & { key: string };
+
+function VideoPage({
+  item,
+  active,
+  autoplay,
+  height,
+  width,
+  insetsTop,
+  insetsBottom,
+  onClose,
+}: {
+  item: WatchItem;
+  active: boolean;
+  autoplay: boolean;
+  height: number;
+  width: number;
+  insetsTop: number;
+  insetsBottom: number;
+  onClose: () => void;
+}) {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
   const { token } = useAuth();
-  const { country } = useMarketplace();
-  const params = useLocalSearchParams<{
-    id?: string;
-    videoUrl?: string;
-    title?: string;
-    thumb?: string;
-    sellerId?: string;
-    isVideoOnly?: string;
-    autoplay?: string;
-  }>();
-
-  const listingId = Number(params.id || 0);
-  const [videoUrl, setVideoUrl] = useState(
-    () => resolveMediaUrl(params.videoUrl) || params.videoUrl || "",
-  );
-  const [title, setTitle] = useState(params.title || "Sponsored");
-  const [sellerId, setSellerId] = useState<number | null>(
-    params.sellerId ? Number(params.sellerId) : null,
-  );
-  const [isVideoOnly, setIsVideoOnly] = useState(params.isVideoOnly === "1");
-  const [thumb, setThumb] = useState(params.thumb || "");
-  const autoplay = params.autoplay !== "0";
-
   const videoRef = useRef<Video>(null);
   const [muted, setMuted] = useState(false);
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
@@ -63,110 +63,58 @@ export default function VideoWatchScreen() {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const skipReady = countdown <= 0;
-  const skipHandled = useRef(false);
+  const listingId = item.listingId || item.id;
+  const videoUrl = resolveMediaUrl(item.videoUrl) || item.videoUrl || "";
+  const thumb = resolveMediaUrl(item.thumbnail || item.thumbnailUrl) || item.thumbnail || "";
 
   useEffect(() => {
-    if (videoUrl || !listingId) return;
-    let cancelled = false;
-    const applyHit = (hit: {
-      videoUrl?: string | null;
-      title?: string | null;
-      sellerId?: number | null;
-      isVideoOnly?: boolean;
-      thumbnail?: string | null;
-    }) => {
-      const uri = resolveMediaUrl(hit.videoUrl) || hit.videoUrl || "";
-      if (!uri) return false;
-      setVideoUrl(uri);
-      setTitle(hit.title || "Sponsored");
-      setSellerId(hit.sellerId ?? null);
-      setIsVideoOnly(!!hit.isVideoOnly);
-      setThumb(hit.thumbnail || "");
-      return true;
-    };
-    void (async () => {
-      // Auth feed can exclude promotions the viewer already saw / blocked sellers.
-      // Fall back to guest public feed so deep-link / autoplay still resolves.
-      const attempts: Array<{ token?: string | null; country?: string }> = [
-        { token, country },
-        { token: null, country },
-        { token: null },
-      ];
-      for (const attempt of attempts) {
-        if (cancelled) return;
-        try {
-          const data = await fetchVideosFeed(
-            { country: attempt.country, page: 1, limit: 30, sort: "all" },
-            { token: attempt.token },
-          );
-          const hit = data.videos.find((v) => v.id === listingId || v.listingId === listingId);
-          if (hit && applyHit(hit)) return;
-        } catch {
-          /* try next */
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [videoUrl, listingId, country, token]);
+    if (!active || !listingId) return;
+    void trackVideoImpression(listingId, { token });
+    void trackBoosterEvent(listingId, "view", { token });
+    void trackBoosterEvent(listingId, "video_view", { token });
+  }, [active, listingId, token]);
 
   useEffect(() => {
-    void Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-    });
-  }, []);
-
-  useEffect(() => {
-    if (listingId) {
-      void trackVideoImpression(listingId, { token });
-      void trackBoosterEvent(listingId, "view", { token });
-      void trackBoosterEvent(listingId, "video_view", { token });
-    }
-  }, [listingId, token]);
-
-  useEffect(() => {
-    if (!autoplay) return;
+    if (!active || !autoplay) return;
+    setCountdown(SKIP_AFTER_SEC);
     const id = setInterval(() => {
       setCountdown((c) => (c > 0 ? c - 1 : 0));
     }, 1000);
     return () => clearInterval(id);
-  }, [autoplay]);
+  }, [active, autoplay, listingId]);
+
+  useEffect(() => {
+    if (!active) {
+      void videoRef.current?.pauseAsync().catch(() => {});
+      return;
+    }
+    if (autoplay) {
+      void videoRef.current?.playAsync().catch(() => {});
+    } else {
+      void videoRef.current?.pauseAsync().catch(() => {});
+    }
+  }, [active, autoplay, videoUrl]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
       if (state !== "active") {
-        void videoRef.current?.pauseAsync();
+        void videoRef.current?.pauseAsync().catch(() => {});
       }
     });
     return () => sub.remove();
   }, []);
 
-  const stopAndClose = useCallback(async () => {
-    if (skipHandled.current) return;
-    skipHandled.current = true;
-    try {
-      await videoRef.current?.stopAsync();
-    } catch {
-      /* ignore */
-    }
-    if (router.canGoBack()) router.back();
-    else router.replace("/videos");
-  }, [router]);
-
   const onSkip = () => {
     if (!skipReady) return;
     if (listingId) void trackBoosterEvent(listingId, "skip", { token });
-    void stopAndClose();
+    onClose();
   };
 
   const onStatus = (status: AVPlaybackStatus) => {
     if (!status.isLoaded) return;
     setPosition(status.positionMillis / 1000);
     if (status.durationMillis) setDuration(status.durationMillis / 1000);
-    if (status.didJustFinish) void stopAndClose();
+    if (status.didJustFinish && active) onClose();
   };
 
   const aspect = natural ? natural.w / natural.h : 9 / 16;
@@ -177,13 +125,9 @@ export default function VideoWatchScreen() {
     : Math.min(height * 0.72, width / aspect);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]} testID="promo-watch">
+    <View style={[styles.page, { height, paddingTop: insetsTop }]} testID={`promo-watch-page-${listingId}`}>
       <View style={styles.header}>
-        <Pressable
-          onPress={() => void stopAndClose()}
-          style={styles.iconBtn}
-          accessibilityLabel="Go back"
-        >
+        <Pressable onPress={onClose} style={styles.iconBtn} accessibilityLabel="Go back">
           <Feather name="arrow-left" size={20} color="#FFFFFF" />
         </Pressable>
         <Text style={styles.brand}>Flexa Market</Text>
@@ -200,11 +144,11 @@ export default function VideoWatchScreen() {
               style={StyleSheet.absoluteFill}
               source={{ uri: videoUrl }}
               resizeMode={ResizeMode.CONTAIN}
-              shouldPlay={autoplay}
+              shouldPlay={active && autoplay}
               isLooping={false}
               isMuted={muted}
               volume={1}
-              posterSource={thumb ? { uri: resolveMediaUrl(thumb) || thumb } : undefined}
+              posterSource={thumb ? { uri: thumb } : undefined}
               usePoster={!!thumb}
               onReadyForDisplay={(e) => {
                 const s = e.naturalSize;
@@ -246,15 +190,15 @@ export default function VideoWatchScreen() {
         </View>
 
         <Text style={styles.title} numberOfLines={2}>
-          {title}
+          {item.title || "Sponsored"}
         </Text>
 
-        {!isVideoOnly ? (
+        {!item.isVideoOnly ? (
           <Pressable
             style={styles.viewProduct}
             onPress={() => {
               if (listingId) void trackBoosterEvent(listingId, "click", { token });
-              void videoRef.current?.pauseAsync();
+              void videoRef.current?.pauseAsync().catch(() => {});
               router.push(`/listing/${listingId}` as any);
             }}
             testID="promo-view-product"
@@ -265,19 +209,19 @@ export default function VideoWatchScreen() {
         ) : null}
       </View>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insetsBottom, 12) }]}>
         <Pressable
           style={styles.messageBtn}
           onPress={() => {
-            void videoRef.current?.pauseAsync();
-            if (sellerId) {
+            void videoRef.current?.pauseAsync().catch(() => {});
+            if (item.sellerId) {
               router.push({
                 pathname: "/chat/[id]",
                 params: {
-                  id: String(sellerId),
-                  draft: isVideoOnly
-                    ? `Hi — I saw your promotional video "${title}" on Flexa Market.`
-                    : `Hi — I'm interested in "${title}" from your promo video.`,
+                  id: String(item.sellerId),
+                  draft: item.isVideoOnly
+                    ? `Hi — I saw your promotional video "${item.title || ""}" on Flexa Market.`
+                    : `Hi — I'm interested in "${item.title || ""}" from your promo video.`,
                 },
               } as any);
             } else {
@@ -304,8 +248,208 @@ export default function VideoWatchScreen() {
   );
 }
 
+export default function VideoWatchScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { height, width } = useWindowDimensions();
+  const { token } = useAuth();
+  const { country } = useMarketplace();
+  const params = useLocalSearchParams<{
+    id?: string;
+    videoUrl?: string;
+    title?: string;
+    thumb?: string;
+    sellerId?: string;
+    isVideoOnly?: string;
+    autoplay?: string;
+    fromHome?: string;
+  }>();
+
+  const selectedId = Number(params.id || 0);
+  const autoplay = params.autoplay !== "0";
+  const [items, setItems] = useState<WatchItem[]>([]);
+  const [activeId, setActiveId] = useState(selectedId || 0);
+  const [loading, setLoading] = useState(true);
+  const [initialIndex, setInitialIndex] = useState(0);
+  const listRef = useRef<FlatList<WatchItem>>(null);
+
+  const seedItem = useMemo<WatchItem | null>(() => {
+    if (!selectedId && !params.videoUrl) return null;
+    return {
+      key: `seed-${selectedId || "x"}`,
+      id: selectedId || 0,
+      listingId: selectedId || 0,
+      title: params.title || "Sponsored",
+      videoUrl: params.videoUrl || "",
+      thumbnail: params.thumb || "",
+      thumbnailUrl: params.thumb || "",
+      sellerId: params.sellerId ? Number(params.sellerId) : null,
+      isVideoOnly: params.isVideoOnly === "1",
+    };
+  }, [params.isVideoOnly, params.sellerId, params.thumb, params.title, params.videoUrl, selectedId]);
+
+  useEffect(() => {
+    void Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      const attempts: Array<{ token?: string | null; country?: string; sort: string }> = [
+        { token, country, sort: "new" },
+        { token: null, country, sort: "new" },
+        { token: null, sort: "new" },
+        { token, country, sort: "all" },
+        { token: null, sort: "all" },
+      ];
+      let feed: PromoVideo[] = [];
+      for (const attempt of attempts) {
+        if (cancelled) return;
+        try {
+          const data = await fetchVideosFeed(
+            {
+              country: attempt.country,
+              page: 1,
+              limit: 40,
+              sort: attempt.sort,
+            },
+            { token: attempt.token },
+          );
+          if (data.videos?.length) {
+            feed = data.videos;
+            break;
+          }
+        } catch {
+          /* try next */
+        }
+      }
+      if (cancelled) return;
+
+      const mapped: WatchItem[] = feed.map((v) => ({
+        ...v,
+        key: `v-${v.listingId || v.id}`,
+      }));
+
+      // Ensure the tapped card is present and first among equals for deep-link open.
+      if (seedItem && seedItem.id) {
+        const idx = mapped.findIndex(
+          (v) => v.id === seedItem.id || v.listingId === seedItem.id,
+        );
+        if (idx >= 0) {
+          if (seedItem.videoUrl) {
+            mapped[idx] = {
+              ...mapped[idx],
+              videoUrl: seedItem.videoUrl || mapped[idx].videoUrl,
+              title: seedItem.title || mapped[idx].title,
+              thumbnail: seedItem.thumbnail || mapped[idx].thumbnail,
+            };
+          }
+        } else {
+          mapped.unshift(seedItem);
+        }
+      } else if (mapped.length === 0 && seedItem) {
+        mapped.push(seedItem);
+      }
+
+      const start = Math.max(
+        0,
+        mapped.findIndex((v) => v.id === selectedId || v.listingId === selectedId),
+      );
+      setItems(mapped);
+      setInitialIndex(start >= 0 ? start : 0);
+      setActiveId(
+        mapped[start >= 0 ? start : 0]?.listingId ||
+          mapped[start >= 0 ? start : 0]?.id ||
+          selectedId,
+      );
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [country, seedItem, selectedId, token]);
+
+  const onClose = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace(params.fromHome === "1" ? "/" : "/videos");
+  }, [params.fromHome, router]);
+
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      const first = viewableItems.find((v) => v.isViewable)?.item as WatchItem | undefined;
+      if (!first) return;
+      setActiveId(first.listingId || first.id);
+    },
+  ).current;
+
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
+
+  if (loading && items.length === 0) {
+    return (
+      <View style={[styles.root, styles.loading]} testID="promo-watch">
+        <ActivityIndicator color="#FFFFFF" size="large" />
+      </View>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <View style={[styles.root, styles.loading]} testID="promo-watch">
+        <Text style={styles.missingText}>Video unavailable</Text>
+        <Pressable onPress={onClose} style={{ marginTop: 16 }}>
+          <Text style={styles.soundText}>Go back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.root} testID="promo-watch">
+      <FlatList
+        ref={listRef}
+        data={items}
+        keyExtractor={(item) => item.key}
+        pagingEnabled
+        showsVerticalScrollIndicator={false}
+        initialScrollIndex={initialIndex}
+        getItemLayout={(_, index) => ({
+          length: height,
+          offset: height * index,
+          index,
+        })}
+        onScrollToIndexFailed={(info) => {
+          setTimeout(() => {
+            listRef.current?.scrollToIndex({ index: info.index, animated: false });
+          }, 50);
+        }}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        renderItem={({ item }) => (
+          <VideoPage
+            item={item}
+            active={activeId === (item.listingId || item.id)}
+            autoplay={autoplay}
+            height={height}
+            width={width}
+            insetsTop={insets.top}
+            insetsBottom={insets.bottom}
+            onClose={onClose}
+          />
+        )}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.flexaGreen },
+  loading: { alignItems: "center", justifyContent: "center" },
+  page: { backgroundColor: colors.flexaGreen },
   header: {
     height: 44,
     flexDirection: "row",

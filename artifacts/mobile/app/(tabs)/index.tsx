@@ -16,6 +16,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { HomePromoVideoStrip } from "@/components/HomePromoVideoStrip";
 import { ListingCard } from "@/components/ListingCard";
 import { SearchBar } from "@/components/SearchBar";
 import { SkeletonCard } from "@/components/SkeletonCard";
@@ -200,6 +201,9 @@ export default function HomeTab() {
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      {/* WebView parity: ≤2 newest eligible promo cards, poster only (no autoplay). */}
+      <HomePromoVideoStrip />
     </View>
   );
 

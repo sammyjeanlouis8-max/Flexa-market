@@ -20,6 +20,9 @@ export type PromoVideo = {
   isVideoOnly?: boolean;
   isBoosted?: boolean;
   durationSec?: number | null;
+  boostEndAt?: string | null;
+  boostStartAt?: string | null;
+  createdAt?: string | null;
 };
 
 export type RandomBoostAd = {
@@ -74,6 +77,9 @@ function normalizeVideo(raw: any): PromoVideo {
     isVideoOnly: !!raw.isVideoOnly || raw.status === "hidden",
     isBoosted: raw.isBoosted !== false,
     durationSec: raw.durationSec ?? raw.duration ?? null,
+    boostEndAt: raw.boostEndAt ?? raw.boostExpiresAt ?? null,
+    boostStartAt: raw.boostStartAt ?? raw.boostActivatedAt ?? null,
+    createdAt: raw.createdAt ?? null,
   };
 }
 

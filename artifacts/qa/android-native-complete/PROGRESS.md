@@ -2,20 +2,23 @@
 
 - **PR:** https://github.com/sammyjeanlouis8-max/Flexa-market/pull/258
 - **Start SHA:** `d19ce179a3302f9730cd3e899a9a9923b7a5e4bd`
+- **Branch tip:** see latest on `cursor/android-native-complete-d484`
 - **Package:** `com.flexamarket.app`
-- **EAS preview build:** https://expo.dev/accounts/muelsa89/projects/mobile/builds/2b595ebe-9784-40f9-b9ef-ed0061de96f5
 
-## 82 vs 84
-Added `shop-profile` + `my-boosts` vs Nov 9’s 82-feature inventory.
+## Builds
+| Artifact | Status | Link / path |
+|----------|--------|-------------|
+| EAS preview APK | IN_QUEUE | https://expo.dev/accounts/muelsa89/projects/mobile/builds/2b595ebe-9784-40f9-b9ef-ed0061de96f5 |
+| Local release APK (embedded JS, debug-signed) | Built | `/opt/cursor/artifacts/flexa-android-native-complete-release.apk` (72MB) |
+| versionCode | app.json floor 64; EAS remote showed 53 on queued build | |
 
-## File-level status
-All in-scope `NativePlaceholder` routes replaced via #243/#221/#248 reuse.  
-eSIM: out of scope (redirect). Digital purchase: guarded.
+## Device testing blocker
+Cloud VM emulator has **no KVM** (`/dev/kvm` unavailable). Emulator boots but **System UI ANR** / black screen — cannot complete interactive role matrix or native screenshot pairs on this host.
 
-## WebView reference screenshots (guest)
-See `webview-refs/` — home, login, search, listing detail.
+**Next:** install EAS preview APK (or local release APK) on a physical device / KVM-capable emulator, then capture WebView\|native pairs into `artifacts/qa/android-native-complete/`.
 
-## Remaining for release-complete
-1. Emulator/device pass per role for every in-scope page
-2. Native screenshots paired with WebView refs
-3. Confirm Play release channel before public submit (`eas.json` submit track = `internal`)
+## WebView refs (guest) ready
+`webview-refs/` — home, login, search, listing detail.
+
+## Release channel
+**Awaiting confirmation** before Play submit. `eas.json` submit track = `internal`.

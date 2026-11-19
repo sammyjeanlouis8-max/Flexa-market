@@ -2,23 +2,23 @@
 
 - **PR:** https://github.com/sammyjeanlouis8-max/Flexa-market/pull/258
 - **Start SHA:** `d19ce179a3302f9730cd3e899a9a9923b7a5e4bd`
-- **Branch tip:** see latest on `cursor/android-native-complete-d484`
-- **Package:** `com.flexamarket.app`
+- **EAS build commit:** `5cfa792005f5d071446ffdd539e1ef8e128fc8cd`
+- **Package:** `com.flexamarket.app` (aapt verified)
+- **versionCode:** 53
+- **versionName:** 1.0.1
 
 ## Builds
-| Artifact | Status | Link / path |
-|----------|--------|-------------|
-| EAS preview APK | IN_QUEUE | https://expo.dev/accounts/muelsa89/projects/mobile/builds/2b595ebe-9784-40f9-b9ef-ed0061de96f5 |
-| Local release APK (embedded JS, debug-signed) | Built | `/opt/cursor/artifacts/flexa-android-native-complete-release.apk` (72MB) |
-| versionCode | app.json floor 64; EAS remote showed 53 on queued build | |
+| Artifact | Status | Link |
+|----------|--------|------|
+| EAS preview APK | **FINISHED** | https://expo.dev/accounts/muelsa89/projects/mobile/builds/2b595ebe-9784-40f9-b9ef-ed0061de96f5 |
+| APK download | ready | https://expo.dev/artifacts/eas/CjX3HZPKNFnQhKGzsJg_IdF9pcTDyXgSL2U4mCp016g.apk |
+| Local agent copy | saved | `/opt/cursor/artifacts/flexa-eas-preview-vc53.apk` |
 
-## Device testing blocker
-Cloud VM emulator has **no KVM** (`/dev/kvm` unavailable). Emulator boots but **System UI ANR** / black screen — cannot complete interactive role matrix or native screenshot pairs on this host.
-
-**Next:** install EAS preview APK (or local release APK) on a physical device / KVM-capable emulator, then capture WebView\|native pairs into `artifacts/qa/android-native-complete/`.
-
-## WebView refs (guest) ready
-`webview-refs/` — home, login, search, listing detail.
+## Emulator smoke (Cloud VM)
+- Install: **Success**
+- Launch MainActivity / process: **running** (`pidof` + resumed activity)
+- UI screenshots: **blocked** — System UI ANR (no KVM)
+- Network to `flexamarket.com`: **blocked** on emulator (`unknown host`)
 
 ## Release channel
-**Awaiting confirmation** before Play submit. `eas.json` submit track = `internal`.
+**Awaiting confirmation** before Play submit (`eas.json` → track `internal`).

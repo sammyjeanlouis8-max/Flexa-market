@@ -1,18 +1,29 @@
+/**
+ * Native product details — matches flexamarket.com mobile PDP (Glister layout):
+ * left thumbnails, main image + counter, share/favorite, search-similar,
+ * title/seller/rating/price/delivery/stock, pinned qty + Add to Cart + Buy Now.
+ */
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
+  Linking,
+  Modal,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppHeader } from "@/components/shell/AppHeader";
+import colors from "@/constants/colors";
+import { PDP_METRICS, pdpMainSize } from "@/constants/layoutMetrics";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { fetchListing, type Listing } from "@/lib/api";
@@ -23,33 +34,77 @@ import {
   isFavorite,
   removeFavorite,
 } from "@/lib/favoritesApi";
+import { resolveMediaUrl } from "@/lib/mediaUrl";
 
-const WIDTH = Dimensions.get("window").width;
+const THUMB = PDP_METRICS.thumbSize;
+
+type GalleryItem =
+  | { type: "image"; uri: string }
+  | { type: "video"; uri: string; poster?: string };
+
+function formatMoney(price: number, currency?: string | null) {
+  const symbol =
+    currency === "HTG" ? "G " : currency === "DOP" ? "RD$" : "$";
+  const formatted = price.toLocaleString(undefined, {
+    minimumFractionDigits: price % 1 ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
+  return `${symbol}${formatted}`;
+}
+
+function conditionLabel(raw?: string | null) {
+  if (!raw) return null;
+  const s = raw.replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 export default function ListingDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const rawId = params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
   const { token, user } = useAuth();
   const { addItem, isInCart } = useCart();
+
+  /** Web: aspect-square main, max-h min(52vh, 380); thumb rail 44 + gaps. */
+  const mainSize = pdpMainSize(winW, winH);
+  const galleryH = mainSize;
+
   const [listing, setListing] = useState<Listing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [imageIndex, setImageIndex] = useState(0);
+  const [qty, setQty] = useState(1);
   const [addedFlash, setAddedFlash] = useState(false);
   const [favorited, setFavorited] = useState(false);
   const [favBusy, setFavBusy] = useState(false);
   const [msgBusy, setMsgBusy] = useState(false);
+  const [purchaseBarH, setPurchaseBarH] = useState(
+    PDP_METRICS.purchaseBarApprox + Math.max(insets.bottom, 8),
+  );
+  /** Web `galleryFullscreen` dialog — show entire photo with object-contain. */
+  const [galleryFullscreen, setGalleryFullscreen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!id) return;
+      if (!id) {
+        setError("Missing listing id");
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setError(null);
+      setImageIndex(0);
+      setQty(1);
       try {
         const data = await fetchListing(id, { token });
-        if (!cancelled) setListing(data);
+        if (!cancelled) {
+          setListing(data);
+          setImageIndex(0);
+        }
         if (!cancelled && token) {
           const liked = await isFavorite(Number(id), { token });
           if (!cancelled) setFavorited(liked);
@@ -59,6 +114,7 @@ export default function ListingDetailScreen() {
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Could not load listing");
+          setListing(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -69,19 +125,43 @@ export default function ListingDetailScreen() {
     };
   }, [id, token]);
 
-  const images = listing?.images?.length ? listing.images : [];
+  const media = useMemo((): GalleryItem[] => {
+    if (!listing) return [];
+    const items: GalleryItem[] = [];
+    const poster = resolveMediaUrl(listing.images?.[0]);
+    const promo = resolveMediaUrl(listing.boostVideoUrl || listing.listingVideoUrl);
+    if (promo) items.push({ type: "video", uri: promo, poster });
+    for (const u of listing.images || []) {
+      const uri = resolveMediaUrl(u);
+      if (uri) items.push({ type: "image", uri });
+    }
+    return items;
+  }, [listing]);
+  const images = useMemo(
+    () => media.filter((m) => m.type === "image").map((m) => m.uri),
+    [media],
+  );
+  const current = media[imageIndex] ?? null;
+
   const price = Number(listing?.price || 0);
-  const currency =
-    listing?.currency === "HTG"
-      ? "G"
-      : listing?.currency === "DOP"
-        ? "RD$"
-        : "$";
   const listingId = Number(listing?.id || id);
   const inCart = listingId ? isInCart(listingId) : false;
   const isOwnListing =
     !!user?.id && !!listing?.sellerId && user.id === listing.sellerId;
   const dominican = isDominicanListingCountry(listing?.country);
+  const stock =
+    listing?.stockQuantity == null ? null : Number(listing.stockQuantity);
+  const maxQty = Math.max(1, Math.min(30, stock != null && stock > 0 ? stock : 30));
+  const soldOut =
+    listing?.status === "sold" || (stock != null && stock <= 0);
+  const rating = Number(listing?.sellerRating ?? 0);
+  const money = formatMoney(price, listing?.currency);
+  const moneyLine =
+    qty > 1 ? `${formatMoney(price * qty, listing?.currency)}` : money;
+
+  useEffect(() => {
+    setQty((q) => Math.min(Math.max(1, q), maxQty));
+  }, [maxQty]);
 
   const onToggleFavorite = async () => {
     if (!listingId) return;
@@ -107,6 +187,32 @@ export default function ListingDetailScreen() {
     } finally {
       setFavBusy(false);
     }
+  };
+
+  const onShare = async () => {
+    if (!listing) return;
+    const url = `https://flexamarket.com/listing/${listingId}`;
+    try {
+      await Share.share({
+        message: `${listing.title} — ${money}\n${url}`,
+        url,
+        title: listing.title,
+      });
+    } catch {
+      /* user dismissed */
+    }
+  };
+
+  const onSearchSimilar = () => {
+    const slug = listing?.categorySlug;
+    if (slug) {
+      router.push({ pathname: "/(tabs)/search", params: { category: slug } } as any);
+      return;
+    }
+    router.push({
+      pathname: "/(tabs)/search",
+      params: { q: listing?.category || listing?.title || "" },
+    } as any);
   };
 
   const onMessageSeller = async () => {
@@ -140,16 +246,25 @@ export default function ListingDetailScreen() {
     }
   };
 
-  const onAddToCart = () => {
-    if (!listing || !listingId) return;
+  const ensureCanBuy = () => {
+    if (!listing || !listingId) return false;
     if (!listing.sellerId) {
-      Alert.alert("Unavailable", "This listing cannot be added to cart yet.");
-      return;
+      Alert.alert("Unavailable", "This listing cannot be purchased yet.");
+      return false;
     }
     if (isOwnListing) {
       Alert.alert("Your listing", "You cannot buy your own product.");
-      return;
+      return false;
     }
+    if (soldOut) {
+      Alert.alert("Sold out", "This item is no longer available.");
+      return false;
+    }
+    return true;
+  };
+
+  const onAddToCart = () => {
+    if (!ensureCanBuy() || !listing) return;
     if (inCart) {
       router.push("/cart");
       return;
@@ -159,202 +274,484 @@ export default function ListingDetailScreen() {
       title: listing.title,
       price,
       currency: listing.currency ?? "USD",
-      image: listing.images?.[0] ?? null,
+      image: images[0] ?? null,
       country: listing.country ?? null,
       city: listing.city ?? listing.location ?? null,
-      sellerId: listing.sellerId,
-      quantity: 1,
+      sellerId: listing.sellerId!,
+      quantity: qty,
     });
     setAddedFlash(true);
     setTimeout(() => setAddedFlash(false), 1600);
     if (dominican) {
       Alert.alert(
         "Added to cart",
-        "Dominican Republic items must be checked out from the product page (seller shipping). Cart wallet checkout is not available for these listings.",
+        "Dominican Republic items must be checked out from Buy Now (seller shipping).",
       );
     }
   };
 
+  const onBuyNow = () => {
+    if (!ensureCanBuy() || !listing) return;
+    if (!token) {
+      router.push("/auth/login");
+      return;
+    }
+    if (!inCart) {
+      addItem({
+        listingId,
+        title: listing.title,
+        price,
+        currency: listing.currency ?? "USD",
+        image: images[0] ?? null,
+        country: listing.country ?? null,
+        city: listing.city ?? listing.location ?? null,
+        sellerId: listing.sellerId!,
+        quantity: qty,
+      });
+    }
+    if (dominican) {
+      router.push({
+        pathname: "/stripe-checkout",
+        params: { listingId: String(listingId) },
+      });
+      return;
+    }
+    router.push({
+      pathname: "/checkout",
+      params: { ids: String(listingId) },
+    });
+  };
+
+  const goHome = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  };
+
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.topBar}>
-        <Pressable
-          style={styles.iconBtn}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
-        >
-          <Feather name="arrow-left" size={22} color="#0F172A" />
-        </Pressable>
-        <Text style={styles.topTitle} numberOfLines={1}>
-          Listing
-        </Text>
-        <Pressable
-          style={styles.iconBtn}
-          onPress={onToggleFavorite}
-          accessibilityLabel={favorited ? "Remove favorite" : "Add favorite"}
-        >
-          <Feather
-            name="heart"
-            size={20}
-            color={favorited ? "#EF4444" : "#0F172A"}
-          />
-        </Pressable>
-      </View>
+    <View style={styles.root} testID="listing-detail">
+      <AppHeader showBack showMenu={false} title="Flexa Market" />
 
       {loading ? (
-        <ActivityIndicator color="#F97316" style={{ marginTop: 48 }} />
+        <ActivityIndicator color={colors.flexaOrange} style={{ marginTop: 48 }} />
       ) : error || !listing ? (
         <View style={styles.centered}>
           <Text style={styles.error}>{error ?? "Listing not found"}</Text>
-          <Pressable style={styles.retry} onPress={() => router.replace("/")}>
+          <Pressable
+            style={styles.retry}
+            onPress={goHome}
+            testID="listing-back-home"
+          >
             <Text style={styles.retryText}>Back to home</Text>
           </Pressable>
         </View>
       ) : (
         <>
-          <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-            <ScrollView
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={(e) => {
-                const idx = Math.round(e.nativeEvent.contentOffset.x / WIDTH);
-                setImageIndex(idx);
-              }}
+          <ScrollView
+            contentContainerStyle={{
+              // Measured web bar is 61px; use onLayout height so delivery/stock
+              // clear the sticky purchase bar. Keep full natural content height
+              // so the page scrolls to the end without shrinking gallery/CTAs.
+              paddingBottom: purchaseBarH + 48,
+              flexGrow: 1,
+            }}
+            testID="listing-scroll"
+          >
+            {/* Gallery sits fully below AppHeader (green bar) — never under it. */}
+            <View
+              style={[
+                styles.galleryRow,
+                {
+                  minHeight: galleryH,
+                  paddingTop: PDP_METRICS.galleryPadTop,
+                },
+              ]}
+              testID="listing-gallery"
             >
-              {(images.length ? images : [null]).map((uri, i) => (
-                <View key={i} style={styles.hero}>
-                  {uri ? (
+              {media.length > 1 ? (
+                <ScrollView
+                  style={[styles.thumbs, { maxHeight: galleryH }]}
+                  contentContainerStyle={styles.thumbsInner}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {media.map((item, i) => (
+                    <Pressable
+                      key={`${item.type}-${i}`}
+                      onPress={() => setImageIndex(i)}
+                      style={[
+                        styles.thumb,
+                        i === imageIndex && styles.thumbActive,
+                      ]}
+                      accessibilityLabel={
+                        item.type === "video" ? "Promo video" : `Photo ${i + 1}`
+                      }
+                      testID={`listing-thumb-${i}`}
+                    >
+                      <Image
+                        source={{
+                          uri:
+                            item.type === "video"
+                              ? item.poster || images[0] || ""
+                              : item.uri,
+                        }}
+                        style={styles.thumbImg}
+                        contentFit="cover"
+                      />
+                      {item.type === "video" ? (
+                        <View style={styles.thumbPromo}>
+                          <Feather name="play" size={10} color="#FFFFFF" />
+                          <Text style={styles.thumbPromoText}>PROMO</Text>
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              ) : (
+                <View style={{ width: PDP_METRICS.thumbLeft }} />
+              )}
+
+              <View
+                style={[
+                  styles.mainWrap,
+                  { width: mainSize, height: mainSize },
+                ]}
+              >
+                {current?.type === "image" ? (
+                  <Pressable
+                    style={styles.mainImg}
+                    onPress={() => setGalleryFullscreen(true)}
+                    accessibilityLabel="Enlarge photo"
+                    testID="listing-main-image"
+                  >
                     <Image
-                      source={{ uri }}
-                      style={styles.heroImage}
-                      contentFit="cover"
-                      transition={200}
+                      source={{ uri: current.uri }}
+                      style={StyleSheet.absoluteFillObject}
+                      contentFit={PDP_METRICS.objectFit}
+                      transition={150}
                     />
-                  ) : (
-                    <View style={[styles.heroImage, styles.heroPlaceholder]}>
-                      <Feather name="image" size={40} color="#94A3B8" />
+                  </Pressable>
+                ) : current?.type === "video" ? (
+                  <Pressable
+                    style={styles.mainImg}
+                    onPress={() => void Linking.openURL(current.uri)}
+                    testID="listing-main-video"
+                  >
+                    {current.poster ? (
+                      <Image
+                        source={{ uri: current.poster }}
+                        style={StyleSheet.absoluteFillObject}
+                        contentFit="contain"
+                      />
+                    ) : (
+                      <View style={[styles.mainImg, styles.mainPlaceholder]} />
+                    )}
+                    <View style={styles.playOverlay}>
+                      <Feather name="play" size={28} color="#FFFFFF" />
                     </View>
-                  )}
+                  </Pressable>
+                ) : (
+                  <View style={[styles.mainImg, styles.mainPlaceholder]}>
+                    <Feather name="image" size={40} color="#94A3B8" />
+                  </View>
+                )}
+
+                <View style={styles.overlayActions}>
+                  <Pressable
+                    style={styles.roundBtn}
+                    onPress={() => void onShare()}
+                    accessibilityLabel="Share"
+                    testID="listing-share"
+                  >
+                    <Feather name="share-2" size={18} color="#0F172A" />
+                  </Pressable>
+                  <Pressable
+                    style={styles.roundBtn}
+                    onPress={() => void onToggleFavorite()}
+                    accessibilityLabel={favorited ? "Unfavorite" : "Favorite"}
+                    testID="listing-favorite"
+                  >
+                    <Feather
+                      name="heart"
+                      size={18}
+                      color={favorited ? "#EF4444" : "#0F172A"}
+                    />
+                  </Pressable>
+                  {current?.type === "image" ? (
+                    <Pressable
+                      style={styles.roundBtn}
+                      onPress={() => setGalleryFullscreen(true)}
+                      accessibilityLabel="Fullscreen"
+                      testID="listing-fullscreen"
+                    >
+                      <Feather name="maximize-2" size={16} color="#0F172A" />
+                    </Pressable>
+                  ) : null}
                 </View>
-              ))}
-            </ScrollView>
-            {images.length > 1 ? (
-              <Text style={styles.dots}>
-                {imageIndex + 1} / {images.length}
-              </Text>
+
+                <Pressable
+                  style={styles.similarBtn}
+                  onPress={onSearchSimilar}
+                  testID="listing-search-similar"
+                >
+                  <Feather name="search" size={14} color="#475569" />
+                  <Text style={styles.similarText} numberOfLines={1}>
+                    Search for similar items
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            {media.length > 0 ? (
+              <View style={styles.counterRow}>
+                <View style={styles.dots}>
+                  {media.map((_, i) => (
+                    <View
+                      key={i}
+                      style={[styles.dot, i === imageIndex && styles.dotOn]}
+                    />
+                  ))}
+                </View>
+                <Text style={styles.counter}>
+                  {imageIndex + 1} / {media.length}
+                </Text>
+              </View>
             ) : null}
 
             <View style={styles.body}>
-              <Text style={styles.price}>
-                {currency}
-                {price.toLocaleString(undefined, {
-                  minimumFractionDigits: price % 1 ? 2 : 0,
-                  maximumFractionDigits: 2,
-                })}
+              <Text style={styles.title} testID="listing-title">
+                {listing.title}
               </Text>
-              <Text style={styles.title}>{listing.title}</Text>
-              <Text style={styles.meta}>
-                {[listing.city, listing.country, listing.condition]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </Text>
-              {listing.isBoosted ? (
-                <View style={styles.boost}>
-                  <Text style={styles.boostText}>Boosted listing</Text>
-                </View>
-              ) : null}
+
               {listing.sellerName ? (
-                <View style={styles.seller}>
-                  <Feather name="user" size={16} color="#475569" />
+                <Pressable
+                  style={styles.sellerRow}
+                  onPress={() => void onMessageSeller()}
+                  testID="listing-seller"
+                >
                   <Text style={styles.sellerText}>
-                    {listing.sellerName}
-                    {listing.sellerIsVerified ? " · Verified" : ""}
+                    Sold by {listing.sellerName}
+                  </Text>
+                  {listing.sellerIsVerified ? (
+                    <Feather name="check-circle" size={14} color="#2563EB" />
+                  ) : null}
+                </Pressable>
+              ) : null}
+
+              <View style={styles.ratingRow} testID="listing-rating">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Feather
+                    key={n}
+                    name="star"
+                    size={14}
+                    color={n <= Math.round(rating) ? "#FBBF24" : "#CBD5E1"}
+                  />
+                ))}
+                <Text style={styles.ratingNum}>{rating.toFixed(1)}</Text>
+              </View>
+
+              <Text style={styles.price} testID="listing-price">
+                {money}
+              </Text>
+
+              {soldOut ? (
+                <Text style={styles.soldOut}>Sold out</Text>
+              ) : (
+                <Text style={styles.inStock} testID="listing-stock-status">
+                  in stock
+                  {conditionLabel(listing.condition)
+                    ? ` · ${conditionLabel(listing.condition)}`
+                    : ""}
+                </Text>
+              )}
+
+              <View style={styles.deliveryRow}>
+                <Feather name="truck" size={16} color="#0F172A" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.deliveryText}>
+                    Standard:{" "}
+                    <Text style={styles.free}>FREE</Text>
+                    {" "}(on orders $30.00+). Faster delivery in{" "}
+                    <Text style={styles.bold}>2 BUSINESS DAYS</Text>.
+                  </Text>
+                  <Text style={styles.deliverySub}>
+                    You selected {qty} item{qty === 1 ? "" : "s"} for free shipping
+                  </Text>
+                </View>
+              </View>
+
+              {stock != null ? (
+                <View style={styles.stockBox} testID="listing-stock-qty">
+                  <Feather name="package" size={16} color="#475569" />
+                  <Text style={styles.stockBoxText}>
+                    Current stock: {stock}
                   </Text>
                 </View>
               ) : null}
-              <Text style={styles.section}>Description</Text>
-              <Text style={styles.description}>
-                {listing.description?.trim() || "No description provided."}
-              </Text>
+
+              {listing.description?.trim() ? (
+                <>
+                  <Text style={styles.section}>Description</Text>
+                  <Text style={styles.description}>{listing.description.trim()}</Text>
+                </>
+              ) : null}
             </View>
           </ScrollView>
 
-          <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-            <View style={styles.footer}>
-              <Pressable
-                style={[styles.secondaryCta, msgBusy && { opacity: 0.7 }]}
-                onPress={() => void onMessageSeller()}
-                disabled={msgBusy || isOwnListing}
-              >
-                <Text style={styles.secondaryCtaText}>
-                  {msgBusy ? "Opening…" : "Message"}
-                </Text>
-              </Pressable>
-              {dominican && !isOwnListing ? (
+          {!isOwnListing ? (
+            <View
+              style={[
+                styles.purchaseBar,
+                { paddingBottom: Math.max(insets.bottom, 8) },
+              ]}
+              onLayout={(e) => {
+                const h = Math.ceil(e.nativeEvent.layout.height);
+                if (h > 0 && h !== purchaseBarH) setPurchaseBarH(h);
+              }}
+              testID="listing-purchase-bar"
+            >
+              <View style={styles.qtyBox} testID="listing-qty">
                 <Pressable
-                  style={styles.primaryCta}
-                  onPress={() => {
-                    if (!token) {
-                      router.push("/auth/login");
-                      return;
-                    }
-                    router.push({
-                      pathname: "/stripe-checkout",
-                      params: { listingId: String(listingId) },
-                    });
-                  }}
+                  style={styles.qtyBtn}
+                  onPress={() => setQty((q) => Math.max(1, q - 1))}
+                  disabled={qty <= 1}
+                  accessibilityLabel="Decrease quantity"
+                  testID="listing-qty-minus"
                 >
-                  <Text style={styles.primaryCtaText}>Buy with card</Text>
+                  <Feather name="minus" size={16} color="#0F172A" />
                 </Pressable>
-              ) : (
+                <Text style={styles.qtyNum}>{qty}</Text>
                 <Pressable
+                  style={styles.qtyBtn}
+                  onPress={() => setQty((q) => Math.min(maxQty, q + 1))}
+                  disabled={qty >= maxQty || soldOut}
+                  accessibilityLabel="Increase quantity"
+                  testID="listing-qty-plus"
+                >
+                  <Feather name="plus" size={16} color="#0F172A" />
+                </Pressable>
+              </View>
+
+              <Pressable
+                style={[
+                  styles.addCartBtn,
+                  (inCart || addedFlash) && styles.addCartBtnInCart,
+                  soldOut && styles.btnDisabled,
+                ]}
+                onPress={onAddToCart}
+                disabled={soldOut}
+                testID="listing-add-cart"
+              >
+                <Feather
+                  name="shopping-cart"
+                  size={winW < 360 ? 13 : 15}
+                  color={inCart || addedFlash ? "#FFFFFF" : "#0F172A"}
+                />
+                <Text
                   style={[
-                    styles.primaryCta,
-                    (inCart || addedFlash) && styles.primaryCtaInCart,
-                    isOwnListing && styles.primaryCtaDisabled,
+                    styles.addCartText,
+                    (inCart || addedFlash) && { color: "#FFFFFF" },
+                    winW < 360 && { fontSize: 11 },
                   ]}
-                  onPress={onAddToCart}
-                  disabled={isOwnListing}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
                 >
-                  <Text style={styles.primaryCtaText}>
-                    {isOwnListing
-                      ? "Your listing"
-                      : addedFlash
-                        ? "Added!"
-                        : inCart
-                          ? "In cart · View"
-                          : "Add to Cart"}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-            {dominican && !isOwnListing ? (
-              <Pressable style={styles.cartAlt} onPress={onAddToCart}>
-                <Text style={styles.cartAltText}>
-                  {inCart
-                    ? "Saved in cart (wallet checkout unavailable for DR)"
-                    : "Save to cart"}
+                  {addedFlash
+                    ? "Added!"
+                    : inCart
+                      ? "In cart"
+                      : "Add to Cart"}
                 </Text>
               </Pressable>
-            ) : !isOwnListing && !dominican ? (
+
               <Pressable
-                style={styles.cartAlt}
-                onPress={() => {
-                  if (!token) {
-                    router.push("/auth/login");
-                    return;
-                  }
-                  if (!listingId) return;
-                  router.push({
-                    pathname: "/stripe-checkout",
-                    params: { listingId: String(listingId) },
-                  });
-                }}
+                style={[styles.buyNowBtn, soldOut && styles.btnDisabled]}
+                onPress={onBuyNow}
+                disabled={soldOut}
+                testID="listing-buy-now"
               >
-                <Text style={styles.cartAltText}>Or pay with card (Stripe)</Text>
+                <Text style={styles.buyNowText}>Buy Now</Text>
+                <Text style={styles.buyNowPrice} numberOfLines={1}>
+                  {moneyLine}
+                </Text>
               </Pressable>
-            ) : null}
-          </View>
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.purchaseBar,
+                { paddingBottom: Math.max(insets.bottom, 8) },
+              ]}
+              onLayout={(e) => {
+                const h = Math.ceil(e.nativeEvent.layout.height);
+                if (h > 0 && h !== purchaseBarH) setPurchaseBarH(h);
+              }}
+            >
+              <Text style={styles.ownNote}>This is your listing</Text>
+            </View>
+          )}
+
+          {/* Web galleryFullscreen dialog — entire photo visible (object-contain). */}
+          <Modal
+            visible={galleryFullscreen}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setGalleryFullscreen(false)}
+            statusBarTranslucent
+          >
+            <View style={styles.fullscreenRoot} testID="listing-fullscreen-modal">
+              <Pressable
+                style={styles.fullscreenClose}
+                onPress={() => setGalleryFullscreen(false)}
+                accessibilityLabel="Close fullscreen"
+                testID="listing-fullscreen-close"
+              >
+                <Feather name="x" size={24} color="#FFFFFF" />
+              </Pressable>
+              {media.length > 1 ? (
+                <>
+                  <Pressable
+                    style={[styles.fullscreenNav, styles.fullscreenNavLeft]}
+                    onPress={() =>
+                      setImageIndex((i) => (i - 1 + media.length) % media.length)
+                    }
+                    accessibilityLabel="Previous"
+                  >
+                    <Feather name="chevron-left" size={28} color="#0F172A" />
+                  </Pressable>
+                  <Pressable
+                    style={[styles.fullscreenNav, styles.fullscreenNavRight]}
+                    onPress={() =>
+                      setImageIndex((i) => (i + 1) % media.length)
+                    }
+                    accessibilityLabel="Next"
+                  >
+                    <Feather name="chevron-right" size={28} color="#0F172A" />
+                  </Pressable>
+                </>
+              ) : null}
+              <View style={styles.fullscreenStage}>
+                {current?.type === "image" ? (
+                  <Image
+                    source={{ uri: current.uri }}
+                    style={styles.fullscreenImg}
+                    contentFit="contain"
+                    testID="listing-fullscreen-image"
+                  />
+                ) : current?.type === "video" && current.poster ? (
+                  <Image
+                    source={{ uri: current.poster }}
+                    style={styles.fullscreenImg}
+                    contentFit="contain"
+                  />
+                ) : null}
+              </View>
+              {media.length > 0 ? (
+                <Text style={styles.fullscreenCounter}>
+                  {imageIndex + 1} / {media.length}
+                </Text>
+              ) : null}
+            </View>
+          </Modal>
         </>
       )}
     </View>
@@ -362,105 +759,309 @@ export default function ListingDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F8FAFC" },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  topTitle: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
-  hero: { width: WIDTH, height: WIDTH * 0.92, backgroundColor: "#E2E8F0" },
-  heroImage: { width: "100%", height: "100%" },
-  heroPlaceholder: { alignItems: "center", justifyContent: "center" },
-  dots: {
-    textAlign: "center",
-    color: "#64748B",
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 8,
-  },
-  body: { paddingHorizontal: 16, paddingTop: 14, gap: 8 },
-  price: { fontSize: 26, fontWeight: "800", color: "#0F172A" },
-  title: { fontSize: 20, fontWeight: "700", color: "#0F172A", lineHeight: 26 },
-  meta: { fontSize: 13, color: "#64748B" },
-  boost: {
-    alignSelf: "flex-start",
-    backgroundColor: "#FFF7ED",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: "#FED7AA",
-  },
-  boostText: { color: "#C2410C", fontSize: 12, fontWeight: "700" },
-  seller: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
-  sellerText: { color: "#475569", fontSize: 14, fontWeight: "600" },
-  section: {
-    marginTop: 12,
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#94A3B8",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  description: { fontSize: 15, lineHeight: 22, color: "#334155" },
-  bottomBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    backgroundColor: "#FFFFFF",
-    borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
-  },
-  footer: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  secondaryCta: {
-    flex: 1,
-    height: 50,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  secondaryCtaText: { fontWeight: "800", color: "#0F172A" },
-  primaryCta: {
-    flex: 1.2,
-    height: 50,
-    borderRadius: 999,
-    backgroundColor: "#F97316",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryCtaInCart: { backgroundColor: "#EA580C" },
-  primaryCtaDisabled: { backgroundColor: "#CBD5E1" },
-  primaryCtaText: { fontWeight: "800", color: "#FFFFFF" },
-  cartAlt: { alignItems: "center", paddingTop: 10, paddingBottom: 2 },
-  cartAltText: { color: "#64748B", fontWeight: "700", fontSize: 12 },
+  root: { flex: 1, backgroundColor: "#FFFFFF" },
   centered: { alignItems: "center", padding: 32, gap: 12 },
   error: { color: "#64748B", textAlign: "center" },
   retry: {
-    backgroundColor: "#F97316",
+    backgroundColor: colors.flexaOrange,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
   retryText: { color: "#fff", fontWeight: "800" },
+
+  galleryRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingRight: PDP_METRICS.mainRightInset,
+    gap: PDP_METRICS.gapThumbToMain,
+  },
+  thumbs: {
+    width: PDP_METRICS.thumbLeft + THUMB,
+  },
+  thumbsInner: {
+    paddingLeft: PDP_METRICS.thumbLeft,
+    gap: PDP_METRICS.thumbGap,
+    paddingBottom: 4,
+  },
+  // Web thumbs are rounded squares (~44), active = orange border
+  thumb: {
+    width: THUMB,
+    height: THUMB,
+    borderRadius: 8,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F1F5F9",
+  },
+  thumbActive: { borderColor: colors.flexaOrange },
+  thumbImg: { width: "100%", height: "100%" },
+  thumbPromo: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.flexaOrange,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    paddingVertical: 2,
+  },
+  thumbPromoText: { color: "#fff", fontSize: 8, fontWeight: "800" },
+  mainWrap: {
+    maxWidth: "100%",
+    flexGrow: 1,
+    flexShrink: 1,
+    borderRadius: 4,
+    backgroundColor: "rgba(241,245,249,0.5)",
+    overflow: "hidden",
+  },
+  mainImg: { width: "100%", height: "100%" },
+  mainPlaceholder: { alignItems: "center", justifyContent: "center" },
+  playOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15,23,42,0.35)",
+  },
+  overlayActions: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    gap: 8,
+  },
+  roundBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  // Web: absolute bottom-center over main image
+  similarBtn: {
+    position: "absolute",
+    bottom: 8,
+    alignSelf: "center",
+    left: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(226,232,240,0.8)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  similarText: { fontSize: 11, fontWeight: "600", color: "#0F172A" },
+
+  counterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  dots: { flexDirection: "row", alignItems: "center", gap: 5 },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#CBD5E1",
+  },
+  dotOn: { backgroundColor: "#0F172A", width: 8, height: 8, borderRadius: 4 },
+  counter: { fontSize: 12, color: "#64748B", fontWeight: "600" },
+
+  body: { paddingHorizontal: 16, paddingTop: 4, gap: 8, paddingBottom: 16 },
+  title: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0F172A",
+    lineHeight: 24,
+  },
+  sellerRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  sellerText: { color: "#0066c0", fontWeight: "600", fontSize: 13 },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 3 },
+  ratingNum: { marginLeft: 4, color: "#64748B", fontSize: 13 },
+  price: { fontSize: 26, fontWeight: "800", color: "#0F172A", marginTop: 2 },
+  inStock: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: colors.flexaGreen,
+  },
+  soldOut: { fontSize: 14, fontWeight: "800", color: "#DC2626" },
+  deliveryRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 4 },
+  deliveryText: { fontSize: 13, color: "#0F172A", lineHeight: 18, fontWeight: "600" },
+  free: { color: colors.flexaGreen, fontWeight: "800" },
+  bold: { fontWeight: "800" },
+  deliverySub: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  stockBox: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  stockBoxText: { fontSize: 13, fontWeight: "700", color: "#334155" },
+  section: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#94A3B8",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  description: { fontSize: 15, lineHeight: 22, color: "#334155" },
+
+  // Web .fm-pdp-purchase-bar ≈ 61px, buttons 44px, pad 8×10, gap 6
+  purchaseBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: PDP_METRICS.purchaseBarGap,
+    paddingHorizontal: PDP_METRICS.purchaseBarPaddingH,
+    paddingTop: PDP_METRICS.purchaseBarPaddingV,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#E2E8F0",
+  },
+  qtyBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: PDP_METRICS.purchaseBtnHeight,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F1F5F9",
+    flexShrink: 1,
+    maxWidth: 96,
+  },
+  qtyBtn: {
+    width: 28,
+    height: PDP_METRICS.purchaseBtnHeight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qtyNum: {
+    minWidth: 16,
+    textAlign: "center",
+    fontWeight: "800",
+    fontSize: 13,
+    color: "#0F172A",
+  },
+  // Web Add to Cart ≈ 125 @390; keep flex share so label never truncates.
+  addCartBtn: {
+    flexGrow: 1.15,
+    flexShrink: 1,
+    flexBasis: 110,
+    minWidth: 108,
+    height: PDP_METRICS.purchaseBtnHeight,
+    borderRadius: 999,
+    backgroundColor: "#FFD814",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+  },
+  addCartBtnInCart: { backgroundColor: colors.flexaGreen },
+  addCartText: {
+    fontWeight: "800",
+    fontSize: 12,
+    color: "#0F172A",
+    flexShrink: 1,
+    maxWidth: "100%",
+  },
+  buyNowBtn: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 96,
+    minWidth: 88,
+    height: PDP_METRICS.purchaseBtnHeight,
+    borderRadius: 999,
+    backgroundColor: colors.flexaOrange,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  buyNowText: { color: "#FFFFFF", fontWeight: "800", fontSize: 12 },
+  buyNowPrice: { color: "#FFFFFF", fontWeight: "700", fontSize: 10, opacity: 0.95 },
+  btnDisabled: { opacity: 0.45 },
+  ownNote: {
+    flex: 1,
+    textAlign: "center",
+    fontWeight: "700",
+    color: "#64748B",
+    paddingVertical: 8,
+  },
+
+  fullscreenRoot: {
+    flex: 1,
+    backgroundColor: "#000000",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullscreenClose: {
+    position: "absolute",
+    top: 48,
+    right: 16,
+    zIndex: 2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenStage: {
+    width: "100%",
+    height: "85%",
+    maxHeight: "85%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenImg: {
+    width: "100%",
+    height: "100%",
+  },
+  fullscreenNav: {
+    position: "absolute",
+    top: "50%",
+    marginTop: -22,
+    zIndex: 2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fullscreenNavLeft: { left: 12 },
+  fullscreenNavRight: { right: 12 },
+  fullscreenCounter: {
+    position: "absolute",
+    bottom: 36,
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 14,
+  },
 });

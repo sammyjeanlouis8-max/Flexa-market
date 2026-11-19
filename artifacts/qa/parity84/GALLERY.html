@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Parity84 · Web ↔ Android ↔ iOS</title>
+<style>
+body{margin:0;font-family:system-ui;background:#0f172a;color:#f8fafc}
+header{padding:16px;position:sticky;top:0;background:#0f172acc;backdrop-filter:blur(8px)}
+h1{font-size:1.1rem;margin:0} p{color:#94a3b8;font-size:.85rem}
+.pair{padding:12px;border-bottom:1px solid #334155}
+.cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+img{width:100%;border-radius:10px;background:#000;aspect-ratio:9/16;object-fit:cover;object-position:top}
+figcaption{font-size:.7rem;color:#94a3b8;margin-top:4px}
+.ios{aspect-ratio:9/16;display:flex;align-items:center;justify-content:center;text-align:center;background:#1e293b;border-radius:10px;color:#fbbf24;font-weight:700;font-size:.75rem;padding:8px}
+.pill{display:inline-block;background:#146C43;padding:4px 10px;border-radius:999px;font-size:.75rem;margin-right:6px}
+</style></head><body>
+<header>
+<h1>Parity84 · WebView vs native</h1>
+<p>Android vc62 · iPhone blocked (no simulator)</p>
+<span class="pill">Android PASS 78</span>
+<span class="pill" style="background:#b45309">Android BLOCKED 6</span>
+<span class="pill" style="background:#b91c1c">iPhone BLOCKED 84</span>
+</header>
+<section class="pair">
+  <h2>23 · transfer</h2>
+  <div class="cols">
+    <figure><img src="23-transfer-web.png" alt="web"/><figcaption>WebView</figcaption></figure>
+    <figure><img src="23-transfer-android.png" alt="android"/><figcaption>Android</figcaption></figure>
+    <figure class="blocked"><div class="ios">iOS BLOCKED<br/>no Mac runner</div><figcaption>iPhone</figcaption></figure>
+  </div>
+</section><section class="pair">
+  <h2>06 · home</h2>
+  <div class="cols">
+    <figure><img src="06-home-web.png" alt="web"/><figcaption>WebView</figcaption></figure>
+    <figure><img src="06-home-android.png" alt="android"/><figcaption>Android</figcaption></figure>
+    <figure class="blocked"><div class="ios">iOS BLOCKED<br/>no Mac runner</div><figcaption>iPhone</figcaption></figure>
+  </div>
+</section><section class="pair">
+  <h2>01 · auth-login</h2>
+  <div class="cols">
+    <figure><img src="01-auth-login-web.png" alt="web"/><figcaption>WebView</figcaption></figure>
+    <figure><img src="01-auth-login.png" alt="android"/><figcaption>Android</figcaption></figure>
+    <figure class="blocked"><div class="ios">iOS BLOCKED<br/>no Mac runner</div><figcaption>iPhone</figcaption></figure>
+  </div>
+</section><section class="pair">
+  <h2>21 · wallet</h2>
+  <div class="cols">
+    <figure><img src="21-wallet-web.png" alt="web"/><figcaption>WebView</figcaption></figure>
+    <figure><img src="21-wallet.png" alt="android"/><figcaption>Android</figcaption></figure>
+    <figure class="blocked"><div class="ios">iOS BLOCKED<br/>no Mac runner</div><figcaption>iPhone</figcaption></figure>
+  </div>
+</section><section class="pair">
+  <h2>49 · sell</h2>
+  <div class="cols">
+    <figure><img src="49-sell-web.png" alt="web"/><figcaption>WebView</figcaption></figure>
+    <figure><img src="49-sell-android.png" alt="android"/><figcaption>Android</figcaption></figure>
+    <figure class="blocked"><div class="ios">iOS BLOCKED<br/>no Mac runner</div><figcaption>iPhone</figcaption></figure>
+  </div>
+</section><section class="pair">
+  <h2>67 · driver-apply</h2>
+  <div class="cols">
+    <figure><img src="67-driver-apply-web.png" alt="web"/><figcaption>WebView</figcaption></figure>
+    <figure><img src="67-driver-apply-android.png" alt="android"/><figcaption>Android</figcaption></figure>
+    <figure class="blocked"><div class="ios">iOS BLOCKED<br/>no Mac runner</div><figcaption>iPhone</figcaption></figure>
+  </div>
+</section>
+<p style="padding:16px;color:#94a3b8;font-size:.8rem">Full 84-row report: REPORT.md · ZIP includes available web/android evidence.</p>
+</body></html>

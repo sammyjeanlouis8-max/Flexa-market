@@ -1,5 +1,5 @@
 /**
- * Native My Listings — GET /api/users/:id/listings
+ * Native My Listings — GET /api/users/:id/listings + edit/delete.
  */
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -15,26 +15,29 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppHeader } from "@/components/shell/AppHeader";
+import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
-import type { Listing } from "@/lib/api";
-import { deleteListing, fetchUserListings } from "@/lib/sellerApi";
+import { formatMoney } from "@/lib/orderUi";
+import {
+  deleteListing,
+  fetchSellerListings,
+  type SellerListing,
+} from "@/lib/sellerListingsApi";
 
 export default function MyListingsScreen() {
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
-  const [rows, setRows] = useState<Listing[] | null>(null);
+  const [rows, setRows] = useState<SellerListing[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
-      if (!token || !user?.id) return;
+      if (!token || !user) return;
       if (mode === "refresh") setRefreshing(true);
-      else setError(null);
       try {
-        const data = await fetchUserListings(user.id, { token });
+        const data = await fetchSellerListings(user.id, { token });
         setRows(data);
         setError(null);
       } catch (e) {
@@ -44,7 +47,7 @@ export default function MyListingsScreen() {
         setRefreshing(false);
       }
     },
-    [token, user?.id],
+    [token, user],
   );
 
   useFocusEffect(
@@ -53,12 +56,12 @@ export default function MyListingsScreen() {
         router.replace("/auth/login");
         return;
       }
-      if (token && user?.id) void load("initial");
-    }, [authLoading, token, user?.id, router, load]),
+      if (token && user) void load("initial");
+    }, [authLoading, token, user, router, load]),
   );
 
-  const onDelete = (item: Listing) => {
-    Alert.alert("Delete listing", `Remove “${item.title}”?`, [
+  const onDelete = (item: SellerListing) => {
+    Alert.alert("Delete listing?", item.title, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -67,78 +70,109 @@ export default function MyListingsScreen() {
           if (!token) return;
           try {
             await deleteListing(item.id, { token });
-            await load("refresh");
+            setRows((prev) => (prev ?? []).filter((x) => x.id !== item.id));
           } catch (e) {
-            Alert.alert("Delete failed", e instanceof Error ? e.message : "Error");
+            Alert.alert("Delete failed", e instanceof Error ? e.message : "Try again");
           }
         },
       },
     ]);
   };
 
-  return (
-    <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
-      <View style={styles.topBar}>
-        <Pressable
-          style={styles.back}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/sell"))}
-        >
-          <Feather name="arrow-left" size={22} color="#0F172A" />
-        </Pressable>
-        <Text style={styles.title}>My listings</Text>
-        <Pressable style={styles.add} onPress={() => router.push("/(tabs)/sell")}>
-          <Feather name="plus" size={20} color="#fff" />
-        </Pressable>
-      </View>
+  const currencyFallback = () => {
+    if (user?.country === "Haiti") return "HTG";
+    if (user?.country === "Dominican Republic") return "DOP";
+    return "USD";
+  };
 
+  const renderItem = ({ item }: { item: SellerListing }) => {
+    const img = item.images?.[0];
+    const mod = item.moderationStatus || "approved";
+    const currency = item.currency || currencyFallback();
+    return (
+      <View style={styles.card}>
+        <Pressable
+          style={styles.cardMain}
+          onPress={() => router.push(`/listing/${item.id}`)}
+        >
+          {img ? (
+            <Image source={{ uri: img }} style={styles.thumb} contentFit="cover" />
+          ) : (
+            <View style={[styles.thumb, styles.thumbEmpty]}>
+              <Feather name="image" size={20} color="#94A3B8" />
+            </View>
+          )}
+          <View style={styles.meta}>
+            <Text style={styles.title} numberOfLines={2}>
+              {item.title}
+            </Text>
+            <Text style={styles.price}>
+              {formatMoney(Number(item.price), currency)}
+            </Text>
+            <Text style={styles.sub}>
+              {item.status || "available"} · {mod}
+            </Text>
+          </View>
+        </Pressable>
+        <View style={styles.actions}>
+          <Pressable
+            style={styles.actionBtn}
+            onPress={() => router.push(`/sell-edit/${item.id}`)}
+          >
+            <Feather name="edit-2" size={16} color={colors.flexaGreen} />
+            <Text style={styles.actionText}>Edit</Text>
+          </Pressable>
+          <Pressable
+            style={styles.actionBtn}
+            onPress={() => router.push({ pathname: "/boost", params: { listingId: String(item.id) } })}
+          >
+            <Feather name="zap" size={16} color={colors.flexaOrange} />
+            <Text style={[styles.actionText, { color: colors.flexaOrange }]}>Boost</Text>
+          </Pressable>
+          <Pressable style={styles.actionBtn} onPress={() => onDelete(item)}>
+            <Feather name="trash-2" size={16} color="#B91C1C" />
+            <Text style={[styles.actionText, { color: "#B91C1C" }]}>Delete</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.root}>
+      <AppHeader
+        title="My listings"
+        showBrand={false}
+        showBack
+        showCart={false}
+        rightExtra={
+          <Pressable onPress={() => router.push("/sell")} style={styles.headerAdd}>
+            <Feather name="plus" size={20} color="#fff" />
+          </Pressable>
+        }
+      />
       {rows === null && !error ? (
-        <ActivityIndicator color="#F97316" style={{ marginTop: 40 }} />
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.flexaGreen} />
+        </View>
       ) : (
         <FlatList
           data={rows ?? []}
           keyExtractor={(item) => String(item.id)}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => void load("refresh")}
-              tintColor="#F97316"
+              tintColor={colors.flexaGreen}
             />
           }
-          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
-          ListHeaderComponent={error ? <Text style={styles.error}>{error}</Text> : null}
           ListEmptyComponent={
-            <Text style={styles.empty}>No listings yet. Tap + to sell something.</Text>
+            <Text style={styles.empty}>
+              {error || "No listings yet. Tap + to sell something."}
+            </Text>
           }
-          renderItem={({ item }) => {
-            const img = item.images?.[0];
-            const price = Number(item.price || 0);
-            return (
-              <Pressable
-                style={styles.card}
-                onPress={() => router.push(`/listing/${item.id}`)}
-              >
-                {img ? (
-                  <Image source={{ uri: img }} style={styles.thumb} contentFit="cover" />
-                ) : (
-                  <View style={[styles.thumb, styles.thumbEmpty]}>
-                    <Feather name="image" size={18} color="#94A3B8" />
-                  </View>
-                )}
-                <View style={styles.meta}>
-                  <Text style={styles.cardTitle} numberOfLines={2}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.price}>${price.toFixed(2)}</Text>
-                  <Text style={styles.status}>
-                    {(item as any).moderationStatus || item.status || "listed"}
-                  </Text>
-                </View>
-                <Pressable onPress={() => onDelete(item)} hitSlop={8}>
-                  <Feather name="trash-2" size={18} color="#B91C1C" />
-                </Pressable>
-              </Pressable>
-            );
-          }}
         />
       )}
     </View>
@@ -146,53 +180,38 @@ export default function MyListingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F8FAFC", paddingHorizontal: 16 },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  back: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  add: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F97316",
-  },
-  title: { fontSize: 18, fontWeight: "800", color: "#0F172A" },
-  error: { color: "#B91C1C", marginBottom: 8, fontWeight: "600" },
-  empty: { textAlign: "center", color: "#94A3B8", marginTop: 48 },
+  root: { flex: 1, backgroundColor: colors.light.background },
+  headerAdd: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  list: { padding: 16, paddingBottom: 40, gap: 12 },
   card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#fff",
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    padding: 10,
-    marginBottom: 8,
+    borderColor: colors.light.border,
+    overflow: "hidden",
+    marginBottom: 12,
   },
-  thumb: { width: 64, height: 64, borderRadius: 10 },
-  thumbEmpty: {
-    backgroundColor: "#E2E8F0",
+  cardMain: { flexDirection: "row", padding: 12, gap: 12 },
+  thumb: { width: 72, height: 72, borderRadius: 10, backgroundColor: "#E2E8F0" },
+  thumbEmpty: { alignItems: "center", justifyContent: "center" },
+  meta: { flex: 1, minWidth: 0 },
+  title: { fontSize: 15, fontWeight: "700", color: "#0F172A" },
+  price: { marginTop: 4, fontSize: 15, fontWeight: "800", color: colors.flexaGreen },
+  sub: { marginTop: 4, fontSize: 12, color: "#64748B", textTransform: "capitalize" },
+  actions: {
+    flexDirection: "row",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#E2E8F0",
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
   },
-  meta: { flex: 1 },
-  cardTitle: { fontWeight: "700", color: "#0F172A" },
-  price: { fontWeight: "800", color: "#F97316", marginTop: 2 },
-  status: { fontSize: 12, color: "#64748B", marginTop: 2, textTransform: "capitalize" },
+  actionText: { fontSize: 13, fontWeight: "700", color: colors.flexaGreen },
+  empty: { textAlign: "center", color: "#64748B", marginTop: 48, paddingHorizontal: 24 },
 });

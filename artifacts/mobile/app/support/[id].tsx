@@ -1,14 +1,11 @@
 /**
- * Support ticket thread — text/image/video only (no voice).
+ * Support ticket thread — GET/POST /api/support/threads/:id
  */
 import { Feather } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
-import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -19,34 +16,45 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppHeader } from "@/components/shell/AppHeader";
+import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
-import { uploadLocalFile } from "@/lib/mediaUpload";
-import {
-  fetchSupportThread,
-  rateSupportThread,
-  sendSupportMessage,
-  type SupportMessage,
-  type SupportThread,
-} from "@/lib/supportApi";
+import { apiRequest, formatWhen } from "@/lib/request";
 
-export default function SupportTicketScreen() {
+type Message = {
+  id: number;
+  content: string;
+  isAdminReply: boolean;
+  senderRole?: string;
+  senderName?: string;
+  createdAt: string;
+};
+
+type Thread = {
+  id: number;
+  ticketRef?: string;
+  subject: string;
+  status: string;
+  messages: Message[];
+};
+
+export default function SupportThreadScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const threadId = Number(id);
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { token, user, isLoading: authLoading } = useAuth();
-  const [thread, setThread] = useState<SupportThread | null>(null);
-  const [messages, setMessages] = useState<SupportMessage[]>([]);
+  const { token, isLoading: authLoading } = useAuth();
+  const [thread, setThread] = useState<Thread | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const listRef = useRef<FlatList<Message>>(null);
 
   const load = useCallback(async () => {
     if (!token || !Number.isFinite(threadId)) return;
     try {
-      const data = await fetchSupportThread(threadId, { token });
-      setThread(data.thread);
-      setMessages(data.messages);
+      const data = await apiRequest<Thread>(`/support/threads/${threadId}`, { token });
+      setThread(data);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load ticket");
@@ -58,245 +66,213 @@ export default function SupportTicketScreen() {
       router.replace("/auth/login");
       return;
     }
-    void load();
-    const poll = setInterval(() => void load(), 12000);
-    return () => clearInterval(poll);
+    if (token) void load();
   }, [authLoading, token, router, load]);
 
-  const onSend = async () => {
+  const send = async () => {
     if (!token || !draft.trim() || sending) return;
-    const content = draft.trim();
-    setDraft("");
     setSending(true);
     try {
-      await sendSupportMessage(threadId, { content, messageType: "text" }, { token });
-      await load();
-    } catch (e) {
-      setDraft(content);
-      Alert.alert("Send failed", e instanceof Error ? e.message : "Error");
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const onPickImage = async () => {
-    if (!token || sending) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    setSending(true);
-    try {
-      const up = await uploadLocalFile(result.assets[0].uri, {
+      await apiRequest(`/support/threads/${threadId}/messages`, {
         token,
-        contentType: result.assets[0].mimeType || "image/jpeg",
-        fileName: result.assets[0].fileName || "support.jpg",
+        method: "POST",
+        body: { content: draft.trim() },
       });
-      await sendSupportMessage(
-        threadId,
-        { content: "", messageType: "image", mediaUrl: up.url },
-        { token },
-      );
+      setDraft("");
       await load();
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (e) {
-      Alert.alert("Upload failed", e instanceof Error ? e.message : "Error");
+      setError(e instanceof Error ? e.message : "Send failed");
     } finally {
       setSending(false);
     }
   };
 
-  const onRate = (rating: number) => {
+  const reopen = async () => {
     if (!token) return;
-    void rateSupportThread(threadId, rating, { token })
-      .then(() => Alert.alert("Thanks", "Your rating was saved."))
-      .catch((e) => Alert.alert("Rate", e instanceof Error ? e.message : "Error"));
+    try {
+      await apiRequest(`/support/threads/${threadId}/reopen`, { token, method: "POST", body: {} });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not reopen");
+    }
   };
 
-  return (
-    <KeyboardAvoidingView
-      style={[styles.root, { paddingTop: insets.top }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <View style={styles.topBar}>
-        <Pressable
-          style={styles.back}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/support"))}
-        >
-          <Feather name="arrow-left" size={22} color="#0F172A" />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title} numberOfLines={1}>
-            {thread?.subject || "Support ticket"}
-          </Text>
-          <Text style={styles.sub}>{thread?.status || "open"} · no voice messages</Text>
+  if (!thread && !error) {
+    return (
+      <View style={styles.root}>
+        <AppHeader title="Ticket" showBack showCart={false} />
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.flexaGreen} />
         </View>
       </View>
+    );
+  }
 
-      {error && !messages.length ? (
-        <Text style={styles.error}>{error}</Text>
-      ) : (
+  return (
+    <View style={styles.root}>
+      <AppHeader
+        title={thread ? `#${thread.ticketRef || thread.id}` : "Ticket"}
+        showBack
+        showCart={false}
+      />
+      {thread ? (
+        <View style={styles.meta}>
+          <Text style={styles.subject} numberOfLines={2}>
+            {thread.subject}
+          </Text>
+          <Text style={styles.status}>{thread.status.replace(/_/g, " ")}</Text>
+        </View>
+      ) : null}
+      {error ? (
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>{error}</Text>
+          <Pressable onPress={() => void load()}>
+            <Text style={styles.retry}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <FlatList
-          data={messages}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={{ padding: 12, paddingBottom: 12 }}
+          ref={listRef}
+          data={thread?.messages ?? []}
+          keyExtractor={(m) => String(m.id)}
+          contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 12 }}
+          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          ListEmptyComponent={
+            <Text style={styles.empty}>No messages in this ticket yet.</Text>
+          }
           renderItem={({ item }) => {
-            const mine = item.senderId === user?.id;
+            const mine = !item.isAdminReply && item.senderRole !== "bot";
             return (
               <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
-                {item.messageType === "image" && item.mediaUrl ? (
-                  <Image
-                    source={{
-                      uri: item.mediaUrl.startsWith("http")
-                        ? item.mediaUrl
-                        : `https://flexamarket.com${item.mediaUrl}`,
-                    }}
-                    style={styles.img}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <Text style={[styles.text, mine && styles.textMine]}>{item.content}</Text>
-                )}
+                {!mine ? (
+                  <Text style={styles.sender}>
+                    {item.senderRole === "bot" ? "FlexaBot" : item.senderName || "Support"}
+                  </Text>
+                ) : null}
+                <Text style={[styles.body, mine && { color: "#fff" }]}>{item.content}</Text>
+                <Text style={[styles.time, mine && { color: "rgba(255,255,255,0.7)" }]}>
+                  {formatWhen(item.createdAt)}
+                </Text>
               </View>
             );
           }}
-          ListFooterComponent={
-            <View style={styles.rateRow}>
-              <Text style={styles.rateLabel}>Rate support</Text>
-              {[1, 2, 3, 4, 5].map((n) => (
-                <Pressable key={n} onPress={() => onRate(n)}>
-                  <Feather name="star" size={18} color="#F97316" />
-                </Pressable>
-              ))}
-            </View>
-          }
         />
-      )}
-
-      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-        <Pressable style={styles.attach} onPress={() => void onPickImage()}>
-          <Feather name="image" size={18} color="#0F172A" />
-        </Pressable>
-        <View style={[styles.attach, styles.attachDisabled]}>
-          <Feather name="mic-off" size={18} color="#94A3B8" />
-        </View>
-        <TextInput
-          style={styles.input}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Message support…"
-          placeholderTextColor="#94A3B8"
-          multiline
-        />
-        <Pressable
-          style={[styles.send, (!draft.trim() || sending) && styles.sendDisabled]}
-          onPress={() => void onSend()}
-          disabled={!draft.trim() || sending}
-        >
-          {sending ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Feather name="send" size={18} color="#fff" />
-          )}
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+        {thread?.status === "closed" ? (
+          <View style={[styles.closedBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <Text style={styles.closedText}>This ticket is closed.</Text>
+            <Pressable style={styles.reopen} onPress={() => void reopen()}>
+              <Text style={styles.reopenText}>Reopen</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+            <TextInput
+              style={styles.input}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Reply…"
+              placeholderTextColor="#94A3B8"
+              multiline
+              maxLength={4000}
+            />
+            <Pressable
+              style={[styles.send, (!draft.trim() || sending) && { opacity: 0.5 }]}
+              onPress={() => void send()}
+              disabled={!draft.trim() || sending}
+            >
+              <Feather name="send" size={18} color="#fff" />
+            </Pressable>
+          </View>
+        )}
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F1F5F9" },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: "#FFFFFF",
+  root: { flex: 1, backgroundColor: colors.light.background },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  meta: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+    borderBottomColor: colors.light.border,
   },
-  back: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  title: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
-  sub: { fontSize: 11, color: "#64748B", marginTop: 2 },
-  error: { color: "#B91C1C", padding: 16, fontWeight: "600" },
-  bubble: {
-    maxWidth: "82%",
-    borderRadius: 14,
+  subject: { fontSize: 15, fontWeight: "700", color: colors.light.text },
+  status: { marginTop: 2, fontSize: 12, color: "#64748B", textTransform: "capitalize" },
+  banner: {
+    margin: 12,
+    backgroundColor: "#FEF2F2",
+    borderRadius: 10,
     padding: 10,
-    marginVertical: 4,
+    gap: 4,
   },
-  mine: { alignSelf: "flex-end", backgroundColor: "#F97316" },
+  bannerText: { color: "#B91C1C", fontSize: 13 },
+  retry: { color: colors.flexaGreen, fontWeight: "700" },
+  empty: { textAlign: "center", color: "#94A3B8", marginTop: 40 },
+  bubble: { maxWidth: "88%", borderRadius: 14, padding: 12 },
+  mine: { alignSelf: "flex-end", backgroundColor: colors.flexaGreen },
   theirs: {
     alignSelf: "flex-start",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: colors.light.border,
   },
-  text: { color: "#0F172A", fontSize: 15 },
-  textMine: { color: "#fff" },
-  img: { width: 180, height: 180, borderRadius: 10 },
-  rateRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 16,
-    justifyContent: "center",
-  },
-  rateLabel: { color: "#64748B", fontSize: 12, marginRight: 4 },
+  sender: { fontSize: 11, fontWeight: "700", color: colors.flexaGreen, marginBottom: 4 },
+  body: { fontSize: 15, lineHeight: 21, color: colors.light.text },
+  time: { marginTop: 6, fontSize: 10, color: "#94A3B8" },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 6,
-    paddingHorizontal: 10,
+    gap: 8,
+    paddingHorizontal: 12,
     paddingTop: 8,
-    backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
+    borderTopColor: colors.light.border,
+    backgroundColor: "#fff",
   },
-  attach: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    marginBottom: 4,
-  },
-  attachDisabled: { backgroundColor: "#F1F5F9" },
   input: {
     flex: 1,
-    minHeight: 40,
-    maxHeight: 110,
-    borderRadius: 20,
+    minHeight: 42,
+    maxHeight: 120,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#F8FAFC",
+    borderColor: colors.light.border,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: "#0F172A",
+    fontSize: 15,
+    color: colors.light.text,
   },
   send: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#F97316",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.flexaGreen,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 2,
   },
-  sendDisabled: { backgroundColor: "#FDBA74" },
+  closedBar: {
+    padding: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.light.border,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    gap: 8,
+  },
+  closedText: { color: "#64748B" },
+  reopen: {
+    backgroundColor: colors.flexaGreen,
+    paddingHorizontal: 16,
+    height: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reopenText: { color: "#fff", fontWeight: "800" },
 });

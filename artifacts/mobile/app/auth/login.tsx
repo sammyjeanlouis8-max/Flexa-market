@@ -13,8 +13,8 @@ export default function LoginRoute() {
 
   return (
     <LoginScreen
-      onSuccess={async (token) => {
-        await login(token);
+      onSuccess={async (token, user) => {
+        await login(token, user as any);
         router.replace("/");
       }}
       onGoRegister={() => router.replace("/auth/register")}

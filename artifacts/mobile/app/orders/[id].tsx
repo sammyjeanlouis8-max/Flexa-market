@@ -15,6 +15,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,6 +24,7 @@ import {
   confirmDelivery,
   fetchOrderDetail,
   fetchOrderTracking,
+  shipOrder,
   type CarrierTracking,
   type OrderDetail,
 } from "@/lib/ordersApi";
@@ -44,6 +46,11 @@ export default function OrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [shipping, setShipping] = useState(false);
+  const [shipMode, setShipMode] = useState<"fm" | "personal">("fm");
+  const [vehicleType, setVehicleType] = useState<"motorcycle" | "car">("motorcycle");
+  const [deliveryDescription, setDeliveryDescription] = useState("");
+  const [driverPhone, setDriverPhone] = useState("");
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -92,6 +99,53 @@ export default function OrderDetailScreen() {
       await load("refresh");
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const canShip =
+    !!order &&
+    order.isSeller &&
+    order.orderStatus === "ready_to_ship" &&
+    order.deliveryType !== "pickup" &&
+    (order.isHaiti || order.listingCountry === "Haiti");
+
+  const onShip = async () => {
+    if (!token || !id) return;
+    if (!deliveryDescription.trim()) {
+      Alert.alert("Description required", "Describe the package for the driver.");
+      return;
+    }
+    if (shipMode === "personal" && !driverPhone.trim()) {
+      Alert.alert("Phone required", "Enter your personal driver’s phone number.");
+      return;
+    }
+    setShipping(true);
+    try {
+      const result = await shipOrder(
+        id,
+        {
+          deliveryDescription: deliveryDescription.trim(),
+          useFmDriver: shipMode === "fm",
+          vehicleType: shipMode === "fm" ? vehicleType : undefined,
+          driverPhone: shipMode === "personal" ? driverPhone.trim() : undefined,
+        },
+        { token },
+      );
+      if (!result.ok) {
+        Alert.alert("Could not ship", result.error ?? "Try again");
+        return;
+      }
+      Alert.alert(
+        shipMode === "fm" ? "FM driver requested" : "Marked as shipped",
+        shipMode === "fm"
+          ? "Available Flexa Market drivers can now accept this delivery."
+          : "The buyer has been notified.",
+      );
+      setDeliveryDescription("");
+      setDriverPhone("");
+      await load("refresh");
+    } finally {
+      setShipping(false);
     }
   };
 
@@ -257,6 +311,87 @@ export default function OrderDetailScreen() {
             </View>
           ) : null}
 
+          {canShip ? (
+            <View style={styles.card}>
+              <Text style={styles.section}>Ship order</Text>
+              <Text style={styles.muted}>
+                Request a Flexa Market driver or assign your own personal driver.
+              </Text>
+              <View style={styles.modeRow}>
+                <Pressable
+                  style={[styles.modeBtn, shipMode === "fm" && styles.modeBtnOn]}
+                  onPress={() => setShipMode("fm")}
+                >
+                  <Text style={[styles.modeText, shipMode === "fm" && styles.modeTextOn]}>
+                    FM driver
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.modeBtn, shipMode === "personal" && styles.modeBtnOn]}
+                  onPress={() => setShipMode("personal")}
+                >
+                  <Text
+                    style={[styles.modeText, shipMode === "personal" && styles.modeTextOn]}
+                  >
+                    Personal
+                  </Text>
+                </Pressable>
+              </View>
+
+              {shipMode === "fm" ? (
+                <View style={styles.modeRow}>
+                  {(["motorcycle", "car"] as const).map((v) => (
+                    <Pressable
+                      key={v}
+                      style={[styles.modeBtn, vehicleType === v && styles.modeBtnOn]}
+                      onPress={() => setVehicleType(v)}
+                    >
+                      <Text
+                        style={[styles.modeText, vehicleType === v && styles.modeTextOn]}
+                      >
+                        {v === "motorcycle" ? "Motorcycle" : "Car"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <TextInput
+                  style={styles.input}
+                  value={driverPhone}
+                  onChangeText={setDriverPhone}
+                  placeholder="Driver phone (+509…)"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="phone-pad"
+                />
+              )}
+
+              <TextInput
+                style={[styles.input, styles.textarea]}
+                value={deliveryDescription}
+                onChangeText={setDeliveryDescription}
+                placeholder="Package description for the driver"
+                placeholderTextColor="#94A3B8"
+                multiline
+                textAlignVertical="top"
+              />
+
+              <Pressable
+                style={[styles.primaryBtn, shipping && { opacity: 0.7 }]}
+                onPress={() => void onShip()}
+                disabled={shipping}
+                testID="request-fm-driver"
+              >
+                {shipping ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>
+                    {shipMode === "fm" ? "Request FM driver" : "Ship with personal driver"}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+
           {order.fmDelivery ? (
             <View style={styles.card}>
               <Text style={styles.section}>Flexa delivery</Text>
@@ -406,6 +541,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   secondaryBtnText: { color: "#0F172A", fontWeight: "800" },
+  modeRow: { flexDirection: "row", gap: 8 },
+  modeBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modeBtnOn: { backgroundColor: "#FFF7ED", borderColor: "#F97316" },
+  modeText: { fontSize: 13, fontWeight: "800", color: "#64748B" },
+  modeTextOn: { color: "#C2410C" },
+  input: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: "#0F172A",
+    backgroundColor: "#fff",
+  },
+  textarea: { minHeight: 72 },
   centered: { alignItems: "center", padding: 32, gap: 12 },
   error: { color: "#B91C1C", fontWeight: "700", textAlign: "center" },
   errorInline: { color: "#B91C1C", fontSize: 12, fontWeight: "600" },

@@ -669,7 +669,7 @@ export default function ListingDetailScreen() {
                 disabled={soldOut}
                 testID="listing-buy-now"
               >
-                <Text style={styles.buyNowText}>Buy Now</Text>
+                <Text style={styles.buyNowText}>{dominican ? "Buy with card" : "Buy Now"}</Text>
                 <Text style={styles.buyNowPrice} numberOfLines={1}>
                   {moneyLine}
                 </Text>

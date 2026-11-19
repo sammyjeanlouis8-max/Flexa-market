@@ -69,7 +69,7 @@ test("Phase 1–2 core features remain FULLY_NATIVE in inventory", () => {
   assert.equal(byId.addresses.status, "FULLY_NATIVE");
   assert.equal(byId["edit-profile"].status, "FULLY_NATIVE");
   assert.equal(byId["stripe-single-item"].status, "FULLY_NATIVE");
-  assert.equal(byId.esim.status, "out_of_scope");
+  assert.equal(byId.esim.status, "BLOCKED");
   assert.equal(byId.inbox.status, "FULLY_NATIVE");
   assert.equal(byId["chat-thread"].status, "FULLY_NATIVE");
   assert.equal(byId.sell.status, "FULLY_NATIVE");

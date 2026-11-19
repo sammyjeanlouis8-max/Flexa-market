@@ -3,7 +3,7 @@
   "platform": "Android",
   "framework": "Expo + React Native + Expo Router",
   "backend": "https://flexamarket.com/api",
-  "pr": 230,
+  "pr": 172,
   "branch": "cursor/native-parity-84-pages-09ff",
   "auditedAt": "2026-11-12T22:59:05Z",
   "auditCommit": "deeda28a",
@@ -96,8 +96,7 @@
     "PARTIALLY_NATIVE": 4,
     "PLACEHOLDER": 0,
     "MISSING": 0,
-    "BLOCKED": 4,
-    "out_of_scope": 1
+    "BLOCKED": 5
   },
   "features": [
     {
@@ -1346,11 +1345,11 @@
       "nativeRoute": "/esim",
       "role": "buyer",
       "apis": [],
-      "status": "out_of_scope",
+      "status": "BLOCKED",
       "missing": [
         "provider integration"
       ],
-      "work": "OUT OF SCOPE this phase \u2014 Redirect /; no menus/deep links"
+      "work": "OUT OF SCOPE this Android phase \u2014 Redirect to /; no menu; deep link hits redirect screen"
     },
     {
       "id": "smart-notifications",

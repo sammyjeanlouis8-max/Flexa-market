@@ -1,16 +1,17 @@
-# PR #258 — Signed AAB build status
+# PR #258 — Signed AAB ready
 
-**Package:** `com.flexamarket.app` · **versionName:** `1.0.1`
+**The new signed AAB is ready.**
 
-## Build 983993f0 (failed)
+| Field | Value |
+|-------|--------|
+| Package | `com.flexamarket.app` |
+| versionName | `1.0.1` |
+| versionCode | **66** |
+| Commit | `761063a356bbca89342008938f9dcc197ab90b23` |
+| EAS | https://expo.dev/accounts/muelsa89/projects/mobile/builds/c1cb2394-fef9-4b5e-a855-6a3679e52a4e |
+| Direct `.aab` | https://expo.dev/artifacts/eas/VXcv72AXFjHSdbqcUcn6jCEpbMoUlo28OqwrodyhalA.aab |
 
-- Commit: `aef3e56644c71e9c896f7252b88ca95c27ee6f28`
-- versionCode: 66
-- Status: **ERRORED** during Install dependencies
-- Cause: root `.easignore` excluded pnpm workspace packages (`lib/`, `scripts/`, other `artifacts/*`), so install could not resolve `catalog:` / workspace graph
-- Logs: https://expo.dev/accounts/muelsa89/projects/mobile/builds/983993f0-ef91-413f-b0a3-be357fd3fd5f
-
-## Rebuild (pending)
-
-- Fix: narrow `.easignore` to bulky assets only; keep workspace packages
-- Target versionCode: **66** (remote reset to 65 → autoIncrement)
+## Notes
+- Prior build `983993f0` failed (Install dependencies / over-aggressive `.easignore`); this rebuild includes the workspace-package fix.
+- Google Play Internal submit **pending** — `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` / `google-play-key.json` not available in this environment.
+- Device 84-screen matrix still **UNTESTED_ON_DEVICE** (emulator System UI ANR).

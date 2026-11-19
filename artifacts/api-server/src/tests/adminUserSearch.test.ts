@@ -160,7 +160,14 @@ describe("parseAdminUserSearchQuery + Control Users route contract", () => {
     expect(ui).toMatch(/loadListState/);
     // Inline Retry errors — keep loaded data, clear of status-bar toasts for failures.
     expect(ui).toMatch(/admin-users-list-error/);
-    expect(ui).toMatch(/admin-user-details-error/);
     expect(ui).toMatch(/InlineError/);
+    expect(ui).toMatch(/AdminUserDetails/);
+    const detailsUi = readFileSync(
+      resolve(__dirname, "../../../marketplace/src/components/admin/AdminUserDetails.tsx"),
+      "utf8",
+    );
+    expect(detailsUi).toMatch(/admin-user-details-error/);
+    expect(detailsUi).toMatch(/admin-user-devices/);
+    expect(detailsUi).toMatch(/Review account/);
   });
 });

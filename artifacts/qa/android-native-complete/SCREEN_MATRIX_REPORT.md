@@ -5,7 +5,8 @@
 - **EAS preview build:** `328f4ca0-d562-4beb-981b-fdfaf483ac64` (IN_QUEUE; obsolete `5c113660` canceled)
 - **Policy:** Digital purchases **verified disabled** (guard ON). Music free. Physical checkout OK.
 - **Device test rule:** A screen counts as tested only after running on Android.
-- **Blockers:** Cloud emulator black screencap / flaky UiAutomator; Play key secret still missing.
+- **Blockers:** Cloud emulator System UI ANR (no KVM); Play key secret still missing; tip EAS APK still IN_QUEUE.
+- **Emulator smoke (old APK on device, not tip SHA):** See `emulator-smoke/` — home/wallet/subscription deep links captured; drawer/eSIM blocked by ANR; guest + network errors. Tip APK required for eSIM native screen + purchase-disabled copy verification.
 
 ## Status legend
 - `PASS` — native opened via normal nav; main action exercised; API/state OK; compared to WebView

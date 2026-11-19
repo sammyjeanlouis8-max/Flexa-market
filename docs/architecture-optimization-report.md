@@ -148,7 +148,7 @@ See PR CI / local vitest output in commit notes. Never claim unrun suites passed
 - ILIKE search without FTS  
 - No Redis → rate limits / presence not cluster-safe  
 - Interval jobs duplicate if &gt;1 API instance  
-- Vercel checks on other branches are blocked (unrelated deploy config)
+- Legacy Vercel GitHub App still posts three failing status checks (`Vercel – flexa-market-api-server-{2jmn,fihd,g97n}`); disconnect Vercel for this repo only (not a code/workflow issue — DigitalOcean is the deploy target)
 
 ---
 

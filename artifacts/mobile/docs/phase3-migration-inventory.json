@@ -29,7 +29,8 @@
     "PARTIALLY_NATIVE": "Native shell or partial flow; critical actions missing or linked to placeholders",
     "PLACEHOLDER": "NativePlaceholder or empty Redirect stub",
     "MISSING": "Exists on website/API but no native route yet",
-    "BLOCKED": "Cannot fully ship on Android without alternate billing / policy / later phase"
+    "BLOCKED": "Cannot fully ship on Android without alternate billing / policy / later phase",
+    "out_of_scope": "Disabled this phase (eSIM); redirect only"
   },
   "roleModel": {
     "jwtRoles": [
@@ -95,7 +96,8 @@
     "PARTIALLY_NATIVE": 4,
     "PLACEHOLDER": 0,
     "MISSING": 0,
-    "BLOCKED": 5
+    "BLOCKED": 4,
+    "out_of_scope": 1
   },
   "features": [
     {
@@ -1344,11 +1346,11 @@
       "nativeRoute": "/esim",
       "role": "buyer",
       "apis": [],
-      "status": "BLOCKED",
+      "status": "out_of_scope",
       "missing": [
         "provider integration"
       ],
-      "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready"
+      "work": "OUT OF SCOPE this phase \u2014 Redirect /; no menus/deep links"
     },
     {
       "id": "smart-notifications",

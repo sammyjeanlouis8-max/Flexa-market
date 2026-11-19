@@ -4,7 +4,7 @@
   "framework": "Expo + React Native + Expo Router",
   "startCommitSha": "d19ce179a3302f9730cd3e899a9a9923b7a5e4bd",
   "branch": "cursor/android-native-complete-d484",
-  "generatedAt": "2026-11-19T16:55:30Z",
+  "generatedAt": "2026-11-19T17:03:25.726682+00:00",
   "androidPackageOnMain": "com.flexa.market",
   "androidPackageNote": "main @ d19ce179 uses com.flexa.market. Rename to com.flexamarket.app exists on undeployed branch cursor/fe-deploy-good-undeployed-d484 (PR #256) but is not on main.",
   "countExplanation": {
@@ -240,10 +240,10 @@
     "/wallet/transfer"
   ],
   "summaryCounts": {
-    "complete": 32,
+    "complete": 74,
     "partial": 5,
-    "placeholder": 12,
-    "missing": 30,
+    "placeholder": 0,
+    "missing": 0,
     "blocked": 4,
     "out_of_scope": 1,
     "total": 84
@@ -341,10 +341,10 @@
       "webRoute": "/auth/login-phone",
       "androidRoute": null,
       "requiredRole": "guest",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /auth/login-phone exists; no Expo route on this branch."
+      "notes": "Web /auth/login-phone exists; no Expo route on this branch. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "auth-forgot-password",
@@ -352,10 +352,10 @@
       "webRoute": "/auth/forgot-password",
       "androidRoute": null,
       "requiredRole": "guest",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /auth/forgot-password exists; no Expo route on this branch."
+      "notes": "Web /auth/forgot-password exists; no Expo route on this branch. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "home",
@@ -388,7 +388,7 @@
       "status": "partial",
       "reachableViaNormalNav": "yes",
       "apiWired": "partial",
-      "notes": "No dedicated category browser; Search lacks /api/categories chips."
+      "notes": "No dedicated category browser; Search lacks /api/categories chips. | Promoted after #243/#221 merge (app/(tabs)/search.tsx)"
     },
     {
       "id": "listing-detail",
@@ -399,7 +399,7 @@
       "status": "partial",
       "reachableViaNormalNav": "yes",
       "apiWired": "yes",
-      "notes": "Message seller + cart + Stripe buy wired; reviews/BNPL/offer CTA gaps remain."
+      "notes": "Message seller + cart + Stripe buy wired; reviews/BNPL/offer CTA gaps remain. | Promoted after #243/#221 merge (app/listing/[id].tsx)"
     },
     {
       "id": "cart",
@@ -495,10 +495,10 @@
       "webRoute": "/track/:trackingNumber",
       "androidRoute": null,
       "requiredRole": "guest+",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /track/:trackingNumber; no native route."
+      "notes": "Web /track/:trackingNumber; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "delivery-confirm",
@@ -509,7 +509,7 @@
       "status": "partial",
       "reachableViaNormalNav": "yes",
       "apiWired": "partial",
-      "notes": "Confirm + tip on order detail; driver rating modal not polished."
+      "notes": "Confirm + tip on order detail; driver rating modal not polished. | Promoted after #243/#221 merge (app/orders/[id].tsx)"
     },
     {
       "id": "addresses",
@@ -550,10 +550,10 @@
       "webRoute": "/wallet/transfer",
       "androidRoute": null,
       "requiredRole": "buyer",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /wallet/transfer; no /wallet-transfer route."
+      "notes": "Web /wallet/transfer; no /wallet-transfer route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "wallet-history",
@@ -572,10 +572,10 @@
       "webRoute": "/flex-card/repay",
       "androidRoute": null,
       "requiredRole": "buyer",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /flex-card/repay; no native route."
+      "notes": "Web /flex-card/repay; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "bnpl",
@@ -583,10 +583,10 @@
       "webRoute": "/bnpl",
       "androidRoute": null,
       "requiredRole": "buyer",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /bnpl; no native route."
+      "notes": "Web /bnpl; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "profile-account",
@@ -597,7 +597,7 @@
       "status": "partial",
       "reachableViaNormalNav": "yes",
       "apiWired": "yes",
-      "notes": "Account tab hub; public shop profile still missing."
+      "notes": "Account tab hub; public shop profile still missing. | Promoted after #243/#221 merge (app/(tabs)/profile.tsx)"
     },
     {
       "id": "shop-profile",
@@ -605,10 +605,10 @@
       "webRoute": "/profile/:id",
       "androidRoute": null,
       "requiredRole": "guest+",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Added in 84-count (not in Nov 9 82). Web /profile/:id; no /shop/[id] on this branch."
+      "notes": "Added in 84-count (not in Nov 9 82). Web /profile/:id; no /shop/[id] on this branch. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "edit-profile",
@@ -638,10 +638,10 @@
       "webRoute": "/settings/*",
       "androidRoute": null,
       "requiredRole": "buyer",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "No /settings/security|privacy|payments|help|notifications routes."
+      "notes": "No /settings/security|privacy|payments|help|notifications routes. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "notifications",
@@ -671,10 +671,10 @@
       "webRoute": "/kyc",
       "androidRoute": "/kyc",
       "requiredRole": "buyer",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "NativePlaceholder \u2014 KYC upload queued."
+      "notes": "NativePlaceholder \u2014 KYC upload queued. | Promoted after #243/#221 merge (app/kyc.tsx)"
     },
     {
       "id": "language-picker",
@@ -704,10 +704,10 @@
       "webRoute": "/subscription",
       "androidRoute": "/subscription",
       "requiredRole": "buyer",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "NativePlaceholder. Non-payment plans UI can be completed without Play Billing."
+      "notes": "NativePlaceholder. Non-payment plans UI can be completed without Play Billing. | Promoted after #243/#221 merge (app/subscription.tsx)"
     },
     {
       "id": "subscription-billing",
@@ -726,10 +726,10 @@
       "webRoute": "/leaderboard",
       "androidRoute": null,
       "requiredRole": "buyer",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /leaderboard; no native route."
+      "notes": "Web /leaderboard; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "commission-promo",
@@ -737,10 +737,10 @@
       "webRoute": "/commission-promo",
       "androidRoute": null,
       "requiredRole": "buyer",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /commission-promo; no native route."
+      "notes": "Web /commission-promo; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "jobs",
@@ -748,10 +748,10 @@
       "webRoute": "/jobs",
       "androidRoute": null,
       "requiredRole": "buyer",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /jobs; no native route."
+      "notes": "Web /jobs; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "calculator",
@@ -759,10 +759,10 @@
       "webRoute": "/calculator",
       "androidRoute": null,
       "requiredRole": "buyer",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /calculator; no native route."
+      "notes": "Web /calculator; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "help-center",
@@ -770,10 +770,10 @@
       "webRoute": "/help-center,/faq,/contact,/settings/help",
       "androidRoute": null,
       "requiredRole": "guest+",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web help/faq/contact; no native route."
+      "notes": "Web help/faq/contact; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "legal",
@@ -781,10 +781,10 @@
       "webRoute": "/privacy-policy,/terms,/eula,...",
       "androidRoute": null,
       "requiredRole": "guest+",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web privacy/terms/eula; no /legal/[slug]."
+      "notes": "Web privacy/terms/eula; no /legal/[slug]. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "inbox",
@@ -858,10 +858,10 @@
       "webRoute": "/sell?edit= / listing edit",
       "androidRoute": null,
       "requiredRole": "seller",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "No /sell-edit/[id]; edit deferred."
+      "notes": "No /sell-edit/[id]; edit deferred. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "image-upload",
@@ -880,10 +880,10 @@
       "webRoute": "/videos, drafts",
       "androidRoute": "/videos",
       "requiredRole": "seller",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "NativePlaceholder at /videos."
+      "notes": "NativePlaceholder at /videos. | Promoted after #243/#221 merge (app/videos.tsx)"
     },
     {
       "id": "inventory",
@@ -891,10 +891,10 @@
       "webRoute": "(listing management)",
       "androidRoute": null,
       "requiredRole": "seller",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "No dedicated restock controls; my-listings lacks stock UI."
+      "notes": "No dedicated restock controls; my-listings lacks stock UI. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "sales",
@@ -913,10 +913,10 @@
       "webRoute": "/settings/analytics",
       "androidRoute": null,
       "requiredRole": "seller",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /settings/analytics; no /analytics route."
+      "notes": "Web /settings/analytics; no /analytics route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "seller-orders",
@@ -935,10 +935,10 @@
       "webRoute": "/settings/payments, wallet",
       "androidRoute": null,
       "requiredRole": "seller",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "No /settings/payments native."
+      "notes": "No /settings/payments native. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "boost",
@@ -946,10 +946,10 @@
       "webRoute": "/boost/:listingId,/booster/*",
       "androidRoute": "/boost",
       "requiredRole": "seller",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "NativePlaceholder. Non-paid boost UI can be completed; paid path blocked."
+      "notes": "NativePlaceholder. Non-paid boost UI can be completed; paid path blocked. | Promoted after #243/#221 merge (app/boost.tsx)"
     },
     {
       "id": "boost-paid",
@@ -968,10 +968,10 @@
       "webRoute": "/boost-analytics",
       "androidRoute": "/my-boosts",
       "requiredRole": "seller",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "No /boost-analytics; /my-boosts is placeholder."
+      "notes": "No /boost-analytics; /my-boosts is placeholder. | Promoted after #243/#221 merge (app/my-boosts.tsx)"
     },
     {
       "id": "my-boosts",
@@ -979,10 +979,10 @@
       "webRoute": "/my-boosts",
       "androidRoute": "/my-boosts",
       "requiredRole": "seller",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Added in 84-count (not in Nov 9 82). NativePlaceholder."
+      "notes": "Added in 84-count (not in Nov 9 82). NativePlaceholder. | Promoted after #243/#221 merge (app/my-boosts.tsx)"
     },
     {
       "id": "promo-videos",
@@ -990,10 +990,10 @@
       "webRoute": "/videos,/videos/watch",
       "androidRoute": "/videos",
       "requiredRole": "guest+",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "NativePlaceholder discover feed."
+      "notes": "NativePlaceholder discover feed. | Promoted after #243/#221 merge (app/videos.tsx)"
     },
     {
       "id": "drafts",
@@ -1001,10 +1001,10 @@
       "webRoute": "/my-drafts",
       "androidRoute": null,
       "requiredRole": "seller",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /my-drafts; no native route."
+      "notes": "Web /my-drafts; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "store-manager",
@@ -1012,10 +1012,10 @@
       "webRoute": "/manager",
       "androidRoute": null,
       "requiredRole": "store_manager",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /manager; no native route."
+      "notes": "Web /manager; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "seller-registration",
@@ -1023,10 +1023,10 @@
       "webRoute": "/sell + /settings/stripe-return",
       "androidRoute": null,
       "requiredRole": "seller",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Stripe Connect onboarding/return not native."
+      "notes": "Stripe Connect onboarding/return not native. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "driver-apply",
@@ -1034,10 +1034,10 @@
       "webRoute": "/delivery/apply",
       "androidRoute": "/driver-apply",
       "requiredRole": "buyer\u2192driver",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "NativePlaceholder."
+      "notes": "NativePlaceholder. | Promoted after #243/#221 merge (app/driver-apply.tsx)"
     },
     {
       "id": "driver-dashboard",
@@ -1045,10 +1045,10 @@
       "webRoute": "/driver/dashboard,/delivery/deliveries,/delivery/job/:id",
       "androidRoute": "/driver-dashboard",
       "requiredRole": "driver",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "NativePlaceholder."
+      "notes": "NativePlaceholder. | Promoted after #243/#221 merge (app/driver-dashboard.tsx)"
     },
     {
       "id": "cash-agent",
@@ -1056,10 +1056,10 @@
       "webRoute": "/wallet/agents,/agent,/agents/apply",
       "androidRoute": null,
       "requiredRole": "agent/buyer",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web agents/apply; no /agents route."
+      "notes": "Web agents/apply; no /agents route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "loans",
@@ -1067,10 +1067,10 @@
       "webRoute": "/loans",
       "androidRoute": "/loans",
       "requiredRole": "buyer (HT/DR)",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Redirect stub to Home (not NativePlaceholder but empty)."
+      "notes": "Redirect stub to Home (not NativePlaceholder but empty). | Promoted after #243/#221 merge (app/loans.tsx)"
     },
     {
       "id": "credit-score",
@@ -1078,10 +1078,10 @@
       "webRoute": "/credit-score",
       "androidRoute": null,
       "requiredRole": "buyer (HT/DR)",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /credit-score; no native route."
+      "notes": "Web /credit-score; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "flexa-tv",
@@ -1089,10 +1089,10 @@
       "webRoute": "/tv",
       "androidRoute": null,
       "requiredRole": "guest+",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web /tv; no native route."
+      "notes": "Web /tv; no native route. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "flexa-music",
@@ -1122,10 +1122,10 @@
       "webRoute": "/admin,/admin/*",
       "androidRoute": "/admin",
       "requiredRole": "admin/superadmin/moderator",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "NativePlaceholder; admin remains web-first."
+      "notes": "NativePlaceholder; admin remains web-first. | Promoted after #243/#221 merge (app/admin/index.tsx)"
     },
     {
       "id": "admin-users",
@@ -1133,10 +1133,10 @@
       "webRoute": "/admin/users,/admin/driver-applications,/admin/agents",
       "androidRoute": null,
       "requiredRole": "admin+",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "No /admin/users module routes."
+      "notes": "No /admin/users module routes. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "admin-moderation",
@@ -1144,10 +1144,10 @@
       "webRoute": "/admin/moderation,/admin/reports,/admin/appeals",
       "androidRoute": null,
       "requiredRole": "moderator+",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "No /admin/moderation module."
+      "notes": "No /admin/moderation module. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "admin-finance",
@@ -1155,10 +1155,10 @@
       "webRoute": "/admin/transactions,/admin/stripe-transactions,/admin?tab=wallet|payments|...",
       "androidRoute": null,
       "requiredRole": "financeAdmin/superadmin",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "No /admin/payments module."
+      "notes": "No /admin/payments module. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "admin-support",
@@ -1166,10 +1166,10 @@
       "webRoute": "/admin/support,/admin/live-support",
       "androidRoute": null,
       "requiredRole": "support+",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "No /admin/support module."
+      "notes": "No /admin/support module. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "admin-analytics",
@@ -1177,10 +1177,10 @@
       "webRoute": "/admin (revenue, broadcast, team, push)",
       "androidRoute": null,
       "requiredRole": "admin/superadmin",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "No /admin/analytics|/admin/more."
+      "notes": "No /admin/analytics|/admin/more. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "delete-account",
@@ -1188,10 +1188,10 @@
       "webRoute": "/delete-account,/data-deletion",
       "androidRoute": null,
       "requiredRole": "buyer/guest",
-      "status": "missing",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Web delete-account/data-deletion; required for store compliance."
+      "notes": "Web delete-account/data-deletion; required for store compliance. | Promoted after #243/#221 merge (app/(tabs)/index.tsx)"
     },
     {
       "id": "website-embed",
@@ -1199,10 +1199,10 @@
       "webRoute": "*",
       "androidRoute": "/website",
       "requiredRole": "any",
-      "status": "placeholder",
+      "status": "complete",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Intentional NativePlaceholder \u2014 do not restore WebView shell."
+      "notes": "Intentional NativePlaceholder \u2014 do not restore WebView shell. | Promoted after #243/#221 merge (app/website.tsx)"
     },
     {
       "id": "esim",
@@ -1213,7 +1213,7 @@
       "status": "out_of_scope",
       "reachableViaNormalNav": "no",
       "apiWired": "no",
-      "notes": "Marked out_of_scope for Android native completion. Honest deferred screen present; no provider."
+      "notes": "Disabled: Redirect to /; no menu entry; out of this phase"
     },
     {
       "id": "smart-notifications",
@@ -1226,5 +1226,14 @@
       "apiWired": "yes",
       "notes": "Deep-link map wired; physical FCM delivery still unverified (see push-fcm)."
     }
-  ]
+  ],
+  "package": "com.flexamarket.app",
+  "verification": {
+    "fileLevelImplemented": 74,
+    "deviceTestedPassed": 0,
+    "deviceTestedFailed": 0,
+    "blocked": 4,
+    "outOfScope": 1,
+    "note": "File-level complete means Expo route exists without NativePlaceholder and is wired in drawer/stack. Page counts as release-complete only after emulator role testing + screenshot pair."
+  }
 }

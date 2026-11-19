@@ -1,9 +1,36 @@
 # Android Native Complete Inventory
 
-- **startCommitSha:** `d19ce179a3302f9730cd3e899a9a9923b7a5e4bd`
 - **branch:** `cursor/android-native-complete-d484`
-- **generatedAt:** `2026-11-19T16:55:30Z`
-- **androidPackageOnMain:** `com.flexa.market` (not `com.flexamarket.app` on main tip)
+- **startCommitSha:** `d19ce179a3302f9730cd3e899a9a9923b7a5e4bd`
+- **package:** `com.flexamarket.app`
+- **generatedAt:** 2026-11-19T17:03:44.156379+00:00
+
+## 82 vs 84
+Nov 9 inventory = **82** features. The 84-page matrix adds:
+1. `shop-profile` (public seller shop)
+2. `my-boosts` (split from boost-analytics)
+
+## Summary (file-level after #243+#221+#248)
+```json
+{
+  "complete": 74,
+  "partial": 5,
+  "placeholder": 0,
+  "missing": 0,
+  "blocked": 4,
+  "out_of_scope": 1,
+  "total": 84
+}
+```
+
+Blocked (Play Billing / digital goods): wallet-topup paid, subscription-billing, boost-paid, music-purchase — non-payment UI kept; purchases disabled on Android.
+
+Out of scope: `esim` (redirect home; removed from stack/menus).
+
+## Verification policy
+A page is **release-complete** only after: normal Android navigation, correct role, live API, emulator/device test pass, and WebView|native screenshot pair.
+
+
 
 ## 82 vs 84 explanation
 

@@ -18,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
 import {
   createAddress,
@@ -51,6 +52,7 @@ const emptyForm = (countryHint?: string): AddressInput => ({
 
 export default function AddressesScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
   const [rows, setRows] = useState<UserAddress[] | null>(null);
@@ -199,7 +201,7 @@ export default function AddressesScreen() {
               tintColor="#F97316"
             />
           }
-          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{ paddingBottom: tabPadBottom }}
           ListHeaderComponent={error ? <Text style={styles.error}>{error}</Text> : null}
           ListEmptyComponent={
             <Text style={styles.empty}>

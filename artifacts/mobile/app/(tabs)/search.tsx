@@ -14,6 +14,7 @@ import { ListingCard } from "@/components/ListingCard";
 import { SearchBar } from "@/components/SearchBar";
 import { useAuth } from "@/context/AuthContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { fetchCategories, fetchListings, type Listing } from "@/lib/api";
 
 type Cat = {
@@ -33,6 +34,7 @@ const SORTS = [
 
 export default function SearchTab() {
   const insets = useSafeAreaInsets();
+  const listPadBottom = useTabContentPaddingBottom();
   const { token } = useAuth();
   const { country } = useMarketplace();
   const [query, setQuery] = useState("");
@@ -117,7 +119,6 @@ export default function SearchTab() {
           onChangeText={setQuery}
           onSubmit={runSearch}
           placeholder="Search products, brands…"
-          autoFocus
         />
         <Text style={styles.filterLabel}>Categories</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
@@ -167,7 +168,7 @@ export default function SearchTab() {
           keyExtractor={(item) => String(item.id)}
           numColumns={2}
           columnWrapperStyle={styles.row}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: listPadBottom }]}
           refreshControl={
             <RefreshControl refreshing={loading} onRefresh={runSearch} tintColor="#F97316" />
           }
@@ -216,7 +217,7 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: "#0F172A", borderColor: "#0F172A" },
   chipText: { fontSize: 12, fontWeight: "700", color: "#475569" },
   chipTextOn: { color: "#FFFFFF" },
-  list: { paddingHorizontal: 12, paddingBottom: 24 },
+  list: { paddingHorizontal: 12 },
   row: { justifyContent: "space-between" },
   resultMeta: {
     color: "#64748B",

@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
 import { useCart, type CartItem } from "@/context/CartContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
@@ -36,6 +37,7 @@ function formatMoney(amount: number, currency: string | null) {
 
 export default function CartScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { user, token, isLoading: authLoading } = useAuth();
   const { country } = useMarketplace();
@@ -240,14 +242,15 @@ export default function CartScreen() {
             data={visibleItems}
             keyExtractor={(item) => String(item.listingId)}
             renderItem={renderItem}
-            contentContainerStyle={{ paddingBottom: 140, paddingHorizontal: 12 }}
+            contentContainerStyle={{ paddingBottom: tabPadBottom + 100, paddingHorizontal: 12 }}
             ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           />
 
           <View
             style={[
               styles.footer,
-              { paddingBottom: Math.max(insets.bottom, 12) },
+              // Screen already sits above the shared tab bar (safe area applied once there).
+              { paddingBottom: 12 },
             ]}
           >
             <View style={styles.footerMeta}>

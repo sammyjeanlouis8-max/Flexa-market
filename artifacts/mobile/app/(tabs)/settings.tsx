@@ -10,11 +10,13 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useMarketplace } from "@/context/MarketplaceContext";
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES } from "@/lib/countries";
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { country, setCountry } = useMarketplace();
   const [open, setOpen] = useState(false);

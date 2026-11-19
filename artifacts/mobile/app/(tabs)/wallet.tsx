@@ -17,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
 import {
   fetchWalletBalance,
@@ -50,6 +51,7 @@ function formatWhen(iso: string | null | undefined): string {
 
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
   const [balance, setBalance] = useState<WalletBalance | null>(null);
@@ -236,7 +238,7 @@ export default function WalletScreen() {
               <Text style={styles.empty}>No transactions for this filter.</Text>
             )
           }
-          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{ paddingBottom: tabPadBottom }}
         />
       )}
 

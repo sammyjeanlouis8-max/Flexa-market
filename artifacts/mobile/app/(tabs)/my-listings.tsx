@@ -16,12 +16,14 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
 import type { Listing } from "@/lib/api";
 import { deleteListing, fetchUserListings } from "@/lib/sellerApi";
 
 export default function MyListingsScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
   const [rows, setRows] = useState<Listing[] | null>(null);
@@ -104,7 +106,7 @@ export default function MyListingsScreen() {
               tintColor="#F97316"
             />
           }
-          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{ paddingBottom: tabPadBottom }}
           ListHeaderComponent={error ? <Text style={styles.error}>{error}</Text> : null}
           ListEmptyComponent={
             <Text style={styles.empty}>No listings yet. Tap + to sell something.</Text>

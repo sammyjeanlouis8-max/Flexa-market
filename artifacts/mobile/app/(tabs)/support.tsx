@@ -18,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
 import {
   createSupportThread,
@@ -27,6 +28,7 @@ import {
 
 export default function SupportHomeScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
   const [rows, setRows] = useState<SupportThread[] | null>(null);
@@ -150,7 +152,7 @@ export default function SupportHomeScreen() {
               <Feather name="chevron-right" size={16} color="#94A3B8" />
             </Pressable>
           )}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{ paddingBottom: tabPadBottom }}
         />
       )}
 

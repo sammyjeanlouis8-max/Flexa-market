@@ -1,12 +1,13 @@
 /**
- * Native Orders — GET /api/orders/purchases
+ * Native Favorites — GET/DELETE /api/favorites
  */
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -15,43 +16,32 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
-import {
-  fetchPurchases,
-  type PurchaseOrder,
-} from "@/lib/ordersApi";
-import {
-  ORDER_FILTERS,
-  ORDER_FILTER_LABELS,
-  formatDate,
-  formatMoney,
-  listStatusLabel,
-  matchesOrderFilter,
-  orderRef,
-  type OrderFilterKey,
-} from "@/lib/orderUi";
+import type { Listing } from "@/lib/api";
+import { fetchFavorites, removeFavorite } from "@/lib/favoritesApi";
+import { formatMoney } from "@/lib/orderUi";
 
-export default function OrdersScreen() {
+export default function FavoritesScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
-  const { token, user, isLoading: authLoading } = useAuth();
-  const [orders, setOrders] = useState<PurchaseOrder[] | null>(null);
+  const { token, isLoading: authLoading } = useAuth();
+  const [items, setItems] = useState<Listing[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<OrderFilterKey>("all");
+  const [removingId, setRemovingId] = useState<number | null>(null);
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
       if (!token) return;
       if (mode === "refresh") setRefreshing(true);
-      else setError(null);
       try {
-        const rows = await fetchPurchases({ token });
-        setOrders(rows);
+        const rows = await fetchFavorites({ token });
+        setItems(rows);
         setError(null);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not load orders");
-        setOrders((prev) => prev ?? []);
+        setError(e instanceof Error ? e.message : "Could not load favorites");
       } finally {
         setRefreshing(false);
       }
@@ -69,50 +59,82 @@ export default function OrdersScreen() {
     }, [authLoading, token, router, load]),
   );
 
-  const filtered = useMemo(() => {
-    if (!orders) return null;
-    return orders.filter((o) =>
-      matchesOrderFilter(filter, {
-        orderStatus: o.orderStatus,
-        deliveryStatus: o.deliveryStatus,
-        trackingStatus: o.trackingStatus,
-      }),
-    );
-  }, [orders, filter]);
+  const onRemove = (listing: Listing) => {
+    Alert.alert("Remove favorite?", listing.title, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          if (!token) return;
+          setRemovingId(listing.id);
+          try {
+            await removeFavorite(listing.id, { token });
+            setItems((prev) =>
+              (prev ?? []).filter((x) => x.id !== listing.id),
+            );
+          } catch (e) {
+            Alert.alert(
+              "Could not remove",
+              e instanceof Error ? e.message : "Try again",
+            );
+          } finally {
+            setRemovingId(null);
+          }
+        },
+      },
+    ]);
+  };
 
-  const renderItem = ({ item }: { item: PurchaseOrder }) => {
-    const img = item.listingImages?.[0] ?? null;
-    const status = listStatusLabel(item);
+  const renderItem = ({ item }: { item: Listing }) => {
+    const img = item.images?.[0] ?? null;
+    const unavailable =
+      item.status && item.status !== "available" && item.status !== "active";
     return (
       <Pressable
-        style={styles.card}
-        onPress={() => router.push(`/orders/${item.id}`)}
+        style={[styles.card, unavailable && styles.cardUnavailable]}
+        onPress={() => {
+          if (unavailable) {
+            Alert.alert(
+              "Unavailable",
+              "This listing may be sold or removed. You can still remove it from favorites.",
+            );
+            return;
+          }
+          router.push(`/listing/${item.id}`);
+        }}
       >
         {img ? (
           <Image source={{ uri: img }} style={styles.thumb} contentFit="cover" />
         ) : (
           <View style={[styles.thumb, styles.thumbEmpty]}>
-            <Feather name="package" size={20} color="#94A3B8" />
+            <Feather name="image" size={18} color="#94A3B8" />
           </View>
         )}
         <View style={styles.meta}>
           <Text style={styles.title} numberOfLines={2}>
-            {item.listingTitle}
-          </Text>
-          <Text style={styles.sub}>
-            {orderRef(item.id)} · {formatDate(item.createdAt)}
+            {item.title}
           </Text>
           <Text style={styles.price}>
-            {formatMoney(item.amount, item.currency)}
-            {item.sellerName ? ` · ${item.sellerName}` : ""}
+            {formatMoney(Number(item.price || 0), item.currency)}
           </Text>
-          <View style={[styles.badge, { backgroundColor: status.bg }]}>
-            <Text style={[styles.badgeText, { color: status.color }]}>
-              {status.label}
-            </Text>
-          </View>
+          <Text style={styles.sub}>
+            {[item.city ?? item.location, item.country].filter(Boolean).join(" · ")}
+            {unavailable ? " · Unavailable" : ""}
+          </Text>
         </View>
-        <Feather name="chevron-right" size={18} color="#94A3B8" />
+        <Pressable
+          hitSlop={10}
+          onPress={() => onRemove(item)}
+          disabled={removingId === item.id}
+          accessibilityLabel="Remove favorite"
+        >
+          {removingId === item.id ? (
+            <ActivityIndicator color="#EF4444" />
+          ) : (
+            <Feather name="heart" size={22} color="#EF4444" />
+          )}
+        </Pressable>
       </Pressable>
     );
   };
@@ -128,28 +150,11 @@ export default function OrdersScreen() {
         >
           <Feather name="arrow-left" size={22} color="#0F172A" />
         </Pressable>
-        <Text style={styles.topTitle}>My orders</Text>
+        <Text style={styles.topTitle}>Favorites</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.filters}>
-        {ORDER_FILTERS.map((key) => {
-          const on = filter === key;
-          return (
-            <Pressable
-              key={key}
-              style={[styles.chip, on && styles.chipOn]}
-              onPress={() => setFilter(key)}
-            >
-              <Text style={[styles.chipText, on && styles.chipTextOn]}>
-                {ORDER_FILTER_LABELS[key]}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {authLoading || (token && orders === null && !error) ? (
+      {authLoading || (token && items === null && !error) ? (
         <ActivityIndicator color="#F97316" style={{ marginTop: 40 }} />
       ) : error ? (
         <View style={styles.empty}>
@@ -160,12 +165,12 @@ export default function OrdersScreen() {
         </View>
       ) : (
         <FlatList
-          data={filtered ?? []}
+          data={items ?? []}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
           contentContainerStyle={{
             paddingHorizontal: 12,
-            paddingBottom: insets.bottom + 24,
+            paddingBottom: tabPadBottom,
             flexGrow: 1,
           }}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
@@ -178,21 +183,13 @@ export default function OrdersScreen() {
           }
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Feather name="shopping-bag" size={40} color="#CBD5E1" />
-              <Text style={styles.emptyTitle}>
-                {orders && orders.length > 0
-                  ? "No orders in this filter"
-                  : "No orders yet"}
-              </Text>
+              <Feather name="heart" size={40} color="#CBD5E1" />
+              <Text style={styles.emptyTitle}>No favorites yet</Text>
               <Text style={styles.emptySub}>
-                {user
-                  ? "When you buy with Flexa Wallet or card, orders appear here."
-                  : "Sign in to view your purchases."}
+                Save products from listing details. Favorites stay synced to your
+                account and marketplace country.
               </Text>
-              <Pressable
-                style={styles.retry}
-                onPress={() => router.replace("/")}
-              >
+              <Pressable style={styles.retry} onPress={() => router.replace("/")}>
                 <Text style={styles.retryText}>Browse marketplace</Text>
               </Pressable>
             </View>
@@ -223,23 +220,6 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   topTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
-  filters: {
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingBottom: 10,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  chipOn: { backgroundColor: "#0F172A", borderColor: "#0F172A" },
-  chipText: { fontSize: 13, fontWeight: "700", color: "#475569" },
-  chipTextOn: { color: "#FFFFFF" },
   card: {
     flexDirection: "row",
     alignItems: "center",
@@ -250,20 +230,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
+  cardUnavailable: { opacity: 0.72 },
   thumb: { width: 72, height: 72, borderRadius: 12, backgroundColor: "#E2E8F0" },
   thumbEmpty: { alignItems: "center", justifyContent: "center" },
   meta: { flex: 1, gap: 3 },
   title: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
+  price: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
   sub: { fontSize: 12, color: "#64748B" },
-  price: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
-  badge: {
-    alignSelf: "flex-start",
-    marginTop: 4,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  badgeText: { fontSize: 11, fontWeight: "800" },
   empty: {
     flex: 1,
     alignItems: "center",
@@ -279,7 +252,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
-  error: { color: "#B91C1C", textAlign: "center", fontWeight: "700" },
+  error: { color: "#B91C1C", fontWeight: "700", textAlign: "center" },
   retry: {
     marginTop: 8,
     backgroundColor: "#F97316",

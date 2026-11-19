@@ -8,13 +8,15 @@ import { useRouter } from "expo-router";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 
 export default function EsimDeferredScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 24 }]}>
+    <View style={[styles.root, { paddingTop: insets.top + 8, paddingBottom: tabPadBottom }]}>
       <View style={styles.topBar}>
         <Pressable
           style={styles.back}

@@ -18,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
 import { uploadLocalFile } from "@/lib/mediaUpload";
 import {
@@ -48,6 +49,7 @@ type LocalImage = {
 
 export default function SellTab() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
 
@@ -247,7 +249,7 @@ export default function SellTab() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{ paddingBottom: tabPadBottom }}
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.section}>Photos (required · max 5)</Text>

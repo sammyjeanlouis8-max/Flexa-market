@@ -22,6 +22,7 @@ import { SkeletonCard } from "@/components/SkeletonCard";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import {
   fetchCategories,
   fetchHomeStats,
@@ -34,6 +35,7 @@ type Cat = { id: number; name: string; slug: string; listingCount?: number; pare
 
 export default function HomeTab() {
   const insets = useSafeAreaInsets();
+  const listPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { token, user } = useAuth();
   const { count: cartCount } = useCart();
@@ -265,7 +267,7 @@ export default function HomeTab() {
           keyExtractor={(item) => String(item.id)}
           numColumns={2}
           columnWrapperStyle={styles.row}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listPadBottom }]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -370,7 +372,7 @@ const styles = StyleSheet.create({
   authBannerText: { flex: 1, color: "#9A3412", fontSize: 13, fontWeight: "600" },
   gridPad: { paddingHorizontal: 12, paddingTop: 12 },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  listContent: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 24 },
+  listContent: { paddingHorizontal: 12, paddingTop: 12 },
   row: { justifyContent: "space-between" },
   centered: {
     alignItems: "center",

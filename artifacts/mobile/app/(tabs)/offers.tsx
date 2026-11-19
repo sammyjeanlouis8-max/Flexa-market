@@ -18,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
 import {
   acceptCounterOffer,
@@ -32,6 +33,7 @@ type Tab = "received" | "sent";
 
 export default function OffersScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
   const [tab, setTab] = useState<Tab>("received");
@@ -258,7 +260,7 @@ export default function OffersScreen() {
             <Text style={styles.empty}>No offers in this tab.</Text>
           )
         }
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{ paddingBottom: tabPadBottom }}
       />
     </View>
   );

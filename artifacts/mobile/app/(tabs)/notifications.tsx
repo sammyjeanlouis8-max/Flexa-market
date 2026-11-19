@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
 import {
   fetchNotifications,
@@ -30,6 +31,7 @@ import { getPushPrepStatus } from "@/lib/pushPrep";
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
   const [items, setItems] = useState<AppNotification[] | null>(null);
@@ -169,7 +171,7 @@ export default function NotificationsScreen() {
           renderItem={renderItem}
           contentContainerStyle={{
             paddingHorizontal: 12,
-            paddingBottom: insets.bottom + 24,
+            paddingBottom: tabPadBottom,
             flexGrow: 1,
           }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}

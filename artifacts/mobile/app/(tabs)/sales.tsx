@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
 import {
   fetchSalesDashboard,
@@ -29,6 +30,7 @@ function money(n: unknown): string {
 
 export default function SalesScreen() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
   const [dash, setDash] = useState<SalesDashboard | null>(null);
@@ -107,7 +109,7 @@ export default function SalesScreen() {
               tintColor="#F97316"
             />
           }
-          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{ paddingBottom: tabPadBottom }}
           ListHeaderComponent={
             <View>
               {error ? <Text style={styles.error}>{error}</Text> : null}

@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import { useAuth } from "@/context/AuthContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
 
@@ -23,6 +24,7 @@ const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap 
 
 export default function ProfileTab() {
   const insets = useSafeAreaInsets();
+  const tabPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { user, token, logout, isLoading } = useAuth();
   const { country } = useMarketplace();
@@ -30,7 +32,7 @@ export default function ProfileTab() {
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 }}
+      contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: tabPadBottom }}
     >
       <Text style={styles.title}>Account</Text>
 

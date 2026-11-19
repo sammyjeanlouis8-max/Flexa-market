@@ -123,8 +123,13 @@ export default function SalesScreen() {
                 <Pressable style={styles.quickBtn} onPress={() => router.push("/my-listings")}>
                   <Text style={styles.quickText}>My listings</Text>
                 </Pressable>
-                <Pressable style={styles.quickBtn} onPress={() => router.push("/(tabs)/sell")}>
-                  <Text style={styles.quickText}>Sell product</Text>
+                <Pressable
+                  style={[styles.quickBtn, styles.addProductBtn]}
+                  onPress={() => router.push("/(tabs)/sell")}
+                  accessibilityLabel="Add Product"
+                >
+                  <Feather name="plus-circle" size={16} color="#FFFFFF" />
+                  <Text style={[styles.quickText, styles.addProductText]}>Add Product</Text>
                 </Pressable>
                 <Pressable style={styles.quickBtn} onPress={() => router.push("/offers")}>
                   <Text style={styles.quickText}>Offers</Text>
@@ -200,8 +205,15 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
   },
   quickText: { fontWeight: "700", fontSize: 12, color: "#0F172A" },
+  addProductBtn: {
+    backgroundColor: "#F97316",
+    borderColor: "#F97316",
+  },
+  addProductText: { color: "#FFFFFF" },
   section: { fontSize: 15, fontWeight: "800", color: "#0F172A", marginBottom: 8 },
   empty: { textAlign: "center", color: "#94A3B8", marginTop: 24 },
   row: {

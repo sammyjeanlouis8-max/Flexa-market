@@ -59,15 +59,58 @@ interface Driver {
   longitude: number | null;
 }
 
+/** Play Store screenshot fixture — no real PII / PINs. */
+const DEMO_DELIVERY: Delivery = {
+  id: 9001,
+  trackingNumber: "FM-HT-DEMO-4821",
+  status: "on_the_way",
+  deliveryCity: "Port-au-Prince",
+  pickupCity: "Pétion-Ville",
+  deliveryAddress: "Demo Avenue, Delmas 33",
+  country: "Haiti",
+  verificationCode: null,
+  totalAmount: 98.99,
+  currency: "USD",
+  feeUsd: 3.5,
+  createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  acceptedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+  pickedUpAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+  deliveredAt: null,
+  arrivedAt: null,
+  buyerId: -1,
+  sellerId: -2,
+  driverUserId: -3,
+  holdAmountUsd: null,
+  returnCode: null,
+  returnFeeUsd: null,
+  buyerAbsentAt: null,
+};
+
+const DEMO_DRIVER: Driver = {
+  name: "Alex Driver",
+  avatar: null,
+  phone: null,
+  rating: 4.9,
+  deliveryCount: 128,
+  vehicleType: "moto",
+  vehicleBrand: "Honda",
+  vehicleModel: "CB",
+  vehicleColor: "Red",
+  licensePlateNumber: null,
+  facePhotoFront: null,
+  latitude: null,
+  longitude: null,
+};
+
 // ── Step config ───────────────────────────────────────────────────────────────
 const STEPS = [
-  { key: "waiting",         label: "Kòmand Reçu",  icon: "cube-outline"         as const },
-  { key: "driver_assigned", label: "Chofè Trovè",  icon: "person-outline"       as const },
-  { key: "arrived_pickup",  label: "Kote Machann", icon: "location-outline"     as const },
-  { key: "picked_up",       label: "Ranmase",       icon: "bag-check-outline"    as const },
-  { key: "on_the_way",      label: "Sou Wout",      icon: "bicycle-outline"      as const },
-  { key: "arrived",         label: "Rive!",          icon: "pin-outline"          as const },
-  { key: "delivered",       label: "Livre ✓",       icon: "checkmark-circle"     as const },
+  { key: "waiting",         label: "Order placed",   icon: "cube-outline"         as const },
+  { key: "driver_assigned", label: "Driver found",   icon: "person-outline"       as const },
+  { key: "arrived_pickup",  label: "At seller",      icon: "location-outline"     as const },
+  { key: "picked_up",       label: "Picked up",      icon: "bag-check-outline"    as const },
+  { key: "on_the_way",      label: "On the way",     icon: "bicycle-outline"      as const },
+  { key: "arrived",         label: "Arrived",        icon: "pin-outline"          as const },
+  { key: "delivered",       label: "Delivered",      icon: "checkmark-circle"     as const },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -84,17 +127,17 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  waiting:         "Ap Chèche Chofè...",
-  driver_assigned: "Chofè Asiyé ✓",
-  arrived_pickup:  "Kote Machann",
-  picked_up:       "Kolis Ranmase",
-  on_the_way:      "Sou Wout Ba Ou",
-  arrived:         "Chofè Rive!",
-  delivered:       "Livre Avèk Siksè ✓",
-  failed_pickup:   "Echek Ranmase",
-  returning:       "Ap Retounen",
-  returned:        "Retounen ✓",
-  buyer_absent:    "Ou Pa T La",
+  waiting:         "Looking for a driver…",
+  driver_assigned: "Driver assigned",
+  arrived_pickup:  "Driver at seller",
+  picked_up:       "Package picked up",
+  on_the_way:      "On the way to you",
+  arrived:         "Driver has arrived",
+  delivered:       "Delivered successfully",
+  failed_pickup:   "Pickup failed",
+  returning:       "Returning to seller",
+  returned:        "Returned",
+  buyer_absent:    "Buyer was absent",
 };
 
 // ── Route Progress Bar ────────────────────────────────────────────────────────
@@ -273,7 +316,7 @@ function DriverCard({ driver, isMoto }: { driver: Driver; isMoto: boolean }) {
               <View style={[styles.vehicleBadge, { backgroundColor: isMoto ? "#1e3a5f" : "#1e3a5f" }]}>
                 <Ionicons name={isMoto ? "bicycle" : "car"} size={11} color="#60a5fa" />
                 <Text style={{ fontSize: 10, fontWeight: "700", color: "#60a5fa", marginLeft: 3 }}>
-                  {isMoto ? "Moto" : "Machin"}
+                  {isMoto ? "Moto" : "Car"}
                 </Text>
               </View>
             </View>
@@ -304,7 +347,7 @@ function DriverCard({ driver, isMoto }: { driver: Driver; isMoto: boolean }) {
           disabled={!driver.phone}
         >
           <Ionicons name="call" size={20} color="#22c55e" />
-          <Text style={styles.actionBtnLabel}>Rele</Text>
+          <Text style={styles.actionBtnLabel}>Call</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionBtn, !driver.phone && { opacity: 0.4 }]}
@@ -352,7 +395,13 @@ export default function DeliveryTrackingScreen() {
 
       const r = await fetch(`${getBaseUrl()}/delivery/tracking/${id}`, { headers });
       if (!r.ok) {
-        setError("Pa ka jwenn livrezon sa.");
+        if (id === "demo" || id === "playstore-demo") {
+          setDelivery(DEMO_DELIVERY as any);
+          setDriver(DEMO_DRIVER as any);
+          setError("");
+          return;
+        }
+        setError("Could not find this delivery.");
         return;
       }
       const data = await r.json();
@@ -360,7 +409,13 @@ export default function DeliveryTrackingScreen() {
       setDriver(data.driver ?? null);
       setError("");
     } catch {
-      if (!silent) setError("Connection error. Please try again.");
+      if (id === "demo" || id === "playstore-demo") {
+        setDelivery(DEMO_DELIVERY as any);
+        setDriver(DEMO_DRIVER as any);
+        setError("");
+      } else if (!silent) {
+        setError("Connection error. Please try again.");
+      }
     } finally {
       if (!silent) setLoading(false);
     }
@@ -392,7 +447,7 @@ export default function DeliveryTrackingScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#f97316" />
-        <Text style={styles.loadingText}>Ap chaje tracking...</Text>
+        <Text style={styles.loadingText}>Loading tracking…</Text>
       </View>
     );
   }
@@ -411,7 +466,7 @@ export default function DeliveryTrackingScreen() {
 
   if (!delivery) return null;
 
-  const isBuyer = user?.id === delivery.buyerId;
+  const isBuyer = user?.id === delivery.buyerId || delivery.id === DEMO_DELIVERY.id;
   const isMoto = driver?.vehicleType === "moto" || driver?.vehicleType === "motorcycle";
   const statusColor = STATUS_COLORS[delivery.status] ?? "#22c55e";
   const statusLabel = STATUS_LABELS[delivery.status] ?? delivery.status;
@@ -426,7 +481,7 @@ export default function DeliveryTrackingScreen() {
           <Ionicons name="arrow-back" size={22} color="#f1f5f9" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Tracking Livrezon</Text>
+          <Text style={styles.headerTitle}>Order tracking</Text>
           {delivery.trackingNumber && (
             <Text style={styles.headerTracking}>{delivery.trackingNumber}</Text>
           )}
@@ -459,7 +514,7 @@ export default function DeliveryTrackingScreen() {
           <View style={styles.waitingCard}>
             <ActivityIndicator size="small" color="#f97316" />
             <View style={{ marginLeft: 12 }}>
-              <Text style={styles.waitingTitle}>Ap chèche chofè ki disponib...</Text>
+              <Text style={styles.waitingTitle}>Looking for an available driver…</Text>
               <Text style={styles.waitingSubtitle}>Yon chofè ap aksepte kòmand ou byento</Text>
             </View>
           </View>
@@ -471,7 +526,7 @@ export default function DeliveryTrackingScreen() {
             <View style={styles.deliveredIconWrapper}>
               <Ionicons name="checkmark-circle" size={40} color="#fff" />
             </View>
-            <Text style={styles.deliveredBannerTitle}>Livrezon Konplè!</Text>
+            <Text style={styles.deliveredBannerTitle}>Delivery complete!</Text>
             <Text style={styles.deliveredBannerSub}>Kolis ou livré an sekirite pa FM</Text>
             {delivery.deliveredAt && (
               <Text style={styles.deliveredBannerDate}>
@@ -528,7 +583,7 @@ export default function DeliveryTrackingScreen() {
 
         {/* ── Timeline ── */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>ISTORIK LIVREZON</Text>
+          <Text style={styles.sectionTitle}>DELIVERY HISTORY</Text>
           <StepTimeline status={delivery.status} />
         </View>
 
@@ -552,7 +607,7 @@ export default function DeliveryTrackingScreen() {
           {delivery.feeUsd && (
             <View style={styles.infoRow}>
               <Ionicons name="wallet-outline" size={12} color="#64748b" style={{ marginRight: 8 }} />
-              <Text style={styles.infoLabel}>Frè Livrezon</Text>
+              <Text style={styles.infoLabel}>Delivery fee</Text>
               <Text style={styles.infoValue}>${delivery.feeUsd.toFixed(2)}</Text>
             </View>
           )}

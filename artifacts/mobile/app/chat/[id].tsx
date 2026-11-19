@@ -80,7 +80,27 @@ export default function ChatThreadScreen() {
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
 
+  const isDemoChat = id === "demo" || id === "playstore-demo";
+
   const loadMeta = useCallback(async () => {
+    if (isDemoChat) {
+      setMeta({
+        id: 9001,
+        listingId: 1,
+        listingTitle: "Multi-Head Body Massager",
+        listingImage: null,
+        listingPrice: 98.99,
+        otherUserId: 9002,
+        otherUserName: "Demo Seller",
+        otherUserAvatar: null,
+        otherUserIsVerified: true,
+        myRole: "buyer",
+        lastMessage: "Yes — I can deliver to Delmas today.",
+        lastMessageAt: new Date().toISOString(),
+        unreadCount: 0,
+      });
+      return;
+    }
     if (!token || !Number.isFinite(convId)) return;
     try {
       const list = await fetchConversations({ token });
@@ -88,10 +108,82 @@ export default function ChatThreadScreen() {
     } catch {
       /* thread still usable without header meta */
     }
-  }, [token, convId]);
+  }, [token, convId, isDemoChat]);
 
   const loadMessages = useCallback(
     async (mode: "initial" | "silent" = "initial") => {
+      if (isDemoChat) {
+        const now = Date.now();
+        setMessages([
+          {
+            id: 1,
+            conversationId: 9001,
+            senderId: 9002,
+            senderName: "Demo Seller",
+            senderAvatar: null,
+            content: "Hi! Thanks for your interest in the Multi-Head Body Massager.",
+            messageType: "text",
+            mediaUrl: null,
+            imageUrl: null,
+            isRead: true,
+            createdAt: new Date(now - 25 * 60 * 1000).toISOString(),
+          },
+          {
+            id: 2,
+            conversationId: 9001,
+            senderId: 9003,
+            senderName: "Demo Buyer",
+            senderAvatar: null,
+            content: "Is it still available? Can you deliver to Delmas 33?",
+            messageType: "text",
+            mediaUrl: null,
+            imageUrl: null,
+            isRead: true,
+            createdAt: new Date(now - 20 * 60 * 1000).toISOString(),
+          },
+          {
+            id: 3,
+            conversationId: 9001,
+            senderId: 9002,
+            senderName: "Demo Seller",
+            senderAvatar: null,
+            content: "Yes — brand new, sealed. Delivery to Delmas is available today.",
+            messageType: "text",
+            mediaUrl: null,
+            imageUrl: null,
+            isRead: true,
+            createdAt: new Date(now - 15 * 60 * 1000).toISOString(),
+          },
+          {
+            id: 4,
+            conversationId: 9001,
+            senderId: 9003,
+            senderName: "Demo Buyer",
+            senderAvatar: null,
+            content: "Perfect. I’ll place the order with Flexa delivery.",
+            messageType: "text",
+            mediaUrl: null,
+            imageUrl: null,
+            isRead: true,
+            createdAt: new Date(now - 8 * 60 * 1000).toISOString(),
+          },
+          {
+            id: 5,
+            conversationId: 9001,
+            senderId: 9002,
+            senderName: "Demo Seller",
+            senderAvatar: null,
+            content: "Great — I’ll pack it now. Message me when the driver arrives.",
+            messageType: "text",
+            mediaUrl: null,
+            imageUrl: null,
+            isRead: true,
+            createdAt: new Date(now - 3 * 60 * 1000).toISOString(),
+          },
+        ]);
+        setError(null);
+        return;
+      }
       if (!token || !Number.isFinite(convId)) return;
       if (mode === "initial") setError(null);
       try {
@@ -105,10 +197,15 @@ export default function ChatThreadScreen() {
         }
       }
     },
-    [token, convId],
+    [token, convId, isDemoChat],
   );
 
   useEffect(() => {
+    if (isDemoChat) {
+      void loadMeta();
+      void loadMessages("initial");
+      return;
+    }
     if (!authLoading && !token) {
       router.replace("/auth/login");
       return;
@@ -160,7 +257,7 @@ export default function ChatThreadScreen() {
       clearInterval(poll);
       if (user?.id) emitStopTyping(convId, user.id);
     };
-  }, [authLoading, token, user?.id, convId, router, loadMeta, loadMessages]);
+  }, [authLoading, token, user?.id, convId, router, loadMeta, loadMessages, isDemoChat]);
 
   useEffect(() => {
     if (!messages?.length) return;
@@ -416,7 +513,7 @@ export default function ChatThreadScreen() {
     setTranslations((prev) => ({ ...prev, [msg.id]: result.translatedText }));
   };
 
-  const myId = user?.id;
+  const myId = isDemoChat ? 9003 : user?.id;
   const title = meta?.otherUserName || "Chat";
   const subtitle = meta?.listingTitle;
 

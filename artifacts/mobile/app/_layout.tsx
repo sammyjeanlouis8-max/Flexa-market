@@ -5,6 +5,7 @@
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { LogBox } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { PushBootstrap } from "@/components/PushBootstrap";
@@ -14,6 +15,7 @@ import { LanguageProvider } from "@/context/LanguageContext";
 import { MarketplaceProvider } from "@/context/MarketplaceContext";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+LogBox.ignoreAllLogs(true);
 
 export default function RootLayout() {
   useEffect(() => {

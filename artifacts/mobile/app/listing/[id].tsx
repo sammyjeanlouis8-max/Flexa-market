@@ -245,6 +245,34 @@ export default function ListingDetailScreen() {
                 {imageIndex + 1} / {images.length}
               </Text>
             ) : null}
+            {images.length > 1 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.thumbsRow}
+              >
+                {images.map((uri, i) => (
+                  <Pressable
+                    key={`thumb-${i}`}
+                    onPress={() => setImageIndex(i)}
+                    style={[
+                      styles.thumb,
+                      imageIndex === i && styles.thumbOn,
+                    ]}
+                  >
+                    {uri ? (
+                      <Image
+                        source={{ uri }}
+                        style={styles.thumbImage}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={[styles.thumbImage, styles.heroPlaceholder]} />
+                    )}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : null}
 
             <View style={styles.body}>
               <Text style={styles.price}>
@@ -393,6 +421,22 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 8,
   },
+  thumbsRow: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    gap: 8,
+  },
+  thumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#E2E8F0",
+  },
+  thumbOn: { borderColor: "#F97316" },
+  thumbImage: { width: "100%", height: "100%" },
   body: { paddingHorizontal: 16, paddingTop: 14, gap: 8 },
   price: { fontSize: 26, fontWeight: "800", color: "#0F172A" },
   title: { fontSize: 20, fontWeight: "700", color: "#0F172A", lineHeight: 26 },

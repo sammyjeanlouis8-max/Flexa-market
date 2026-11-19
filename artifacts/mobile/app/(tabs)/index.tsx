@@ -10,6 +10,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -22,12 +23,14 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
 import {
+  fetchCategories,
   fetchHomeStats,
   fetchListings,
   type Listing,
 } from "@/lib/api";
 
 type Section = "featured" | "recent" | "all";
+type Cat = { id: number; name: string; slug: string; listingCount?: number; parentId?: number | null };
 
 export default function HomeTab() {
   const insets = useSafeAreaInsets();
@@ -41,6 +44,8 @@ export default function HomeTab() {
   const [featured, setFeatured] = useState<Listing[]>([]);
   const [recent, setRecent] = useState<Listing[]>([]);
   const [listings, setListings] = useState<Listing[]>([]);
+  const [categories, setCategories] = useState<Cat[]>([]);
+  const [category, setCategory] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -55,15 +60,26 @@ export default function HomeTab() {
       else setLoading(true);
       setError(null);
       try {
-        const [stats, page1] = await Promise.all([
+        const [stats, page1, catsRaw] = await Promise.all([
           fetchHomeStats(country, { token }),
-          fetchListings({ country, page: 1, limit: 20 }, { token }),
+          fetchListings(
+            { country, page: 1, limit: 20, category: category || undefined },
+            { token },
+          ),
+          fetchCategories({ token }).catch(() => []),
         ]);
         setFeatured(stats.featuredListings ?? []);
         setRecent(stats.recentListings ?? []);
         setListings(page1.listings ?? []);
         setPage(page1.page ?? 1);
         setTotalPages(page1.totalPages ?? 1);
+        const cats = (Array.isArray(catsRaw) ? catsRaw : []) as Cat[];
+        setCategories(
+          cats
+            .filter((c) => c.parentId == null)
+            .filter((c) => (c.listingCount ?? 0) > 0)
+            .slice(0, 12),
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load marketplace");
       } finally {
@@ -71,7 +87,7 @@ export default function HomeTab() {
         setRefreshing(false);
       }
     },
-    [country, isReady, token],
+    [category, country, isReady, token],
   );
 
   useEffect(() => {
@@ -84,7 +100,13 @@ export default function HomeTab() {
     setSection("all");
     try {
       const page1 = await fetchListings(
-        { country, q: query.trim() || undefined, page: 1, limit: 20 },
+        {
+          country,
+          q: query.trim() || undefined,
+          category: category || undefined,
+          page: 1,
+          limit: 20,
+        },
         { token },
       );
       setListings(page1.listings ?? []);
@@ -95,7 +117,7 @@ export default function HomeTab() {
     } finally {
       setLoading(false);
     }
-  }, [country, query, token]);
+  }, [category, country, query, token]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || loading || page >= totalPages || section !== "all") return;
@@ -103,7 +125,13 @@ export default function HomeTab() {
     try {
       const next = page + 1;
       const data = await fetchListings(
-        { country, q: query.trim() || undefined, page: next, limit: 20 },
+        {
+          country,
+          q: query.trim() || undefined,
+          category: category || undefined,
+          page: next,
+          limit: 20,
+        },
         { token },
       );
       setListings((prev) => [...prev, ...(data.listings ?? [])]);
@@ -172,6 +200,36 @@ export default function HomeTab() {
             </Text>
           </Pressable>
         </View>
+        <Text style={styles.catLabel}>Categories</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.catRow}
+        >
+          <Pressable
+            onPress={() => {
+              setCategory(null);
+              setSection("all");
+            }}
+            style={[styles.chip, !category && styles.chipOn]}
+          >
+            <Text style={[styles.chipText, !category && styles.chipTextOn]}>All</Text>
+          </Pressable>
+          {categories.map((c) => (
+            <Pressable
+              key={c.id}
+              onPress={() => {
+                setCategory(c.slug);
+                setSection("all");
+              }}
+              style={[styles.chip, category === c.slug && styles.chipOn]}
+            >
+              <Text style={[styles.chipText, category === c.slug && styles.chipTextOn]}>
+                {c.name}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
         {!user ? (
           <Pressable
             style={styles.authBanner}
@@ -276,6 +334,14 @@ const styles = StyleSheet.create({
   },
   countryText: { color: "#C2410C", fontSize: 12, fontWeight: "700" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  catLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  catRow: { gap: 8, paddingBottom: 2 },
   chip: {
     flexDirection: "row",
     alignItems: "center",

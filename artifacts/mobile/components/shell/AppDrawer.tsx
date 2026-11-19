@@ -92,6 +92,10 @@ function isPathActive(pathname: string, href: string): boolean {
 }
 
 function goPath(router: ReturnType<typeof useRouter>, href: string) {
+  if (/^\/?esim(\b|\/|\?|#)/i.test(href)) {
+    router.replace("/");
+    return;
+  }
   router.push(href as any);
 }
 

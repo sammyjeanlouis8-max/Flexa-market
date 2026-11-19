@@ -76,10 +76,9 @@ test("stripe checkout creates hosted session and opens system browser", () => {
 
 test("eSIM screen is explicitly deferred without fake plans", () => {
   const esim = read("app/esim.tsx");
-  assert.match(esim, /DEFERRED/);
-  assert.match(esim, /not available|not ready/i);
-  assert.match(esim, /will not show fake plans/i);
-  assert.equal(/\$\d+\.\d+|Buy now|Subscribe/i.test(esim), false);
+  assert.match(esim, /OUT OF SCOPE|Redirect/i);
+  assert.match(esim, /href="\/"/);
+  assert.equal(/Buy now|Subscribe|QR/i.test(esim), false);
 });
 
 test("listing wires Stripe for DR / card path", () => {

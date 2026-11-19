@@ -4,6 +4,17 @@ export const ANDROID_DIGITAL_PURCHASE_UNAVAILABLE =
   "ANDROID_DIGITAL_PURCHASE_UNAVAILABLE";
 
 /**
+ * Digital purchases are blocked on Android by default (Play Billing not verified).
+ * Set ANDROID_DIGITAL_PURCHASE_GUARD=0 (or false/off/no) to disable the block.
+ */
+export function isAndroidDigitalPurchaseGuardEnabled(): boolean {
+  const raw = String(process.env.ANDROID_DIGITAL_PURCHASE_GUARD || "").trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") return false;
+  // Default ON when unset or any other value (including "1"/"true").
+  return true;
+}
+
+/**
  * Contract shared with the native clients. The standalone marker supports the
  * current/new app UA, while the Android + WebView/app-marker branch preserves
  * detection of the legacy stock Android WebView UA.
@@ -77,6 +88,10 @@ export function androidDigitalPurchaseGuard(
   res: Response,
   next: NextFunction,
 ): void {
+  if (!isAndroidDigitalPurchaseGuardEnabled()) {
+    next();
+    return;
+  }
   if (
     isAndroidNativeApp(req.get("user-agent")) &&
     isDigitalPurchaseInitiation(req.method, normalizedApiPath(req))

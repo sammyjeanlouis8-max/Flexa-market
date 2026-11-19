@@ -1,0 +1,36 @@
+# Keep pnpm workspace packages (artifacts/*, lib/*, scripts) so EAS install works.
+# Only exclude bulky binaries and install/build caches.
+
+attached_assets/
+attached_assets/**
+
+node_modules/
+**/node_modules/**
+
+.git/
+.git/**
+
+artifacts/mobile/android/app/build/
+artifacts/mobile/android/app/build/**
+artifacts/mobile/android/.gradle/
+artifacts/mobile/android/.gradle/**
+artifacts/mobile/android/build/
+artifacts/mobile/android/build/**
+artifacts/mobile/ios/Pods/
+artifacts/mobile/ios/Pods/**
+artifacts/mobile/node_modules/
+artifacts/mobile/node_modules/**
+artifacts/mobile/.expo/
+artifacts/mobile/.expo/**
+
+# Large QA / marketplace media not needed for the Android binary
+artifacts/qa/
+artifacts/qa/**
+artifacts/marketplace/client/public/
+artifacts/marketplace/dist/
+artifacts/mockup-sandbox/
+
+**/*.apk
+**/*.aab
+**/*.mp4
+**/*.zip

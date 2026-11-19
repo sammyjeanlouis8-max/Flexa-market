@@ -32,6 +32,7 @@ function fmt(ms: number) {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
+/** Flexa Music is free on Android for this release — no Buy / wallet purchase UI. */
 export default function NowPlayingScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -99,8 +100,7 @@ export default function NowPlayingScreen() {
         </View>
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={(e) => {
-            const w = e.nativeEvent.locationX;
+          onPress={() => {
             void seek(progress * state.durationMillis);
           }}
         />

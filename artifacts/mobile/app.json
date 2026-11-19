@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.flexamarket.mobile",
-      "buildNumber": "4",
+      "buildNumber": "5",
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
           {
@@ -46,9 +46,9 @@
       }
     },
     "android": {
-      "package": "com.flexa.market",
+      "package": "com.flexamarket.app",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 39,
+      "versionCode": 66,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0F172A"
@@ -115,14 +115,17 @@
         "projectId": "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.1",
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e",
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
+    },
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#146C43",
+      "translucent": true
     }
   }
 }

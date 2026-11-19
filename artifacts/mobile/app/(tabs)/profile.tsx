@@ -6,20 +6,27 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
 
-const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap }[] = [
+const BASE_LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap }[] = [
   { label: "Flexa Music", href: "/(tabs)/music", icon: "music" },
   { label: "Edit profile", href: "/edit-profile", icon: "edit-2" },
   { label: "My orders", href: "/orders", icon: "package" },
   { label: "Seller sales", href: "/sales", icon: "bar-chart-2" },
+  { label: "Seller earnings", href: "/seller-earnings", icon: "dollar-sign" },
+  { label: "Become a seller", href: "/seller-registration", icon: "user-plus" },
   { label: "My listings", href: "/my-listings", icon: "grid" },
+  { label: "Size / color", href: "/product-variations", icon: "layers" },
+  { label: "Store manager", href: "/store-manager", icon: "users" },
   { label: "Private offers", href: "/offers", icon: "tag" },
   { label: "Favorites", href: "/favorites", icon: "heart" },
   { label: "Wallet", href: "/wallet", icon: "credit-card" },
+  { label: "Redeem card", href: "/wallet-redeem", icon: "gift" },
+  { label: "Referrals", href: "/referrals", icon: "share-2" },
   { label: "Addresses", href: "/addresses", icon: "map-pin" },
   { label: "Support", href: "/support", icon: "life-buoy" },
   { label: "Notifications", href: "/notifications", icon: "bell" },
   { label: "Settings", href: "/settings", icon: "settings" },
   { label: "Delivery tracking", href: "/delivery-tracking", icon: "map" },
+  { label: "Flexa eSIM", href: "/esim", icon: "smartphone" },
 ];
 
 export default function ProfileTab() {
@@ -28,10 +35,24 @@ export default function ProfileTab() {
   const { user, token, logout, isLoading } = useAuth();
   const { country } = useMarketplace();
 
+  const links = [
+    ...(user?.id
+      ? ([
+          {
+            label: "My public shop",
+            href: `/shop/${user.id}`,
+            icon: "shopping-bag" as const,
+          },
+        ] as const)
+      : []),
+    ...BASE_LINKS,
+  ];
+
   return (
     <ScrollView
       style={styles.root}
       contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 }}
+      testID="profile-account"
     >
       <Text style={styles.title}>Account</Text>
 
@@ -45,6 +66,13 @@ export default function ProfileTab() {
             {user.country ?? country}
             {user.city ? ` · ${user.city}` : ""}
           </Text>
+          <Pressable
+            style={styles.primaryBtn}
+            onPress={() => router.push(`/shop/${user.id}` as any)}
+            testID="profile-open-shop"
+          >
+            <Text style={styles.primaryBtnText}>View my shop</Text>
+          </Pressable>
           <Pressable style={styles.secondaryBtn} onPress={() => logout()}>
             <Text style={styles.secondaryBtnText}>Sign out</Text>
           </Pressable>
@@ -65,11 +93,12 @@ export default function ProfileTab() {
       )}
 
       <View style={styles.list}>
-        {LINKS.map((item) => (
+        {links.map((item) => (
           <Pressable
             key={item.href}
             style={styles.row}
             onPress={() => router.push(item.href as any)}
+            testID={`profile-link-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
           >
             <View style={styles.rowLeft}>
               <Feather name={item.icon} size={18} color="#0F172A" />

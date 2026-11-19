@@ -42,12 +42,16 @@ requireCondition(
   appConfig.ios?.infoPlist?.ITSAppUsesNonExemptEncryption === false,
   "Apple encryption compliance declaration must remain false.",
 );
+const runtimeOk =
+  appConfig.runtimeVersion?.policy === "appVersion" ||
+  (typeof appConfig.runtimeVersion === "string" &&
+    appConfig.runtimeVersion === appConfig.version);
 requireCondition(
   appConfig.updates?.enabled === true &&
     appConfig.updates?.url ===
       "https://u.expo.dev/45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e" &&
-    appConfig.runtimeVersion?.policy === "appVersion",
-  "Production OTA updates must remain enabled with the Flexa Market EAS project and app-version runtime policy.",
+    runtimeOk,
+  "Production OTA updates must remain enabled with the Flexa Market EAS project and app-version runtime (policy or matching version string for bare workflow).",
 );
 requireCondition(
   easConfig.build?.production?.env?.EXPO_PUBLIC_DOMAIN === "flexamarket.com",
@@ -62,12 +66,12 @@ requireCondition(
   "Production build-number auto-increment must remain enabled.",
 );
 requireCondition(
-  appConfig.android?.package === "com.flexa.market",
-  "Android package must remain com.flexa.market.",
+  appConfig.android?.package === "com.flexamarket.app",
+  "Android package must remain com.flexamarket.app.",
 );
 requireCondition(
   Number.isInteger(appConfig.android?.versionCode) &&
-    appConfig.android.versionCode >= 39,
+    appConfig.android.versionCode >= 52,
   "Android versionCode must be an integer at least 39.",
 );
 for (const permission of [

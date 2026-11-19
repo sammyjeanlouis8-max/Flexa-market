@@ -1,13 +1,14 @@
 /**
- * FlexaBot — POST /api/chatbot/message (text only).
+ * FlexaBot — POST /api/chatbot/message
  */
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -16,198 +17,258 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppHeader } from "@/components/shell/AppHeader";
+import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
-import { useLanguage } from "@/context/LanguageContext";
-import { sendChatbotMessage } from "@/lib/supportApi";
+import { apiRequest } from "@/lib/request";
 
-type Row = { id: string; role: "user" | "bot"; content: string };
+type Msg = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  deepLinks?: string[];
+};
 
 export default function ChatbotScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { token } = useAuth();
-  const { lang } = useLanguage();
-  const [rows, setRows] = useState<Row[]>([
+  const { token, isLoading: authLoading } = useAuth();
+  const [messages, setMessages] = useState<Msg[]>([
     {
-      id: "welcome",
-      role: "bot",
-      content: "Hi — I’m FlexaBot. Ask about orders, delivery, payments, or account help.",
+      id: "hi",
+      role: "assistant",
+      content:
+        "Hi — I'm FlexaBot. I can help with orders, wallet, delivery, and account questions. For account changes I'll point you to Support.",
     },
   ]);
   const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const listRef = useRef<FlatList<Msg>>(null);
 
-  const onSend = async () => {
-    if (!token) {
-      router.push("/auth/login");
+  useEffect(() => {
+    apiRequest<{ configured?: boolean; mode?: string }>("/chatbot/status")
+      .then((s) => setStatus(s.configured ? "Online" : "Limited"))
+      .catch(() => setStatus("Unavailable"));
+  }, []);
+
+  const openLink = (path: string) => {
+    if (path.startsWith("http")) {
+      Linking.openURL(path).catch(() => {});
       return;
     }
-    const content = draft.trim();
-    if (!content || busy) return;
-    setDraft("");
-    const userRow: Row = { id: `u-${Date.now()}`, role: "user", content };
-    setRows((prev) => [...prev, userRow]);
-    setBusy(true);
-    try {
-      const history = [...rows, userRow]
-        .filter((r) => r.role === "user" || r.role === "bot")
-        .map((r) => ({
-          role: r.role === "bot" ? "assistant" : "user",
-          content: r.content,
-        }));
-      const data = await sendChatbotMessage(history, {
-        token,
-        preferredLang: lang,
-      });
-      const reply =
-        (typeof data.reply === "string" && data.reply) ||
-        (typeof data.message === "string" && data.message) ||
-        (typeof (data as any).content === "string" && (data as any).content) ||
-        "I couldn’t answer that right now. Open a support ticket for a human agent.";
-      setRows((prev) => [
-        ...prev,
-        { id: `b-${Date.now()}`, role: "bot", content: reply },
-      ]);
-    } catch (e) {
-      setRows((prev) => [
-        ...prev,
-        {
-          id: `e-${Date.now()}`,
-          role: "bot",
-          content: e instanceof Error ? e.message : "FlexaBot unavailable",
-        },
-      ]);
-    } finally {
-      setBusy(false);
-    }
+    router.push(path as any);
   };
 
+  const send = useCallback(
+    async (text: string) => {
+      const content = text.trim();
+      if (!content || sending) return;
+      if (!token) {
+        router.push("/auth/login");
+        return;
+      }
+      setDraft("");
+      const userMsg: Msg = { id: `u-${Date.now()}`, role: "user", content };
+      setMessages((prev) => [...prev, userMsg]);
+      setSending(true);
+      try {
+        const history = [...messages.filter((m) => m.id !== "hi"), userMsg]
+          .slice(-16)
+          .map((m) => ({ role: m.role, content: m.content }));
+        const res = await apiRequest<{
+          content?: string;
+          deepLinks?: string[];
+          escalateSuggested?: boolean;
+        }>("/chatbot/message", {
+          token,
+          method: "POST",
+          body: { messages: history },
+        });
+        const links = Array.isArray(res.deepLinks) ? res.deepLinks : [];
+        if (res.escalateSuggested && !links.includes("/support")) links.push("/support");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `a-${Date.now()}`,
+            role: "assistant",
+            content: res.content || "I couldn't find a verified answer. Try Support.",
+            deepLinks: links,
+          },
+        ]);
+      } catch (e) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `e-${Date.now()}`,
+            role: "assistant",
+            content: e instanceof Error ? e.message : "FlexaBot is unavailable right now.",
+            deepLinks: ["/support"],
+          },
+        ]);
+      } finally {
+        setSending(false);
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+      }
+    },
+    [messages, sending, token, router],
+  );
+
+  if (!authLoading && !token) {
+    return (
+      <View style={styles.root}>
+        <AppHeader title="FlexaBot" showBack showCart={false} />
+        <View style={styles.center}>
+          <Text style={styles.emptyTitle}>Sign in to chat with FlexaBot</Text>
+          <Pressable style={styles.cta} onPress={() => router.push("/auth/login")}>
+            <Text style={styles.ctaText}>Log in</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <KeyboardAvoidingView
-      style={[styles.root, { paddingTop: insets.top }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <View style={styles.topBar}>
-        <Pressable
-          style={styles.back}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/support"))}
-        >
-          <Feather name="arrow-left" size={22} color="#0F172A" />
-        </Pressable>
-        <Text style={styles.title}>FlexaBot</Text>
-        <Pressable style={styles.back} onPress={() => router.push("/support")}>
-          <Feather name="life-buoy" size={18} color="#0F172A" />
-        </Pressable>
-      </View>
-      <FlatList
-        data={rows}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 12, paddingBottom: 12 }}
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.bubble,
-              item.role === "user" ? styles.user : styles.bot,
-            ]}
-          >
-            <Text
-              style={[styles.text, item.role === "user" && styles.textUser]}
-            >
-              {item.content}
-            </Text>
-          </View>
-        )}
+    <View style={styles.root}>
+      <AppHeader
+        title="FlexaBot"
+        showBack
+        showCart={false}
+        rightExtra={
+          status ? (
+            <Text style={styles.status}>{status}</Text>
+          ) : null
+        }
       />
-      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-        <TextInput
-          style={styles.input}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Ask FlexaBot…"
-          placeholderTextColor="#94A3B8"
-          onSubmitEditing={() => void onSend()}
-        />
-        <Pressable
-          style={[styles.send, (!draft.trim() || busy) && styles.sendDisabled]}
-          onPress={() => void onSend()}
-          disabled={!draft.trim() || busy}
-        >
-          {busy ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Feather name="send" size={18} color="#fff" />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <FlatList
+          ref={listRef}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          contentContainerStyle={{ padding: 16, gap: 10 }}
+          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          renderItem={({ item }) => (
+            <View
+              style={[
+                styles.bubble,
+                item.role === "user" ? styles.user : styles.bot,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.text,
+                  item.role === "user" ? { color: "#fff" } : { color: colors.light.text },
+                ]}
+              >
+                {item.content}
+              </Text>
+              {item.deepLinks?.length ? (
+                <View style={styles.links}>
+                  {item.deepLinks.map((l) => (
+                    <Pressable key={l} style={styles.linkChip} onPress={() => openLink(l)}>
+                      <Text style={styles.linkText}>{l}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+            </View>
           )}
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+          ListFooterComponent={
+            sending ? (
+              <View style={styles.typing}>
+                <ActivityIndicator color={colors.flexaGreen} size="small" />
+                <Text style={styles.typingText}>Thinking…</Text>
+              </View>
+            ) : null
+          }
+        />
+        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+          <TextInput
+            style={styles.input}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Ask FlexaBot…"
+            placeholderTextColor="#94A3B8"
+            multiline
+            maxLength={2000}
+          />
+          <Pressable
+            style={[styles.send, (!draft.trim() || sending) && { opacity: 0.5 }]}
+            onPress={() => void send(draft)}
+            disabled={!draft.trim() || sending}
+          >
+            <Feather name="send" size={18} color="#fff" />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F8FAFC" },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-  },
-  back: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  root: { flex: 1, backgroundColor: colors.light.background },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  emptyTitle: { fontWeight: "700", marginBottom: 12, color: colors.light.text },
+  cta: {
+    backgroundColor: colors.flexaGreen,
+    height: 44,
+    paddingHorizontal: 20,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
   },
-  title: { fontSize: 18, fontWeight: "800", color: "#0F172A" },
-  bubble: {
-    maxWidth: "85%",
-    borderRadius: 14,
-    padding: 12,
-    marginVertical: 4,
-  },
-  user: { alignSelf: "flex-end", backgroundColor: "#F97316" },
+  ctaText: { color: "#fff", fontWeight: "800" },
+  status: { color: "#fff", fontSize: 11, fontWeight: "700", marginRight: 4 },
+  bubble: { maxWidth: "90%", borderRadius: 16, padding: 12 },
+  user: { alignSelf: "flex-end", backgroundColor: colors.flexaGreen },
   bot: {
     alignSelf: "flex-start",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: colors.light.border,
   },
-  text: { color: "#0F172A", fontSize: 15, lineHeight: 21 },
-  textUser: { color: "#fff" },
+  text: { fontSize: 15, lineHeight: 22 },
+  links: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  linkChip: {
+    backgroundColor: "#ECFDF5",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  linkText: { color: colors.flexaGreen, fontSize: 12, fontWeight: "700" },
+  typing: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+  typingText: { color: "#64748B", fontSize: 13 },
   composer: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     gap: 8,
     paddingHorizontal: 12,
     paddingTop: 8,
-    backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
+    borderTopColor: colors.light.border,
+    backgroundColor: "#fff",
   },
   input: {
     flex: 1,
-    minHeight: 44,
-    borderRadius: 22,
+    minHeight: 42,
+    maxHeight: 120,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#F8FAFC",
-    paddingHorizontal: 14,
-    color: "#0F172A",
+    borderColor: colors.light.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.light.text,
   },
   send: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#F97316",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.flexaGreen,
     alignItems: "center",
     justifyContent: "center",
   },
-  sendDisabled: { backgroundColor: "#FDBA74" },
 });

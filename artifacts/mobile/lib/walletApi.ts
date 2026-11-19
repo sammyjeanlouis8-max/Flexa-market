@@ -1,6 +1,6 @@
 /**
  * Wallet / Card FM — balance, history, referral, promo, platform revenue.
- * Top-up initiate / card session are allowed on Android (guard disabled by default).
+ * Top-up initiate / card session stay server-guarded on Android (guard ON by default).
  */
 import { getApiBase } from "./api";
 

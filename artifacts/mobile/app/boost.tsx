@@ -1,5 +1,6 @@
 /**
- * Native Boost campaign UI — wallet path when allowed (Android digital purchases unblocked).
+ * Native Boost campaign UI — wallet path when allowed.
+ * Paid initiate is blocked on Android until Play Billing E2E (server guard ON by default).
  */
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -130,7 +131,7 @@ export default function BoostScreen() {
     if (!walletAllowed) {
       Alert.alert(
         "Wallet boost unavailable",
-        "Wallet is not an allowed boost payment method for your country. Use flexamarket.com for card/MonCash boost checkout, or switch account country where wallet is enabled.",
+        "Wallet is not an allowed boost payment method for your country. Paid Card/MonCash boost checkout stays disabled in the Android app until Play Billing is verified (verified disabled).",
       );
       return;
     }
@@ -152,7 +153,7 @@ export default function BoostScreen() {
     } catch (e) {
       if (e instanceof ApiError && e.code === "ANDROID_DIGITAL_PURCHASE_UNAVAILABLE") {
         setBlockedNote(
-          "Paid boosts are temporarily blocked by the server guard (ANDROID_DIGITAL_PURCHASE_GUARD). Ask ops to disable it, or use flexamarket.com.",
+          "Paid boosts are unavailable in the Android app (verified disabled until Play Billing E2E).",
         );
       } else if (e instanceof ApiError && e.code === "INSUFFICIENT_WALLET") {
         Alert.alert(
@@ -245,10 +246,10 @@ export default function BoostScreen() {
           <View style={styles.noteBox}>
             <Feather name="info" size={16} color="#0369A1" />
             <Text style={styles.noteText}>
-              Launch pays from your FM Wallet.{" "}
+              Paid boosts are blocked on Android until Play Billing is verified.{" "}
               {walletAllowed
-                ? "Wallet is allowed for your account country."
-                : "Wallet is not listed for your country — top up or use web card/MonCash."}
+                ? "Wallet is listed for your country, but the server guard still blocks initiate."
+                : "Wallet is not listed for your country."}
             </Text>
           </View>
 

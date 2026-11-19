@@ -92,10 +92,6 @@ function isPathActive(pathname: string, href: string): boolean {
 }
 
 function goPath(router: ReturnType<typeof useRouter>, href: string) {
-  if (/^\/?esim(\b|\/|\?|#)/i.test(href)) {
-    router.replace("/");
-    return;
-  }
   router.push(href as any);
 }
 
@@ -288,6 +284,7 @@ export function AppDrawer() {
       items: [
         { icon: "tv", label: "Flexa TV", href: "/tv", testID: "drawer-flexa-tv" },
         { icon: "music", label: "Flexa Music", href: "/music", testID: "drawer-flexa-music" },
+        { icon: "smartphone", label: "Flexa eSIM", href: "/esim", testID: "drawer-esim" },
         ...(user
           ? ([
               { icon: "zap", label: "My Active Boosts", href: "/my-boosts", testID: "drawer-my-boosts" },

@@ -1,6 +1,7 @@
 /**
  * My Wallet — native parity with web Wallet Overview / Promo / Transactions.
- * Deposit/top-up via card (Stripe Checkout) and Haiti MonCash — Android unblocked.
+ * Deposit/top-up remain blocked on Android until Play Billing E2E (verified disabled).
+ * Physical cart checkout with FM Wallet balance stays available.
  */
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -25,14 +26,12 @@ import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import {
   convertPromo,
-  createWalletCardTopupSession,
   fetchPlatformMonthly,
   fetchPlatformRevenue,
   fetchWalletBalance,
   fetchWalletHistory,
   fetchWalletReferral,
   formatLocalCurrency,
-  initiateWalletMoncashTopup,
   moneyUsd,
   redeemWalletCard,
   unlockPromo,
@@ -95,8 +94,6 @@ export default function WalletScreen() {
   const [showQR, setShowQR] = useState(false);
   const [redeemOpen, setRedeemOpen] = useState(false);
   const [redeemCode, setRedeemCode] = useState("");
-  const [depositOpen, setDepositOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState("20");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -183,54 +180,10 @@ export default function WalletScreen() {
   };
 
   const onDeposit = () => {
-    if (!token) {
-      router.replace("/auth/login");
-      return;
-    }
-    setDepositAmount(isHaiti ? "1000" : "20");
-    setDepositOpen(true);
-  };
-
-  const runCardTopup = async () => {
-    if (!token) return;
-    const amountUsd = Number(depositAmount);
-    if (!Number.isFinite(amountUsd) || amountUsd < 1) {
-      Alert.alert("Amount", "Enter at least $1 USD.");
-      return;
-    }
-    setBusy("deposit-card");
-    try {
-      const { sessionUrl } = await createWalletCardTopupSession(amountUsd, { token });
-      setDepositOpen(false);
-      await Linking.openURL(sessionUrl);
-    } catch (e) {
-      Alert.alert("Card top-up failed", e instanceof Error ? e.message : "Try again");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const runMoncashTopup = async () => {
-    if (!token) return;
-    const amountHtg = Number(depositAmount);
-    if (!Number.isFinite(amountHtg) || amountHtg < 100) {
-      Alert.alert("Amount", "Enter at least 100 HTG.");
-      return;
-    }
-    setBusy("deposit-moncash");
-    try {
-      const result = await initiateWalletMoncashTopup(amountHtg, { token });
-      setDepositOpen(false);
-      await load("refresh");
-      Alert.alert(
-        "MonCash top-up started",
-        `Ref ${result.paymentRef}\n${result.amountHtg} HTG → ~$${result.totalUsd.toFixed(2)} USD pending confirmation.`,
-      );
-    } catch (e) {
-      Alert.alert("MonCash top-up failed", e instanceof Error ? e.message : "Try again");
-    } finally {
-      setBusy(null);
-    }
+    Alert.alert(
+      "Deposit unavailable (verified disabled)",
+      "Wallet top-ups, Stripe card recharge, and MonCash funding are blocked in the Android app until Play Billing is verified. Balance, history, P2P send, and physical-goods checkout with FM Wallet remain available.",
+    );
   };
 
   const onCashout = () => {
@@ -611,11 +564,11 @@ export default function WalletScreen() {
               </View>
 
               {/* Recharge / Cash out panel */}
-              <Pressable style={styles.panelGreen} onPress={onDeposit}>
+              <Pressable style={styles.panelGreen} onPress={onCashout}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.panelTitleWhite}>Recharge · Cash Out</Text>
                   <Text style={styles.panelSubWhite}>
-                    Card{isHaiti ? " · MonCash" : ""} top-up · Cash out / agents where eligible
+                    Deposit blocked on Android · Cash out / agents where eligible
                   </Text>
                 </View>
                 <Feather name="chevron-right" size={18} color="#fff" />
@@ -852,59 +805,6 @@ export default function WalletScreen() {
               </Text>
             </Pressable>
             <Pressable onPress={() => setRedeemOpen(false)}>
-              <Text style={[styles.link, { textAlign: "center", marginTop: 10 }]}>Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Deposit / top-up modal */}
-      <Modal visible={depositOpen} transparent animationType="slide" onRequestClose={() => setDepositOpen(false)}>
-        <View style={styles.modalBg}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Deposit to wallet</Text>
-            <Text style={styles.muted}>
-              {isHaiti
-                ? "Card amount in USD, or MonCash amount in HTG (min 100)."
-                : "Card top-up in USD (min $1)."}
-            </Text>
-            <TextInput
-              style={styles.input}
-              placeholder={isHaiti ? "Amount (USD or HTG)" : "Amount USD"}
-              keyboardType="decimal-pad"
-              value={depositAmount}
-              onChangeText={setDepositAmount}
-            />
-            <Pressable
-              style={styles.solidBtnWide}
-              disabled={busy === "deposit-card" || !depositAmount.trim()}
-              onPress={() => void runCardTopup()}
-            >
-              <Text style={styles.solidBtnText}>
-                {busy === "deposit-card" ? "Opening checkout…" : "Pay with card"}
-              </Text>
-            </Pressable>
-            {isHaiti ? (
-              <Pressable
-                style={[styles.solidBtnWide, { marginTop: 10, backgroundColor: "#0F766E" }]}
-                disabled={busy === "deposit-moncash" || !depositAmount.trim()}
-                onPress={() => void runMoncashTopup()}
-              >
-                <Text style={styles.solidBtnText}>
-                  {busy === "deposit-moncash" ? "Starting MonCash…" : "MonCash (HTG)"}
-                </Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              style={{ marginTop: 12 }}
-              onPress={() => {
-                setDepositOpen(false);
-                onCashout();
-              }}
-            >
-              <Text style={[styles.link, { textAlign: "center" }]}>Cash out instead</Text>
-            </Pressable>
-            <Pressable onPress={() => setDepositOpen(false)}>
               <Text style={[styles.link, { textAlign: "center", marginTop: 10 }]}>Cancel</Text>
             </Pressable>
           </View>

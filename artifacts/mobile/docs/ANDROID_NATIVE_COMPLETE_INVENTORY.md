@@ -10,22 +10,24 @@ Nov 9 inventory = **82** features. The 84-page matrix adds:
 1. `shop-profile` (public seller shop)
 2. `my-boosts` (split from boost-analytics)
 
-## Summary (file-level after #243+#221+#248 + digital-purchase unblock)
+## Summary (file-level after partials + payment policy correction)
 ```json
 {
-  "complete": 78,
-  "partial": 5,
+  "complete": 81,
+  "partial": 0,
   "placeholder": 0,
   "missing": 0,
-  "blocked": 0,
-  "out_of_scope": 1,
+  "blocked": 3,
+  "out_of_scope": 0,
   "total": 84
 }
 ```
 
-Unblocked (owner override 2026-11-19): `wallet-topup`, `subscription-billing`, `boost-paid`, `music-purchase` — server guard off unless `ANDROID_DIGITAL_PURCHASE_GUARD=1`.
+**Verified disabled (Internal OK):** `wallet-topup`, `subscription-billing`, `boost-paid` — client UI + server guard ON by default until Play Billing E2E.
 
-Out of scope: `esim` (redirect home; removed from stack/menus).
+**Music:** free playback (no Buy button).
+
+**eSIM:** native deferred screen from drawer; back navigation works (no provider yet).
 
 ## Verification policy
 A page is **release-complete** only after: normal Android navigation, correct role, live API, emulator/device test pass, and WebView|native screenshot pair.

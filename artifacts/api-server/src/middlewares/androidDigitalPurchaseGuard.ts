@@ -4,12 +4,14 @@ export const ANDROID_DIGITAL_PURCHASE_UNAVAILABLE =
   "ANDROID_DIGITAL_PURCHASE_UNAVAILABLE";
 
 /**
- * Owner override (2026-11-19): digital purchases are allowed again on Android.
- * Set ANDROID_DIGITAL_PURCHASE_GUARD=1 to re-enable the Play-policy block.
+ * Digital purchases are blocked on Android by default (Play Billing not verified).
+ * Set ANDROID_DIGITAL_PURCHASE_GUARD=0 (or false/off/no) to disable the block.
  */
 export function isAndroidDigitalPurchaseGuardEnabled(): boolean {
   const raw = String(process.env.ANDROID_DIGITAL_PURCHASE_GUARD || "").trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") return false;
+  // Default ON when unset or any other value (including "1"/"true").
+  return true;
 }
 
 /**

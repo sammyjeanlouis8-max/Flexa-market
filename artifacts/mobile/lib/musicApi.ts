@@ -17,8 +17,6 @@ export type MusicTrack = {
   play_count?: number;
   created_at?: string;
   lyrics?: string | null;
-  monetization_type?: string | null;
-  price_usd?: number | string | null;
 };
 
 export type MusicPlaylist = {
@@ -190,18 +188,4 @@ export async function registerMusicTrack(
 export function proxyUploadUrl(relative: string): string {
   if (relative.startsWith("http")) return relative;
   return `${musicMediaOrigin()}${relative.startsWith("/") ? relative : `/${relative}`}`;
-}
-
-/** Purchase a priced track with FM Wallet (Android digital purchases unblocked). */
-export async function buyMusicTrackWithWallet(
-  trackId: number | string,
-  opts: FetchOpts & { token: string },
-): Promise<void> {
-  const res = await musicFetch(`/music/${trackId}/buy/wallet`, {
-    ...opts,
-    method: "POST",
-    body: {},
-  });
-  const data = await readJson(res);
-  if (!res.ok) throw new Error(data.error || `Purchase failed (${res.status})`);
 }

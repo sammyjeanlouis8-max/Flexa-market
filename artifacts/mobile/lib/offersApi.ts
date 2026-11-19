@@ -57,6 +57,16 @@ export async function fetchOffers(
   };
 }
 
+export async function createOffer(
+  body: { listingId: number; amount: number; message?: string },
+  opts: AuthOpts,
+): Promise<Offer> {
+  const res = await authed("/offers", { ...opts, method: "POST", body });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Create offer failed (${res.status})`);
+  return data as Offer;
+}
+
 export async function acceptOffer(id: number, opts: AuthOpts): Promise<Offer> {
   const res = await authed(`/offers/${id}/accept`, { ...opts, method: "POST", body: {} });
   const data = await readJson(res);

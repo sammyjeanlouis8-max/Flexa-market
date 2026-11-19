@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -20,6 +21,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { rateDriver, tipDriver } from "@/lib/deliveryExtrasApi";
 import {
   confirmDelivery,
   fetchOrderDetail,
@@ -47,6 +49,10 @@ export default function OrderDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [shipping, setShipping] = useState(false);
+  const [rateOpen, setRateOpen] = useState(false);
+  const [tipAmount, setTipAmount] = useState("2");
+  const [driverRating, setDriverRating] = useState(5);
+  const [rateBusy, setRateBusy] = useState(false);
   const [shipMode, setShipMode] = useState<"fm" | "personal">("fm");
   const [vehicleType, setVehicleType] = useState<"motorcycle" | "car">("motorcycle");
   const [deliveryDescription, setDeliveryDescription] = useState("");
@@ -89,6 +95,7 @@ export default function OrderDetailScreen() {
 
   const onConfirm = async () => {
     if (!token || !id) return;
+    const deliveryId = order?.fmDelivery?.id ?? null;
     setConfirming(true);
     try {
       const result = await confirmDelivery(id, { token });
@@ -97,8 +104,42 @@ export default function OrderDetailScreen() {
         return;
       }
       await load("refresh");
+      if (deliveryId) {
+        setRateOpen(true);
+      } else {
+        Alert.alert("Delivery confirmed", "Thank you — the order is marked delivered.");
+      }
     } finally {
       setConfirming(false);
+    }
+  };
+
+  const onSubmitTipRate = async () => {
+    if (!token || !order?.fmDelivery?.id) {
+      setRateOpen(false);
+      return;
+    }
+    const deliveryId = order.fmDelivery.id;
+    setRateBusy(true);
+    try {
+      const tip = Number(tipAmount);
+      if (Number.isFinite(tip) && tip > 0) {
+        await tipDriver(deliveryId, { amount: tip, rating: driverRating }, { token });
+      }
+      await rateDriver(
+        deliveryId,
+        { rating: driverRating, comment: undefined },
+        { token },
+      );
+      setRateOpen(false);
+      Alert.alert("Thanks", "Driver tip and rating submitted.");
+    } catch (e) {
+      Alert.alert(
+        "Could not finish tip/rating",
+        e instanceof Error ? e.message : "You can try again from this order.",
+      );
+    } finally {
+      setRateBusy(false);
     }
   };
 
@@ -451,6 +492,7 @@ export default function OrderDetailScreen() {
               style={[styles.primaryBtn, confirming && { opacity: 0.7 }]}
               onPress={onConfirm}
               disabled={confirming}
+              testID="order-confirm-delivery"
             >
               {confirming ? (
                 <ActivityIndicator color="#fff" />
@@ -459,8 +501,64 @@ export default function OrderDetailScreen() {
               )}
             </Pressable>
           ) : null}
+
+          {order.isBuyer &&
+          order.fmDelivery?.id &&
+          ["delivered", "completed"].includes(order.orderStatus) ? (
+            <Pressable
+              style={styles.secondaryBtn}
+              onPress={() => setRateOpen(true)}
+              testID="order-rate-driver"
+            >
+              <Text style={styles.secondaryBtnText}>Tip & rate driver</Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
       )}
+
+      <Modal visible={rateOpen} transparent animationType="slide" onRequestClose={() => setRateOpen(false)}>
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <Text style={styles.section}>Tip & rate driver</Text>
+            <Text style={styles.muted}>Physical delivery tip (not a digital purchase).</Text>
+            <View style={styles.starsRow}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Pressable key={n} onPress={() => setDriverRating(n)} hitSlop={8}>
+                  <Feather
+                    name="star"
+                    size={28}
+                    color={n <= driverRating ? "#FBBF24" : "#CBD5E1"}
+                  />
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              style={styles.input}
+              keyboardType="decimal-pad"
+              value={tipAmount}
+              onChangeText={setTipAmount}
+              placeholder="Tip USD (optional)"
+              placeholderTextColor="#94A3B8"
+              testID="order-tip-amount"
+            />
+            <Pressable
+              style={[styles.primaryBtn, rateBusy && { opacity: 0.7 }]}
+              disabled={rateBusy}
+              onPress={() => void onSubmitTipRate()}
+              testID="order-tip-submit"
+            >
+              {rateBusy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Submit</Text>
+              )}
+            </Pressable>
+            <Pressable onPress={() => setRateOpen(false)}>
+              <Text style={[styles.muted, { textAlign: "center", marginTop: 8 }]}>Skip</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -485,6 +583,28 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   topTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
+  modalBg: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.45)",
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    gap: 10,
+  },
+  starsRow: { flexDirection: "row", gap: 8, marginVertical: 4 },
+  input: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: "#0F172A",
+  },
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,

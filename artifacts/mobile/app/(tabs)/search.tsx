@@ -103,8 +103,16 @@ export default function CategoriesTab() {
             const selected = (item.slug || null) === category || (!item.slug && !category);
             return (
               <Pressable
-                onPress={() => setCategory(item.slug || null)}
+                onPress={() => {
+                  const next = item.slug || null;
+                  setCategory(next);
+                  router.setParams({
+                    category: next || undefined,
+                    boosted: boostedOnly ? "true" : undefined,
+                  } as any);
+                }}
                 style={[styles.chip, selected && styles.chipActive]}
+                testID={`category-chip-${item.slug || "all"}`}
               >
                 {item.icon ? <Text>{item.icon} </Text> : null}
                 <Text style={[styles.chipText, selected && styles.chipTextActive]}>{item.name}</Text>

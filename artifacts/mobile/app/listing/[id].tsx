@@ -17,6 +17,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -29,12 +30,14 @@ import { useCart } from "@/context/CartContext";
 import { fetchListing, type Listing } from "@/lib/api";
 import { isDominicanListingCountry } from "@/lib/checkoutApi";
 import { createConversation } from "@/lib/chatApi";
+import { fetchSellerReviews } from "@/lib/deliveryExtrasApi";
 import {
   addFavorite,
   isFavorite,
   removeFavorite,
 } from "@/lib/favoritesApi";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
+import { createOffer } from "@/lib/offersApi";
 
 const THUMB = PDP_METRICS.thumbSize;
 
@@ -78,6 +81,12 @@ export default function ListingDetailScreen() {
   const [imageIndex, setImageIndex] = useState(0);
   const [qty, setQty] = useState(1);
   const [addedFlash, setAddedFlash] = useState(false);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [offerAmount, setOfferAmount] = useState("");
+  const [offerBusy, setOfferBusy] = useState(false);
+  const [reviews, setReviews] = useState<
+    Array<{ id: number; reviewerName: string; rating: number; comment: string | null }>
+  >([]);
   const [favorited, setFavorited] = useState(false);
   const [favBusy, setFavBusy] = useState(false);
   const [msgBusy, setMsgBusy] = useState(false);
@@ -104,6 +113,17 @@ export default function ListingDetailScreen() {
         if (!cancelled) {
           setListing(data);
           setImageIndex(0);
+          setOfferAmount(
+            data?.price != null ? String(Math.max(1, Math.round(Number(data.price) * 0.9))) : "",
+          );
+        }
+        if (!cancelled && data?.sellerId) {
+          try {
+            const rows = await fetchSellerReviews(Number(data.sellerId));
+            if (!cancelled) setReviews(rows.slice(0, 8));
+          } catch {
+            if (!cancelled) setReviews([]);
+          }
         }
         if (!cancelled && token) {
           const liked = await isFavorite(Number(id), { token });
@@ -548,6 +568,48 @@ export default function ListingDetailScreen() {
                 <Text style={styles.ratingNum}>{rating.toFixed(1)}</Text>
               </View>
 
+              <View style={styles.ctaRow}>
+                {listing.sellerId ? (
+                  <Pressable
+                    style={styles.secondaryCta}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/shop/[id]",
+                        params: { id: String(listing.sellerId) },
+                      } as any)
+                    }
+                    testID="listing-view-shop"
+                  >
+                    <Feather name="shopping-bag" size={14} color={colors.flexaGreen} />
+                    <Text style={styles.secondaryCtaText}>View shop</Text>
+                  </Pressable>
+                ) : null}
+                {!isOwnListing ? (
+                  <Pressable
+                    style={styles.secondaryCta}
+                    onPress={() => {
+                      if (!token) {
+                        router.push("/auth/login");
+                        return;
+                      }
+                      setOfferOpen(true);
+                    }}
+                    testID="listing-make-offer"
+                  >
+                    <Feather name="tag" size={14} color={colors.flexaGreen} />
+                    <Text style={styles.secondaryCtaText}>Make offer</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  style={styles.secondaryCta}
+                  onPress={() => void onMessageSeller()}
+                  testID="listing-message"
+                >
+                  <Feather name="message-circle" size={14} color={colors.flexaGreen} />
+                  <Text style={styles.secondaryCtaText}>Message</Text>
+                </Pressable>
+              </View>
+
               <Text style={styles.price} testID="listing-price">
                 {money}
               </Text>
@@ -593,6 +655,26 @@ export default function ListingDetailScreen() {
                   <Text style={styles.description}>{listing.description.trim()}</Text>
                 </>
               ) : null}
+
+              <Text style={styles.section}>Seller reviews</Text>
+              {reviews.length === 0 ? (
+                <Text style={styles.description}>No reviews yet for this seller.</Text>
+              ) : (
+                reviews.map((r) => (
+                  <View key={r.id} style={styles.reviewCard} testID={`listing-review-${r.id}`}>
+                    <Text style={styles.reviewName}>
+                      {r.reviewerName} · {"★".repeat(Math.max(1, Math.min(5, r.rating)))}
+                    </Text>
+                    {r.comment ? (
+                      <Text style={styles.description}>{r.comment}</Text>
+                    ) : null}
+                  </View>
+                ))
+              )}
+              <Text style={styles.bnplNote}>
+                BNPL / Flex Card installments: open Checkout from the cart when eligible for your
+                country — not available as a separate PDP purchase path on Android.
+              </Text>
             </View>
           </ScrollView>
 
@@ -752,6 +834,71 @@ export default function ListingDetailScreen() {
               ) : null}
             </View>
           </Modal>
+
+          <Modal
+            visible={offerOpen}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setOfferOpen(false)}
+          >
+            <View style={styles.offerModalBg}>
+              <View style={styles.offerModalCard}>
+                <Text style={styles.section}>Make an offer</Text>
+                <Text style={styles.description}>
+                  Suggest a price for this listing. The seller can accept, reject, or counter.
+                </Text>
+                <TextInput
+                  style={styles.offerInput}
+                  keyboardType="decimal-pad"
+                  value={offerAmount}
+                  onChangeText={setOfferAmount}
+                  placeholder="Amount"
+                  placeholderTextColor="#94A3B8"
+                  testID="listing-offer-amount"
+                />
+                <Pressable
+                  style={[styles.offerSubmit, offerBusy && { opacity: 0.6 }]}
+                  disabled={offerBusy}
+                  testID="listing-offer-submit"
+                  onPress={() => {
+                    void (async () => {
+                      if (!token || !listingId) return;
+                      const amount = Number(offerAmount);
+                      if (!Number.isFinite(amount) || amount <= 0) {
+                        Alert.alert("Amount", "Enter a valid offer amount.");
+                        return;
+                      }
+                      setOfferBusy(true);
+                      try {
+                        await createOffer(
+                          { listingId, amount, message: undefined },
+                          { token },
+                        );
+                        setOfferOpen(false);
+                        Alert.alert("Offer sent", "The seller will be notified.");
+                      } catch (e) {
+                        Alert.alert(
+                          "Offer failed",
+                          e instanceof Error ? e.message : "Try again",
+                        );
+                      } finally {
+                        setOfferBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  <Text style={styles.offerSubmitText}>
+                    {offerBusy ? "Sending…" : "Send offer"}
+                  </Text>
+                </Pressable>
+                <Pressable onPress={() => setOfferOpen(false)}>
+                  <Text style={[styles.description, { textAlign: "center", marginTop: 10 }]}>
+                    Cancel
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </Modal>
         </>
       )}
     </View>
@@ -883,6 +1030,57 @@ const styles = StyleSheet.create({
   counter: { fontSize: 12, color: "#64748B", fontWeight: "600" },
 
   body: { paddingHorizontal: 16, paddingTop: 4, gap: 8, paddingBottom: 16 },
+  ctaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
+  secondaryCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    backgroundColor: "#F0FDF4",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  secondaryCtaText: { color: colors.flexaGreen, fontWeight: "700", fontSize: 12 },
+  reviewCard: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    padding: 10,
+    gap: 4,
+    backgroundColor: "#F8FAFC",
+  },
+  reviewName: { fontWeight: "700", color: "#0F172A", fontSize: 13 },
+  bnplNote: { fontSize: 12, color: "#64748B", lineHeight: 17, marginTop: 4 },
+  offerModalBg: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.45)",
+    justifyContent: "flex-end",
+  },
+  offerModalCard: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    gap: 8,
+  },
+  offerInput: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: "#0F172A",
+  },
+  offerSubmit: {
+    backgroundColor: colors.flexaGreen,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  offerSubmitText: { color: "#fff", fontWeight: "800" },
   title: {
     fontSize: 18,
     fontWeight: "800",

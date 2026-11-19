@@ -125,17 +125,28 @@ describe("digital purchase route matrix", () => {
 });
 
 describe("guard execution before charging handlers", () => {
-  it("is disabled by default (owner unblock) — Android protected routes call next", () => {
-    const result = invokeGuard(LEGACY_WEBVIEW_UA, "POST", "/api/subscription/checkout");
-    expect(result.status).not.toHaveBeenCalled();
-    expect(result.next).toHaveBeenCalledOnce();
+  it("is enabled by default — Android protected routes return 403", () => {
+    const prev = process.env.ANDROID_DIGITAL_PURCHASE_GUARD;
+    delete process.env.ANDROID_DIGITAL_PURCHASE_GUARD;
+    try {
+      const result = invokeGuard(LEGACY_WEBVIEW_UA, "POST", "/api/subscription/checkout");
+      expect(result.status).toHaveBeenCalledWith(403);
+      expect(result.json).toHaveBeenCalledWith({
+        error: "Digital purchases are unavailable in the Android app.",
+        code: ANDROID_DIGITAL_PURCHASE_UNAVAILABLE,
+      });
+      expect(result.next).not.toHaveBeenCalled();
+    } finally {
+      if (prev === undefined) delete process.env.ANDROID_DIGITAL_PURCHASE_GUARD;
+      else process.env.ANDROID_DIGITAL_PURCHASE_GUARD = prev;
+    }
   });
 
   it.each(protectedRoutes)(
-    "blocks Android %s %s when ANDROID_DIGITAL_PURCHASE_GUARD=1",
+    "blocks Android %s %s by default",
     (method, path) => {
       const prev = process.env.ANDROID_DIGITAL_PURCHASE_GUARD;
-      process.env.ANDROID_DIGITAL_PURCHASE_GUARD = "1";
+      delete process.env.ANDROID_DIGITAL_PURCHASE_GUARD;
       try {
         const result = invokeGuard(LEGACY_WEBVIEW_UA, method, `${path}?source=app`);
         expect(result.status).toHaveBeenCalledWith(403);
@@ -150,6 +161,19 @@ describe("guard execution before charging handlers", () => {
       }
     },
   );
+
+  it("allows Android protected routes when ANDROID_DIGITAL_PURCHASE_GUARD=0", () => {
+    const prev = process.env.ANDROID_DIGITAL_PURCHASE_GUARD;
+    process.env.ANDROID_DIGITAL_PURCHASE_GUARD = "0";
+    try {
+      const result = invokeGuard(LEGACY_WEBVIEW_UA, "POST", "/api/subscription/checkout");
+      expect(result.status).not.toHaveBeenCalled();
+      expect(result.next).toHaveBeenCalledOnce();
+    } finally {
+      if (prev === undefined) delete process.env.ANDROID_DIGITAL_PURCHASE_GUARD;
+      else process.env.ANDROID_DIGITAL_PURCHASE_GUARD = prev;
+    }
+  });
 
   it.each([ANDROID_CHROME_UA, IOS_UA])(
     "leaves protected routes unchanged for %s",
@@ -166,7 +190,9 @@ describe("guard execution before charging handlers", () => {
     expect(result.next).toHaveBeenCalledOnce();
   });
 
-  it("allows mixed-case Android checkout when guard is off (default)", async () => {
+  it("blocks mixed-case Android checkout by default", async () => {
+    const prev = process.env.ANDROID_DIGITAL_PURCHASE_GUARD;
+    delete process.env.ANDROID_DIGITAL_PURCHASE_GUARD;
     const testApp = express();
     const charged = vi.fn();
     testApp.use("/api", androidDigitalPurchaseGuard);
@@ -185,10 +211,15 @@ describe("guard execution before charging handlers", () => {
         { method: "POST", headers: { "user-agent": LEGACY_WEBVIEW_UA } },
       );
 
-      expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ charged: true });
-      expect(charged).toHaveBeenCalledOnce();
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({
+        error: "Digital purchases are unavailable in the Android app.",
+        code: ANDROID_DIGITAL_PURCHASE_UNAVAILABLE,
+      });
+      expect(charged).not.toHaveBeenCalled();
     } finally {
+      if (prev === undefined) delete process.env.ANDROID_DIGITAL_PURCHASE_GUARD;
+      else process.env.ANDROID_DIGITAL_PURCHASE_GUARD = prev;
       await new Promise<void>((resolve, reject) =>
         server.close((error) => error ? reject(error) : resolve()),
       );

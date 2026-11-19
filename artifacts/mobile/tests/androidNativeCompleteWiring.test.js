@@ -61,14 +61,29 @@ test("in-scope features have non-placeholder Expo files", () => {
   assert.deepEqual(missing, [], `missing files: ${missing.join(", ")}`);
 });
 
-test("eSIM is redirect-only and drawer-blocked", () => {
+test("eSIM is a native screen reachable from the drawer with back navigation", () => {
   const esim = fs.readFileSync(path.join(appDir, "esim.tsx"), "utf8");
-  assert.match(esim, /Redirect|OUT OF SCOPE/i);
+  assert.match(esim, /Flexa eSIM/);
+  assert.match(esim, /router\.back\(\)|canGoBack/);
+  assert.equal(esim.includes("<Redirect"), false);
   const drawer = fs.readFileSync(drawerPath, "utf8");
-  assert.match(drawer, /esim/i);
-  assert.match(drawer, /router\.replace\("\/"\)/);
+  assert.match(drawer, /href: "\/esim"/);
+  assert.match(drawer, /drawer-esim/);
   const layout = fs.readFileSync(layoutPath, "utf8");
   assert.match(layout, /name="esim"/);
+});
+
+test("notification deep-link map routes order/chat/wallet taps", () => {
+  const src = fs.readFileSync(
+    path.join(root, "lib/notificationDeepLink.ts"),
+    "utf8",
+  );
+  assert.match(src, /\/orders\/\$\{/);
+  assert.match(src, /\/chat\/\$\{/);
+  assert.match(src, /\/wallet/);
+  const push = fs.readFileSync(path.join(root, "components/PushBootstrap.tsx"), "utf8");
+  assert.match(push, /addNotificationResponseReceivedListener/);
+  assert.match(push, /pathFromNotificationData/);
 });
 
 test("android package is com.flexamarket.app", () => {

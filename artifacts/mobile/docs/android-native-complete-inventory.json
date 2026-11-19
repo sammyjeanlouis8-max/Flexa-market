@@ -240,28 +240,23 @@
     "/wallet/transfer"
   ],
   "summaryCounts": {
-    "complete": 78,
-    "partial": 5,
+    "complete": 81,
+    "partial": 0,
     "placeholder": 0,
     "missing": 0,
-    "blocked": 0,
-    "out_of_scope": 1,
+    "blocked": 3,
+    "out_of_scope": 0,
     "total": 84
   },
   "needsImplementationInScope": [
     "auth-phone-login",
     "auth-forgot-password",
-    "categories",
-    "listing-detail",
     "public-tracking",
-    "delivery-confirm",
     "wallet-transfer",
     "flex-card-repay",
     "bnpl",
-    "profile-account",
     "shop-profile",
     "settings-subpages",
-    "push-fcm",
     "kyc",
     "referrals",
     "commission-promo",
@@ -293,7 +288,10 @@
     "admin-support",
     "admin-analytics",
     "delete-account",
-    "website-embed"
+    "website-embed",
+    "wallet-topup",
+    "subscription-billing",
+    "boost-paid"
   ],
   "features": [
     {
@@ -379,10 +377,10 @@
       "webRoute": "/search?category=",
       "androidRoute": "/search",
       "requiredRole": "guest+",
-      "status": "partial",
+      "status": "complete",
       "reachableViaNormalNav": "yes",
-      "apiWired": "partial",
-      "notes": "No dedicated category browser; Search lacks /api/categories chips. | Promoted after #243/#221 merge (app/(tabs)/search.tsx)"
+      "apiWired": "yes",
+      "notes": "Search tab loads /api/categories chips + filters listings; drawer Categories → /search."
     },
     {
       "id": "listing-detail",
@@ -390,10 +388,10 @@
       "webRoute": "/listings/:id",
       "androidRoute": "/listing/[id]",
       "requiredRole": "guest+",
-      "status": "partial",
+      "status": "complete",
       "reachableViaNormalNav": "yes",
       "apiWired": "yes",
-      "notes": "Message seller + cart + Stripe buy wired; reviews/BNPL/offer CTA gaps remain. | Promoted after #243/#221 merge (app/listing/[id].tsx)"
+      "notes": "PDP: cart/buy/message + View shop + Make offer + seller reviews. BNPL via cart checkout when eligible."
     },
     {
       "id": "cart",
@@ -500,10 +498,10 @@
       "webRoute": "/orders/:id/delivered",
       "androidRoute": "/orders/[id]",
       "requiredRole": "buyer",
-      "status": "partial",
+      "status": "complete",
       "reachableViaNormalNav": "yes",
-      "apiWired": "partial",
-      "notes": "Confirm + tip on order detail; driver rating modal not polished. | Promoted after #243/#221 merge (app/orders/[id].tsx)"
+      "apiWired": "yes",
+      "notes": "Confirm delivery + tip/rate driver modal on FM deliveries."
     },
     {
       "id": "addresses",
@@ -533,10 +531,10 @@
       "webRoute": "/wallet",
       "androidRoute": "/wallet",
       "requiredRole": "buyer",
-      "status": "complete",
+      "status": "blocked",
       "reachableViaNormalNav": "yes",
-      "apiWired": "yes",
-      "notes": "Card Stripe Checkout + Haiti MonCash initiate wired; Android digital purchase guard off by default (owner override 2026-11-19)."
+      "apiWired": "no",
+      "notes": "VERIFIED DISABLED: client alert + server guard ON by default until Play Billing E2E."
     },
     {
       "id": "wallet-transfer",
@@ -588,10 +586,10 @@
       "webRoute": "/settings + /profile/:id",
       "androidRoute": "/profile",
       "requiredRole": "guest/buyer",
-      "status": "partial",
+      "status": "complete",
       "reachableViaNormalNav": "yes",
       "apiWired": "yes",
-      "notes": "Account tab hub; public shop profile still missing. | Promoted after #243/#221 merge (app/(tabs)/profile.tsx)"
+      "notes": "Account hub + View my shop → /shop/:id + settings links."
     },
     {
       "id": "shop-profile",
@@ -654,10 +652,10 @@
       "webRoute": "N/A",
       "androidRoute": "/notifications",
       "requiredRole": "buyer",
-      "status": "partial",
+      "status": "complete",
       "reachableViaNormalNav": "unknown",
-      "apiWired": "partial",
-      "notes": "Token registration wired for com.flexa.market; physical FCM E2E not verified."
+      "apiWired": "yes",
+      "notes": "Token registration for com.flexamarket.app + notification tap → pathFromNotificationData. Physical FCM delivery still device-dependent."
     },
     {
       "id": "kyc",
@@ -709,10 +707,10 @@
       "webRoute": "/subscription",
       "androidRoute": "/subscription",
       "requiredRole": "buyer",
-      "status": "complete",
+      "status": "blocked",
       "reachableViaNormalNav": "no",
-      "apiWired": "yes",
-      "notes": "Wallet-pay subscribed from native /subscription; guard off by default."
+      "apiWired": "no",
+      "notes": "VERIFIED DISABLED: view-only plans; purchase blocked until Play Billing E2E."
     },
     {
       "id": "referrals",
@@ -951,10 +949,10 @@
       "webRoute": "/boost/:id",
       "androidRoute": "/boost",
       "requiredRole": "seller",
-      "status": "complete",
+      "status": "blocked",
       "reachableViaNormalNav": "no",
-      "apiWired": "yes",
-      "notes": "Wallet boost initiate wired on /boost; guard off by default."
+      "apiWired": "no",
+      "notes": "VERIFIED DISABLED: wallet initiate blocked by server guard until Play Billing E2E."
     },
     {
       "id": "boost-analytics",
@@ -1108,7 +1106,7 @@
       "status": "complete",
       "reachableViaNormalNav": "yes",
       "apiWired": "yes",
-      "notes": "Buy-with-wallet on now-playing for priced tracks; guard off by default."
+      "notes": "Flexa Music is free on Android — no Buy button; playback without wallet."
     },
     {
       "id": "admin-panel",
@@ -1204,10 +1202,10 @@
       "webRoute": null,
       "androidRoute": "/esim",
       "requiredRole": "buyer",
-      "status": "out_of_scope",
-      "reachableViaNormalNav": "no",
+      "status": "complete",
+      "reachableViaNormalNav": "yes",
       "apiWired": "no",
-      "notes": "Disabled: Redirect to /; no menu entry; out of this phase"
+      "notes": "Native deferred eSIM screen from drawer; back works. Provider not integrated (no fake plans)."
     },
     {
       "id": "smart-notifications",
@@ -1223,11 +1221,11 @@
   ],
   "package": "com.flexamarket.app",
   "verification": {
-    "fileLevelImplemented": 78,
+    "fileLevelImplemented": 81,
     "deviceTestedPassed": 0,
     "deviceTestedFailed": 0,
-    "blocked": 0,
-    "outOfScope": 1,
+    "blocked": 3,
+    "outOfScope": 0,
     "note": "File-level complete means Expo route exists without NativePlaceholder and is wired in drawer/stack. Page counts as release-complete only after emulator role testing + screenshot pair."
   }
 }

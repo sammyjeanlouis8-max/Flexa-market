@@ -9,5 +9,12 @@
       android:name="androidx.work.impl.foreground.SystemForegroundService"
       android:foregroundServiceType="dataSync"
       tools:node="merge" />
+    <receiver
+      android:name="expo.modules.flexabackgroundupload.UploadRetryReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="expo.modules.flexabackgroundupload.RETRY_UPLOAD" />
+      </intent-filter>
+    </receiver>
   </application>
 </manifest>

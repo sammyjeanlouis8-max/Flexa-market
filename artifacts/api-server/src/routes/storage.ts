@@ -855,11 +855,17 @@ router.put("/storage/uploads/chunk/:uploadId/:index", requireAuth, async (req: R
     if (!res.headersSent) {
       const invalidChunk = error instanceof Error &&
         (error.message.includes("incomplete") || error.message.includes("exceeds expected"));
-      res.status(invalidChunk ? 400 : 503).json({
+      const storageMessage = error instanceof Error ? error.message : "";
+      // Prefer 500 over 503 so App Platform / Cloudflare do not rewrite the JSON
+      // body into a generic HTML gateway page (which hid Wasabi billing failures).
+      res.status(invalidChunk ? 400 : 500).json({
         errorCode: invalidChunk ? "CHUNK_SIZE_INVALID" : "CHUNK_STORAGE_FAILED",
         error: invalidChunk
           ? "The video chunk was incomplete."
-          : "A video chunk could not be saved. Please retry.",
+          : storageMessage.includes("account standing") || storageMessage.includes("trial period")
+            ? storageMessage
+            : "A video chunk could not be saved. Please retry.",
+        retryable: !invalidChunk,
       });
     }
   }

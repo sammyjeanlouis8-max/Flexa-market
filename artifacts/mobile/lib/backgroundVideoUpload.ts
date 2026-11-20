@@ -15,6 +15,19 @@ import {
 /** Must match server CHUNK_SIZE_BYTES and UploadStore.UPLOAD_CHUNK_BYTES. */
 export const VIDEO_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 
+/**
+ * Upload API root (`.../storage/uploads`). Production defaults to flexamarket.com.
+ * Set EXPO_PUBLIC_UPLOAD_API_BASE for emulator QA against a local mock when
+ * Wasabi/production storage is unavailable.
+ */
+export function getUploadApiBase(): string {
+  const override = String(process.env.EXPO_PUBLIC_UPLOAD_API_BASE || "")
+    .trim()
+    .replace(/\/$/, "");
+  if (override) return override;
+  return `${getApiBase()}/storage/uploads`;
+}
+
 export type BackgroundVideoUploadProgress = {
   percent: number;
   phase: "staging" | "uploading" | "processing";
@@ -43,14 +56,47 @@ async function ensureNotificationPermission(): Promise<void> {
   }
 }
 
+async function uploadJson<T>(
+  path: string,
+  opts: { token: string; method?: string; body?: unknown },
+): Promise<T> {
+  const base = getUploadApiBase();
+  // Production uses the shared apiRequest helper (same host as the rest of the app).
+  if (base === `${getApiBase()}/storage/uploads`) {
+    return apiRequest<T>(`/storage/uploads${path}`, {
+      token: opts.token,
+      method: opts.method,
+      body: opts.body,
+    });
+  }
+  const res = await fetch(`${base}${path}`, {
+    method: opts.method || "GET",
+    headers: {
+      Authorization: `Bearer ${opts.token}`,
+      ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+  });
+  const text = await res.text();
+  const data = text ? (JSON.parse(text) as T & { error?: string }) : ({} as T);
+  if (!res.ok) {
+    throw new Error(
+      typeof (data as { error?: string }).error === "string"
+        ? (data as { error: string }).error
+        : `Upload API ${res.status}`,
+    );
+  }
+  return data;
+}
+
 async function waitForProcessedUrl(
   uploadId: string,
   token: string,
   onProgress?: (p: BackgroundVideoUploadProgress) => void,
 ): Promise<string> {
   for (let i = 0; i < 120; i += 1) {
-    const status = await apiRequest<{ status?: string; url?: string; error?: string }>(
-      `/storage/uploads/chunk-status/${uploadId}`,
+    const status = await uploadJson<{ status?: string; url?: string; error?: string }>(
+      `/chunk-status/${uploadId}`,
       { token },
     );
     onProgress?.({
@@ -79,7 +125,7 @@ async function uploadWithNativeModule(
 ): Promise<string> {
   await ensureNotificationPermission();
   const totalChunks = Math.ceil(opts.totalBytes / VIDEO_UPLOAD_CHUNK_BYTES);
-  const init = await apiRequest<{ uploadId: string }>("/storage/uploads/chunk-init", {
+  const init = await uploadJson<{ uploadId: string }>("/chunk-init", {
     token: opts.token,
     method: "POST",
     body: {
@@ -91,7 +137,7 @@ async function uploadWithNativeModule(
   });
   const uploadId = init.uploadId;
   const jobId = newId();
-  const apiBase = `${getApiBase()}/storage/uploads`;
+  const apiBase = getUploadApiBase();
 
   opts.onProgress?.({ percent: 2, phase: "staging" });
   await dispatchFlexaUpload({
@@ -171,7 +217,7 @@ async function uploadInProcess(
   const blob = await fileRes.blob();
   const totalBytes = blob.size || opts.totalBytes;
   const totalChunks = Math.ceil(totalBytes / VIDEO_UPLOAD_CHUNK_BYTES);
-  const init = await apiRequest<{ uploadId: string }>("/storage/uploads/chunk-init", {
+  const init = await uploadJson<{ uploadId: string }>("/chunk-init", {
     token: opts.token,
     method: "POST",
     body: {
@@ -182,11 +228,12 @@ async function uploadInProcess(
     },
   });
   const uploadId = init.uploadId;
+  const uploadBase = getUploadApiBase();
   for (let index = 0; index < totalChunks; index += 1) {
     const start = index * VIDEO_UPLOAD_CHUNK_BYTES;
     const chunk = blob.slice(start, start + VIDEO_UPLOAD_CHUNK_BYTES);
     const buf = await chunk.arrayBuffer();
-    const res = await fetch(`${getApiBase()}/storage/uploads/chunk/${uploadId}/${index}`, {
+    const res = await fetch(`${uploadBase}/chunk/${uploadId}/${index}`, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${opts.token}`,
@@ -200,7 +247,7 @@ async function uploadInProcess(
       phase: "uploading",
     });
   }
-  await apiRequest(`/storage/uploads/chunk-finalize/${uploadId}`, {
+  await uploadJson(`/chunk-finalize/${uploadId}`, {
     token: opts.token,
     method: "POST",
     body: {},

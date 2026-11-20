@@ -34,6 +34,16 @@ internal const val UPLOAD_CHUNK_BYTES = 8_388_608L
 private const val MAX_STAGE_MESSAGE_BYTES = 1_500_000
 private const val MAX_STAGING_AGE_MS = 24 * 60 * 60 * 1000L
 
+/**
+ * Production plus emulator loopback hosts used for QA of the dataSync upload
+ * notification. 10.0.2.2 / 127.0.0.1 are not useful on physical retail devices.
+ */
+internal val TRUSTED_UPLOAD_API_BASES = setOf(
+  UPLOAD_API_BASE,
+  "http://10.0.2.2:8787/api/storage/uploads",
+  "http://127.0.0.1:8787/api/storage/uploads",
+)
+
 internal data class UploadJob(
   val jobId: String,
   val fileName: String,
@@ -42,6 +52,7 @@ internal data class UploadJob(
   val uploadId: String,
   val chunkSize: Long,
   val totalChunks: Int,
+  val apiBase: String = UPLOAD_API_BASE,
   var bytesStaged: Long = 0,
   var bytesSent: Long = 0,
   var state: String = "staging",
@@ -95,8 +106,8 @@ internal class UploadStore(private val context: Context) {
     val fileName = boundedString(message["fileName"], "file name", 512)
     val contentType = boundedString(message["contentType"], "content type", 128)
     val uploadId = boundedString(message["uploadId"], "upload id", 128).also { requireUuid(it, "upload id") }
-    val apiBase = boundedString(message["apiBase"], "API URL", 256)
-    require(apiBase == UPLOAD_API_BASE) { "Untrusted upload API URL" }
+    val apiBase = boundedString(message["apiBase"], "API URL", 256).trimEnd('/')
+    require(apiBase in TRUSTED_UPLOAD_API_BASES) { "Untrusted upload API URL" }
     val token = boundedString(message["token"], "token", 8192)
     val totalBytes = number(message["totalBytes"], "total bytes")
     val chunkSize = number(message["chunkSize"], "chunk size")
@@ -113,7 +124,8 @@ internal class UploadStore(private val context: Context) {
           existing.uploadId == uploadId &&
           existing.totalBytes == totalBytes &&
           existing.chunkSize == chunkSize &&
-          existing.totalChunks == totalChunks,
+          existing.totalChunks == totalChunks &&
+          existing.apiBase == apiBase,
       ) { "Upload metadata does not match the persisted job" }
       // commit() atomically replaces only this job's ciphertext after a fresh
       // Keystore encryption succeeds, so a resumed login cannot use an old token.
@@ -121,7 +133,7 @@ internal class UploadStore(private val context: Context) {
       repairStagingMetadata(existing)
       return existing.status() + mapOf("bytesStaged" to existing.bytesStaged)
     }
-    val job = UploadJob(jobId, fileName, totalBytes, contentType, uploadId, chunkSize, totalChunks)
+    val job = UploadJob(jobId, fileName, totalBytes, contentType, uploadId, chunkSize, totalChunks, apiBase)
     save(job)
     saveToken(jobId, token)
     return job.status() + mapOf("bytesStaged" to 0L)
@@ -196,6 +208,23 @@ internal class UploadStore(private val context: Context) {
     // WorkManager already owns an uploading job. REPLACE here would cancel a
     // durable transfer and may cause needless duplicate traffic.
     if (job.state == "uploading") return job.status()
+    return enqueueUpload(job)
+  }
+
+  /**
+   * Re-queue a failed upload from the failure notification. Must be called
+   * without holding [mutationLock] (it acquires the lock itself).
+   */
+  fun retryFailedFromNotification(jobId: String): Boolean = synchronized(mutationLock) {
+    val job = read(jobId) ?: return@synchronized false
+    if (job.state != "failed") return@synchronized false
+    if (!stageFile(jobId).isFile || stageFile(jobId).length() != job.totalBytes) return@synchronized false
+    job.bytesStaged = job.totalBytes
+    enqueueUpload(job)
+    true
+  }
+
+  private fun enqueueUpload(job: UploadJob): Map<String, Any?> {
     job.state = "uploading"
     job.error = null
     job.retries = 0
@@ -204,13 +233,17 @@ internal class UploadStore(private val context: Context) {
     // app is still foreground (Continue tap). Without this, Android 12+ denies
     // startForegroundService once the user presses Home (uidState LAST).
     val request = OneTimeWorkRequestBuilder<FlexaUploadWorker>()
-      .setInputData(Data.Builder().putString("jobId", jobId).build())
+      .setInputData(Data.Builder().putString("jobId", job.jobId).build())
       .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
       .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
       .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-      .addTag("flexa-upload-$jobId")
+      .addTag("flexa-upload-${job.jobId}")
       .build()
-    WorkManager.getInstance(context).enqueueUniqueWork("flexa-upload-$jobId", ExistingWorkPolicy.REPLACE, request)
+    WorkManager.getInstance(context).enqueueUniqueWork(
+      "flexa-upload-${job.jobId}",
+      ExistingWorkPolicy.REPLACE,
+      request,
+    )
     return job.status() + mapOf("bytesStaged" to job.bytesStaged)
   }
 
@@ -291,7 +324,8 @@ internal class UploadStore(private val context: Context) {
     jobs.edit().putString(job.jobId, JSONObject().apply {
       put("jobId", job.jobId); put("fileName", job.fileName); put("totalBytes", job.totalBytes)
       put("contentType", job.contentType); put("uploadId", job.uploadId); put("chunkSize", job.chunkSize)
-      put("totalChunks", job.totalChunks); put("bytesStaged", job.bytesStaged); put("bytesSent", job.bytesSent)
+      put("totalChunks", job.totalChunks); put("apiBase", job.apiBase)
+      put("bytesStaged", job.bytesStaged); put("bytesSent", job.bytesSent)
       put("state", job.state); put("error", job.error); put("retries", job.retries); put("createdAt", job.createdAt)
     }.toString()).commit()
   }
@@ -316,11 +350,22 @@ internal class UploadStore(private val context: Context) {
 
   private fun read(jobId: String): UploadJob? = jobs.getString(jobId, null)?.let {
     val value = JSONObject(it)
-    UploadJob(value.getString("jobId"), value.getString("fileName"), value.getLong("totalBytes"),
-      value.getString("contentType"), value.getString("uploadId"), value.getLong("chunkSize"),
-      value.getInt("totalChunks"), value.getLong("bytesStaged"), value.getLong("bytesSent"),
-      value.getString("state"), value.optString("error").ifBlank { null }, value.optInt("retries"),
-      value.getLong("createdAt"))
+    UploadJob(
+      value.getString("jobId"),
+      value.getString("fileName"),
+      value.getLong("totalBytes"),
+      value.getString("contentType"),
+      value.getString("uploadId"),
+      value.getLong("chunkSize"),
+      value.getInt("totalChunks"),
+      value.optString("apiBase", UPLOAD_API_BASE).ifBlank { UPLOAD_API_BASE },
+      value.getLong("bytesStaged"),
+      value.getLong("bytesSent"),
+      value.getString("state"),
+      value.optString("error").ifBlank { null },
+      value.optInt("retries"),
+      value.getLong("createdAt"),
+    )
   }
 
   private fun purgeExpiredStaging() {

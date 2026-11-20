@@ -1,9 +1,13 @@
 /**
- * Native multi-step checkout:
- * 1) Shipping address  2) Shipping method  3) Payment (wallet / Card FM)  4) Place order
- * Uses POST /api/cart/checkout — same wallet-only rules as the website.
+ * Native multi-step checkout for physical goods:
+ * 1) Shipping address  2) Shipping method  3) Payment (Stripe only)  4) Pay with Stripe
+ *
+ * Never calls POST /cart/checkout (wallet). Never debits FM Wallet / Card FM / MonCash.
+ * Creates POST /stripe/checkout sessions and opens Stripe’s hosted payment UI in the
+ * system browser (expo-web-browser) — not a Flexa Market WebView shell.
  */
 import { Feather } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -23,13 +27,10 @@ import { useCart } from "@/context/CartContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
 import {
   calculateDeliveryPrice,
-  cartCheckout,
-  cartHasDominicanItems,
   fetchUserAddresses,
-  fetchWalletBalance,
   persistCheckoutAddress,
-  type CheckoutOrder,
 } from "@/lib/checkoutApi";
+import { createStripeCheckoutSession } from "@/lib/stripeCheckoutApi";
 
 type Step = "address" | "shipping" | "payment" | "review";
 
@@ -61,6 +62,7 @@ export default function CheckoutScreen() {
   const [step, setStep] = useState<Step>("address");
   const [name, setName] = useState(user?.name ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
   const [city, setCity] = useState(user?.city ?? user?.location ?? "");
   const [street, setStreet] = useState("");
   const [region, setRegion] = useState("");
@@ -69,8 +71,6 @@ export default function CheckoutScreen() {
   );
   const [deliveryTotal, setDeliveryTotal] = useState(0);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
-  const [walletAvailable, setWalletAvailable] = useState<number | null>(null);
-  const [walletLoading, setWalletLoading] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const submitLock = useRef(false);
@@ -82,18 +82,11 @@ export default function CheckoutScreen() {
       ) / 100,
     [checkoutItems],
   );
-  const referralFee =
-    (user as { referredByUserId?: number } | null)?.referredByUserId &&
-    subtotal > 14.99
-      ? 0.5
-      : 0;
   const estimatedTotal =
-    Math.round((subtotal + deliveryTotal + referralFee) * 100) / 100;
+    Math.round((subtotal + deliveryTotal) * 100) / 100;
 
-  const hasDominican = cartHasDominicanItems(checkoutItems);
   const stepIndex = STEPS.indexOf(step);
 
-  // Prefill from saved addresses
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
@@ -105,31 +98,12 @@ export default function CheckoutScreen() {
       setCity((v) => v || defaultAddress.city);
       setStreet((v) => v || defaultAddress.street || "");
       setRegion((v) => v || defaultAddress.region || "");
+      if (defaultAddress.email) setEmail((v) => v || defaultAddress.email || "");
     })();
     return () => {
       cancelled = true;
     };
   }, [token]);
-
-  // Wallet balance for payment step
-  useEffect(() => {
-    if (!token || (step !== "payment" && step !== "review")) return;
-    let cancelled = false;
-    setWalletLoading(true);
-    fetchWalletBalance({ token })
-      .then((w) => {
-        if (!cancelled) setWalletAvailable(w.availableUsd);
-      })
-      .catch(() => {
-        if (!cancelled) setWalletAvailable(null);
-      })
-      .finally(() => {
-        if (!cancelled) setWalletLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [token, step]);
 
   const quoteDelivery = useCallback(async () => {
     if (!token || !city.trim() || checkoutItems.length === 0) {
@@ -138,7 +112,6 @@ export default function CheckoutScreen() {
     }
     setDeliveryLoading(true);
     try {
-      // One quote per seller group (first item’s city as pickup), same UX as website.
       const bySeller = new Map<number, typeof checkoutItems>();
       for (const item of checkoutItems) {
         const g = bySeller.get(item.sellerId) ?? [];
@@ -163,7 +136,7 @@ export default function CheckoutScreen() {
           );
           total += quote.feeUsd;
         } catch {
-          /* preview optional — server recalculates on submit */
+          /* preview optional — server recalculates on Stripe session */
         }
       }
       setDeliveryTotal(Math.round(total * 100) / 100);
@@ -191,8 +164,8 @@ export default function CheckoutScreen() {
   }, [checkoutItems.length, router]);
 
   const validateAddress = () => {
-    if (!name.trim() || !phone.trim() || !city.trim()) {
-      setError("Full name, phone, and city are required.");
+    if (!name.trim() || !phone.trim() || !city.trim() || !street.trim()) {
+      setError("Full name, phone, street, and city are required.");
       return false;
     }
     setError("");
@@ -201,12 +174,6 @@ export default function CheckoutScreen() {
 
   const goNext = () => {
     if (step === "address" && !validateAddress()) return;
-    if (hasDominican) {
-      setError(
-        "Dominican Republic items require individual listing checkout.",
-      );
-      return;
-    }
     const next = STEPS[stepIndex + 1];
     if (next) setStep(next);
   };
@@ -220,49 +187,64 @@ export default function CheckoutScreen() {
     setStep(STEPS[stepIndex - 1]);
   };
 
-  const placeOrder = async () => {
+  /**
+   * Stripe-only physical checkout. Multi-item carts pay the first selected listing
+   * via Stripe; remaining lines stay in the cart for a subsequent Stripe payment.
+   * Never posts paymentMethod wallet / never hits /cart/checkout.
+   */
+  const payWithStripe = async () => {
     if (submitLock.current || submitting || !token) return;
     if (!validateAddress()) {
       setStep("address");
       return;
     }
-    if (hasDominican) {
-      setError(
-        "Dominican Republic items require individual listing checkout.",
-      );
+    const head = checkoutItems[0];
+    if (!head) {
+      setError("Your cart is empty.");
       return;
     }
     submitLock.current = true;
     setSubmitting(true);
     setError("");
     try {
-      const result = await cartCheckout(
+      let itemDeliveryFee = 0;
+      try {
+        const sellerCity = head.city?.trim() || "Port-au-Prince";
+        const quote = await calculateDeliveryPrice(
+          {
+            sellerCity,
+            buyerCity: city.trim(),
+            country: head.country || country || "Haiti",
+            method: deliveryMethod,
+            listingPriceUsd: head.price,
+          },
+          { token },
+        );
+        itemDeliveryFee = quote.feeUsd;
+      } catch {
+        itemDeliveryFee = checkoutItems.length === 1 ? deliveryTotal : 0;
+      }
+
+      const session = await createStripeCheckoutSession(
         {
-          items: checkoutItems.map((i) => ({
-            listingId: i.listingId,
-            quantity: i.quantity,
-          })),
+          listingId: head.listingId,
           shippingName: name.trim(),
           shippingPhone: phone.trim(),
-          shippingStreet: street.trim() || null,
+          shippingEmail: email.trim() || undefined,
+          shippingStreet: street.trim(),
           shippingCity: city.trim(),
-          shippingRegion: region.trim() || null,
-          paymentMethod: "wallet",
+          shippingRegion: region.trim() || undefined,
+          shippingCountry: head.country || user?.country || country || undefined,
+          deliveryFeeUsd: itemDeliveryFee > 0 ? itemDeliveryFee : undefined,
           deliveryMethod,
+          deliveryPickupCity: head.city?.trim() || undefined,
         },
         { token },
       );
-      if (!result.ok) {
-        if (result.code === "DOMINICAN_ITEM_CHECKOUT_REQUIRED") {
-          setError(
-            result.error ||
-              "Dominican listings must be purchased on the product page.",
-          );
-        } else {
-          setError(result.error || "Checkout failed. Try again.");
-        }
-        return;
+      if (!session.url) {
+        throw new Error("Stripe did not return a checkout URL");
       }
+
       void persistCheckoutAddress(
         { token },
         {
@@ -274,21 +256,39 @@ export default function CheckoutScreen() {
           country: user?.country || country || "Haiti",
         },
       );
-      // Remove purchased lines (or clear if all selected)
-      const purchased = new Set(checkoutItems.map((i) => i.listingId));
-      if (purchased.size >= items.length) clearCart();
-      else for (const id of purchased) removeItem(id);
 
-      const orders: CheckoutOrder[] = result.orders ?? [];
+      // Remove this line before opening Stripe so a retry cannot wallet-debit it.
+      if (checkoutItems.length >= items.length && checkoutItems.length === 1) {
+        clearCart();
+      } else {
+        removeItem(head.listingId);
+      }
+
+      const result = await WebBrowser.openBrowserAsync(session.url, {
+        enableBarCollapsing: true,
+        showInRecents: true,
+      });
+
       router.replace({
         pathname: "/checkout-success",
         params: {
-          orders: JSON.stringify(orders),
-          deliveryTotal: String(result.deliveryTotal ?? deliveryTotal),
+          payment: "stripe",
+          listingTitle: head.title,
+          amount: String(head.price),
+          deliveryTotal: String(itemDeliveryFee),
+          remaining: String(Math.max(0, checkoutItems.length - 1)),
+          browserResult: result.type,
         },
       });
-    } catch {
-      setError("Network error. Check your connection and try again.");
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      if (err.code === "PAYMENT_METHOD_UNAVAILABLE") {
+        setError(err.message || "Card checkout is not available for this market.");
+      } else if (err.code === "ANDROID_DIGITAL_PURCHASE_UNAVAILABLE") {
+        setError(err.message || "This purchase is not available in the Android app.");
+      } else {
+        setError(err.message || "Could not start Stripe checkout. Try again.");
+      }
     } finally {
       setSubmitting(false);
       submitLock.current = false;
@@ -302,7 +302,7 @@ export default function CheckoutScreen() {
         ? "Shipping method"
         : step === "payment"
           ? "Payment"
-          : "Review & confirm";
+          : "Review & pay";
 
   return (
     <KeyboardAvoidingView
@@ -365,8 +365,9 @@ export default function CheckoutScreen() {
               [
                 ["Full name *", name, setName, "name"],
                 ["Phone *", phone, setPhone, "phone-pad"],
+                ["Email", email, setEmail, "email"],
+                ["Street *", street, setStreet, "default"],
                 ["City *", city, setCity, "default"],
-                ["Street (optional)", street, setStreet, "default"],
                 ["Region (optional)", region, setRegion, "default"],
               ] as const
             ).map(([label, value, setter, keyboard]) => (
@@ -377,8 +378,18 @@ export default function CheckoutScreen() {
                   onChangeText={setter}
                   placeholder={label.replace(" *", "")}
                   placeholderTextColor="#94A3B8"
-                  keyboardType={keyboard === "phone-pad" ? "phone-pad" : "default"}
-                  autoCapitalize={keyboard === "phone-pad" ? "none" : "words"}
+                  keyboardType={
+                    keyboard === "phone-pad"
+                      ? "phone-pad"
+                      : keyboard === "email"
+                        ? "email-address"
+                        : "default"
+                  }
+                  autoCapitalize={
+                    keyboard === "phone-pad" || keyboard === "email"
+                      ? "none"
+                      : "words"
+                  }
                   style={styles.input}
                 />
               </View>
@@ -430,46 +441,31 @@ export default function CheckoutScreen() {
                 <Text style={styles.feeValue}>${deliveryTotal.toFixed(2)}</Text>
               )}
             </View>
-            <Text style={styles.hint}>
-              Final shipping is calculated securely on the server at payment.
-            </Text>
           </View>
         ) : null}
 
         {step === "payment" ? (
-          <View style={styles.block}>
+          <View style={styles.block} testID="checkout-payment-stripe-only">
             <Text style={styles.sectionLabel}>Payment</Text>
             <View style={[styles.methodRow, styles.methodRowOn]}>
-              <Feather name="credit-card" size={20} color="#F97316" />
+              <Feather name="credit-card" size={20} color="#635BFF" />
               <View style={{ flex: 1 }}>
-                <Text style={styles.methodTitle}>Flexa Wallet (Card FM)</Text>
+                <Text style={styles.methodTitle}>Stripe</Text>
                 <Text style={styles.methodSub}>
-                  Cart checkout uses wallet balance only — same as the website.
+                  Pay securely by card. The only payment method in this app for
+                  physical goods.
                 </Text>
               </View>
-              <Feather name="check-circle" size={20} color="#F97316" />
-            </View>
-            <View style={styles.feeRow}>
-              <Text style={styles.feeLabel}>Available balance</Text>
-              {walletLoading ? (
-                <ActivityIndicator color="#F97316" size="small" />
-              ) : (
-                <Text style={styles.feeValue}>
-                  {walletAvailable == null
-                    ? "—"
-                    : `$${walletAvailable.toFixed(2)}`}
-                </Text>
-              )}
+              <Feather name="check-circle" size={20} color="#635BFF" />
             </View>
             <Text style={styles.hint}>
-              Stripe card checkout is available for single-item purchases and
-              wallet top-ups — not multi-item cart checkout.
+              FM Wallet, Flexa Card, MonCash, and other balances are not available
+              for checkout in the Android app. No wallet funds will be debited.
             </Text>
-            {walletAvailable != null && walletAvailable < estimatedTotal ? (
+            {checkoutItems.length > 1 ? (
               <Text style={styles.warn}>
-                Balance may be insufficient for the estimated total ($
-                {estimatedTotal.toFixed(2)}). Top up your wallet if checkout
-                fails.
+                Multi-item carts pay one listing at a time with Stripe. Remaining
+                items stay in your cart after this payment.
               </Text>
             ) : null}
           </View>
@@ -487,7 +483,7 @@ export default function CheckoutScreen() {
             <Text style={styles.reviewLine}>
               {deliveryMethod === "motorcycle" ? "Motorcycle" : "Car"} delivery
             </Text>
-            <Text style={styles.reviewLine}>Pay with Flexa Wallet</Text>
+            <Text style={styles.reviewLine}>Pay with Stripe</Text>
             <View style={styles.totals}>
               <View style={styles.feeRow}>
                 <Text style={styles.feeLabel}>Products</Text>
@@ -497,12 +493,6 @@ export default function CheckoutScreen() {
                 <Text style={styles.feeLabel}>Shipping (est.)</Text>
                 <Text style={styles.feeValue}>${deliveryTotal.toFixed(2)}</Text>
               </View>
-              {referralFee > 0 ? (
-                <View style={styles.feeRow}>
-                  <Text style={styles.feeLabel}>Referral fee</Text>
-                  <Text style={styles.feeValue}>${referralFee.toFixed(2)}</Text>
-                </View>
-              ) : null}
               <View style={styles.feeRow}>
                 <Text style={styles.totalLabel}>Estimated total</Text>
                 <Text style={styles.totalValue}>
@@ -525,15 +515,20 @@ export default function CheckoutScreen() {
           </Pressable>
         ) : (
           <Pressable
-            style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
-            onPress={placeOrder}
+            style={[
+              styles.primaryBtn,
+              styles.stripeBtn,
+              submitting && styles.primaryBtnDisabled,
+            ]}
+            onPress={() => void payWithStripe()}
             disabled={submitting}
+            testID="checkout-pay-stripe"
           >
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.primaryBtnText}>
-                Place order · ${estimatedTotal.toFixed(2)}
+                Pay with Stripe · ${estimatedTotal.toFixed(2)}
               </Text>
             )}
           </Pressable>
@@ -626,8 +621,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC",
   },
   methodRowOn: {
-    borderColor: "#FDBA74",
-    backgroundColor: "#FFF7ED",
+    borderColor: "#A5B4FC",
+    backgroundColor: "#EEF2FF",
   },
   methodTitle: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
   methodSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
@@ -639,7 +634,7 @@ const styles = StyleSheet.create({
   feeLabel: { color: "#64748B", fontSize: 13, fontWeight: "600" },
   feeValue: { color: "#0F172A", fontSize: 14, fontWeight: "800" },
   totalLabel: { color: "#0F172A", fontSize: 15, fontWeight: "900" },
-  totalValue: { color: "#F97316", fontSize: 18, fontWeight: "900" },
+  totalValue: { color: "#635BFF", fontSize: 18, fontWeight: "900" },
   totals: { gap: 8, marginTop: 4 },
   reviewLine: { fontSize: 14, color: "#334155", fontWeight: "600" },
   warn: {
@@ -674,6 +669,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  stripeBtn: { backgroundColor: "#635BFF" },
   primaryBtnDisabled: { opacity: 0.7 },
   primaryBtnText: { color: "#FFFFFF", fontWeight: "800", fontSize: 15 },
 });

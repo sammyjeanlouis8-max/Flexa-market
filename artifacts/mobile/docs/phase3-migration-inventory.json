@@ -93,11 +93,11 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 30,
+    "FULLY_NATIVE": 28,
     "PARTIALLY_NATIVE": 5,
     "PLACEHOLDER": 12,
     "MISSING": 30,
-    "BLOCKED": 5
+    "BLOCKED": 7
   },
   "features": [
     {
@@ -430,13 +430,11 @@
         "/api/wallet/balance",
         "/api/wallet/history"
       ],
-      "status": "FULLY_NATIVE",
+      "status": "BLOCKED",
       "missing": [
-        "top-up (BLOCKED)",
-        "P2P transfer (deferred)",
-        "virtual card panel"
+        "entire wallet / Promo Account surface hidden on native Android"
       ],
-      "work": "Phase 3B: balance + history + detail modal; top-up CTA explains Android block"
+      "work": "Native Android hides Promo Account and wallet; /wallet redirects to Account; website unchanged"
     },
     {
       "id": "wallet-topup",
@@ -483,9 +481,11 @@
         "/api/wallet/history",
         "/api/transactions/me"
       ],
-      "status": "FULLY_NATIVE",
-      "missing": [],
-      "work": "Phase 3B: included in /wallet with filters + detail"
+      "status": "BLOCKED",
+      "missing": [
+        "hidden with wallet / Promo Account on native Android"
+      ],
+      "work": "Native Android does not expose wallet history; website unchanged"
     },
     {
       "id": "flex-card-repay",

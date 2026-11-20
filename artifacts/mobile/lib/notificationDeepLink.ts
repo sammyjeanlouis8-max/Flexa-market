@@ -40,7 +40,15 @@ export function pathFromNotificationData(
     const listingId = pick("listingId", "id");
     return listingId ? `/listing/${listingId}` : "/";
   }
-  if (screen === "wallet" || screen === "transaction") return "/wallet";
+  // Wallet / Promo Account is hidden on native Android — never open money UI.
+  if (
+    screen === "wallet" ||
+    screen === "transaction" ||
+    screen === "promo-account" ||
+    screen === "promoaccount"
+  ) {
+    return "/(tabs)/profile";
+  }
   if (screen === "sales" || screen === "seller") return "/sales";
   if (screen === "notifications") return "/notifications";
   if (screen === "videos" || screen === "promo") {
@@ -71,7 +79,7 @@ export function pathFromNotificationData(
     return orderId ? `/orders/${orderId}` : "/orders";
   }
   if (type.includes("wallet") || type.includes("transfer") || type.includes("payment")) {
-    return "/wallet";
+    return "/(tabs)/profile";
   }
 
   const url = typeof data.url === "string" ? data.url : null;
@@ -88,7 +96,7 @@ export function pathFromNotificationData(
       const listing = path.match(/\/listings\/(\d+)/);
       if (listing) return `/listing/${listing[1]}`;
       if (/\/offers/.test(path)) return "/offers";
-      if (/\/wallet/.test(path)) return "/wallet";
+      if (/\/wallet/.test(path)) return "/(tabs)/profile";
       if (/\/sales/.test(path)) return "/sales";
       if (/\/saved|\/favorites/.test(path)) return "/favorites";
       if (/\/notifications/.test(path)) return "/notifications";

@@ -53,5 +53,7 @@ test("cart is a real native screen wired to checkout APIs", () => {
   const cart = read("app/cart.tsx");
   assert.equal(cart.includes("NativePlaceholder"), false);
   assert.match(cart, /useCart/);
-  assert.match(read("lib/checkoutApi.ts"), /\/cart\/checkout/);
+  const checkoutApi = read("lib/checkoutApi.ts");
+  assert.match(checkoutApi, /\/delivery\/calculate-price|\/me\/addresses/);
+  assert.match(read("app/checkout.tsx"), /createStripeCheckoutSession|Pay with Stripe/);
 });

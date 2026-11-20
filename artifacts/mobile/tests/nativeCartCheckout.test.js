@@ -36,16 +36,20 @@ test("cart context persists with website storage key", () => {
   assert.match(ctx, /itemsForCountry/);
 });
 
-test("checkout API preserves wallet-only cart contract", () => {
+test("checkout is Stripe-only and never wallet-debits", () => {
   const api = read("lib/checkoutApi.ts");
-  assert.match(api, /\/cart\/checkout/);
-  assert.match(api, /paymentMethod:\s*"wallet"/);
+  const checkout = read("app/checkout.tsx");
   assert.match(api, /\/delivery\/calculate-price/);
-  assert.match(api, /\/wallet\/balance/);
   assert.match(api, /\/me\/addresses/);
-  assert.match(api, /DOMINICAN|isDominicanListingCountry/);
-  assert.match(api, /shippingName/);
-  assert.match(api, /deliveryMethod/);
+  assert.equal(api.includes('paymentMethod: "wallet"'), false);
+  assert.equal(api.includes("/cart/checkout"), false);
+  assert.equal(api.includes("/wallet/balance"), false);
+  assert.match(checkout, /createStripeCheckoutSession/);
+  assert.match(checkout, /Pay with Stripe|Stripe/);
+  assert.equal(checkout.includes('paymentMethod: "wallet"'), false);
+  assert.equal(checkout.includes("cartCheckout"), false);
+  assert.equal(checkout.includes("fetchWalletBalance"), false);
+  assert.equal(/MonCash|FM Wallet|Card FM|Flexa Wallet/i.test(checkout) && /only payment method/i.test(checkout), true);
 });
 
 test("root layout wires CartProvider and checkout routes", () => {

@@ -29,14 +29,16 @@ test("Phase 3B screens are native (no WebView / no NativePlaceholder)", () => {
   }
 });
 
-test("wallet uses real balance/history APIs and does not initiate top-up", () => {
+test("wallet / Promo Account route is hidden and redirects away", () => {
   const wallet = read("app/wallet.tsx");
-  const api = read("lib/walletApi.ts");
-  assert.match(api, /\/wallet\/balance/);
-  assert.match(api, /\/wallet\/history/);
-  assert.match(wallet, /fetchWalletBalance|fetchWalletHistory/);
+  assert.match(wallet, /Redirect/);
+  assert.match(wallet, /\/\(tabs\)\/profile/);
+  assert.equal(wallet.includes("Delivery code"), false);
+  assert.equal(wallet.includes("fetchDeliveryCode"), false);
+  assert.equal(wallet.includes("Available balance"), false);
   assert.equal(wallet.includes("/wallet/topup"), false);
-  assert.match(wallet, /Top-up unavailable|not available in the Android app/i);
+  assert.equal(wallet.includes("fetchWalletHistory"), false);
+  assert.equal(/<Text[^>]*>\s*Promo Account/i.test(wallet), false);
 });
 
 test("addresses CRUD hits /me/addresses", () => {
@@ -85,15 +87,13 @@ test("eSIM screen is explicitly deferred without fake plans", () => {
 test("listing wires Stripe for DR / card path", () => {
   const listing = read("app/listing/[id].tsx");
   assert.match(listing, /stripe-checkout/);
-  assert.match(listing, /Buy with card/);
+  assert.match(listing, /Buy with card|Stripe/);
 });
 
 test("inventory marks Phase 3B features FULLY_NATIVE and eSIM BLOCKED", () => {
   const data = JSON.parse(read("docs/phase3-migration-inventory.json"));
   const byId = Object.fromEntries(data.features.map((f) => [f.id, f]));
   for (const id of [
-    "wallet",
-    "wallet-history",
     "addresses",
     "edit-profile",
     "stripe-single-item",
@@ -101,10 +101,12 @@ test("inventory marks Phase 3B features FULLY_NATIVE and eSIM BLOCKED", () => {
   ]) {
     assert.equal(byId[id].status, "FULLY_NATIVE", id);
   }
+  assert.equal(byId.wallet.status, "BLOCKED");
+  assert.equal(byId["wallet-history"].status, "BLOCKED");
   assert.equal(byId.esim.status, "BLOCKED");
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.ok(data.summaryCounts.FULLY_NATIVE >= 20);
-  assert.equal(data.summaryCounts.BLOCKED, 5);
+  assert.equal(data.summaryCounts.BLOCKED, 7);
 });
 
 test("root layout registers Phase 3B routes and LanguageProvider", () => {
@@ -120,4 +122,11 @@ test("root layout registers Phase 3B routes and LanguageProvider", () => {
   ]) {
     assert.match(layout, new RegExp(`name="${name}"`));
   }
+});
+
+test("profile menu hides Promo Account and Wallet", () => {
+  const profile = read("app/(tabs)/profile.tsx");
+  assert.equal(profile.includes("Promo Account"), false);
+  assert.equal(profile.includes('href: "/wallet"'), false);
+  assert.equal(profile.includes('label: "Wallet"'), false);
 });

@@ -30,7 +30,8 @@
       },
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "flexamarket.com"
+        "EXPO_PUBLIC_DOMAIN": "flexamarket.com",
+        "ORG_GRADLE_JVMARGS": "-Xmx4096m -XX:MaxMetaspaceSize=1024m"
       }
     }
   },

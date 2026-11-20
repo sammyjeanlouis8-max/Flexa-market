@@ -176,7 +176,8 @@ export function notificationNativeHref(n: AppNotification): string {
     case "transfer_sent":
     case "wallet_recharged":
     case "payment_refunded":
-      return "/wallet";
+      // Wallet / Promo Account hidden on native Android
+      return "/(tabs)/profile";
     case "identity_verified":
       return "/kyc";
     case "subscription_payment_failed":

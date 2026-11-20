@@ -198,8 +198,10 @@ export default function OrderDetailScreen() {
             <Text style={styles.line}>
               Method:{" "}
               {order.paymentMethod === "wallet"
-                ? "Flexa Wallet (Card FM)"
-                : order.paymentMethod ?? "—"}
+                ? "Wallet (website)"
+                : order.paymentMethod === "stripe"
+                  ? "Stripe"
+                  : order.paymentMethod ?? "—"}
             </Text>
             <Text style={styles.line}>
               Status: {order.paymentStatus ?? "—"}

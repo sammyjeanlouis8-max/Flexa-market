@@ -150,18 +150,40 @@ class FlexaUploadWorker(context: Context, params: WorkerParameters) : CoroutineW
     )
   }
 
-  private fun createForegroundInfo(): ForegroundInfo {
+  private fun buildUploadNotification(): android.app.Notification {
     ensureUploadChannel()
-    val notification = NotificationCompat.Builder(applicationContext, UPLOAD_CHANNEL_ID)
+    val launch = applicationContext.packageManager.getLaunchIntentForPackage(applicationContext.packageName)
+      ?: Intent().setPackage(applicationContext.packageName)
+    val contentIntent = PendingIntent.getActivity(
+      applicationContext,
+      UPLOAD_NOTIFICATION_ID,
+      launch,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+    return NotificationCompat.Builder(applicationContext, UPLOAD_CHANNEL_ID)
       .setSmallIcon(android.R.drawable.stat_sys_upload)
       .setContentTitle("Uploading to Flexa Market")
       .setContentText("Your upload will continue in the background.")
+      .setStyle(
+        NotificationCompat.BigTextStyle()
+          .bigText("Your upload will continue in the background."),
+      )
       .setOngoing(true)
       .setOnlyAlertOnce(true)
+      .setSilent(false)
+      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
       .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+      .setContentIntent(contentIntent)
       .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
       .build()
+  }
+
+  private fun createForegroundInfo(): ForegroundInfo {
+    val notification = buildUploadNotification()
+    // Also notify() so the row stays in the shade on emulators/OEMs that hide
+    // some FGS-only notifications from NotificationHistory.
+    notificationManager().notify(UPLOAD_NOTIFICATION_ID, notification)
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       ForegroundInfo(
         UPLOAD_NOTIFICATION_ID,

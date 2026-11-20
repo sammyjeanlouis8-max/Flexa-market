@@ -1,6 +1,6 @@
 /**
  * Native shopping cart — mirrors marketplace local cart persistence.
- * Synced to AsyncStorage; checkout settles via POST /api/cart/checkout.
+ * Synced to AsyncStorage; Android checkout settles via Stripe only (no wallet debit).
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {

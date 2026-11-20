@@ -29,14 +29,18 @@ test("Phase 3B screens are native (no WebView / no NativePlaceholder)", () => {
   }
 });
 
-test("wallet uses real balance/history APIs and does not initiate top-up", () => {
+test("Promo Account shows delivery code only — no wallet money UI", () => {
   const wallet = read("app/wallet.tsx");
   const api = read("lib/walletApi.ts");
-  assert.match(api, /\/wallet\/balance/);
-  assert.match(api, /\/wallet\/history/);
-  assert.match(wallet, /fetchWalletBalance|fetchWalletHistory/);
+  assert.match(api, /fetchDeliveryCode/);
+  assert.match(api, /accountNumber/);
+  assert.match(wallet, /Promo Account/);
+  assert.match(wallet, /Delivery code/);
+  assert.match(wallet, /fetchDeliveryCode/);
   assert.equal(wallet.includes("/wallet/topup"), false);
-  assert.match(wallet, /Top-up unavailable|not available in the Android app/i);
+  assert.equal(wallet.includes("fetchWalletHistory"), false);
+  assert.equal(/Available balance|Top up\b|Transactions|Card FM ·/i.test(wallet), false);
+  assert.equal(api.includes("fetchWalletHistory"), false);
 });
 
 test("addresses CRUD hits /me/addresses", () => {
@@ -85,7 +89,7 @@ test("eSIM screen is explicitly deferred without fake plans", () => {
 test("listing wires Stripe for DR / card path", () => {
   const listing = read("app/listing/[id].tsx");
   assert.match(listing, /stripe-checkout/);
-  assert.match(listing, /Buy with card/);
+  assert.match(listing, /Buy with card|Stripe/);
 });
 
 test("inventory marks Phase 3B features FULLY_NATIVE and eSIM BLOCKED", () => {
@@ -120,4 +124,11 @@ test("root layout registers Phase 3B routes and LanguageProvider", () => {
   ]) {
     assert.match(layout, new RegExp(`name="${name}"`));
   }
+});
+
+test("profile menu labels Promo Account not Wallet", () => {
+  const profile = read("app/(tabs)/profile.tsx");
+  assert.match(profile, /Promo Account/);
+  assert.match(profile, /href:\s*"\/wallet"/);
+  assert.equal(profile.includes('label: "Wallet"'), false);
 });

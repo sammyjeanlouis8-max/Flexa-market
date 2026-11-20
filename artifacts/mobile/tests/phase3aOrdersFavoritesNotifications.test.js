@@ -78,5 +78,6 @@ test("Firebase push prep does not invent credentials", () => {
 
 test("checkout success links into order details", () => {
   const success = read("app/checkout-success.tsx");
-  assert.match(success, /\/orders\/\$\{/);
+  assert.match(success, /\/orders|View orders/);
+  assert.match(success, /Stripe/);
 });

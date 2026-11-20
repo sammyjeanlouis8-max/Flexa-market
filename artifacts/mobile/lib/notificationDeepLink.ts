@@ -40,7 +40,15 @@ export function pathFromNotificationData(
     const listingId = pick("listingId", "id");
     return listingId ? `/listing/${listingId}` : "/";
   }
-  if (screen === "wallet" || screen === "transaction") return "/wallet";
+  // Old wallet deep links open Promo Account (delivery code only) — no money UI.
+  if (
+    screen === "wallet" ||
+    screen === "transaction" ||
+    screen === "promo-account" ||
+    screen === "promoaccount"
+  ) {
+    return "/wallet";
+  }
   if (screen === "sales" || screen === "seller") return "/sales";
   if (screen === "notifications") return "/notifications";
   if (screen === "videos" || screen === "promo") {

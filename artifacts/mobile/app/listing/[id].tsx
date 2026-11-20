@@ -170,7 +170,7 @@ export default function ListingDetailScreen() {
     if (dominican) {
       Alert.alert(
         "Added to cart",
-        "Dominican Republic items must be checked out from the product page (seller shipping). Cart wallet checkout is not available for these listings.",
+        "Checkout uses Stripe only. You can also tap Buy with card on this page.",
       );
     }
   };
@@ -328,15 +328,14 @@ export default function ListingDetailScreen() {
                 </Pressable>
               )}
             </View>
-            {dominican && !isOwnListing ? (
+            {!isOwnListing && dominican ? (
               <Pressable style={styles.cartAlt} onPress={onAddToCart}>
                 <Text style={styles.cartAltText}>
-                  {inCart
-                    ? "Saved in cart (wallet checkout unavailable for DR)"
-                    : "Save to cart"}
+                  {inCart ? "Saved in cart · pay with Stripe at checkout" : "Save to cart"}
                 </Text>
               </Pressable>
-            ) : !isOwnListing && !dominican ? (
+            ) : null}
+            {!isOwnListing && !dominican ? (
               <Pressable
                 style={styles.cartAlt}
                 onPress={() => {
@@ -351,7 +350,7 @@ export default function ListingDetailScreen() {
                   });
                 }}
               >
-                <Text style={styles.cartAltText}>Or pay with card (Stripe)</Text>
+                <Text style={styles.cartAltText}>Or pay with Stripe now</Text>
               </Pressable>
             ) : null}
           </View>

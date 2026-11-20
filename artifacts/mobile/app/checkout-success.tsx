@@ -1,34 +1,36 @@
 /**
- * Order confirmation after successful POST /api/cart/checkout.
+ * Post-checkout confirmation after Stripe payment is started/completed.
  */
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { CheckoutOrder } from "@/lib/checkoutApi";
 
 export default function CheckoutSuccessScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { orders: ordersRaw, deliveryTotal: deliveryRaw } = useLocalSearchParams<{
-    orders?: string;
+  const {
+    listingTitle,
+    amount,
+    deliveryTotal: deliveryRaw,
+    remaining: remainingRaw,
+    browserResult,
+  } = useLocalSearchParams<{
+    payment?: string;
+    listingTitle?: string;
+    amount?: string;
     deliveryTotal?: string;
+    remaining?: string;
+    browserResult?: string;
   }>();
 
-  const orders: CheckoutOrder[] = useMemo(() => {
-    try {
-      const parsed = JSON.parse(String(ordersRaw || "[]"));
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }, [ordersRaw]);
-
   const deliveryTotal = Number(deliveryRaw || 0) || 0;
-  const productTotal = orders.reduce((s, o) => s + Number(o.amount || 0), 0);
+  const productTotal = Number(amount || 0) || 0;
   const grandTotal = Math.round((productTotal + deliveryTotal) * 100) / 100;
-  const firstOrderId = orders[0]?.txId;
+  const remaining = Number(remainingRaw || 0) || 0;
+  const maybeIncomplete =
+    browserResult === "cancel" || browserResult === "dismiss";
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
@@ -40,87 +42,70 @@ export default function CheckoutSuccessScreen() {
         }}
       >
         <View style={styles.iconWrap}>
-          <Feather name="check-circle" size={40} color="#059669" />
+          <Feather
+            name={maybeIncomplete ? "info" : "check-circle"}
+            size={40}
+            color={maybeIncomplete ? "#F97316" : "#059669"}
+          />
         </View>
-        <Text style={styles.title}>Order confirmed</Text>
-        <Text style={styles.sub}>
-          {orders.length || 0} item(s) paid with Flexa Wallet
+        <Text style={styles.title}>
+          {maybeIncomplete ? "Returned from Stripe" : "Stripe checkout started"}
         </Text>
-        {deliveryTotal > 0 ? (
-          <Text style={styles.shipBadge}>
-            Shipping ${deliveryTotal.toFixed(2)}
+        <Text style={styles.sub}>
+          {maybeIncomplete
+            ? "If you finished paying in Stripe, your order will appear under Orders shortly. Wallet balances are never used for Android checkout."
+            : "Payment is processed by Stripe only. No FM Wallet or Card FM balance was debited."}
+        </Text>
+        {listingTitle ? (
+          <View style={styles.list}>
+            <View style={styles.row}>
+              <View style={styles.pkg}>
+                <Feather name="package" size={18} color="#635BFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle} numberOfLines={2}>
+                  {listingTitle}
+                </Text>
+                <Text style={styles.rowMeta}>
+                  ${productTotal.toFixed(2)}
+                  {deliveryTotal > 0
+                    ? ` · ship $${deliveryTotal.toFixed(2)}`
+                    : ""}
+                  {grandTotal > 0 ? ` · total $${grandTotal.toFixed(2)}` : ""}
+                </Text>
+              </View>
+              <Text style={styles.paid}>Stripe</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {remaining > 0 ? (
+          <Text style={styles.remaining}>
+            {remaining} more item(s) remain in your cart — pay each with Stripe.
           </Text>
         ) : null}
 
-        <View style={styles.list}>
-          {orders.map((o) => (
-            <Pressable
-              key={o.txId}
-              style={styles.row}
-              onPress={() => router.push(`/orders/${o.txId}`)}
-            >
-              <View style={styles.pkg}>
-                <Feather name="package" size={18} color="#F97316" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle} numberOfLines={1}>
-                  {o.title}
-                </Text>
-                <Text style={styles.rowMeta}>
-                  #{o.txId} · ${Number(o.amount).toFixed(2)}
-                  {(o.deliveryFee ?? 0) > 0
-                    ? ` · ship $${Number(o.deliveryFee).toFixed(2)}`
-                    : ""}
-                </Text>
-              </View>
-              <Text style={styles.paid}>Paid</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={styles.totals}>
-          <View style={styles.feeRow}>
-            <Text style={styles.feeLabel}>Products</Text>
-            <Text style={styles.feeValue}>${productTotal.toFixed(2)}</Text>
-          </View>
-          {deliveryTotal > 0 ? (
-            <View style={styles.feeRow}>
-              <Text style={styles.feeLabel}>Shipping</Text>
-              <Text style={styles.feeValue}>${deliveryTotal.toFixed(2)}</Text>
-            </View>
-          ) : null}
-          <View style={styles.feeRow}>
-            <Text style={styles.totalLabel}>Total paid</Text>
-            <Text style={styles.totalValue}>${grandTotal.toFixed(2)}</Text>
-          </View>
-        </View>
-
-        <View style={styles.actions}>
-          <Pressable
-            style={styles.primaryBtn}
-            onPress={() =>
-              router.replace(
-                firstOrderId ? `/orders/${firstOrderId}` : "/orders",
-              )
-            }
-          >
-            <Text style={styles.primaryBtnText}>
-              {firstOrderId ? "View order details" : "View orders"}
-            </Text>
-          </Pressable>
+        <Pressable
+          style={styles.primaryBtn}
+          onPress={() => router.replace("/orders")}
+        >
+          <Text style={styles.primaryBtnText}>View orders</Text>
+        </Pressable>
+        {remaining > 0 ? (
           <Pressable
             style={styles.secondaryBtn}
-            onPress={() => router.replace("/orders")}
+            onPress={() => router.replace("/cart")}
           >
-            <Text style={styles.secondaryBtnText}>All orders</Text>
+            <Text style={styles.secondaryBtnText}>Back to cart</Text>
           </Pressable>
+        ) : (
           <Pressable
-            style={styles.linkBtn}
+            style={styles.secondaryBtn}
             onPress={() => router.replace("/")}
           >
-            <Text style={styles.linkBtnText}>Continue shopping</Text>
+            <Text style={styles.secondaryBtnText}>Continue shopping</Text>
           </Pressable>
-        </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -132,93 +117,78 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: "#D1FAE5",
+    backgroundColor: "#ECFDF5",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
-  },
-  title: { fontSize: 22, fontWeight: "900", color: "#0F172A" },
-  sub: { fontSize: 14, color: "#64748B", marginTop: 4, marginBottom: 8 },
-  shipBadge: {
-    backgroundColor: "#EFF6FF",
-    color: "#1D4ED8",
-    overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: "700",
     marginBottom: 16,
   },
-  list: { width: "100%", gap: 8, marginTop: 8 },
+  title: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#0F172A",
+    textAlign: "center",
+  },
+  sub: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#64748B",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  list: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden",
+    marginBottom: 16,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    gap: 12,
+    padding: 14,
   },
   pkg: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#FFF7ED",
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#EEF2FF",
     alignItems: "center",
     justifyContent: "center",
   },
-  rowTitle: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
-  rowMeta: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  paid: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#047857",
-    backgroundColor: "#ECFDF5",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    overflow: "hidden",
+  rowTitle: { fontWeight: "700", color: "#0F172A", fontSize: 14 },
+  rowMeta: { color: "#64748B", fontSize: 12, marginTop: 2 },
+  paid: { fontWeight: "800", color: "#635BFF", fontSize: 12 },
+  remaining: {
+    fontSize: 13,
+    color: "#C2410C",
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: 16,
   },
-  totals: {
-    width: "100%",
-    marginTop: 16,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    gap: 8,
-  },
-  feeRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  feeLabel: { color: "#64748B", fontSize: 13, fontWeight: "600" },
-  feeValue: { color: "#0F172A", fontSize: 14, fontWeight: "800" },
-  totalLabel: { color: "#0F172A", fontSize: 15, fontWeight: "900" },
-  totalValue: { color: "#F97316", fontSize: 18, fontWeight: "900" },
-  actions: { width: "100%", gap: 10, marginTop: 20 },
   primaryBtn: {
+    width: "100%",
     height: 50,
     borderRadius: 14,
-    backgroundColor: "#F97316",
+    backgroundColor: "#635BFF",
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 8,
   },
   primaryBtnText: { color: "#fff", fontWeight: "800", fontSize: 15 },
   secondaryBtn: {
-    height: 50,
+    width: "100%",
+    height: 48,
     borderRadius: 14,
-    backgroundColor: "#F1F5F9",
     borderWidth: 1,
     borderColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 10,
   },
-  secondaryBtnText: { color: "#0F172A", fontWeight: "800", fontSize: 15 },
-  linkBtn: { alignItems: "center", paddingVertical: 8 },
-  linkBtnText: { color: "#F97316", fontWeight: "700", fontSize: 14 },
+  secondaryBtnText: { color: "#0F172A", fontWeight: "700", fontSize: 14 },
 });

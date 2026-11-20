@@ -21,7 +21,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { listAddresses, type UserAddress } from "@/lib/addressesApi";
-import { calculateDeliveryPrice, isDominicanListingCountry } from "@/lib/checkoutApi";
+import { calculateDeliveryPrice } from "@/lib/checkoutApi";
 import { fetchListing, type Listing } from "@/lib/api";
 import { createStripeCheckoutSession } from "@/lib/stripeCheckoutApi";
 
@@ -207,7 +207,6 @@ export default function StripeCheckoutScreen() {
     }
   };
 
-  const dominican = isDominicanListingCountry(listing?.country);
   const listPrice = Number(listing?.price ?? 0) || 0;
   const negotiated = offerAmount != null ? Number(offerAmount) : NaN;
   const price =
@@ -258,14 +257,10 @@ export default function StripeCheckoutScreen() {
                 {listPrice.toFixed(2)}). Public listing price is unchanged. Server validates
                 the accepted offer before charging.
               </Text>
-            ) : dominican ? (
-              <Text style={styles.drNote}>
-                Dominican Republic listings use Stripe card checkout with seller shipping
-                (wallet cart checkout is not available).
-              </Text>
             ) : (
               <Text style={styles.drNote}>
-                Pay securely with Stripe for this physical good. Server verifies payment
+                Pay securely with Stripe for this physical good. FM Wallet, Flexa Card,
+                and MonCash are not available in the Android app. Server verifies payment
                 via webhook before releasing the order.
               </Text>
             )}
@@ -346,8 +341,8 @@ export default function StripeCheckoutScreen() {
             )}
           </Pressable>
           <Text style={styles.footerNote}>
-            Opens Stripe’s secure hosted checkout in your system browser. No card details
-            are entered inside the Flexa Market app.
+            Opens Stripe’s secure payment page in your system browser (not a Flexa Market
+            WebView). No wallet balance is used.
           </Text>
         </ScrollView>
       )}

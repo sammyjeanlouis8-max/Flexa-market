@@ -67,6 +67,9 @@ class FlexaUploadWorker(context: Context, params: WorkerParameters) : CoroutineW
         // refuses to overwrite cancellation or any other terminal state.
         if (isStopped || store.advanceIfUploading(jobId, count) == null) return Result.success()
       }
+      // Finalize on-device so the server assembles the video even if JS is paused
+      // after the user presses Home.
+      finalizeUpload(store, jobId, job.uploadId)
       if (isStopped || !store.completeIfUploading(jobId)) return Result.success()
       store.stageFile(jobId).delete()
       Result.success()
@@ -74,6 +77,30 @@ class FlexaUploadWorker(context: Context, params: WorkerParameters) : CoroutineW
       retryOrFail(store, job, error.message ?: "Network upload failed")
     } catch (error: Exception) {
       retryOrFail(store, job, "Upload failed: ${error.message ?: "unknown error"}")
+    }
+  }
+
+  private fun finalizeUpload(store: UploadStore, jobId: String, uploadId: String) {
+    val connection = (URL("$UPLOAD_API_BASE/chunk-finalize/$uploadId").openConnection() as HttpURLConnection).apply {
+      requestMethod = "POST"
+      instanceFollowRedirects = false
+      connectTimeout = 30_000
+      readTimeout = 60_000
+      doOutput = true
+      setRequestProperty("Authorization", "Bearer ${store.token(jobId)}")
+      setRequestProperty("Content-Type", "application/json")
+      setFixedLengthStreamingMode(2)
+    }
+    try {
+      connection.outputStream.use { it.write("{}".toByteArray()) }
+      val code = connection.responseCode
+      // 200/202 both mean the server accepted the complete chunk set.
+      if (code !in 200..299) {
+        if (code == 401 || code == 403) throw IllegalStateException("Upload authorization was rejected")
+        throw RetryableUploadException("Chunk finalize returned HTTP $code")
+      }
+    } finally {
+      connection.disconnect()
     }
   }
 

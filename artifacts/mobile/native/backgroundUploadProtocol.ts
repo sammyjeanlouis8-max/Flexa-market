@@ -1,4 +1,10 @@
-export type FlexaUploadAction = "begin" | "append" | "start" | "status" | "cancel";
+export type FlexaUploadAction =
+  | "begin"
+  | "append"
+  | "stageFromUri"
+  | "start"
+  | "status"
+  | "cancel";
 
 export interface FlexaUploadMessage {
   type: "flexa-upload";
@@ -26,7 +32,7 @@ export function parseFlexaUploadMessage(raw: string): FlexaUploadMessage | null 
       message.type !== "flexa-upload" ||
       !isNonEmptyString(message.requestId, 128) ||
       !isNonEmptyString(message.jobId, 128) ||
-      !["begin", "append", "start", "status", "cancel"].includes(String(action))
+      !["begin", "append", "stageFromUri", "start", "status", "cancel"].includes(String(action))
     ) {
       return null;
     }

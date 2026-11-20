@@ -2,6 +2,7 @@ package expo.modules.flexabackgroundupload
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -13,6 +14,9 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.InputStream
 import java.io.RandomAccessFile
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
@@ -77,6 +81,7 @@ internal class UploadStore(private val context: Context) {
       return when (action) {
         "begin" -> begin(jobId, message)
         "append" -> append(jobId, message)
+        "stageFromUri" -> stageFromUri(jobId, message)
         "start" -> start(jobId)
         "status" -> status(jobId)
         "cancel" -> cancel(jobId)
@@ -147,6 +152,39 @@ internal class UploadStore(private val context: Context) {
       else -> throw IllegalArgumentException("File data must be appended in order")
     }
     return job.status() + mapOf("bytesStaged" to job.bytesStaged)
+  }
+
+  /**
+   * Native apps stage from a local content/file URI so large videos never
+   * cross the JS bridge as base64. The WebView path still uses append().
+   */
+  private fun stageFromUri(jobId: String, message: Map<String, Any?>): Map<String, Any?> {
+    val job = requireJob(jobId)
+    require(job.state == "staging") { "Upload is no longer accepting file data" }
+    val uriString = boundedString(message["uri"], "file uri", 2048)
+    require(uriString.startsWith("content:") || uriString.startsWith("file:")) {
+      "Unsupported file uri"
+    }
+    val stage = stageFile(jobId)
+    openUriInput(uriString).use { input ->
+      FileOutputStream(stage).use { output -> input.copyTo(output, DEFAULT_BUFFER_SIZE) }
+    }
+    require(stage.isFile && stage.length() == job.totalBytes) {
+      "Staged file size does not match upload metadata"
+    }
+    job.bytesStaged = job.totalBytes
+    save(job)
+    return job.status() + mapOf("bytesStaged" to job.bytesStaged)
+  }
+
+  private fun openUriInput(uriString: String): InputStream {
+    val uri = Uri.parse(uriString)
+    if (uriString.startsWith("file:")) {
+      val path = uri.path ?: throw IllegalArgumentException("Invalid file uri")
+      return FileInputStream(File(path))
+    }
+    return context.contentResolver.openInputStream(uri)
+      ?: throw IllegalArgumentException("Unable to open media uri")
   }
 
   private fun start(jobId: String): Map<String, Any?> {

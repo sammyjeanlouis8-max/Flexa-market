@@ -15,6 +15,17 @@ test("accepts only the versioned background upload command envelope", () => {
   assert.equal(parsed?.jobId, jobId);
 });
 
+test("accepts native stageFromUri action used by Boost Video", () => {
+  const parsed = parseFlexaUploadMessage(JSON.stringify({
+    type: "flexa-upload",
+    requestId: "request-2",
+    action: "stageFromUri",
+    jobId,
+    uri: "content://media/external/video/media/1",
+  }));
+  assert.equal(parsed?.action, "stageFromUri");
+});
+
 test("rejects non-bridge and malformed messages before native dispatch", () => {
   assert.equal(parseFlexaUploadMessage("{"), null);
   assert.equal(parseFlexaUploadMessage(JSON.stringify({ type: "AUTH_TOKEN", token: "x" })), null);

@@ -31,10 +31,9 @@ import {
   type BoostEstimate,
   type BoostPlan,
 } from "@/lib/boostApi";
-import { getApiBase } from "@/lib/api";
+import { uploadBoostVideo } from "@/lib/backgroundVideoUpload";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
 import { formatMoney } from "@/lib/orderUi";
-import { apiRequest } from "@/lib/request";
 import { fetchSellerListings } from "@/lib/sellerListingsApi";
 
 type Mode = "existing" | "new" | "video_only";
@@ -205,62 +204,19 @@ export default function BoostVideoScreen() {
     }
 
     setUploadPct(0);
-    const info = await fetch(videoUri);
-    const blob = await info.blob();
-    const totalBytes = blob.size;
-    if (totalBytes < 1 || totalBytes > 200 * 1024 * 1024) {
-      throw new Error("Video size is invalid.");
-    }
-    const contentType = blob.type || "video/mp4";
-    const chunkSize = 5 * 1024 * 1024;
-    const totalChunks = Math.ceil(totalBytes / chunkSize);
-
-    const init = await apiRequest<{ uploadId: string }>("/storage/uploads/chunk-init", {
+    const probe = await fetch(videoUri);
+    const blob = await probe.blob();
+    const contentType = (blob.type || "video/mp4").split(";")[0].trim().toLowerCase() || "video/mp4";
+    const url = await uploadBoostVideo(videoUri, {
       token,
-      method: "POST",
-      body: { totalChunks, totalBytes, contentType, purpose: "boost" },
+      contentType,
+      fileName: `boost-${Date.now()}.mp4`,
+      purpose: "boost",
+      onProgress: (p) => setUploadPct(p.percent),
     });
-    const uploadId = init.uploadId;
-    for (let index = 0; index < totalChunks; index += 1) {
-      const start = index * chunkSize;
-      const chunk = blob.slice(start, start + chunkSize);
-      const buf = await chunk.arrayBuffer();
-      const res = await fetch(`${getApiBase()}/storage/uploads/chunk/${uploadId}/${index}`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": contentType,
-        },
-        body: buf,
-      });
-      if (!res.ok) throw new Error(`Chunk ${index + 1} upload failed`);
-      setUploadPct(Math.round(((index + 1) / totalChunks) * 90));
-    }
-
-    let finalized = await apiRequest<{ status?: string; url?: string }>(
-      `/storage/uploads/chunk-finalize/${uploadId}`,
-      { token, method: "POST", body: {} },
-    );
-    if (finalized.status === "complete" && finalized.url) {
-      setUploadPct(100);
-      setRemoteVideoUrl(finalized.url);
-      return finalized.url;
-    }
-    for (let i = 0; i < 60; i += 1) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const status = await apiRequest<{ status?: string; url?: string }>(
-        `/storage/uploads/chunk-status/${uploadId}`,
-        { token },
-      );
-      setUploadPct(90 + Math.min(9, i));
-      if (status.status === "complete" && status.url) {
-        setUploadPct(100);
-        setRemoteVideoUrl(status.url);
-        return status.url;
-      }
-      if (status.status === "failed") throw new Error("Video processing failed");
-    }
-    throw new Error("Video processing timed out");
+    setUploadPct(100);
+    setRemoteVideoUrl(url);
+    return url;
   };
 
   const audiencePayload = useMemo(

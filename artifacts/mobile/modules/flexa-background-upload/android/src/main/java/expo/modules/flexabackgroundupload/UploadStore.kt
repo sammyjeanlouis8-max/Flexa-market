@@ -12,6 +12,7 @@ import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import java.io.File
 import java.io.FileInputStream
@@ -199,8 +200,12 @@ internal class UploadStore(private val context: Context) {
     job.error = null
     job.retries = 0
     save(job)
+    // Expedited + getForegroundInfo() lets WorkManager promote the FGS while the
+    // app is still foreground (Continue tap). Without this, Android 12+ denies
+    // startForegroundService once the user presses Home (uidState LAST).
     val request = OneTimeWorkRequestBuilder<FlexaUploadWorker>()
       .setInputData(Data.Builder().putString("jobId", jobId).build())
+      .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
       .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
       .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
       .addTag("flexa-upload-$jobId")

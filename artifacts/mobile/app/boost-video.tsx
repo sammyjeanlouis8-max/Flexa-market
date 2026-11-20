@@ -66,6 +66,7 @@ export default function BoostVideoScreen() {
   const [videoUri, setVideoUri] = useState<string | null>(
     resolveMediaUrl(params.videoUrl) || params.videoUrl || null,
   );
+  const [videoBytes, setVideoBytes] = useState<number | null>(null);
   const [remoteVideoUrl, setRemoteVideoUrl] = useState<string | null>(
     params.videoUrl ? resolveMediaUrl(params.videoUrl) || params.videoUrl : null,
   );
@@ -192,6 +193,7 @@ export default function BoostVideoScreen() {
       return;
     }
     setVideoUri(asset.uri);
+    setVideoBytes(typeof asset.fileSize === "number" ? asset.fileSize : null);
     setRemoteVideoUrl(null);
     if (!adTitle) setAdTitle(params.title || "Boost Video");
   };
@@ -204,14 +206,13 @@ export default function BoostVideoScreen() {
     }
 
     setUploadPct(0);
-    const probe = await fetch(videoUri);
-    const blob = await probe.blob();
-    const contentType = (blob.type || "video/mp4").split(";")[0].trim().toLowerCase() || "video/mp4";
+    const contentType = "video/mp4";
     const url = await uploadBoostVideo(videoUri, {
       token,
       contentType,
       fileName: `boost-${Date.now()}.mp4`,
       purpose: "boost",
+      knownBytes: videoBytes ?? undefined,
       onProgress: (p) => setUploadPct(p.percent),
     });
     setUploadPct(100);

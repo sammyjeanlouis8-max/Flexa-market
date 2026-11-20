@@ -221,6 +221,7 @@ export async function uploadBoostVideo(
     contentType?: string;
     fileName?: string;
     purpose?: "boost" | "listing";
+    knownBytes?: number;
     onProgress?: (p: BackgroundVideoUploadProgress) => void;
   },
 ): Promise<string> {
@@ -228,9 +229,26 @@ export async function uploadBoostVideo(
   const fileName = opts.fileName || `boost-${Date.now()}.mp4`;
   const purpose = opts.purpose || "boost";
 
-  const probe = await fetch(localUri);
-  const blob = await probe.blob();
-  const totalBytes = blob.size;
+  // Prefer picker-reported size / FileSystem metadata so we do not load a
+  // multi‑MB video into JS memory before native staging.
+  let totalBytes =
+    typeof opts.knownBytes === "number" && opts.knownBytes > 0 ? opts.knownBytes : 0;
+  if (totalBytes < 1) {
+    try {
+      const FileSystem = await import("expo-file-system/legacy");
+      const info = await FileSystem.getInfoAsync(localUri);
+      if (info.exists && typeof (info as { size?: number }).size === "number") {
+        totalBytes = (info as { size: number }).size;
+      }
+    } catch {
+      /* fall through to blob probe */
+    }
+  }
+  if (totalBytes < 1) {
+    const probe = await fetch(localUri);
+    const blob = await probe.blob();
+    totalBytes = blob.size;
+  }
   if (totalBytes < 1 || totalBytes > 200 * 1024 * 1024) {
     throw new Error("Video size is invalid.");
   }

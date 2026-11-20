@@ -15,12 +15,17 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class FlexaUploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+  /** Required for expedited work so the upload notification can appear immediately. */
+  override suspend fun getForegroundInfo(): ForegroundInfo = createForegroundInfo()
+
   override suspend fun doWork(): Result {
     val jobId = inputData.getString("jobId") ?: return Result.failure()
     val store = UploadStore(applicationContext)
     val job = try { store.requireJob(jobId) } catch (_: Exception) { return Result.failure() }
     if (job.state == "cancelled" || job.state == "complete") return Result.success()
     if (job.bytesStaged != job.totalBytes) return fail(store, job, "File staging is incomplete")
+    // Promote the FGS as the first action while we may still hold a foreground
+    // exemption from the Continue tap / expedited enqueue.
     setForeground(createForegroundInfo())
     return try {
       while (true) {

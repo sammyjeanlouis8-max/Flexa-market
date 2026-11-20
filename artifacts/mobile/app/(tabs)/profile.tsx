@@ -14,7 +14,6 @@ const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap 
   { label: "My listings", href: "/my-listings", icon: "grid" },
   { label: "Private offers", href: "/offers", icon: "tag" },
   { label: "Favorites", href: "/favorites", icon: "heart" },
-  { label: "Promo Account", href: "/wallet", icon: "gift" },
   { label: "Addresses", href: "/addresses", icon: "map-pin" },
   { label: "Support", href: "/support", icon: "life-buoy" },
   { label: "Notifications", href: "/notifications", icon: "bell" },

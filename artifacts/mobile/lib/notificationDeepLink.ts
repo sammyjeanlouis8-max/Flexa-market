@@ -40,14 +40,14 @@ export function pathFromNotificationData(
     const listingId = pick("listingId", "id");
     return listingId ? `/listing/${listingId}` : "/";
   }
-  // Old wallet deep links open Promo Account (delivery code only) — no money UI.
+  // Wallet / Promo Account is hidden on native Android — never open money UI.
   if (
     screen === "wallet" ||
     screen === "transaction" ||
     screen === "promo-account" ||
     screen === "promoaccount"
   ) {
-    return "/wallet";
+    return "/(tabs)/profile";
   }
   if (screen === "sales" || screen === "seller") return "/sales";
   if (screen === "notifications") return "/notifications";
@@ -79,7 +79,7 @@ export function pathFromNotificationData(
     return orderId ? `/orders/${orderId}` : "/orders";
   }
   if (type.includes("wallet") || type.includes("transfer") || type.includes("payment")) {
-    return "/wallet";
+    return "/(tabs)/profile";
   }
 
   const url = typeof data.url === "string" ? data.url : null;
@@ -96,7 +96,7 @@ export function pathFromNotificationData(
       const listing = path.match(/\/listings\/(\d+)/);
       if (listing) return `/listing/${listing[1]}`;
       if (/\/offers/.test(path)) return "/offers";
-      if (/\/wallet/.test(path)) return "/wallet";
+      if (/\/wallet/.test(path)) return "/(tabs)/profile";
       if (/\/sales/.test(path)) return "/sales";
       if (/\/saved|\/favorites/.test(path)) return "/favorites";
       if (/\/notifications/.test(path)) return "/notifications";

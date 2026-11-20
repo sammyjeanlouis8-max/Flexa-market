@@ -29,18 +29,16 @@ test("Phase 3B screens are native (no WebView / no NativePlaceholder)", () => {
   }
 });
 
-test("Promo Account shows delivery code only — no wallet money UI", () => {
+test("wallet / Promo Account route is hidden and redirects away", () => {
   const wallet = read("app/wallet.tsx");
-  const api = read("lib/walletApi.ts");
-  assert.match(api, /fetchDeliveryCode/);
-  assert.match(api, /accountNumber/);
-  assert.match(wallet, /Promo Account/);
-  assert.match(wallet, /Delivery code/);
-  assert.match(wallet, /fetchDeliveryCode/);
+  assert.match(wallet, /Redirect/);
+  assert.match(wallet, /\/\(tabs\)\/profile/);
+  assert.equal(wallet.includes("Delivery code"), false);
+  assert.equal(wallet.includes("fetchDeliveryCode"), false);
+  assert.equal(wallet.includes("Available balance"), false);
   assert.equal(wallet.includes("/wallet/topup"), false);
   assert.equal(wallet.includes("fetchWalletHistory"), false);
-  assert.equal(/Available balance|Top up\b|Transactions|Card FM ·/i.test(wallet), false);
-  assert.equal(api.includes("fetchWalletHistory"), false);
+  assert.equal(/<Text[^>]*>\s*Promo Account/i.test(wallet), false);
 });
 
 test("addresses CRUD hits /me/addresses", () => {
@@ -96,8 +94,6 @@ test("inventory marks Phase 3B features FULLY_NATIVE and eSIM BLOCKED", () => {
   const data = JSON.parse(read("docs/phase3-migration-inventory.json"));
   const byId = Object.fromEntries(data.features.map((f) => [f.id, f]));
   for (const id of [
-    "wallet",
-    "wallet-history",
     "addresses",
     "edit-profile",
     "stripe-single-item",
@@ -105,10 +101,12 @@ test("inventory marks Phase 3B features FULLY_NATIVE and eSIM BLOCKED", () => {
   ]) {
     assert.equal(byId[id].status, "FULLY_NATIVE", id);
   }
+  assert.equal(byId.wallet.status, "BLOCKED");
+  assert.equal(byId["wallet-history"].status, "BLOCKED");
   assert.equal(byId.esim.status, "BLOCKED");
   assert.equal(byId["wallet-topup"].status, "BLOCKED");
   assert.ok(data.summaryCounts.FULLY_NATIVE >= 20);
-  assert.equal(data.summaryCounts.BLOCKED, 5);
+  assert.equal(data.summaryCounts.BLOCKED, 7);
 });
 
 test("root layout registers Phase 3B routes and LanguageProvider", () => {
@@ -126,9 +124,9 @@ test("root layout registers Phase 3B routes and LanguageProvider", () => {
   }
 });
 
-test("profile menu labels Promo Account not Wallet", () => {
+test("profile menu hides Promo Account and Wallet", () => {
   const profile = read("app/(tabs)/profile.tsx");
-  assert.match(profile, /Promo Account/);
-  assert.match(profile, /href:\s*"\/wallet"/);
+  assert.equal(profile.includes("Promo Account"), false);
+  assert.equal(profile.includes('href: "/wallet"'), false);
   assert.equal(profile.includes('label: "Wallet"'), false);
 });

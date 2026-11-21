@@ -22,6 +22,8 @@ export type CartItem = {
   city: string | null;
   sellerId: number;
   quantity: number;
+  /** Optional variant label synced from website cart (size/color/SKU). */
+  variant?: string | null;
 };
 
 type CartContextType = {
@@ -32,6 +34,8 @@ type CartContextType = {
   clearCart: () => void;
   isInCart: (listingId: number) => boolean;
   updateQuantity: (listingId: number, qty: number) => void;
+  /** Replace cart from website WebView localStorage sync (same product/qty/price). */
+  replaceFromWeb: (items: CartItem[]) => void;
   /** Number of distinct line items */
   count: number;
   /** Sum of quantity across lines */
@@ -51,6 +55,7 @@ const CartContext = createContext<CartContextType>({
   clearCart: () => {},
   isInCart: () => false,
   updateQuantity: () => {},
+  replaceFromWeb: () => {},
   count: 0,
   totalUnits: 0,
   subtotal: 0,
@@ -75,6 +80,7 @@ function normalize(raw: unknown): CartItem[] {
         city: row?.city ?? null,
         sellerId,
         quantity: Math.max(1, Number(row?.quantity) || 1),
+        variant: row?.variant != null ? String(row.variant) : null,
       } as CartItem;
     })
     .filter(Boolean) as CartItem[];
@@ -123,6 +129,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             city: item.city,
             sellerId: item.sellerId,
             quantity: Math.max(1, Math.min(30, item.quantity ?? 1)),
+            variant: item.variant ?? null,
           },
         ];
       });
@@ -135,6 +142,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearCart = useCallback(() => setItems([]), []);
+
+  const replaceFromWeb = useCallback((next: CartItem[]) => {
+    setItems(normalize(next));
+  }, []);
 
   const isInCart = useCallback(
     (listingId: number) => items.some((i) => i.listingId === listingId),
@@ -172,6 +183,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       clearCart,
       isInCart,
       updateQuantity,
+      replaceFromWeb,
       count: items.length,
       totalUnits,
       subtotal: Math.round(subtotal * 100) / 100,
@@ -185,6 +197,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     clearCart,
     isInCart,
     updateQuantity,
+    replaceFromWeb,
     itemsForCountry,
   ]);
 

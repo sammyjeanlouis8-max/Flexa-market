@@ -1,11 +1,7 @@
-import NativePlaceholder from "@/components/NativePlaceholder";
+/** Boost analytics / my boosts — live website. */
 import React from "react";
+import WebContentScreen from "@/components/shell/WebContentScreen";
 
-export default function Screen() {
-  return (
-    <NativePlaceholder
-      title='My boosts'
-      subtitle='Native boost management is queued.'
-    />
-  );
+export default function MyBoostsScreen() {
+  return <WebContentScreen path="/boost-analytics" />;
 }

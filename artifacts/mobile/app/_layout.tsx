@@ -40,6 +40,7 @@ export default function RootLayout() {
                       <Stack.Screen name="auth/login" />
                       <Stack.Screen name="auth/register" />
                       <Stack.Screen name="listing/[id]" />
+                      <Stack.Screen name="webview-listing/[id]" />
                       <Stack.Screen name="checkout" />
                       <Stack.Screen name="checkout-success" />
                       <Stack.Screen name="orders" />
@@ -48,6 +49,7 @@ export default function RootLayout() {
                       <Stack.Screen name="wallet" />
                       <Stack.Screen name="chat/[id]" />
                       <Stack.Screen name="my-listings" />
+                      <Stack.Screen name="edit-listing/[id]" />
                       <Stack.Screen name="sales" />
                       <Stack.Screen name="offers" />
                       <Stack.Screen name="support" />
@@ -66,6 +68,12 @@ export default function RootLayout() {
                       <Stack.Screen name="my-boosts" />
                       <Stack.Screen name="boost" />
                       <Stack.Screen name="videos" />
+                      <Stack.Screen name="my-drafts" />
+                      <Stack.Screen name="manager" />
+                      <Stack.Screen name="seller-registration" />
+                      <Stack.Screen name="agents" />
+                      <Stack.Screen name="credit-score" />
+                      <Stack.Screen name="tv" />
                       <Stack.Screen name="kyc" />
                       <Stack.Screen name="subscription" />
                       <Stack.Screen name="admin" />

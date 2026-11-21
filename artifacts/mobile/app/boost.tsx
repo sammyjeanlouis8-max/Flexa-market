@@ -1,11 +1,9 @@
-import NativePlaceholder from "@/components/NativePlaceholder";
+/**
+ * Boost — live website UI (Play Billing still blocks paid digital purchase on Android).
+ */
 import React from "react";
+import WebContentScreen from "@/components/shell/WebContentScreen";
 
-export default function Screen() {
-  return (
-    <NativePlaceholder
-      title='Boost'
-      subtitle='Native Boost purchase UI is queued (Play billing rules apply on Android).'
-    />
-  );
+export default function BoostScreen() {
+  return <WebContentScreen path="/boost" />;
 }

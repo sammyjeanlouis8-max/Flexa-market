@@ -133,7 +133,14 @@ export default function MyListingsScreen() {
                     {(item as any).moderationStatus || item.status || "listed"}
                   </Text>
                 </View>
-                <Pressable onPress={() => onDelete(item)} hitSlop={8}>
+                <Pressable
+                  onPress={() => router.push(`/edit-listing/${item.id}`)}
+                  hitSlop={8}
+                  style={styles.actionBtn}
+                >
+                  <Feather name="edit-2" size={18} color="#F97316" />
+                </Pressable>
+                <Pressable onPress={() => onDelete(item)} hitSlop={8} style={styles.actionBtn}>
                   <Feather name="trash-2" size={18} color="#B91C1C" />
                 </Pressable>
               </Pressable>
@@ -195,4 +202,5 @@ const styles = StyleSheet.create({
   cardTitle: { fontWeight: "700", color: "#0F172A" },
   price: { fontWeight: "800", color: "#F97316", marginTop: 2 },
   status: { fontSize: 12, color: "#64748B", marginTop: 2, textTransform: "capitalize" },
+  actionBtn: { padding: 4 },
 });

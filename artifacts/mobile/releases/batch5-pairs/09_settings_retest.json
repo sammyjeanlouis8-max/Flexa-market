@@ -1,0 +1,8 @@
+{
+  "actions": {
+    "pencil": true,
+    "sell": true,
+    "back": true
+  },
+  "signed_in": true
+}

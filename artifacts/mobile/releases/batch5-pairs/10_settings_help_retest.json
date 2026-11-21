@@ -1,0 +1,22 @@
+{
+  "checks": {
+    "route": true,
+    "title": true,
+    "faq": true,
+    "email": true,
+    "tabs": true
+  },
+  "actions": {
+    "open_chat": true,
+    "open_chat_url": "http://127.0.0.1:8081/support/1",
+    "faq_pay": true,
+    "faq_boost": true,
+    "email": true,
+    "back_link": true,
+    "header_back": true
+  },
+  "notes": [
+    "open_chat body_snip='\\uf110\\n\ud83d\udd10 Pwobl\u00e8m kont\\nopen \u00b7 no voice messages\\nonjour mw se youn nan super admin yo koman mw ka ede yon moun reset password\\nBonjou \ud83d\udc4b Kijan nou ka ede w jodi a?\\nPou pwobl\u00e8m ak kont ou:\\n1'"
+  ],
+  "result": "PASS"
+}

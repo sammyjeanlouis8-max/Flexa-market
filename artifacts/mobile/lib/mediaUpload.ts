@@ -1,7 +1,11 @@
 /**
  * Wasabi upload via request-url + put-proxy with progress callbacks.
  * Used by Sell + Chat attachments. Never invents URLs.
+ *
+ * Android note: fetch(file://…) often fails for expo-av recordings. We read
+ * local files through expo-file-system as base64 first.
  */
+import * as FileSystem from "expo-file-system/legacy";
 import { getApiBase } from "./api";
 
 export type UploadProgress = {
@@ -25,6 +29,75 @@ async function readJson(res: Response): Promise<any> {
   }
 }
 
+function base64ToUint8Array(base64: string): Uint8Array {
+  // Prefer global atob (Hermes / browsers). Avoid Node Buffer in RN.
+  const decode =
+    typeof globalThis.atob === "function"
+      ? globalThis.atob
+      : (s: string) => {
+          // Minimal base64 decode fallback
+          const chars =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+          let str = s.replace(/=+$/, "");
+          let output = "";
+          for (let bc = 0, bs = 0, buffer, i = 0; (buffer = str.charAt(i++)); ) {
+            const idx = chars.indexOf(buffer);
+            if (idx === -1) continue;
+            bs = bc % 4 ? bs * 64 + idx : idx;
+            if (bc++ % 4) output += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6)));
+          }
+          return output;
+        };
+  const binary = decode(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function readLocalBlob(
+  localUri: string,
+  contentType: string,
+): Promise<Blob> {
+  const isLocal =
+    localUri.startsWith("file:") ||
+    localUri.startsWith("content:") ||
+    localUri.startsWith("/");
+
+  if (isLocal) {
+    try {
+      const info = await FileSystem.getInfoAsync(localUri);
+      if (!info.exists) throw new Error("Local file missing");
+      const base64 = await FileSystem.readAsStringAsync(localUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (!base64) throw new Error("Could not read file");
+      const bytes = base64ToUint8Array(base64);
+      // Copy into a fresh ArrayBuffer so BlobPart typing accepts it (TS 5.x).
+      const copy = new Uint8Array(bytes.byteLength);
+      copy.set(bytes);
+      return new Blob([copy], { type: contentType });
+    } catch (fsErr) {
+      // Fall through to fetch for content:// quirks
+      try {
+        const fileRes = await fetch(localUri);
+        const blob = await fileRes.blob();
+        if (blob.size) return blob;
+      } catch {
+        /* rethrow FS error */
+      }
+      throw fsErr instanceof Error
+        ? fsErr
+        : new Error("Could not read local recording");
+    }
+  }
+
+  const fileRes = await fetch(localUri);
+  const blob = await fileRes.blob();
+  if (!blob.size) throw new Error("Could not read file");
+  return blob;
+}
+
 /**
  * Upload a local file URI. Uses XHR so upload progress is available on Android.
  */
@@ -39,8 +112,7 @@ export async function uploadLocalFile(
   const contentType = opts.contentType || "image/jpeg";
   const fileName = opts.fileName || "upload.bin";
 
-  const fileRes = await fetch(localUri);
-  const blob = await fileRes.blob();
+  const blob = await readLocalBlob(localUri, contentType);
   const size = blob.size;
   if (!size) throw new Error("Could not read file");
 

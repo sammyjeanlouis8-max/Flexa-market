@@ -1,11 +1,7 @@
-import NativePlaceholder from "@/components/NativePlaceholder";
+/** Driver dashboard / jobs — live website. */
 import React from "react";
+import WebContentScreen from "@/components/shell/WebContentScreen";
 
-export default function Screen() {
-  return (
-    <NativePlaceholder
-      title='Driver dashboard'
-      subtitle='Native driver dashboard is queued.'
-    />
-  );
+export default function DriverDashboardScreen() {
+  return <WebContentScreen path="/driver/dashboard" />;
 }

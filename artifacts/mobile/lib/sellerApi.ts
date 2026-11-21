@@ -8,7 +8,9 @@ export type Category = {
   id: number;
   name: string;
   slug?: string;
+  icon?: string | null;
   parentId?: number | null;
+  listingCount?: number;
   children?: Category[];
 };
 

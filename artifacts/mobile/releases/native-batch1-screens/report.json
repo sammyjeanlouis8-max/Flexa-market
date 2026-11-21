@@ -1,0 +1,50 @@
+{
+  "platform": "Expo web preview of shared React Native app (Android + iOS)",
+  "build": "local Expo bundler + https://flexamarket.com",
+  "viewport": "390x844@2x",
+  "passReport": "artifacts/mobile/docs/native-batch1-pass-report.md",
+  "architectureMap": "artifacts/mobile/docs/native-webview-architecture-map.json",
+  "screens": [
+    {
+      "id": "01_home",
+      "status": "pass"
+    },
+    {
+      "id": "02_categories",
+      "status": "pass"
+    },
+    {
+      "id": "03_search",
+      "status": "pass"
+    },
+    {
+      "id": "04_product",
+      "status": "pass"
+    },
+    {
+      "id": "05_seller",
+      "status": "pass"
+    },
+    {
+      "id": "06_cart",
+      "status": "pass"
+    },
+    {
+      "id": "07_checkout_address",
+      "status": "pass_ui",
+      "note": "checkout-steps-preview; live /checkout deep-link race on Expo web"
+    },
+    {
+      "id": "08_checkout_shipping",
+      "status": "pass_ui"
+    },
+    {
+      "id": "09_checkout_payment",
+      "status": "pass_ui"
+    },
+    {
+      "id": "10_confirmation",
+      "status": "pass"
+    }
+  ]
+}

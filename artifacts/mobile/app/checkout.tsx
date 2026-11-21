@@ -39,10 +39,16 @@ const STEPS: Step[] = ["address", "shipping", "payment", "review"];
 export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { ids } = useLocalSearchParams<{ ids?: string }>();
-  const { token, user } = useAuth();
+  const { ids, step: stepParam, uiPreview } = useLocalSearchParams<{
+    ids?: string;
+    step?: string;
+    uiPreview?: string;
+  }>();
+  /** Dev-only visual preview of checkout steps (screenshots) — no Stripe submit. */
+  const isUiPreview = __DEV__ && uiPreview === "1";
+  const { token, user, isLoading: authLoading } = useAuth();
   const { country } = useMarketplace();
-  const { items, removeItem, clearCart } = useCart();
+  const { items, removeItem, clearCart, ready: cartReady } = useCart();
 
   const selectedIds = useMemo(() => {
     if (!ids) return new Set(items.map((i) => i.listingId));
@@ -54,18 +60,45 @@ export default function CheckoutScreen() {
     );
   }, [ids, items]);
 
-  const checkoutItems = useMemo(
-    () => items.filter((i) => selectedIds.has(i.listingId)),
-    [items, selectedIds],
-  );
+  const checkoutItems = useMemo(() => {
+    const real = items.filter((i) => selectedIds.has(i.listingId));
+    if (real.length > 0) return real;
+    if (!isUiPreview) return real;
+    return [
+      {
+        listingId: 73,
+        title: "Ventilateur Oscillant Rechargeable 5400mAh USB-C",
+        price: 4,
+        currency: "USD",
+        image: null,
+        country: "Haiti",
+        city: "Port-au-Prince",
+        sellerId: 2,
+        quantity: 1,
+      },
+    ];
+  }, [items, selectedIds, isUiPreview]);
 
-  const [step, setStep] = useState<Step>("address");
-  const [name, setName] = useState(user?.name ?? "");
-  const [phone, setPhone] = useState(user?.phone ?? "");
-  const [email, setEmail] = useState(user?.email ?? "");
-  const [city, setCity] = useState(user?.city ?? user?.location ?? "");
-  const [street, setStreet] = useState("");
-  const [region, setRegion] = useState("");
+  const initialStep: Step =
+    stepParam === "shipping" ||
+    stepParam === "payment" ||
+    stepParam === "review" ||
+    stepParam === "address"
+      ? stepParam
+      : "address";
+  const [step, setStep] = useState<Step>(initialStep);
+  const [name, setName] = useState(user?.name ?? (isUiPreview ? "Test Buyer" : ""));
+  const [phone, setPhone] = useState(
+    user?.phone ?? (isUiPreview ? "5095551234" : ""),
+  );
+  const [email, setEmail] = useState(
+    user?.email ?? (isUiPreview ? "buyer@example.com" : ""),
+  );
+  const [city, setCity] = useState(
+    user?.city ?? user?.location ?? (isUiPreview ? "Port-au-Prince" : ""),
+  );
+  const [street, setStreet] = useState(isUiPreview ? "Delmas 33" : "");
+  const [region, setRegion] = useState(isUiPreview ? "Ouest" : "");
   const [deliveryMethod, setDeliveryMethod] = useState<"motorcycle" | "car">(
     "motorcycle",
   );
@@ -151,17 +184,48 @@ export default function CheckoutScreen() {
     }
   }, [step, quoteDelivery]);
 
-  useEffect(() => {
-    if (!token) {
-      router.replace("/auth/login");
-    }
-  }, [token, router]);
-
-  useEffect(() => {
-    if (checkoutItems.length === 0) {
-      router.replace("/cart");
-    }
-  }, [checkoutItems.length, router]);
+  if (!isUiPreview && (authLoading || !cartReady)) {
+    return (
+      <View style={[styles.root, { paddingTop: insets.top, justifyContent: "center" }]}>
+        <ActivityIndicator color="#F97316" />
+      </View>
+    );
+  }
+  if (!isUiPreview && !token) {
+    return (
+      <View style={[styles.root, { paddingTop: insets.top + 24, paddingHorizontal: 20 }]}>
+        <Text style={styles.topTitle}>Checkout</Text>
+        <Text style={{ color: "#64748B", marginTop: 8, marginBottom: 16 }}>
+          Sign in to continue with Stripe checkout.
+        </Text>
+        <Pressable
+          style={styles.payCta}
+          onPress={() => router.push("/auth/login")}
+        >
+          <Text style={styles.payCtaText}>Sign in</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.backLink, { marginTop: 10 }]}
+          onPress={() => router.push("/cart")}
+        >
+          <Text style={styles.backLinkText}>Back to cart</Text>
+        </Pressable>
+      </View>
+    );
+  }
+  if (!isUiPreview && checkoutItems.length === 0) {
+    return (
+      <View style={[styles.root, { paddingTop: insets.top + 24, paddingHorizontal: 20 }]}>
+        <Text style={styles.topTitle}>Checkout</Text>
+        <Text style={{ color: "#64748B", marginTop: 8, marginBottom: 16 }}>
+          Your cart is empty.
+        </Text>
+        <Pressable style={styles.payCta} onPress={() => router.push("/")}>
+          <Text style={styles.payCtaText}>Continue shopping</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   const validateAddress = () => {
     if (!name.trim() || !phone.trim() || !city.trim() || !street.trim()) {
@@ -672,4 +736,22 @@ const styles = StyleSheet.create({
   stripeBtn: { backgroundColor: "#635BFF" },
   primaryBtnDisabled: { opacity: 0.7 },
   primaryBtnText: { color: "#FFFFFF", fontWeight: "800", fontSize: 15 },
+  payCta: {
+    height: 50,
+    borderRadius: 999,
+    backgroundColor: "#F97316",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  payCtaText: { color: "#FFFFFF", fontWeight: "800", fontSize: 15 },
+  backLink: {
+    height: 46,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  backLinkText: { color: "#0F172A", fontWeight: "800", fontSize: 14 },
 });

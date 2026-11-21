@@ -1,18 +1,18 @@
 /**
- * Temu-style hybrid catalog — batch 1 (first 10 pages).
+ * Embedded WebView allowlist — legal, FAQ, and read-only guides only.
  *
- * Architecture:
- * - Native shell (tabs, back header via SafeWebView)
- * - Selected Flexa website paths load in an **in-app** WebView
+ * Architecture (Android + iOS):
+ * - Core shopping / account / seller / support tickets stay native React Native
+ * - These pages load official flexamarket.com content in SafeWebView
+ *   with one native header (+ app bottom tabs when launched from Account)
  * - Never opens Chrome/Safari for these pages
- *
- * Wallet / Card FM / Promo money stay blocked on Android (not in this list).
+ * - Wallet / Card FM / transfers / digital purchases stay blocked (not listed)
  */
 
 export type TemuHybridPage = {
   /** Route slug under /embed/[slug] */
   slug: string;
-  /** Inventory feature id when applicable */
+  /** Inventory / architecture feature id */
   featureId: string;
   /** Title shown in native chrome / docs */
   title: string;
@@ -22,81 +22,99 @@ export type TemuHybridPage = {
   note: string;
 };
 
-export const TEMU_HYBRID_BATCH_1: TemuHybridPage[] = [
+/** Official WebView-only catalog (architecture allowlist). */
+export const WEBVIEW_ALLOWLIST: TemuHybridPage[] = [
   {
-    slug: "forgot-password",
-    featureId: "auth-forgot-password",
-    title: "Forgot password",
-    webPath: "/auth/forgot-password",
-    note: "Embedded WebView — password reset stays in-app",
+    slug: "privacy",
+    featureId: "legal-privacy",
+    title: "Privacy Policy",
+    webPath: "/privacy-policy",
+    note: "Legal — embedded WebView",
   },
   {
-    slug: "phone-login",
-    featureId: "auth-phone-login",
-    title: "Phone login",
-    webPath: "/auth/login-phone",
-    note: "Embedded WebView — phone auth stays in-app",
+    slug: "terms",
+    featureId: "legal-terms",
+    title: "Terms of Service",
+    webPath: "/terms",
+    note: "Legal — embedded WebView",
+  },
+  {
+    slug: "about",
+    featureId: "about",
+    title: "About Flexa Market",
+    webPath: "/about",
+    note: "About — embedded WebView",
   },
   {
     slug: "help-center",
     featureId: "help-center",
     title: "Help Center",
     webPath: "/help-center",
-    note: "Embedded WebView — FAQ / contact in-app",
+    note: "FAQ / read-only articles — tickets stay native /support",
   },
   {
-    slug: "privacy",
-    featureId: "legal",
-    title: "Privacy Policy",
-    webPath: "/privacy-policy",
-    note: "Embedded WebView — legal page in-app (not external browser)",
+    slug: "shipping-policy",
+    featureId: "policy-shipping",
+    title: "Shipping policy",
+    webPath: "/shipping-policy",
+    note: "Policy text — checkout shipping selection stays native",
   },
   {
-    slug: "terms",
-    featureId: "legal",
-    title: "Terms of Service",
-    webPath: "/terms",
-    note: "Embedded WebView — terms in-app",
+    slug: "returns-refunds",
+    featureId: "policy-returns",
+    title: "Returns & refunds",
+    webPath: "/returns",
+    note: "Policy text — embedded WebView",
   },
   {
-    slug: "referrals",
-    featureId: "referrals",
-    title: "Referrals / Leaderboard",
-    webPath: "/leaderboard",
-    note: "Embedded WebView — referrals in-app",
+    slug: "seller-policies",
+    featureId: "policy-seller",
+    title: "Seller policies",
+    webPath: "/seller-policies",
+    note: "Seller policy text — embedded WebView",
   },
   {
-    slug: "jobs",
-    featureId: "jobs",
-    title: "Jobs",
-    webPath: "/jobs",
-    note: "Embedded WebView — jobs board in-app",
+    slug: "prohibited-items",
+    featureId: "policy-prohibited",
+    title: "Prohibited items",
+    webPath: "/prohibited-items",
+    note: "Policy text — embedded WebView",
   },
   {
-    slug: "calculator",
-    featureId: "calculator",
-    title: "CalcAI",
-    webPath: "/calculator",
-    note: "Embedded WebView — calculator in-app",
+    slug: "community-guidelines",
+    featureId: "policy-community",
+    title: "Community guidelines",
+    webPath: "/community-guidelines",
+    note: "Guidelines — embedded WebView",
   },
   {
-    slug: "commission-promo",
-    featureId: "commission-promo",
-    title: "Commission promo",
-    webPath: "/commission-promo",
-    note: "Embedded WebView — commission promo in-app",
+    slug: "guide-buy",
+    featureId: "guide-buy",
+    title: "How to buy",
+    webPath: "/guides/how-to-buy",
+    note: "Read-only guide — embedded WebView",
   },
   {
-    slug: "public-tracking",
-    featureId: "public-tracking",
-    title: "Track package",
-    webPath: "/track",
-    note: "Embedded WebView — public tracking in-app",
+    slug: "guide-sell",
+    featureId: "guide-sell",
+    title: "How to sell",
+    webPath: "/guides/how-to-sell",
+    note: "Read-only guide — embedded WebView",
+  },
+  {
+    slug: "guide-driver",
+    featureId: "guide-driver",
+    title: "Become a driver",
+    webPath: "/guides/become-a-driver",
+    note: "Read-only guide — driver tools stay native",
   },
 ];
 
+/** @deprecated Use WEBVIEW_ALLOWLIST — kept alias for older imports/tests */
+export const TEMU_HYBRID_BATCH_1 = WEBVIEW_ALLOWLIST;
+
 export function getTemuHybridPage(slug: string): TemuHybridPage | undefined {
-  return TEMU_HYBRID_BATCH_1.find((p) => p.slug === slug);
+  return WEBVIEW_ALLOWLIST.find((p) => p.slug === slug);
 }
 
 export function temuHybridUrl(webPath: string): string {

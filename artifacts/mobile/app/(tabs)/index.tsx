@@ -1,6 +1,6 @@
 /**
  * Native Home — marketplace browse (no WebView).
- * Loads country-scoped feeds from DigitalOcean via /api/stats/home + /api/listings.
+ * Layout aligned to flexamarket.com: green header, menu, 2-col product grid, category strip.
  */
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -10,6 +10,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -26,8 +27,11 @@ import {
   fetchListings,
   type Listing,
 } from "@/lib/api";
+import { fetchCategories, type Category } from "@/lib/sellerApi";
 
 type Section = "featured" | "recent" | "all";
+
+const HEADER = "#0B3D2E"; // hsl(152,65%,18%) approx
 
 export default function HomeTab() {
   const insets = useSafeAreaInsets();
@@ -41,6 +45,7 @@ export default function HomeTab() {
   const [featured, setFeatured] = useState<Listing[]>([]);
   const [recent, setRecent] = useState<Listing[]>([]);
   const [listings, setListings] = useState<Listing[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -55,15 +60,19 @@ export default function HomeTab() {
       else setLoading(true);
       setError(null);
       try {
-        const [stats, page1] = await Promise.all([
+        const [stats, page1, cats] = await Promise.all([
           fetchHomeStats(country, { token }),
           fetchListings({ country, page: 1, limit: 20 }, { token }),
+          fetchCategories({ token: token || "" }).catch(() => [] as Category[]),
         ]);
         setFeatured(stats.featuredListings ?? []);
         setRecent(stats.recentListings ?? []);
         setListings(page1.listings ?? []);
         setPage(page1.page ?? 1);
         setTotalPages(page1.totalPages ?? 1);
+        setCategories(
+          (Array.isArray(cats) ? cats : []).filter((c) => !c.parentId),
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load marketplace");
       } finally {
@@ -79,23 +88,13 @@ export default function HomeTab() {
   }, [loadHome]);
 
   const runSearch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setSection("all");
-    try {
-      const page1 = await fetchListings(
-        { country, q: query.trim() || undefined, page: 1, limit: 20 },
-        { token },
-      );
-      setListings(page1.listings ?? []);
-      setPage(page1.page ?? 1);
-      setTotalPages(page1.totalPages ?? 1);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Search failed");
-    } finally {
-      setLoading(false);
-    }
-  }, [country, query, token]);
+    const q = query.trim();
+    if (!q) return;
+    router.push({
+      pathname: "/(tabs)/search",
+      params: { q },
+    });
+  }, [query, router]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || loading || page >= totalPages || section !== "all") return;
@@ -103,7 +102,7 @@ export default function HomeTab() {
     try {
       const next = page + 1;
       const data = await fetchListings(
-        { country, q: query.trim() || undefined, page: next, limit: 20 },
+        { country, page: next, limit: 20 },
         { token },
       );
       setListings((prev) => [...prev, ...(data.listings ?? [])]);
@@ -114,7 +113,7 @@ export default function HomeTab() {
     } finally {
       setLoadingMore(false);
     }
-  }, [country, loading, loadingMore, page, query, section, token, totalPages]);
+  }, [country, loading, loadingMore, page, section, token, totalPages]);
 
   const data =
     section === "featured"
@@ -123,19 +122,50 @@ export default function HomeTab() {
         ? recent
         : listings;
 
+  const openMenu = () => {
+    router.push("/(tabs)/profile");
+  };
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={styles.brandRow}>
-          <Text style={styles.brand}>Flexa Market</Text>
           <Pressable
-            style={styles.countryChip}
-            onPress={() => router.push("/settings")}
+            style={styles.menuBtn}
+            onPress={openMenu}
             accessibilityRole="button"
+            accessibilityLabel="Menu"
           >
-            <Feather name="map-pin" size={14} color="#F97316" />
-            <Text style={styles.countryText}>{country}</Text>
+            <Feather name="menu" size={22} color="#FFFFFF" />
           </Pressable>
+          <Text style={styles.brand}>
+            Flexa <Text style={styles.brandAccent}>Market</Text>
+          </Text>
+          <View style={styles.headerRight}>
+            <Pressable
+              style={styles.countryChip}
+              onPress={() => router.push("/settings")}
+              accessibilityRole="button"
+            >
+              <Feather name="map-pin" size={14} color="#F97316" />
+              <Text style={styles.countryText}>{country}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.cartBtn}
+              onPress={() => router.push("/cart")}
+              accessibilityRole="button"
+              accessibilityLabel="Cart"
+            >
+              <Feather name="shopping-cart" size={20} color="#FFFFFF" />
+              {cartCount > 0 ? (
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+          </View>
         </View>
         <SearchBar
           value={query}
@@ -161,24 +191,6 @@ export default function HomeTab() {
               </Text>
             </Pressable>
           ))}
-          <Pressable
-            style={styles.chip}
-            onPress={() => router.push("/cart")}
-            accessibilityRole="button"
-          >
-            <Feather name="shopping-cart" size={14} color="#475569" />
-            <Text style={styles.chipText}>
-              Cart{cartCount > 0 ? ` (${cartCount})` : ""}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={styles.chip}
-            onPress={() => router.push("/(tabs)/music")}
-            accessibilityRole="button"
-          >
-            <Feather name="music" size={14} color="#0B3022" />
-            <Text style={styles.chipText}>Music</Text>
-          </Pressable>
         </View>
         {!user ? (
           <Pressable
@@ -192,6 +204,40 @@ export default function HomeTab() {
           </Pressable>
         ) : null}
       </View>
+
+      {categories.length > 0 ? (
+        <View style={styles.catStripWrap}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.catStrip}
+          >
+            <Pressable
+              style={styles.catAll}
+              onPress={() => router.push("/categories")}
+            >
+              <Text style={styles.catAllText}>All</Text>
+            </Pressable>
+            {categories.slice(0, 16).map((cat) => (
+              <Pressable
+                key={cat.id}
+                style={styles.catChip}
+                onPress={() =>
+                  router.push({
+                    pathname: "/categories",
+                    params: { slug: cat.slug || String(cat.id) },
+                  })
+                }
+              >
+                <Text style={styles.catChipText}>
+                  {cat.icon ? `${cat.icon} ` : ""}
+                  {cat.name}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
 
       {loading && !refreshing ? (
         <View style={styles.gridPad}>
@@ -225,6 +271,37 @@ export default function HomeTab() {
           }
           onEndReached={loadMore}
           onEndReachedThreshold={0.4}
+          ListHeaderComponent={
+            categories.length > 0 ? (
+              <View style={styles.shopBy}>
+                <View style={styles.shopByHead}>
+                  <Text style={styles.shopByTitle}>Shop by Category</Text>
+                  <Pressable onPress={() => router.push("/categories")}>
+                    <Text style={styles.seeAll}>See all</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.shopGrid}>
+                  {categories.slice(0, 8).map((cat) => (
+                    <Pressable
+                      key={cat.id}
+                      style={styles.shopTile}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/categories",
+                          params: { slug: cat.slug || String(cat.id) },
+                        })
+                      }
+                    >
+                      <Text style={styles.shopIcon}>{cat.icon || "📦"}</Text>
+                      <Text style={styles.shopLabel} numberOfLines={2}>
+                        {cat.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.centered}>
               <Text style={styles.emptyTitle}>No listings yet</Text>
@@ -253,36 +330,63 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
     paddingHorizontal: 12,
-    paddingBottom: 8,
+    paddingBottom: 10,
     gap: 10,
-    backgroundColor: "#F8FAFC",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E2E8F0",
+    backgroundColor: HEADER,
   },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 8,
+    gap: 8,
+    paddingTop: 6,
+  },
+  menuBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
   },
   brand: {
+    flex: 1,
     fontSize: 20,
     fontWeight: "800",
-    color: "#0F172A",
+    color: "#FFFFFF",
     letterSpacing: -0.4,
   },
+  brandAccent: { color: "#F97316" },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   countryChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#FFF7ED",
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: "#FED7AA",
+    borderColor: "rgba(255,255,255,0.2)",
   },
-  countryText: { color: "#C2410C", fontSize: 12, fontWeight: "700" },
+  countryText: { color: "#FED7AA", fontSize: 12, fontWeight: "700" },
+  cartBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cartBadge: {
+    position: "absolute",
+    top: 2,
+    right: 0,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#F97316",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  cartBadgeText: { color: "#fff", fontSize: 9, fontWeight: "800" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     flexDirection: "row",
@@ -291,12 +395,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "rgba(255,255,255,0.18)",
   },
-  chipOn: { backgroundColor: "#0F172A", borderColor: "#0F172A" },
-  chipText: { fontSize: 12, fontWeight: "700", color: "#475569" },
+  chipOn: { backgroundColor: "#F97316", borderColor: "#F97316" },
+  chipText: { fontSize: 12, fontWeight: "700", color: "#E2E8F0" },
   chipTextOn: { color: "#FFFFFF" },
   authBanner: {
     flexDirection: "row",
@@ -306,10 +410,68 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "#FED7AA",
   },
   authBannerText: { flex: 1, color: "#9A3412", fontSize: 13, fontWeight: "600" },
+  catStripWrap: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
+  },
+  catStrip: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  catAll: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: "#F97316",
+  },
+  catAllText: { fontSize: 13, fontWeight: "800", color: HEADER },
+  catChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 2,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  catChipText: { fontSize: 13, fontWeight: "600", color: "#64748B" },
+  shopBy: { marginBottom: 12 },
+  shopByHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  shopByTitle: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
+  seeAll: { fontSize: 12, fontWeight: "700", color: HEADER },
+  shopGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  shopTile: {
+    width: "23%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    alignItems: "center",
+    gap: 4,
+  },
+  shopIcon: { fontSize: 22 },
+  shopLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#0F172A",
+    textAlign: "center",
+    lineHeight: 13,
+  },
   gridPad: { paddingHorizontal: 12, paddingTop: 12 },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
   listContent: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 24 },

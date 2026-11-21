@@ -12,17 +12,17 @@ export default function LoginRoute() {
   const router = useRouter();
 
   const openInApp = (path: string) => {
-    // Temu-style: legal / forgot-password stay in embedded WebView, not Chrome.
+    // Forgot password is native; legal/FAQ stay in embedded WebView (not Chrome).
     if (path.startsWith("/auth/forgot-password")) {
-      router.push("/embed/forgot-password");
+      router.push("/auth/forgot-password");
       return;
     }
-    if (path.startsWith("/terms")) {
+    if (path.startsWith("/terms") || path.startsWith("/eula")) {
       router.push("/embed/terms");
       return;
     }
-    if (path.startsWith("/eula") || path.startsWith("/privacy")) {
-      router.push(path.startsWith("/eula") ? "/embed/terms" : "/embed/privacy");
+    if (path.startsWith("/privacy")) {
+      router.push("/embed/privacy");
       return;
     }
     router.push({ pathname: "/embed/help-center" });

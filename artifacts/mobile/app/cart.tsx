@@ -111,7 +111,10 @@ export default function CartScreen() {
       Alert.alert("Select items", "Choose at least one item to checkout.");
       return;
     }
-    if (!token || !user) {
+    if (authLoading) return;
+    // Token is enough to enter native checkout; profile may still be hydrating
+    // after a rate-limited /auth/me (429) response.
+    if (!token) {
       router.push("/auth/login");
       return;
     }

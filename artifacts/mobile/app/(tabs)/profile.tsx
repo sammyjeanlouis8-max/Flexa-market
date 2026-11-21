@@ -19,13 +19,13 @@ const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap 
   { label: "Notifications", href: "/notifications", icon: "bell" },
   { label: "Settings", href: "/settings", icon: "settings" },
   { label: "Delivery tracking", href: "/delivery-tracking", icon: "map" },
-  // Temu-style hybrid (in-app WebView) — batch 1
+  { label: "Categories", href: "/categories", icon: "grid" },
+  // WebView allowlist — legal / FAQ / read-only guides only
   { label: "Help Center", href: "/embed/help-center", icon: "help-circle" },
-  { label: "Track package", href: "/embed/public-tracking", icon: "truck" },
-  { label: "Jobs", href: "/embed/jobs", icon: "briefcase" },
-  { label: "CalcAI", href: "/embed/calculator", icon: "cpu" },
-  { label: "Referrals", href: "/embed/referrals", icon: "users" },
-  { label: "Commission promo", href: "/embed/commission-promo", icon: "percent" },
+  { label: "About Flexa Market", href: "/embed/about", icon: "info" },
+  { label: "Shipping policy", href: "/embed/shipping-policy", icon: "truck" },
+  { label: "Returns & refunds", href: "/embed/returns-refunds", icon: "rotate-ccw" },
+  { label: "Seller policies", href: "/embed/seller-policies", icon: "clipboard" },
   { label: "Privacy Policy", href: "/embed/privacy", icon: "shield" },
   { label: "Terms of Service", href: "/embed/terms", icon: "file-text" },
 ];

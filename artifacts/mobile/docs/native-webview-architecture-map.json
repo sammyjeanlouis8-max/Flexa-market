@@ -1,0 +1,525 @@
+{
+  "project": "Flexa Market",
+  "platforms": [
+    "Android",
+    "iOS"
+  ],
+  "framework": "Expo + React Native + Expo Router",
+  "backend": "https://flexamarket.com/api",
+  "designReference": "https://flexamarket.com (artifacts/marketplace)",
+  "mappedAt": "2026-11-21T03:45:00Z",
+  "architecture": {
+    "native": "App chrome, auth, marketplace browse, PDP, cart/checkout, orders, seller tools, messaging/support tickets, Flexa TV/Music, Haiti driver tools, personal account, in-app admin",
+    "webview": "Privacy, Terms, About, FAQ/Help articles (read-only), shipping/returns/refund policy text, seller policies/prohibited items/community guidelines, read-only how-to guides. One native header + bottom bar via SafeWebView.",
+    "notWebView": "Wallet, Card FM, transfers, digital purchases stay disabled \u2014 never reopened via WebView",
+    "stripe": "Hosted Stripe checkout remains system browser / Custom Tabs (not Flexa WebView shell)"
+  },
+  "counts": {
+    "routeModulesUnderApp": 54,
+    "layouts": 2,
+    "inventoryFeaturesPreviouslyClaimed": 82,
+    "note": "Do not invent routes to reach 84. Actual Expo Router screens below. Counts include categories, seller storefront, and native forgot-password added for this architecture."
+  },
+  "batch1NativeScreens": [
+    {
+      "n": 1,
+      "name": "Home",
+      "nativeRoute": "/",
+      "webRoute": "/",
+      "target": "Native",
+      "status": "FULLY_NATIVE"
+    },
+    {
+      "n": 2,
+      "name": "Categories",
+      "nativeRoute": "/categories",
+      "webRoute": "/categories/:slug + home shop-by-category",
+      "target": "Native",
+      "status": "ADDED"
+    },
+    {
+      "n": 3,
+      "name": "Search results",
+      "nativeRoute": "/search",
+      "webRoute": "/search",
+      "target": "Native",
+      "status": "FULLY_NATIVE"
+    },
+    {
+      "n": 4,
+      "name": "Product details + gallery",
+      "nativeRoute": "/listing/[id]",
+      "webRoute": "/listings/:id",
+      "target": "Native",
+      "status": "FULLY_NATIVE"
+    },
+    {
+      "n": 5,
+      "name": "Seller storefront",
+      "nativeRoute": "/seller/[id]",
+      "webRoute": "/profile/:id",
+      "target": "Native",
+      "status": "ADDED"
+    },
+    {
+      "n": 6,
+      "name": "Cart",
+      "nativeRoute": "/cart",
+      "webRoute": "/cart",
+      "target": "Native",
+      "status": "FULLY_NATIVE"
+    },
+    {
+      "n": 7,
+      "name": "Checkout address",
+      "nativeRoute": "/checkout (step=address)",
+      "webRoute": "cart/checkout sheet",
+      "target": "Native",
+      "status": "FULLY_NATIVE"
+    },
+    {
+      "n": 8,
+      "name": "Shipping options",
+      "nativeRoute": "/checkout (step=shipping)",
+      "webRoute": "checkout delivery step",
+      "target": "Native",
+      "status": "FULLY_NATIVE"
+    },
+    {
+      "n": 9,
+      "name": "Payment selection",
+      "nativeRoute": "/checkout (step=payment)",
+      "webRoute": "checkout payment (Stripe)",
+      "target": "Native",
+      "status": "FULLY_NATIVE"
+    },
+    {
+      "n": 10,
+      "name": "Order confirmation",
+      "nativeRoute": "/checkout-success",
+      "webRoute": "/checkout/success",
+      "target": "Native",
+      "status": "FULLY_NATIVE"
+    }
+  ],
+  "webviewAllowlist": [
+    {
+      "slug": "privacy",
+      "webPath": "/privacy-policy",
+      "title": "Privacy Policy"
+    },
+    {
+      "slug": "terms",
+      "webPath": "/terms",
+      "title": "Terms of Service"
+    },
+    {
+      "slug": "about",
+      "webPath": "/about",
+      "title": "About Flexa Market"
+    },
+    {
+      "slug": "help-center",
+      "webPath": "/help-center",
+      "title": "FAQ / Help Center (read-only)"
+    },
+    {
+      "slug": "shipping-policy",
+      "webPath": "/shipping-policy",
+      "title": "Shipping policy text"
+    },
+    {
+      "slug": "returns-refunds",
+      "webPath": "/returns",
+      "title": "Returns & refunds policy"
+    },
+    {
+      "slug": "seller-policies",
+      "webPath": "/seller-policies",
+      "title": "Seller policies"
+    },
+    {
+      "slug": "prohibited-items",
+      "webPath": "/prohibited-items",
+      "title": "Prohibited items"
+    },
+    {
+      "slug": "community-guidelines",
+      "webPath": "/community-guidelines",
+      "title": "Community guidelines"
+    },
+    {
+      "slug": "guide-buy",
+      "webPath": "/guides/how-to-buy",
+      "title": "How to buy (read-only)"
+    },
+    {
+      "slug": "guide-sell",
+      "webPath": "/guides/how-to-sell",
+      "title": "How to sell (read-only)"
+    },
+    {
+      "slug": "guide-driver",
+      "webPath": "/guides/become-a-driver",
+      "title": "Become a driver (read-only)"
+    }
+  ],
+  "routes": [
+    {
+      "file": "app/(tabs)/index.tsx",
+      "nativeRoute": "/",
+      "webRoute": "/",
+      "impl": "Real UI",
+      "target": "Native",
+      "notes": "2-col grid; green header; menu; category strip"
+    },
+    {
+      "file": "app/(tabs)/search.tsx",
+      "nativeRoute": "/search",
+      "webRoute": "/search",
+      "impl": "Real UI",
+      "target": "Native",
+      "notes": "Supports ?category= slug"
+    },
+    {
+      "file": "app/(tabs)/sell.tsx",
+      "nativeRoute": "/sell",
+      "webRoute": "/sell",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/(tabs)/inbox.tsx",
+      "nativeRoute": "/inbox",
+      "webRoute": "/messages",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/(tabs)/music.tsx",
+      "nativeRoute": "/(tabs)/music",
+      "webRoute": "/music",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/(tabs)/profile.tsx",
+      "nativeRoute": "/profile",
+      "webRoute": "/settings",
+      "impl": "Real UI hub",
+      "target": "Native",
+      "notes": "Not public shop; use /seller/[id]"
+    },
+    {
+      "file": "app/auth/login.tsx",
+      "nativeRoute": "/auth/login",
+      "webRoute": "/auth/login",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/auth/register.tsx",
+      "nativeRoute": "/auth/register",
+      "webRoute": "/auth/register",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/auth/forgot-password.tsx",
+      "nativeRoute": "/auth/forgot-password",
+      "webRoute": "/auth/forgot-password",
+      "impl": "Real UI",
+      "target": "Native",
+      "notes": "Moved off WebView per architecture"
+    },
+    {
+      "file": "app/categories.tsx",
+      "nativeRoute": "/categories",
+      "webRoute": "/categories/:slug",
+      "impl": "Real UI",
+      "target": "Native",
+      "notes": "ADDED for batch 1"
+    },
+    {
+      "file": "app/listing/[id].tsx",
+      "nativeRoute": "/listing/[id]",
+      "webRoute": "/listings/:id",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/seller/[id].tsx",
+      "nativeRoute": "/seller/[id]",
+      "webRoute": "/profile/:id",
+      "impl": "Real UI",
+      "target": "Native",
+      "notes": "ADDED seller storefront"
+    },
+    {
+      "file": "app/cart.tsx",
+      "nativeRoute": "/cart",
+      "webRoute": "/cart",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/checkout.tsx",
+      "nativeRoute": "/checkout",
+      "webRoute": "cart checkout",
+      "impl": "Real UI multi-step",
+      "target": "Native",
+      "notes": "address \u2192 shipping \u2192 payment \u2192 review"
+    },
+    {
+      "file": "app/stripe-checkout.tsx",
+      "nativeRoute": "/stripe-checkout",
+      "webRoute": "buy-now",
+      "impl": "Real UI + system browser",
+      "target": "Native"
+    },
+    {
+      "file": "app/checkout-success.tsx",
+      "nativeRoute": "/checkout-success",
+      "webRoute": "/checkout/success",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/favorites.tsx",
+      "nativeRoute": "/favorites",
+      "webRoute": "/saved",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/addresses.tsx",
+      "nativeRoute": "/addresses",
+      "webRoute": "/settings/addresses",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/orders.tsx",
+      "nativeRoute": "/orders",
+      "webRoute": "/orders",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/orders/[id].tsx",
+      "nativeRoute": "/orders/[id]",
+      "webRoute": "/orders/:id",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/delivery-tracking.tsx",
+      "nativeRoute": "/delivery-tracking",
+      "webRoute": "/delivery/tracking/:id",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/edit-profile.tsx",
+      "nativeRoute": "/edit-profile",
+      "webRoute": "/profile/edit",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/settings.tsx",
+      "nativeRoute": "/settings",
+      "webRoute": "/settings",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/language-picker.tsx",
+      "nativeRoute": "/language-picker",
+      "webRoute": null,
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/notifications.tsx",
+      "nativeRoute": "/notifications",
+      "webRoute": null,
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/chat/[id].tsx",
+      "nativeRoute": "/chat/[id]",
+      "webRoute": "/messages/:id",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/support.tsx",
+      "nativeRoute": "/support",
+      "webRoute": "/support",
+      "impl": "Real UI",
+      "target": "Native",
+      "notes": "Tickets stay native"
+    },
+    {
+      "file": "app/support/[id].tsx",
+      "nativeRoute": "/support/[id]",
+      "webRoute": "/support/:id",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/chatbot.tsx",
+      "nativeRoute": "/chatbot",
+      "webRoute": "/chatbot",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/offers.tsx",
+      "nativeRoute": "/offers",
+      "webRoute": "/offers",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/my-listings.tsx",
+      "nativeRoute": "/my-listings",
+      "webRoute": "/profile/{me}",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/sales.tsx",
+      "nativeRoute": "/sales",
+      "webRoute": "/sales",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/music/*.tsx",
+      "nativeRoute": "/music/*",
+      "webRoute": "/music",
+      "impl": "Real UI",
+      "target": "Native"
+    },
+    {
+      "file": "app/embed/[slug].tsx",
+      "nativeRoute": "/embed/[slug]",
+      "webRoute": "(allowlist)",
+      "impl": "SafeWebView",
+      "target": "WebView",
+      "notes": "Legal/FAQ/guides only"
+    },
+    {
+      "file": "app/wallet.tsx",
+      "nativeRoute": "/wallet",
+      "webRoute": "/wallet",
+      "impl": "Redirect \u2192 profile",
+      "target": "BLOCKED",
+      "notes": "Must not reopen via WebView"
+    },
+    {
+      "file": "app/loans.tsx",
+      "nativeRoute": "/loans",
+      "webRoute": "/loans",
+      "impl": "Redirect \u2192 /",
+      "target": "PLACEHOLDER"
+    },
+    {
+      "file": "app/esim.tsx",
+      "nativeRoute": "/esim",
+      "webRoute": null,
+      "impl": "Deferred UI",
+      "target": "BLOCKED"
+    },
+    {
+      "file": "app/kyc.tsx",
+      "nativeRoute": "/kyc",
+      "webRoute": null,
+      "impl": "NativePlaceholder",
+      "target": "PLACEHOLDER"
+    },
+    {
+      "file": "app/subscription.tsx",
+      "nativeRoute": "/subscription",
+      "webRoute": null,
+      "impl": "NativePlaceholder",
+      "target": "PLACEHOLDER+BLOCKED"
+    },
+    {
+      "file": "app/videos.tsx",
+      "nativeRoute": "/videos",
+      "webRoute": "/videos",
+      "impl": "NativePlaceholder",
+      "target": "PLACEHOLDER",
+      "notes": "Flexa TV native target \u2014 not yet built"
+    },
+    {
+      "file": "app/boost.tsx",
+      "nativeRoute": "/boost",
+      "webRoute": null,
+      "impl": "NativePlaceholder",
+      "target": "PLACEHOLDER+BLOCKED"
+    },
+    {
+      "file": "app/my-boosts.tsx",
+      "nativeRoute": "/my-boosts",
+      "webRoute": null,
+      "impl": "NativePlaceholder",
+      "target": "PLACEHOLDER"
+    },
+    {
+      "file": "app/driver-apply.tsx",
+      "nativeRoute": "/driver-apply",
+      "webRoute": null,
+      "impl": "NativePlaceholder",
+      "target": "PLACEHOLDER",
+      "notes": "Haiti driver tools \u2014 native target"
+    },
+    {
+      "file": "app/driver-dashboard.tsx",
+      "nativeRoute": "/driver-dashboard",
+      "webRoute": null,
+      "impl": "NativePlaceholder",
+      "target": "PLACEHOLDER"
+    },
+    {
+      "file": "app/admin.tsx",
+      "nativeRoute": "/admin",
+      "webRoute": "/admin",
+      "impl": "NativePlaceholder",
+      "target": "PLACEHOLDER"
+    },
+    {
+      "file": "app/website.tsx",
+      "nativeRoute": "/website",
+      "webRoute": null,
+      "impl": "NativePlaceholder",
+      "target": "PLACEHOLDER",
+      "notes": "Intentionally no full-site shell"
+    }
+  ],
+  "flags": {
+    "missingNativeVsTarget": [
+      "Flexa TV full stack (videos placeholder)",
+      "Haiti driver full flows (placeholders)",
+      "In-app admin dashboards (placeholder)",
+      "Phone login native UI (not in WebView allowlist; still missing native)",
+      "Biometric login (not present as route)"
+    ],
+    "duplicates": [
+      "checkout.tsx multi-step vs stripe-checkout.tsx single-item \u2014 both Native Stripe paths",
+      "Account hub /profile vs public seller /seller/[id] \u2014 distinct"
+    ],
+    "unclassifiedExistingEmbedRemovals": [
+      "jobs",
+      "calculator",
+      "commission-promo",
+      "referrals/leaderboard",
+      "public-tracking"
+    ],
+    "unclassifiedNote": "Jobs, CalcAI, commission promo were previously embedded; they are not in the Native or WebView allowlists for this architecture. Removed from WebView. Flag only \u2014 do not invent native routes this batch."
+  }
+}

@@ -211,38 +211,54 @@ export default function ListingDetailScreen() {
         </View>
       ) : (
         <>
-          <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-            <ScrollView
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={(e) => {
-                const idx = Math.round(e.nativeEvent.contentOffset.x / WIDTH);
-                setImageIndex(idx);
-              }}
-            >
-              {(images.length ? images : [null]).map((uri, i) => (
-                <View key={i} style={styles.hero}>
-                  {uri ? (
-                    <Image
-                      source={{ uri }}
-                      style={styles.heroImage}
-                      contentFit="cover"
-                      transition={200}
-                    />
-                  ) : (
-                    <View style={[styles.heroImage, styles.heroPlaceholder]}>
-                      <Feather name="image" size={40} color="#94A3B8" />
-                    </View>
-                  )}
-                </View>
-              ))}
-            </ScrollView>
-            {images.length > 1 ? (
-              <Text style={styles.dots}>
-                {imageIndex + 1} / {images.length}
-              </Text>
-            ) : null}
+          <ScrollView contentContainerStyle={{ paddingBottom: 140 }}>
+            <View style={styles.gallery}>
+              <View style={styles.hero}>
+                {images[imageIndex] ? (
+                  <Image
+                    source={{ uri: images[imageIndex] }}
+                    style={styles.heroImage}
+                    contentFit="cover"
+                    transition={150}
+                  />
+                ) : (
+                  <View style={[styles.heroImage, styles.heroPlaceholder]}>
+                    <Feather name="image" size={40} color="#94A3B8" />
+                  </View>
+                )}
+              </View>
+              {images.length > 1 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.thumbs}
+                >
+                  {images.map((uri, i) => (
+                    <Pressable
+                      key={`${uri}-${i}`}
+                      onPress={() => setImageIndex(i)}
+                      style={[
+                        styles.thumb,
+                        i === imageIndex && styles.thumbOn,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Photo ${i + 1}`}
+                    >
+                      <Image
+                        source={{ uri }}
+                        style={styles.thumbImage}
+                        contentFit="cover"
+                      />
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              ) : null}
+              {images.length > 1 ? (
+                <Text style={styles.dots}>
+                  {imageIndex + 1} / {images.length}
+                </Text>
+              ) : null}
+            </View>
 
             <View style={styles.body}>
               <Text style={styles.price}>
@@ -263,14 +279,25 @@ export default function ListingDetailScreen() {
                   <Text style={styles.boostText}>Boosted listing</Text>
                 </View>
               ) : null}
-              {listing.sellerName ? (
-                <View style={styles.seller}>
+              {listing.sellerName || listing.sellerId ? (
+                <Pressable
+                  style={styles.seller}
+                  onPress={() => {
+                    if (listing.sellerId) {
+                      router.push(`/seller/${listing.sellerId}`);
+                    }
+                  }}
+                  disabled={!listing.sellerId}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open seller storefront"
+                >
                   <Feather name="user" size={16} color="#475569" />
                   <Text style={styles.sellerText}>
-                    {listing.sellerName}
+                    {listing.sellerName || "Seller"}
                     {listing.sellerIsVerified ? " · Verified" : ""}
                   </Text>
-                </View>
+                  <Feather name="chevron-right" size={16} color="#94A3B8" />
+                </Pressable>
               ) : null}
               <Text style={styles.section}>Description</Text>
               <Text style={styles.description}>
@@ -292,7 +319,7 @@ export default function ListingDetailScreen() {
               </Pressable>
               {dominican && !isOwnListing ? (
                 <Pressable
-                  style={styles.primaryCta}
+                  style={styles.buyCta}
                   onPress={() => {
                     if (!token) {
                       router.push("/auth/login");
@@ -304,7 +331,7 @@ export default function ListingDetailScreen() {
                     });
                   }}
                 >
-                  <Text style={styles.primaryCtaText}>Buy with card</Text>
+                  <Text style={styles.buyCtaText}>Buy with card</Text>
                 </Pressable>
               ) : (
                 <Pressable
@@ -316,7 +343,12 @@ export default function ListingDetailScreen() {
                   onPress={onAddToCart}
                   disabled={isOwnListing}
                 >
-                  <Text style={styles.primaryCtaText}>
+                  <Text
+                    style={[
+                      styles.primaryCtaText,
+                      isOwnListing && { color: "#FFFFFF" },
+                    ]}
+                  >
                     {isOwnListing
                       ? "Your listing"
                       : addedFlash
@@ -380,15 +412,37 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   topTitle: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
-  hero: { width: WIDTH, height: WIDTH * 0.92, backgroundColor: "#E2E8F0" },
+  gallery: { backgroundColor: "#FFFFFF" },
+  hero: {
+    width: WIDTH,
+    height: WIDTH * 0.92,
+    backgroundColor: "#E2E8F0",
+  },
   heroImage: { width: "100%", height: "100%" },
   heroPlaceholder: { alignItems: "center", justifyContent: "center" },
+  thumbs: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    gap: 8,
+  },
+  thumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    marginRight: 8,
+  },
+  thumbOn: { borderColor: "#F97316" },
+  thumbImage: { width: "100%", height: "100%" },
   dots: {
     textAlign: "center",
     color: "#64748B",
     fontSize: 12,
     fontWeight: "600",
     marginTop: 8,
+    marginBottom: 4,
   },
   body: { paddingHorizontal: 16, paddingTop: 14, gap: 8 },
   price: { fontSize: 26, fontWeight: "800", color: "#0F172A" },
@@ -404,8 +458,16 @@ const styles = StyleSheet.create({
     borderColor: "#FED7AA",
   },
   boostText: { color: "#C2410C", fontSize: 12, fontWeight: "700" },
-  seller: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
-  sellerText: { color: "#475569", fontSize: 14, fontWeight: "600" },
+  seller: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+    alignSelf: "flex-start",
+    paddingVertical: 6,
+    paddingRight: 8,
+  },
+  sellerText: { color: "#475569", fontSize: 14, fontWeight: "600", flexShrink: 1 },
   section: {
     marginTop: 12,
     fontSize: 13,
@@ -444,13 +506,22 @@ const styles = StyleSheet.create({
     flex: 1.2,
     height: 50,
     borderRadius: 999,
+    backgroundColor: "#FFD814",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  primaryCtaInCart: { backgroundColor: "#F7CA00" },
+  primaryCtaDisabled: { backgroundColor: "#CBD5E1" },
+  primaryCtaText: { fontWeight: "800", color: "#0F172A" },
+  buyCta: {
+    flex: 1.2,
+    height: 50,
+    borderRadius: 999,
     backgroundColor: "#F97316",
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryCtaInCart: { backgroundColor: "#EA580C" },
-  primaryCtaDisabled: { backgroundColor: "#CBD5E1" },
-  primaryCtaText: { fontWeight: "800", color: "#FFFFFF" },
+  buyCtaText: { fontWeight: "800", color: "#FFFFFF" },
   cartAlt: { alignItems: "center", paddingTop: 10, paddingBottom: 2 },
   cartAltText: { color: "#64748B", fontWeight: "700", fontSize: 12 },
   centered: { alignItems: "center", padding: 32, gap: 12 },

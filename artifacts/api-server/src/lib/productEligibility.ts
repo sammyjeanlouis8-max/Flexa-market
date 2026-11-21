@@ -8,6 +8,7 @@
  * Google Play & Apple App Store UGC expectations — not country criminal codes.
  * Uncertain regulated categories always REQUIRES_REVIEW (human).
  */
+import { hasUsableListingImage } from "./listingImageUrls";
 import { moderateListing, ruleBasedModerate, type ModerationResult } from "./moderation";
 
 export type EligibilityClass = "ALLOWED" | "REQUIRES_REVIEW" | "PROHIBITED";
@@ -105,8 +106,9 @@ function validateBasics(input: EligibilityInput): string | null {
   if (input.price != null && (Number.isNaN(Number(input.price)) || Number(input.price) < 0)) {
     return "Price must be zero or greater.";
   }
-  const images = input.imageUrls ?? [];
-  if (images.length < 1) return "At least one valid product image is required.";
+  if (!hasUsableListingImage(input.imageUrls)) {
+    return "At least one valid product image is required.";
+  }
   return null;
 }
 

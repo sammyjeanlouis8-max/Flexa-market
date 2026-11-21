@@ -1,22 +1,16 @@
 import { sql } from "drizzle-orm";
 import { db, favoritesTable, listingsTable } from "@workspace/db";
+import {
+  cleanListingImages,
+  hasUsableListingImage,
+  isDisplayableListingImageUrl,
+} from "./listingImageUrls";
 
-const PLACEHOLDER_HOSTS = ["placehold.co", "via.placeholder.com"];
-
-export function cleanListingImages(images: unknown): string[] {
-  if (!Array.isArray(images)) return [];
-  return images
-    .filter((image): image is string => typeof image === "string")
-    .map((image) => image.trim())
-    .filter((image) =>
-      image.length > 0 &&
-      !PLACEHOLDER_HOSTS.some((host) => image.includes(host)),
-    );
-}
-
-export function hasUsableListingImage(images: unknown): boolean {
-  return cleanListingImages(images).length > 0;
-}
+export {
+  cleanListingImages,
+  hasUsableListingImage,
+  isDisplayableListingImageUrl,
+};
 
 /**
  * The images column is a PostgreSQL text[]; use the same rules in SQL so
@@ -29,6 +23,11 @@ export function listingHasUsableImageSql() {
     WHERE btrim(listing_image) <> ''
       AND listing_image NOT ILIKE '%placehold.co%'
       AND listing_image NOT ILIKE '%via.placeholder.com%'
+      AND (
+        listing_image ~* '^https?://[^[:space:]]+'
+        OR listing_image ~ '^/api/storage/objects/[^[:space:]]+'
+        OR listing_image ~ '^/objects/[^[:space:]]+'
+      )
   )`;
 }
 
@@ -49,6 +48,11 @@ export async function runListingMediaCleanup(): Promise<number> {
         WHERE btrim(listing_image) <> ''
           AND listing_image NOT ILIKE '%placehold.co%'
           AND listing_image NOT ILIKE '%via.placeholder.com%'
+          AND (
+            listing_image ~* '^https?://[^[:space:]]+'
+            OR listing_image ~ '^/api/storage/objects/[^[:space:]]+'
+            OR listing_image ~ '^/objects/[^[:space:]]+'
+          )
       )
     `)
     .returning({ id: listingsTable.id });

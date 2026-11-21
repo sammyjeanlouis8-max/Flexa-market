@@ -833,7 +833,7 @@ export default {
       titleTooShort: "Title must be at least 3 characters.",
       categoryRequired: "Please select a category.",
       descriptionRequired: "Product description is required.",
-      photoRequired: "Please upload at least one product photo.",
+      photoRequired: "Please add at least one product photo that displays.",
       photoUnsupported: "Unsupported image format.",
       photoUploadFailed: "Image upload failed. Please try again.",
       videoUploadFailed: "Video upload failed. Please try again.",

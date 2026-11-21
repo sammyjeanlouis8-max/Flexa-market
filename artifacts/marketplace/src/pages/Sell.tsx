@@ -40,6 +40,7 @@ import {
   sectionForField,
   type SellSectionId,
 } from "@/lib/sellValidation";
+import { cleanListingImageUrls } from "@/lib/listingImages";
 
 const MAX_IMAGES = 5;
 /** Align with OpenAPI CreateListingBody (minItems: 1) and product UX. */
@@ -133,15 +134,18 @@ interface UploadedImage {
 }
 
 function getStorageUrl(objectPath: string): string {
+  const raw = (objectPath ?? "").trim();
+  if (!raw) return "";
   // Public CDN URLs and same-origin Wasabi proxy URLs are already displayable.
   if (
-    objectPath.startsWith("http://") ||
-    objectPath.startsWith("https://") ||
-    objectPath.startsWith("/api/")
-  ) return objectPath;
-  const trimmed = objectPath.startsWith("/objects/")
-    ? objectPath.slice("/objects/".length)
-    : objectPath;
+    raw.startsWith("http://") ||
+    raw.startsWith("https://") ||
+    raw.startsWith("/api/")
+  ) return raw;
+  const trimmed = raw.startsWith("/objects/")
+    ? raw.slice("/objects/".length)
+    : raw;
+  if (!trimmed) return "";
   return `/api/storage/objects/${trimmed}`;
 }
 
@@ -562,9 +566,14 @@ export default function Sell() {
     const shippingCarriers = values.country === "Dominican Republic"
       ? intlCarriers.filter(carrier => listingCarriersForCountry(values.country).includes(carrier))
       : intlCarriers;
+    // Payment setup is informational here, not a prerequisite for publishing.
+    const imageUrls = cleanListingImageUrls(
+      uploadedImages.map((img) => getStorageUrl(img.objectPath)),
+    );
     const extraErrors = collectExtraPublishErrors(
       {
-        photoCount: uploadedImages.length,
+        photoCount: imageUrls.length,
+        imageUrls,
         minPhotos,
         country: values.country ?? "",
         dominicanDeliveryChoice: values.country === "Dominican Republic" ? dominicanDeliveryChoice : null,
@@ -578,8 +587,6 @@ export default function Sell() {
       applyPublishErrors(extraErrors);
       return;
     }
-    // Payment setup is informational here, not a prerequisite for publishing.
-    const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
     const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery ? Number(intlShippingCost || 0) : null, shippingCarriers: !isLocalDelivery && !isDominicanSelfDelivery ? shippingCarriers : [], deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : isDominicanSelfDelivery ? "self_delivery" : null, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
 
     const persistSellerShipFrom = () => {
@@ -779,9 +786,13 @@ export default function Sell() {
     const shippingCarriers = country === "Dominican Republic"
       ? intlCarriers.filter((carrier) => listingCarriersForCountry(country).includes(carrier))
       : intlCarriers;
+    const imageUrls = cleanListingImageUrls(
+      uploadedImages.map((img) => getStorageUrl(img.objectPath)),
+    );
     const extras = collectExtraPublishErrors(
       {
-        photoCount: uploadedImages.length,
+        photoCount: imageUrls.length,
+        imageUrls,
         minPhotos,
         country,
         dominicanDeliveryChoice: country === "Dominican Republic" ? dominicanDeliveryChoice : null,
@@ -854,9 +865,13 @@ export default function Sell() {
     const shippingCarriers = country === "Dominican Republic"
       ? intlCarriers.filter((carrier) => listingCarriersForCountry(country).includes(carrier))
       : intlCarriers;
+    const imageUrls = cleanListingImageUrls(
+      uploadedImages.map((img) => getStorageUrl(img.objectPath)),
+    );
     const extras = collectExtraPublishErrors(
       {
-        photoCount: uploadedImages.length,
+        photoCount: imageUrls.length,
+        imageUrls,
         minPhotos,
         country,
         dominicanDeliveryChoice: country === "Dominican Republic" ? dominicanDeliveryChoice : null,

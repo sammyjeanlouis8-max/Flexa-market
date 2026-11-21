@@ -20,6 +20,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { uploadLocalFile } from "@/lib/mediaUpload";
+import { cleanListingImageUrls } from "@/lib/listingImages";
 import {
   createListing,
   fetchCategories,
@@ -88,7 +89,10 @@ export default function SellTab() {
   );
 
   const doneUrls = useMemo(
-    () => images.filter((i) => i.status === "done" && i.remoteUrl).map((i) => i.remoteUrl!),
+    () =>
+      cleanListingImageUrls(
+        images.filter((i) => i.status === "done" && i.remoteUrl).map((i) => i.remoteUrl!),
+      ),
     [images],
   );
 

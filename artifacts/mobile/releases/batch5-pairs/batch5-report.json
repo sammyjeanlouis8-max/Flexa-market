@@ -195,21 +195,30 @@
       "inv": 30,
       "name": "Settings subpages (help)",
       "webPath": "/settings/help",
-      "appPath": null,
-      "kind": "missing",
-      "action": "Open help",
-      "blocker": "No native settings subpages",
-      "result": "UNVERIFIED",
+      "appPath": "/settings/help",
+      "kind": "native",
+      "action": "Open chat → /support/1",
+      "blocker": null,
+      "result": "PASS",
       "webFinalUrl": "https://flexamarket.com/settings/help",
-      "appFinalUrl": null,
+      "appFinalUrl": "http://127.0.0.1:8081/settings/help",
       "fix": null,
       "notes": [
-        "No native settings subpages"
+        "Native Help & Support with Settings entry",
+        "Open chat opens Fanfan support thread /support/1",
+        "Email us mailto support@flexamarket.com with clipboard fallback",
+        "FAQ accordion; first answer expanded on entry; last answer scrollable",
+        "Back to Settings + header back; MainTabBar My Account selected"
       ],
-      "actionOk": false,
-      "backOk": false,
+      "actionOk": true,
+      "backOk": true,
       "bottomNavOk": true,
-      "pair": "10_settings_help_side_by_side.png"
+      "pair": "10_settings_help_side_by_side.png",
+      "pairs": [
+        "10_settings_help_side_by_side.png",
+        "10_settings_help_top_side_by_side.png",
+        "10_settings_help_scroll_side_by_side.png"
+      ]
     },
     {
       "id": "11_notifications",
@@ -411,10 +420,10 @@
   ],
   "summary": {
     "total": 20,
-    "PASS": 8,
+    "PASS": 9,
     "FAIL": 0,
     "CAPTURED": 2,
-    "UNVERIFIED": 10
+    "UNVERIFIED": 9
   },
   "handoff": {
     "branch": "cursor/android-parity-batch5-21-40-2cb2",

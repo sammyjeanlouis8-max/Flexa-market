@@ -14,7 +14,7 @@ This batch uses **inventory features 21–40** in file order from `phase3-migrat
 | 07 | 27 | Account / Profile hub | `/profile/1` | `/profile` | native |
 | 08 | 28 | Edit Profile | `/profile/edit` | `/edit-profile` | native |
 | 09 | 29 | Settings (marketplace country) | `/settings` | `/settings` | native |
-| 10 | 30 | Settings subpages (help) | `/settings/help` | — | MISSING native |
+| 10 | 30 | Settings subpages (help) | `/settings/help` | `/settings/help` | native PASS |
 | 11 | 31 | Notifications | `/settings/notifications` | `/notifications` | native |
 | 12 | 32 | Android push (FCM) | N/A | N/A | not a screen — UNVERIFIED |
 | 13 | 33 | Account Verification (KYC) | `/kyc` | `/kyc` | placeholder |

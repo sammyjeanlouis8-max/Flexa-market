@@ -18,7 +18,7 @@
 | 07 | 27 | Account / Profile hub | `/profile/1` | `/profile` | native (partial) |
 | 08 | 28 | Edit Profile | `/profile/edit` | `/edit-profile` | native |
 | 09 | 29 | Settings (marketplace country) | `/settings` | `/settings` | native |
-| 10 | 30 | Settings subpages (help) | `/settings/help` | — | MISSING |
+| 10 | 30 | Settings subpages (help) | `/settings/help` | `/settings/help` | native |
 | 11 | 31 | Notifications | `/settings/notifications` | `/notifications` | native |
 | 12 | 32 | Android push (FCM) | N/A | N/A | not a screen |
 | 13 | 33 | Account Verification (KYC) | `/kyc` | `/kyc` | placeholder |
@@ -40,7 +40,8 @@
 2. **Language** — account `preferredLanguage` forced to `en` via `PATCH /api/auth/language` before captures; APP language picker shows English selected.
 3. **Back** — stack screens use header back / `router.back()`; retested after main actions.
 4. **Settings (inv 29)** — native `/settings` rebuilt to match WEB: signed-in profile card (name/email/avatar/Verified/account country + pencil → Edit profile), 2×2 shortcuts (Sell / Videos / My boosts / Drafts→Sell), settings rows (including disabled Payments & Withdrawals), separate Marketplace country selector, and persistent `MainTabBar` with My Account selected above the system inset. Auth user cache keeps the profile painted when `/auth/me` is rate-limited. Retested actions + top/scroll pairs.
-5. **No new native screens** for MISSING inventory rows (transfer, repay, BNPL, settings help, leaderboard, commission, jobs) — left UNVERIFIED per assignment.
+5. **Help & Support (inv 30)** — native `/settings/help` added with Settings list entry, Open chat → existing support thread (`/support/1` for Fanfan), Email us → mailto/`support@flexamarket.com` (clipboard fallback), expandable FAQ (first open on entry), Back to Settings + header back, `MainTabBar` with My Account selected. Retested + top/scroll pairs → **PASS**.
+6. **Remaining MISSING** inventory rows (transfer, repay, BNPL, leaderboard, commission, jobs) — left UNVERIFIED per assignment.
 
 ## Results — 20 / 20 pairs
 
@@ -55,7 +56,7 @@
 | 07 | Account / Profile hub | **PASS** | Open Edit profile | WEB `/profile/1` = public shop; APP = account hub | [pair](./07_profile_side_by_side.png) |
 | 08 | Edit Profile | **PASS** | Fields visible (Fanfan) | — | [pair](./08_edit_profile_side_by_side.png) |
 | 09 | Settings | **PASS** | Profile card, shortcuts, list, Back, bottom nav (top+scroll) | Native `/settings` rebuilt to match WEB; payments disabled | [pair](./09_settings_side_by_side.png) · [top](./09_settings_top_side_by_side.png) · [scroll](./09_settings_scroll_side_by_side.png) |
-| 10 | Settings help | **UNVERIFIED** | — | Blocker: no native settings subpages | [pair](./10_settings_help_side_by_side.png) |
+| 10 | Settings help | **PASS** | Open chat → `/support/1`; FAQ; Email; Back; tabs | Native `/settings/help` | [pair](./10_settings_help_side_by_side.png) · [top](./10_settings_help_top_side_by_side.png) · [scroll](./10_settings_help_scroll_side_by_side.png) |
 | 11 | Notifications | **PASS** | List loads | — | [pair](./11_notifications_side_by_side.png) |
 | 12 | Android push (FCM) | **UNVERIFIED** | — | Blocker: not a navigable UI page; device FCM E2E unverified | [pair](./12_android_push_side_by_side.png) |
 | 13 | KYC | **CAPTURED** | Placeholder visible | Document upload still queued | [pair](./13_kyc_side_by_side.png) |
@@ -67,8 +68,8 @@
 | 19 | Commission promo | **UNVERIFIED** | — | Blocker: no native `/commission-promo` | [pair](./19_commission_side_by_side.png) |
 | 20 | Jobs board | **UNVERIFIED** | — | Blocker: no native `/jobs` | [pair](./20_jobs_side_by_side.png) |
 
-**Summary:** PASS 8 · CAPTURED 2 · UNVERIFIED 10 · FAIL 0 · pairs 20/20  
-*(inv 29 Settings rebuilt + retested PASS with top/scroll evidence.)*
+**Summary:** PASS 9 · CAPTURED 2 · UNVERIFIED 9 · FAIL 0 · pairs 20/20  
+*(inv 29 Settings + inv 30 Help & Support native PASS with top/scroll evidence.)*
 
 ## Notable visual diffs (review, not regressions)
 - Wallet WEB is denser (Deposit/Send/Contacts/…) vs APP read-only funding + policy note (intentional Android digital-goods guard).

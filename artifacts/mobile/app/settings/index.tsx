@@ -240,7 +240,7 @@ export default function SettingsScreen() {
         icon: "help-circle",
         iconBg: "#E0F2FE",
         iconColor: "#0369A1",
-        onPress: () => router.push("/support"),
+        onPress: () => router.push("/settings/help"),
       },
     ];
 

@@ -574,16 +574,16 @@
       "name": "Settings subpages (identity, security, privacy, preferences, help, payments, notifications prefs)",
       "domain": "customer",
       "webRoute": "/settings/*",
-      "nativeRoute": null,
+      "nativeRoute": "/settings/help",
       "role": "buyer",
       "apis": [
         "various /api/auth /api/users"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "all settings sub-routes"
+        "identity/security/privacy/preferences/payments preference sub-routes"
       ],
-      "work": "Incremental settings expansion"
+      "work": "Help & Support shipped; continue incremental settings expansion"
     },
     {
       "id": "notifications",
@@ -768,14 +768,16 @@
       "name": "Help Center / FAQ / Contact",
       "domain": "support",
       "webRoute": "/help-center,/faq,/contact,/settings/help",
-      "nativeRoute": null,
+      "nativeRoute": "/settings/help",
       "role": "guest+",
-      "apis": [],
-      "status": "MISSING",
-      "missing": [
-        "static content screens"
+      "apis": [
+        "/api/support/threads"
       ],
-      "work": "Can ship as native markdown/content"
+      "status": "PARTIALLY_NATIVE",
+      "missing": [
+        "standalone /help-center and /faq marketing routes"
+      ],
+      "work": "Native /settings/help with FAQ + support chat + mailto shipped"
     },
     {
       "id": "legal",

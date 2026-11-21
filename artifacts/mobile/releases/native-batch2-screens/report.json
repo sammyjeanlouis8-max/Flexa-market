@@ -1,0 +1,69 @@
+{
+  "batch": 2,
+  "platform": "Expo web preview of shared React Native app (Android + iOS)",
+  "build": "local Expo bundler + https://flexamarket.com",
+  "viewport": "390x844@2x",
+  "capturedAt": "2026-11-21T09:35:29.960Z",
+  "screens": [
+    {
+      "id": "01_login",
+      "label": "1 Login",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "02_register",
+      "label": "2 Register",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "03_account",
+      "label": "3 Account",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "04_orders",
+      "label": "4 My Orders",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "05_order_detail",
+      "label": "5 Order details",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "06_tracking",
+      "label": "6 Delivery tracking",
+      "status": "captured",
+      "note": "Website public track vs native delivery tracking UI"
+    },
+    {
+      "id": "07_favorites",
+      "label": "7 Favorites",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "08_addresses",
+      "label": "8 Addresses",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "09_inbox",
+      "label": "9 Inbox",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "10_notifications",
+      "label": "10 Notifications",
+      "status": "captured",
+      "note": null
+    }
+  ]
+}

@@ -39,7 +39,8 @@
 1. **Wallet top-up** — APP `Top up` opens the Android digital-goods policy alert (`onUnsupportedFunding`); confirmed; no Play Billing path (expected BLOCKED).
 2. **Language** — account `preferredLanguage` forced to `en` via `PATCH /api/auth/language` before captures; APP language picker shows English selected.
 3. **Back** — stack screens use header back / `router.back()`; retested after main actions.
-4. **No new native screens** for MISSING inventory rows (transfer, repay, BNPL, settings help, leaderboard, commission, jobs) — left UNVERIFIED per assignment.
+4. **Settings (inv 29)** — native `/settings` rebuilt to match WEB: signed-in profile card (name/email/avatar/Verified/account country + pencil → Edit profile), 2×2 shortcuts (Sell / Videos / My boosts / Drafts→Sell), settings rows (including disabled Payments & Withdrawals), separate Marketplace country selector, and persistent `MainTabBar` with My Account selected above the system inset. Auth user cache keeps the profile painted when `/auth/me` is rate-limited. Retested actions + top/scroll pairs.
+5. **No new native screens** for MISSING inventory rows (transfer, repay, BNPL, settings help, leaderboard, commission, jobs) — left UNVERIFIED per assignment.
 
 ## Results — 20 / 20 pairs
 
@@ -53,7 +54,7 @@
 | 06 | BNPL | **UNVERIFIED** | — | Blocker: no native `/bnpl` | [pair](./06_bnpl_side_by_side.png) |
 | 07 | Account / Profile hub | **PASS** | Open Edit profile | WEB `/profile/1` = public shop; APP = account hub | [pair](./07_profile_side_by_side.png) |
 | 08 | Edit Profile | **PASS** | Fields visible (Fanfan) | — | [pair](./08_edit_profile_side_by_side.png) |
-| 09 | Settings | **PASS** | Open Language row | — | [pair](./09_settings_side_by_side.png) |
+| 09 | Settings | **PASS** | Profile card, shortcuts, list, Back, bottom nav (top+scroll) | Native `/settings` rebuilt to match WEB; payments disabled | [pair](./09_settings_side_by_side.png) · [top](./09_settings_top_side_by_side.png) · [scroll](./09_settings_scroll_side_by_side.png) |
 | 10 | Settings help | **UNVERIFIED** | — | Blocker: no native settings subpages | [pair](./10_settings_help_side_by_side.png) |
 | 11 | Notifications | **PASS** | List loads | — | [pair](./11_notifications_side_by_side.png) |
 | 12 | Android push (FCM) | **UNVERIFIED** | — | Blocker: not a navigable UI page; device FCM E2E unverified | [pair](./12_android_push_side_by_side.png) |
@@ -66,13 +67,15 @@
 | 19 | Commission promo | **UNVERIFIED** | — | Blocker: no native `/commission-promo` | [pair](./19_commission_side_by_side.png) |
 | 20 | Jobs board | **UNVERIFIED** | — | Blocker: no native `/jobs` | [pair](./20_jobs_side_by_side.png) |
 
-**Summary:** PASS 8 · CAPTURED 2 · UNVERIFIED 10 · FAIL 0 · pairs 20/20
+**Summary:** PASS 8 · CAPTURED 2 · UNVERIFIED 10 · FAIL 0 · pairs 20/20  
+*(inv 29 Settings rebuilt + retested PASS with top/scroll evidence.)*
 
 ## Notable visual diffs (review, not regressions)
 - Wallet WEB is denser (Deposit/Send/Contacts/…) vs APP read-only funding + policy note (intentional Android digital-goods guard).
 - Profile WEB public shop vs APP account hub (inventory `PARTIALLY_NATIVE`).
 - WEB wallet history may show HT copy / empty-state under rate-limit; APP EN history list matches API.
-- Native stack chrome (back + title) vs website header + bottom nav — expected.
+- Settings: My Account tab tint is Flexa green on APP vs blue on WEB (brand); Payments row remains visible but disabled on Android; Boost/Videos destinations are still native placeholders.
+- Native stack chrome (back + title) vs website header + bottom nav — expected on non-settings stacks.
 
 ## Handoff for next agent
 - **Branch:** `cursor/android-parity-batch5-21-40-2cb2`

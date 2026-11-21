@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 const TOKEN_KEY = "flexamarket_token";
+const USER_CACHE_KEY = "flexamarket_user_cache";
 
 export function getBaseUrl() {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
@@ -15,11 +16,13 @@ export interface User {
   name: string;
   email: string;
   country?: string;
-  avatarUrl?: string;
+  avatar?: string | null;
+  avatarUrl?: string | null;
   city?: string;
   location?: string;
   bio?: string;
   isPhoneVerified?: boolean;
+  isVerified?: boolean;
   role?: string;
   phone?: string;
   isAdmin?: boolean;
@@ -58,15 +61,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data);
+        try {
+          await AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(data));
+        } catch {
+          /* ignore cache write */
+        }
       } else if (res.status === 401) {
         // Only a definitive invalid-token response may destroy the saved
         // session. Temporary server/proxy errors must leave the user signed in.
-        await AsyncStorage.removeItem(TOKEN_KEY);
+        await AsyncStorage.multiRemove([TOKEN_KEY, USER_CACHE_KEY]);
         setToken(null);
         setUser(null);
+      } else {
+        // 429 / 5xx — keep token and fall back to last good profile snapshot.
+        const cached = await AsyncStorage.getItem(USER_CACHE_KEY);
+        if (cached) {
+          try {
+            setUser(JSON.parse(cached) as User);
+          } catch {
+            /* ignore bad cache */
+          }
+        }
       }
     } catch {
-      // network error — keep token, retry later
+      // network error — keep token, prefer cached profile
+      try {
+        const cached = await AsyncStorage.getItem(USER_CACHE_KEY);
+        if (cached) setUser(JSON.parse(cached) as User);
+      } catch {
+        /* keep previous user */
+      }
     }
   }, []);
 
@@ -75,6 +99,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then(async (stored) => {
         if (stored) {
           setToken(stored);
+          // Paint cached profile immediately so Settings does not flash signed-out
+          // while /auth/me is slow or rate-limited.
+          try {
+            const cached = await AsyncStorage.getItem(USER_CACHE_KEY);
+            if (cached) setUser(JSON.parse(cached) as User);
+          } catch {
+            /* ignore */
+          }
           await fetchUser(stored);
         }
       })
@@ -92,7 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await AsyncStorage.removeItem(TOKEN_KEY);
+    await AsyncStorage.multiRemove([TOKEN_KEY, USER_CACHE_KEY]);
     setToken(null);
     setUser(null);
   }, []);

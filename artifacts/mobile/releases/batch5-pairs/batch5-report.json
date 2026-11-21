@@ -179,7 +179,12 @@
       "webFinalUrl": "https://flexamarket.com/settings",
       "appFinalUrl": "http://127.0.0.1:8081/settings",
       "fix": null,
-      "notes": [],
+      "notes": [
+        "Rebuilt native /settings to match WEB: profile card, 2x2 shortcuts, settings list, MainTabBar",
+        "Payments & Withdrawals disabled (Play digital goods)",
+        "Account country separate from Marketplace country selector",
+        "Retested pencil, shortcuts, rows, Back, bottom nav; top+scroll captures refreshed"
+      ],
       "actionOk": true,
       "backOk": true,
       "bottomNavOk": true,

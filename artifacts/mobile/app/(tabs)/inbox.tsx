@@ -15,8 +15,9 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppHeader } from "@/components/shell/AppHeader";
 import { useAuth } from "@/context/AuthContext";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import {
   fetchConversations,
   formatMessageTime,
@@ -32,7 +33,7 @@ import {
 type RoleFilter = "all" | "buyer" | "seller";
 
 export default function InboxTab() {
-  const insets = useSafeAreaInsets();
+  const listPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
   const [rows, setRows] = useState<Conversation[] | null>(null);
@@ -147,19 +148,8 @@ export default function InboxTab() {
   };
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Flexa Chat</Text>
-          <Text style={styles.subtitle}>
-            {totalUnread > 0 ? `${totalUnread} unread` : "Messages with buyers & sellers"}
-          </Text>
-        </View>
-        <Pressable style={styles.notifBtn} onPress={() => router.push("/notifications")}>
-          <Feather name="bell" size={18} color="#0F172A" />
-        </Pressable>
-      </View>
-
+    <View style={styles.root}>
+      <AppHeader title="Messages" showBrand={false} />
       <View style={styles.filters}>
         {(
           [
@@ -192,7 +182,7 @@ export default function InboxTab() {
               tintColor="#F97316"
             />
           }
-          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{ paddingBottom: listPadBottom }}
           ListHeaderComponent={error ? <Text style={styles.error}>{error}</Text> : null}
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -229,7 +219,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
-  filters: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  filters: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+  },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 8,

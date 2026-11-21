@@ -8,6 +8,8 @@ import {
   StyleSheet,
   Text,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import type { Listing } from "@/lib/api";
 
@@ -17,12 +19,15 @@ interface ListingCardProps {
   item: Listing;
   onFavoriteToggle?: (id: number, isFav: boolean) => void;
   isFavorited?: boolean;
+  /** Override default fixed width (e.g. 48% inside padded Today's Picks). */
+  style?: StyleProp<ViewStyle>;
 }
 
 export function ListingCard({
   item,
   onFavoriteToggle,
   isFavorited = false,
+  style,
 }: ListingCardProps) {
   const imageUri = item.images?.[0];
   const price = Number(item.price || 0);
@@ -30,7 +35,7 @@ export function ListingCard({
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.card, style, pressed && styles.pressed]}
       onPress={() => router.push(`/listing/${item.id}`)}
       accessibilityRole="button"
       accessibilityLabel={item.title}
@@ -101,7 +106,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
   },
   pressed: { opacity: 0.92 },
-  imageContainer: { width: "100%", height: CARD_WIDTH, backgroundColor: "#F1F5F9" },
+  imageContainer: { width: "100%", aspectRatio: 1, backgroundColor: "#F1F5F9" },
   image: { width: "100%", height: "100%" },
   imagePlaceholder: {
     width: "100%",

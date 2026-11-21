@@ -3,7 +3,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabBarHeight } from "@/hooks/useTabContentInsets";
 import { absoluteMusicUrl } from "@/lib/musicApi";
 import { getPlayerState, next, previous, subscribeMusicPlayer, togglePlayPause } from "@/lib/musicPlayer";
 import { musicTheme } from "@/lib/musicTheme";
@@ -16,7 +16,7 @@ function formatTime(ms: number) {
 }
 
 export function MusicMiniPlayer() {
-  const insets = useSafeAreaInsets();
+  const tabBarHeight = useTabBarHeight();
   const router = useRouter();
   const [state, setState] = useState(getPlayerState());
 
@@ -26,7 +26,7 @@ export function MusicMiniPlayer() {
   if (!track) return null;
   if (state.adBreakActive) {
     return (
-      <View style={[styles.wrap, { bottom: insets.bottom + 58, opacity: 0.55 }]} pointerEvents="none">
+      <View style={[styles.wrap, { bottom: tabBarHeight + 8, opacity: 0.55 }]} pointerEvents="none">
         <View style={styles.bar}>
           <Feather name="pause" size={20} color={musicTheme.muted} />
           <Text style={[styles.title, { flex: 1 }]}>Sponsored break</Text>
@@ -42,7 +42,7 @@ export function MusicMiniPlayer() {
       : 0;
 
   return (
-    <View style={[styles.wrap, { bottom: insets.bottom + 58 }]}>
+    <View style={[styles.wrap, { bottom: tabBarHeight + 8 }]}>
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${pct * 100}%` }]} />
       </View>

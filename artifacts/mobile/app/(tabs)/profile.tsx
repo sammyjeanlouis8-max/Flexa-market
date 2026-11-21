@@ -2,9 +2,10 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppHeader } from "@/components/shell/AppHeader";
 import { useAuth } from "@/context/AuthContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 
 const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap }[] = [
   { label: "Flexa Music", href: "/(tabs)/music", icon: "music" },
@@ -23,16 +24,22 @@ const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap 
 ];
 
 export default function ProfileTab() {
-  const insets = useSafeAreaInsets();
+  const listPadBottom = useTabContentPaddingBottom();
   const router = useRouter();
   const { user, token, logout, isLoading } = useAuth();
   const { country } = useMarketplace();
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={{ paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 }}
-    >
+    <View style={styles.root}>
+      <AppHeader title="My Account" showBrand={false} showProfile={false} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingTop: 12,
+          paddingBottom: listPadBottom,
+          paddingHorizontal: 16,
+        }}
+      >
       <Text style={styles.title}>Account</Text>
 
       {isLoading ? (
@@ -80,11 +87,12 @@ export default function ProfileTab() {
         ))}
       </View>
     </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F8FAFC", paddingHorizontal: 16 },
+  root: { flex: 1, backgroundColor: "#F8FAFC" },
   title: {
     fontSize: 22,
     fontWeight: "800",

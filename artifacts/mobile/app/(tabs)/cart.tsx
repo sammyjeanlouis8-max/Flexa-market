@@ -16,9 +16,11 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppHeader } from "@/components/shell/AppHeader";
 import { useAuth } from "@/context/AuthContext";
 import { useCart, type CartItem } from "@/context/CartContext";
 import { useMarketplace } from "@/context/MarketplaceContext";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 import {
   cartHasDominicanItems,
   isDominicanListingCountry,
@@ -36,6 +38,7 @@ function formatMoney(amount: number, currency: string | null) {
 
 export default function CartScreen() {
   const insets = useSafeAreaInsets();
+  const listPadBottom = useTabContentPaddingBottom(140);
   const router = useRouter();
   const { user, token, isLoading: authLoading } = useAuth();
   const { country } = useMarketplace();
@@ -193,25 +196,20 @@ export default function CartScreen() {
   };
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.topBar}>
-        <Pressable
-          style={styles.iconBtn}
-          onPress={() =>
-            router.canGoBack() ? router.back() : router.replace("/")
-          }
-        >
-          <Feather name="arrow-left" size={22} color="#0F172A" />
-        </Pressable>
-        <Text style={styles.topTitle}>Cart</Text>
-        {items.length > 0 ? (
-          <Pressable onPress={onClear} hitSlop={8}>
-            <Text style={styles.clearText}>Clear</Text>
-          </Pressable>
-        ) : (
-          <View style={{ width: 48 }} />
-        )}
-      </View>
+    <View style={styles.root}>
+      <AppHeader
+        title="Cart"
+        showBrand={false}
+        showMenu={false}
+        showCart={false}
+        rightExtra={
+          items.length > 0 ? (
+            <Pressable onPress={onClear} hitSlop={8} style={{ paddingHorizontal: 8 }}>
+              <Text style={styles.clearText}>Clear</Text>
+            </Pressable>
+          ) : null
+        }
+      />
 
       {!ready || authLoading ? (
         <ActivityIndicator color="#F97316" style={{ marginTop: 48 }} />
@@ -240,16 +238,14 @@ export default function CartScreen() {
             data={visibleItems}
             keyExtractor={(item) => String(item.listingId)}
             renderItem={renderItem}
-            contentContainerStyle={{ paddingBottom: 140, paddingHorizontal: 12 }}
+            contentContainerStyle={{
+              paddingBottom: listPadBottom,
+              paddingHorizontal: 12,
+            }}
             ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           />
 
-          <View
-            style={[
-              styles.footer,
-              { paddingBottom: Math.max(insets.bottom, 12) },
-            ]}
-          >
+          <View style={[styles.footer, { paddingBottom: 12 }]}>
             <View style={styles.footerMeta}>
               <Text style={styles.footerLabel}>
                 {selectedItems.length} selected · Subtotal
@@ -327,7 +323,7 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   topTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
-  clearText: { color: "#EF4444", fontWeight: "700", fontSize: 14, width: 48 },
+  clearText: { color: "#FECACA", fontWeight: "700", fontSize: 14 },
   countryNote: {
     marginHorizontal: 16,
     marginBottom: 8,

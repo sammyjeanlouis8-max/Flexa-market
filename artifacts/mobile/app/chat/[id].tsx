@@ -54,10 +54,17 @@ import {
   updateVoiceOutbox,
   type VoiceOutboxItem,
 } from "@/lib/voiceOutbox";
+import { checkOnline, subscribeNetwork, startNetworkPolling } from "@/lib/networkStatus";
 
-const GREEN = "#146C43";
-const MINT = "#D1FAE5";
+/** WhatsApp Android reference palette */
+const WA_HEADER = "#075E54";
+const WA_BG = "#ECE5DD";
+const WA_OUT = "#DCF8C6";
+const WA_IN = "#FFFFFF";
+const WA_TEAL = "#128C7E";
 const ORANGE = "#F97316";
+const GREEN = WA_TEAL;
+const MINT = WA_OUT;
 
 function mediaUri(msg: ChatMessage): string | null {
   const raw = msg.imageUrl || msg.mediaUrl;
@@ -171,9 +178,11 @@ export default function ChatThreadScreen() {
     if (!token || !user || !Number.isFinite(convId) || voiceFlushBusy.current) return;
     voiceFlushBusy.current = true;
     try {
+      const netOk = await checkOnline(true);
+      setOnline(netOk);
       const pending = await listVoiceOutbox(convId);
       setPendingVoices(pending);
-      if (!online) {
+      if (!netOk) {
         for (const item of pending) {
           if (item.status !== "waiting_connection") {
             await updateVoiceOutbox(item.id, { status: "waiting_connection" });
@@ -194,6 +203,7 @@ export default function ChatThreadScreen() {
           if (!mediaUrl) {
             await updateVoiceOutbox(item.id, { status: "uploading", lastError: undefined });
             setPendingVoices(await listVoiceOutbox(convId));
+            // Same clientMessageId (item.id) is reused on every retry after this upload.
             mediaUrl = await uploadChatMedia(item.localUri, {
               token,
               contentType: normalizeAudioMime(item.mimeType),
@@ -203,6 +213,7 @@ export default function ChatThreadScreen() {
               await removeVoiceOutbox(item.id);
               continue;
             }
+            // Persist mediaUrl so a later sendMessage retry does not re-upload a new copy.
             await updateVoiceOutbox(item.id, { mediaUrl, status: "sending" });
           } else {
             await updateVoiceOutbox(item.id, { status: "sending", lastError: undefined });
@@ -231,13 +242,15 @@ export default function ChatThreadScreen() {
           });
           setPendingVoices(await listVoiceOutbox(convId));
         } catch (e) {
+          const msg = e instanceof Error ? e.message : "Voice delivery failed";
+          const offline = /network|abort|failed to fetch|offline/i.test(msg);
           await updateVoiceOutbox(item.id, {
             attempts: item.attempts + 1,
-            status: "failed",
-            lastError: e instanceof Error ? e.message : "Voice delivery failed",
+            status: offline ? "waiting_connection" : "failed",
+            lastError: msg,
           });
           setPendingVoices(await listVoiceOutbox(convId));
-          break;
+          // Continue remaining queue items — do not abort the whole outbox on one failure.
         } finally {
           setFlushingVoiceId(null);
         }
@@ -245,7 +258,7 @@ export default function ChatThreadScreen() {
     } finally {
       voiceFlushBusy.current = false;
     }
-  }, [token, user, convId, online]);
+  }, [token, user, convId]);
 
   useEffect(() => {
     if (!authLoading && !token) {
@@ -298,9 +311,17 @@ export default function ChatThreadScreen() {
 
     const appSub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
-        setOnline(true);
-        void refreshVoiceOutbox().then(() => flushVoiceOutbox());
+        void checkOnline(true).then((ok) => {
+          setOnline(ok);
+          if (ok) void refreshVoiceOutbox().then(() => flushVoiceOutbox());
+        });
       }
+    });
+
+    const stopNetPoll = startNetworkPolling(8000);
+    const unsubNet = subscribeNetwork((ok) => {
+      setOnline(ok);
+      if (ok) void flushVoiceOutbox();
     });
 
     return () => {
@@ -310,6 +331,8 @@ export default function ChatThreadScreen() {
       offStop();
       clearInterval(poll);
       appSub.remove();
+      stopNetPoll();
+      unsubNet();
       if (user?.id) emitStopTyping(convId, user.id);
     };
   }, [
@@ -337,11 +360,14 @@ export default function ChatThreadScreen() {
     typingTimer.current = setTimeout(() => emitStopTyping(convId, user.id), 1200);
   };
 
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+
   const onSend = async () => {
     if (!token || !user || !Number.isFinite(convId)) return;
     const content = draft.trim();
     if (!content || sendingText) return;
     const clientMessageId = `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const replyToMessageId = replyTo?.id && replyTo.id > 0 ? replyTo.id : undefined;
     const optimistic: ChatMessage = {
       id: -Date.now(),
       conversationId: convId,
@@ -354,16 +380,18 @@ export default function ChatThreadScreen() {
       imageUrl: null,
       isRead: false,
       clientMessageId,
+      replyToMessageId: replyToMessageId ?? null,
       createdAt: new Date().toISOString(),
     };
     setDraft("");
+    setReplyTo(null);
     setMessages((prev) => [...(prev ?? []), optimistic]);
     setSendingText(true);
     emitStopTyping(convId, user.id);
     try {
       const saved = await sendMessage(
         convId,
-        { content, messageType: "text", clientMessageId },
+        { content, messageType: "text", clientMessageId, replyToMessageId },
         { token },
       );
       setMessages((prev) =>
@@ -469,7 +497,16 @@ export default function ChatThreadScreen() {
       await rec.stopAndUnloadAsync();
       const uri = rec.getURI();
       setRecording(null);
+      // Restore playback mode so received voice notes can play after recording.
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
       if (!uri || !Number.isFinite(convId)) return;
+      // Persist locally first — only remove after server confirms sendMessage.
       const item = await enqueueVoiceRecording({
         conversationId: convId,
         sourceUri: uri,
@@ -517,9 +554,17 @@ export default function ChatThreadScreen() {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
-      const { sound } = await Audio.Sound.createAsync({ uri });
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        playThroughEarpieceAndroid: false,
+        shouldDuckAndroid: true,
+      });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true },
+      );
       soundRef.current = sound;
-      await sound.playAsync();
     } catch {
       Alert.alert("Playback", "Could not play voice message");
     }
@@ -533,6 +578,12 @@ export default function ChatThreadScreen() {
 
   const onLongPressMessage = (item: ChatMessage) => {
     const buttons: { text: string; onPress?: () => void; style?: "cancel" | "destructive" }[] = [];
+    if (!item.isDeleted) {
+      buttons.push({
+        text: "Reply",
+        onPress: () => setReplyTo(item),
+      });
+    }
     if (item.messageType === "text" && item.content) {
       buttons.push({
         text: copy.copyMsg,
@@ -602,8 +653,8 @@ export default function ChatThreadScreen() {
   return (
     <KeyboardAvoidingView
       style={[styles.root, { paddingTop: insets.top }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={0}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "android" ? 0 : 0}
     >
       <View style={styles.topBar}>
         <Pressable
@@ -611,9 +662,15 @@ export default function ChatThreadScreen() {
           onPress={() =>
             router.canGoBack() ? router.back() : router.replace("/(tabs)/inbox")
           }
+          accessibilityLabel="Back"
         >
-          <Feather name="arrow-left" size={22} color="#0F172A" />
+          <Feather name="arrow-left" size={22} color="#FFFFFF" />
         </Pressable>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>
+            {(title || "?").trim().charAt(0).toUpperCase()}
+          </Text>
+        </View>
         <View style={styles.headerMeta}>
           <Text style={styles.title} numberOfLines={1}>
             {title}
@@ -622,14 +679,17 @@ export default function ChatThreadScreen() {
             <Text style={styles.subtitle} numberOfLines={1}>
               {subtitle}
             </Text>
+          ) : peerTyping ? (
+            <Text style={styles.subtitle}>typing…</Text>
           ) : null}
         </View>
         {meta?.listingId ? (
           <Pressable
             style={styles.back}
-            onPress={() => router.push(`/listing/${meta.listingId}`)}
+            onPress={() => router.push(`/webview-listing/${meta.listingId}`)}
+            accessibilityLabel="View product"
           >
-            <Feather name="shopping-bag" size={18} color="#0F172A" />
+            <Feather name="shopping-bag" size={18} color="#FFFFFF" />
           </Pressable>
         ) : (
           <View style={{ width: 40 }} />
@@ -671,17 +731,19 @@ export default function ChatThreadScreen() {
                 <View style={[styles.bubbleWrap, styles.mine]}>
                   <View style={[styles.bubble, styles.bubbleMine, styles.voiceBubble]}>
                     <View style={styles.audioBtn}>
-                      <Feather name="mic" size={16} color="#fff" />
-                      <Text style={[styles.msgText, styles.msgTextMine]} selectable={false}>
+                      <View style={styles.waPlay}>
+                        <Feather name="mic" size={16} color="#075E54" />
+                      </View>
+                      <Text style={styles.msgText} selectable={false}>
                         {copy.voice}
                       </Text>
                     </View>
-                    <Text style={[styles.msgTime, styles.msgTimeMine]} selectable={false}>
+                    <Text style={styles.msgTime} selectable={false}>
                       {formatBubbleClock(new Date(pending.createdAt).toISOString())} ·{" "}
                       {voiceStatusLabel(pending)}
                     </Text>
                     <View style={styles.pendingActions}>
-                      {failed ? (
+                      {failed || pending.status === "waiting_connection" ? (
                         <Pressable onPress={() => void flushVoiceOutbox()} hitSlop={8}>
                           <Text style={styles.pendingAction}>{copy.tryAgain}</Text>
                         </Pressable>
@@ -730,16 +792,22 @@ export default function ChatThreadScreen() {
                     />
                   ) : msg.messageType === "audio" && media ? (
                     <Pressable style={styles.audioBtn} onPress={() => void playAudio(media)}>
-                      <Feather name="play" size={16} color={mine ? "#fff" : "#0F172A"} />
-                      <Text style={[styles.msgText, mine && styles.msgTextMine]} selectable={false}>
+                      <View style={styles.waPlay}>
+                        <Feather name="play" size={16} color="#075E54" />
+                      </View>
+                      <View style={styles.waWave}>
+                        <View style={styles.waWaveBar} />
+                        <View style={[styles.waWaveBar, { height: 14 }]} />
+                        <View style={[styles.waWaveBar, { height: 10 }]} />
+                        <View style={[styles.waWaveBar, { height: 16 }]} />
+                        <View style={[styles.waWaveBar, { height: 8 }]} />
+                      </View>
+                      <Text style={styles.msgText} selectable={false}>
                         {copy.voice}
                       </Text>
                     </Pressable>
                   ) : (
-                    <Text
-                      style={[styles.msgText, mine && styles.msgTextMine]}
-                      selectable={false}
-                    >
+                    <Text style={styles.msgText} selectable={false}>
                       {msg.content || ""}
                     </Text>
                   )}
@@ -748,7 +816,7 @@ export default function ChatThreadScreen() {
                       {translations[msg.id]}
                     </Text>
                   ) : null}
-                  <Text style={[styles.msgTime, mine && styles.msgTimeMine]} selectable={false}>
+                  <Text style={styles.msgTime} selectable={false}>
                     {formatBubbleClock(msg.createdAt) || formatMessageTime(msg.createdAt)}
                     {status ? ` · ${status}` : ""}
                   </Text>
@@ -759,7 +827,30 @@ export default function ChatThreadScreen() {
         />
       )}
 
-      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+      {replyTo ? (
+        <View style={styles.replyBar}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.replyLabel}>Replying to</Text>
+            <Text style={styles.replyPreview} numberOfLines={1}>
+              {replyTo.messageType === "text"
+                ? replyTo.content
+                : replyTo.messageType === "audio"
+                  ? copy.voice
+                  : replyTo.messageType}
+            </Text>
+          </View>
+          <Pressable onPress={() => setReplyTo(null)} hitSlop={8}>
+            <Feather name="x" size={18} color="#54656F" />
+          </Pressable>
+        </View>
+      ) : null}
+
+      <View
+        style={[
+          styles.composer,
+          { paddingBottom: Math.max(insets.bottom, Platform.OS === "android" ? 8 : 10) },
+        ]}
+      >
         <Pressable
           style={styles.plus}
           onPress={onPlus}
@@ -767,7 +858,7 @@ export default function ChatThreadScreen() {
           testID="chat-attach"
           accessibilityLabel={copy.attach}
         >
-          <Feather name="plus" size={22} color={GREEN} />
+          <Feather name="plus" size={22} color="#54656F" />
         </Pressable>
         <TextInput
           style={styles.input}
@@ -780,7 +871,7 @@ export default function ChatThreadScreen() {
                 ? copy.uploading
                 : copy.typeMessage
           }
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor="#8696A0"
           multiline
           maxLength={4000}
           editable={!recording}
@@ -813,16 +904,14 @@ export default function ChatThreadScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F1F5F9" },
+  root: { flex: 1, backgroundColor: WA_BG },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 12,
+    gap: 6,
+    paddingHorizontal: 8,
     paddingVertical: 8,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+    backgroundColor: WA_HEADER,
   },
   back: {
     width: 40,
@@ -830,70 +919,96 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
   },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#128C7E",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { color: "#fff", fontWeight: "800", fontSize: 15 },
   headerMeta: { flex: 1, minWidth: 0 },
-  title: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
-  subtitle: { fontSize: 12, color: ORANGE, fontWeight: "600", marginTop: 1 },
+  title: { fontSize: 16, fontWeight: "700", color: "#FFFFFF" },
+  subtitle: { fontSize: 12, color: "rgba(255,255,255,0.85)", fontWeight: "500", marginTop: 1 },
   centered: { alignItems: "center", paddingTop: 48, gap: 12 },
   error: { color: "#B91C1C", fontWeight: "600" },
   retry: {
-    backgroundColor: ORANGE,
+    backgroundColor: WA_TEAL,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
   retryText: { color: "#fff", fontWeight: "800" },
-  empty: { textAlign: "center", color: "#94A3B8", marginVertical: 24 },
+  empty: { textAlign: "center", color: "#667781", marginVertical: 24 },
   typing: {
     alignSelf: "flex-start",
-    color: "#64748B",
+    color: "#667781",
     fontSize: 12,
     fontStyle: "italic",
     marginLeft: 8,
     marginBottom: 4,
   },
-  bubbleWrap: { marginVertical: 4, maxWidth: "82%" },
+  bubbleWrap: { marginVertical: 2, maxWidth: "82%" },
   mine: { alignSelf: "flex-end" },
   theirs: { alignSelf: "flex-start" },
   bubble: {
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 6,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: 4,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+    shadowOffset: { width: 0, height: 1 },
   },
-  bubbleMine: { backgroundColor: GREEN, borderBottomRightRadius: 4 },
+  bubbleMine: { backgroundColor: WA_OUT, borderTopRightRadius: 0 },
   bubbleTheirs: {
-    backgroundColor: "#FFFFFF",
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    backgroundColor: WA_IN,
+    borderTopLeftRadius: 0,
   },
-  voiceBubble: { minWidth: 168 },
-  msgText: { color: "#0F172A", fontSize: 15, lineHeight: 21 },
-  msgTextMine: { color: "#FFFFFF" },
-  deleted: { color: "#94A3B8", fontStyle: "italic", fontSize: 13 },
+  voiceBubble: { minWidth: 180 },
+  msgText: { color: "#111B21", fontSize: 15, lineHeight: 20 },
+  msgTextMine: { color: "#111B21" },
+  deleted: { color: "#667781", fontStyle: "italic", fontSize: 13 },
   translated: {
     marginTop: 6,
     paddingTop: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(148,163,184,0.5)",
+    borderTopColor: "rgba(0,0,0,0.12)",
     fontSize: 13,
-    color: "#334155",
+    color: "#3B4A54",
     fontStyle: "italic",
   },
-  msgImage: { width: 220, height: 220, borderRadius: 12 },
-  msgVideo: { width: 220, height: 160, borderRadius: 12, backgroundColor: "#0F172A" },
-  audioBtn: { flexDirection: "row", alignItems: "center", gap: 8 },
+  msgImage: { width: 220, height: 220, borderRadius: 6 },
+  msgVideo: { width: 220, height: 160, borderRadius: 6, backgroundColor: "#0F172A" },
+  audioBtn: { flexDirection: "row", alignItems: "center", gap: 8, minWidth: 160 },
+  waPlay: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#D1D7DB",
+  },
+  waWave: { flexDirection: "row", alignItems: "flex-end", gap: 2, height: 18 },
+  waWaveBar: {
+    width: 3,
+    height: 12,
+    borderRadius: 1,
+    backgroundColor: "#8696A0",
+  },
   msgTime: {
     alignSelf: "flex-end",
-    fontSize: 10,
-    color: "#94A3B8",
-    marginTop: 4,
+    fontSize: 11,
+    color: "#667781",
+    marginTop: 2,
   },
-  msgTimeMine: { color: "rgba(255,255,255,0.85)" },
+  msgTimeMine: { color: "#667781" },
   pendingActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -901,20 +1016,30 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   pendingAction: {
-    color: "rgba(255,255,255,0.95)",
+    color: WA_TEAL,
     fontSize: 11,
     fontWeight: "700",
     textDecorationLine: "underline",
   },
+  replyBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: "#F0F2F5",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#D1D7DB",
+  },
+  replyLabel: { fontSize: 12, fontWeight: "700", color: WA_TEAL },
+  replyPreview: { fontSize: 13, color: "#54656F", marginTop: 2 },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    backgroundColor: "#FFFFFF",
-    borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
+    gap: 6,
+    paddingHorizontal: 6,
+    paddingTop: 6,
+    backgroundColor: "#F0F2F5",
   },
   plus: {
     width: 40,
@@ -922,31 +1047,28 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: MINT,
     marginBottom: 2,
   },
   input: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 42,
     maxHeight: 120,
     borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#FFFFFF",
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: "#0F172A",
+    color: "#111B21",
     fontSize: 15,
   },
   send: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: ORANGE,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: WA_TEAL,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 2,
   },
-  sendDisabled: { backgroundColor: "#FDBA74" },
+  sendDisabled: { backgroundColor: "#86C5BC" },
   sendRecording: { backgroundColor: "#EF4444" },
 });

@@ -55,7 +55,8 @@ test("chat supports voice/video/reply and support forbids voice", () => {
   const support = read("app/support/[id].tsx");
   const supportApi = read("lib/supportApi.ts");
   assert.match(chat, /Audio\.Recording|toggleRecording|messageType:\s*"audio"/);
-  assert.match(chat, /messageType:\s*"video"|onPickVideo/);
+  assert.match(chat, /messageType:\s*"video"|onPickVideo|onPickGallery/);
+  assert.match(chat, /mediaTypes:\s*\[["']images["'],\s*["']videos["']\]|videos/);
   assert.match(chat, /replyToMessageId|Replying to/);
   assert.match(support, /mic-off|no voice/i);
   assert.match(supportApi, /Voice messages are not supported/);

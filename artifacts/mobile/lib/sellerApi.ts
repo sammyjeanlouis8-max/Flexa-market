@@ -3,6 +3,7 @@
  */
 import { getApiBase } from "./api";
 import type { Listing } from "./api";
+import { hasUsableListingImage } from "./listingImages";
 
 export type Category = {
   id: number;
@@ -110,8 +111,8 @@ export async function createListing(
   input: CreateListingInput,
   opts: AuthOpts,
 ): Promise<Listing> {
-  if (!input.images?.length) {
-    throw new Error("At least one product image is required");
+  if (!hasUsableListingImage(input.images)) {
+    throw new Error("At least one valid product image is required");
   }
   const res = await authedFetch("/listings", {
     ...opts,
@@ -128,8 +129,8 @@ export async function updateListing(
   input: Partial<CreateListingInput>,
   opts: AuthOpts,
 ): Promise<Listing> {
-  if (input.images && input.images.length === 0) {
-    throw new Error("At least one product image is required");
+  if (input.images !== undefined && !hasUsableListingImage(input.images)) {
+    throw new Error("A listing must keep at least one product photo");
   }
   const res = await authedFetch(`/listings/${id}`, {
     ...opts,
@@ -174,6 +175,8 @@ export function validateListingDraft(input: Partial<CreateListingInput>): string
   if (!input.categoryId) return "Select a category";
   if (!input.condition) return "Select condition";
   if (!input.location?.trim()) return "Location is required";
-  if (!input.images?.length) return "Add at least one product image";
+  if (!hasUsableListingImage(input.images)) {
+    return "Add at least one successfully uploaded product image (placeholders do not count)";
+  }
   return null;
 }

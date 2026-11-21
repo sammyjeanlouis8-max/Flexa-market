@@ -23,6 +23,10 @@ import {
   isFavorite,
   removeFavorite,
 } from "@/lib/favoritesApi";
+import {
+  cleanListingImages,
+  hasUsableListingImage,
+} from "@/lib/listingImages";
 
 const WIDTH = Dimensions.get("window").width;
 
@@ -40,6 +44,9 @@ export default function ListingDetailScreen() {
   const [favorited, setFavorited] = useState(false);
   const [favBusy, setFavBusy] = useState(false);
   const [msgBusy, setMsgBusy] = useState(false);
+  const [failedImageIndexes, setFailedImageIndexes] = useState<Set<number>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +76,11 @@ export default function ListingDetailScreen() {
     };
   }, [id, token]);
 
-  const images = listing?.images?.length ? listing.images : [];
+  const images = listing ? cleanListingImages(listing.images) : [];
+  const imagesUnavailable =
+    !!listing &&
+    (!hasUsableListingImage(listing.images) ||
+      (images.length > 0 && failedImageIndexes.size >= images.length));
   const price = Number(listing?.price || 0);
   const currency =
     listing?.currency === "HTG"
@@ -209,6 +220,28 @@ export default function ListingDetailScreen() {
             <Text style={styles.retryText}>Back to home</Text>
           </Pressable>
         </View>
+      ) : imagesUnavailable ? (
+        <View style={styles.centered}>
+          <Feather name="image" size={48} color="#94A3B8" />
+          <Text style={styles.unavailableTitle}>Product unavailable</Text>
+          <Text style={styles.unavailableBody}>
+            {isOwnListing
+              ? "This listing is hidden from buyers until you add at least one working product photo."
+              : "This product is temporarily unavailable. The seller can restore it by fixing the product photos."}
+          </Text>
+          {isOwnListing ? (
+            <Pressable
+              style={styles.retry}
+              onPress={() => router.push("/my-listings")}
+            >
+              <Text style={styles.retryText}>Fix listing</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={styles.retry} onPress={() => router.replace("/")}>
+              <Text style={styles.retryText}>Back to home</Text>
+            </Pressable>
+          )}
+        </View>
       ) : (
         <>
           <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
@@ -221,20 +254,21 @@ export default function ListingDetailScreen() {
                 setImageIndex(idx);
               }}
             >
-              {(images.length ? images : [null]).map((uri, i) => (
+              {images.map((uri, i) => (
                 <View key={i} style={styles.hero}>
-                  {uri ? (
-                    <Image
-                      source={{ uri }}
-                      style={styles.heroImage}
-                      contentFit="cover"
-                      transition={200}
-                    />
-                  ) : (
-                    <View style={[styles.heroImage, styles.heroPlaceholder]}>
-                      <Feather name="image" size={40} color="#94A3B8" />
-                    </View>
-                  )}
+                  <Image
+                    source={{ uri }}
+                    style={styles.heroImage}
+                    contentFit="cover"
+                    transition={200}
+                    onError={() => {
+                      setFailedImageIndexes((prev) => {
+                        const next = new Set(prev);
+                        next.add(i);
+                        return next;
+                      });
+                    }}
+                  />
                 </View>
               ))}
             </ScrollView>
@@ -456,6 +490,20 @@ const styles = StyleSheet.create({
   cartAltText: { color: "#64748B", fontWeight: "700", fontSize: 12 },
   centered: { alignItems: "center", padding: 32, gap: 12 },
   error: { color: "#64748B", textAlign: "center" },
+  unavailableTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0F172A",
+    textAlign: "center",
+    marginTop: 8,
+  },
+  unavailableBody: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#64748B",
+    textAlign: "center",
+    marginBottom: 8,
+  },
   retry: {
     backgroundColor: "#F97316",
     borderRadius: 12,

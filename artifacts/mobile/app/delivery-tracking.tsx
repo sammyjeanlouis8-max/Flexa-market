@@ -330,7 +330,9 @@ function DriverCard({ driver, isMoto }: { driver: Driver; isMoto: boolean }) {
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
 export default function DeliveryTrackingScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id?: string; orderId?: string }>();
+  const id = (Array.isArray(params.id) ? params.id[0] : params.id)
+    || (Array.isArray(params.orderId) ? params.orderId[0] : params.orderId);
   const { token, user } = useAuth();
   const router = useRouter();
 
@@ -350,21 +352,60 @@ export default function DeliveryTrackingScreen() {
       };
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
+      // Prefer Flexa driver delivery tracking; fall back to order carrier tracking.
       const r = await fetch(`${getBaseUrl()}/delivery/tracking/${id}`, { headers });
-      if (!r.ok) {
-        setError("Pa ka jwenn livrezon sa.");
+      if (r.ok) {
+        const data = await r.json();
+        setDelivery(data.delivery);
+        setDriver(data.driver ?? null);
+        setError("");
         return;
       }
-      const data = await r.json();
-      setDelivery(data.delivery);
-      setDriver(data.driver ?? null);
-      setError("");
+
+      const orderRes = await fetch(`${getBaseUrl()}/orders/${id}/tracking`, { headers });
+      if (orderRes.ok) {
+        const data = await orderRes.json();
+        // Synthesize a minimal delivery row so the screen can render completed orders
+        // that no longer have an active Flexa driver assignment.
+        setDelivery({
+          id: Number(id),
+          trackingNumber: data.shipment?.trackingNumber ?? data.trackingNumber ?? null,
+          status: data.orderStatus === "completed" || data.orderStatus === "delivered"
+            ? "delivered"
+            : (data.orderStatus || data.shipment?.status || "waiting"),
+          deliveryCity: data.shipment?.city ?? null,
+          pickupCity: null,
+          deliveryAddress: data.shipment?.address ?? null,
+          country: data.shipment?.country || "HT",
+          verificationCode: null,
+          totalAmount: null,
+          currency: "USD",
+          feeUsd: null,
+          createdAt: data.shipment?.createdAt || new Date().toISOString(),
+          acceptedAt: null,
+          pickedUpAt: null,
+          deliveredAt: data.orderStatus === "completed" ? new Date().toISOString() : null,
+          arrivedAt: null,
+          buyerId: user?.id ?? 0,
+          sellerId: 0,
+          driverUserId: null,
+          holdAmountUsd: null,
+          returnCode: null,
+          returnFeeUsd: null,
+          buyerAbsentAt: null,
+        });
+        setDriver(null);
+        setError("");
+        return;
+      }
+
+      setError("Pa ka jwenn livrezon sa.");
     } catch {
       if (!silent) setError("Connection error. Please try again.");
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [id, token]);
+  }, [id, token, user?.id]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

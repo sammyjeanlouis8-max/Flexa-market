@@ -1,0 +1,1082 @@
+{
+  "generatedAt": "2026-11-21T09:54:51.053729Z",
+  "expectedCount": 88,
+  "actualRouteModuleCount": 55,
+  "note": "Do not invent routes to reach 84. Expected list enumerates product surfaces from parity brief; actual counts Expo Router modules.",
+  "releaseRestrictions": {
+    "wallet": "BLOCKED",
+    "cardFm": "BLOCKED",
+    "esim": "BLOCKED/DEFERRED",
+    "digitalPurchasesAndroid": "BLOCKED until Play Billing",
+    "boostPaid": "BLOCKED"
+  },
+  "expectedScreens": [
+    {
+      "group": "Navigation & account",
+      "name": "Home",
+      "intended": "Native",
+      "webReference": "/",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Menu drawer",
+      "intended": "Native",
+      "webReference": "/",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Bottom navigation",
+      "intended": "Native",
+      "webReference": "tabs",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Sign In",
+      "intended": "Native",
+      "webReference": "/auth/login",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Sign Up",
+      "intended": "Native",
+      "webReference": "/auth/register",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Forgot Password",
+      "intended": "Native",
+      "webReference": "/auth/forgot-password",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Profile / Account hub",
+      "intended": "Native",
+      "webReference": "/settings",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Settings",
+      "intended": "Native",
+      "webReference": "/settings",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Addresses",
+      "intended": "Native",
+      "webReference": "/settings/addresses",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Notifications",
+      "intended": "Native",
+      "webReference": "/settings/notifications",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Edit profile",
+      "intended": "Native",
+      "webReference": "/profile/edit",
+      "notes": ""
+    },
+    {
+      "group": "Navigation & account",
+      "name": "Language picker",
+      "intended": "Native",
+      "webReference": null,
+      "notes": ""
+    },
+    {
+      "group": "Shopping",
+      "name": "Categories",
+      "intended": "Native",
+      "webReference": "/categories/:slug",
+      "notes": ""
+    },
+    {
+      "group": "Shopping",
+      "name": "Search",
+      "intended": "Native",
+      "webReference": "/search",
+      "notes": ""
+    },
+    {
+      "group": "Shopping",
+      "name": "Filters",
+      "intended": "Native",
+      "webReference": "/search",
+      "notes": ""
+    },
+    {
+      "group": "Shopping",
+      "name": "Product lists / Home grid",
+      "intended": "Native",
+      "webReference": "/",
+      "notes": ""
+    },
+    {
+      "group": "Shopping",
+      "name": "Product details",
+      "intended": "Native",
+      "webReference": "/listings/:id",
+      "notes": ""
+    },
+    {
+      "group": "Shopping",
+      "name": "Image gallery",
+      "intended": "Native",
+      "webReference": "/listings/:id",
+      "notes": ""
+    },
+    {
+      "group": "Shopping",
+      "name": "Seller storefront",
+      "intended": "Native",
+      "webReference": "/profile/:id",
+      "notes": ""
+    },
+    {
+      "group": "Shopping",
+      "name": "Favorites",
+      "intended": "Native",
+      "webReference": "/saved",
+      "notes": ""
+    },
+    {
+      "group": "Shopping",
+      "name": "Cart",
+      "intended": "Native",
+      "webReference": "/cart",
+      "notes": ""
+    },
+    {
+      "group": "Checkout",
+      "name": "Checkout Address",
+      "intended": "Native",
+      "webReference": "checkout",
+      "notes": ""
+    },
+    {
+      "group": "Checkout",
+      "name": "Checkout Shipping",
+      "intended": "Native",
+      "webReference": "checkout",
+      "notes": ""
+    },
+    {
+      "group": "Checkout",
+      "name": "Checkout Payment",
+      "intended": "Native",
+      "webReference": "checkout",
+      "notes": ""
+    },
+    {
+      "group": "Checkout",
+      "name": "Order Confirmation",
+      "intended": "Native",
+      "webReference": "/checkout/success",
+      "notes": ""
+    },
+    {
+      "group": "Checkout",
+      "name": "Stripe hosted checkout",
+      "intended": "Native",
+      "webReference": "system browser",
+      "notes": ""
+    },
+    {
+      "group": "Orders",
+      "name": "My Orders",
+      "intended": "Native",
+      "webReference": "/orders",
+      "notes": ""
+    },
+    {
+      "group": "Orders",
+      "name": "Order Details",
+      "intended": "Native",
+      "webReference": "/orders/:id",
+      "notes": ""
+    },
+    {
+      "group": "Orders",
+      "name": "Delivery tracking",
+      "intended": "Native",
+      "webReference": "/delivery/tracking/:id",
+      "notes": ""
+    },
+    {
+      "group": "Orders",
+      "name": "Delivery confirmation",
+      "intended": "Native",
+      "webReference": "/orders/:id",
+      "notes": ""
+    },
+    {
+      "group": "Orders",
+      "name": "Delivery proof",
+      "intended": "Native",
+      "webReference": "/orders/:id",
+      "notes": ""
+    },
+    {
+      "group": "Selling",
+      "name": "Seller Center / Sales",
+      "intended": "Native",
+      "webReference": "/sales",
+      "notes": ""
+    },
+    {
+      "group": "Selling",
+      "name": "Add Product / Sell",
+      "intended": "Native",
+      "webReference": "/sell",
+      "notes": ""
+    },
+    {
+      "group": "Selling",
+      "name": "Edit Product",
+      "intended": "Native",
+      "webReference": "/sell",
+      "notes": ""
+    },
+    {
+      "group": "Selling",
+      "name": "Image picker",
+      "intended": "Native",
+      "webReference": "/sell",
+      "notes": ""
+    },
+    {
+      "group": "Selling",
+      "name": "Drafts",
+      "intended": "Native",
+      "webReference": "/sell",
+      "notes": ""
+    },
+    {
+      "group": "Selling",
+      "name": "My listings",
+      "intended": "Native",
+      "webReference": "profile listings",
+      "notes": ""
+    },
+    {
+      "group": "Selling",
+      "name": "Seller order management",
+      "intended": "Native",
+      "webReference": "/sales",
+      "notes": ""
+    },
+    {
+      "group": "Selling",
+      "name": "Private offers",
+      "intended": "Native",
+      "webReference": "/offers",
+      "notes": ""
+    },
+    {
+      "group": "Selling",
+      "name": "Boost listing",
+      "intended": "BLOCKED",
+      "webReference": "boost",
+      "notes": "Android digital purchase guard"
+    },
+    {
+      "group": "Selling",
+      "name": "My boosts",
+      "intended": "BLOCKED",
+      "webReference": "my-boosts",
+      "notes": "Android digital purchase guard"
+    },
+    {
+      "group": "Communication",
+      "name": "Inbox",
+      "intended": "Native",
+      "webReference": "/messages",
+      "notes": ""
+    },
+    {
+      "group": "Communication",
+      "name": "Buyer\u2013seller chat",
+      "intended": "Native",
+      "webReference": "/messages/:id",
+      "notes": ""
+    },
+    {
+      "group": "Communication",
+      "name": "Support tickets",
+      "intended": "Native",
+      "webReference": "/support",
+      "notes": ""
+    },
+    {
+      "group": "Communication",
+      "name": "Support conversation",
+      "intended": "Native",
+      "webReference": "/support/:id",
+      "notes": ""
+    },
+    {
+      "group": "Communication",
+      "name": "FlexaBot",
+      "intended": "Native",
+      "webReference": "/chatbot",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Flexa TV feed",
+      "intended": "PLACEHOLDER",
+      "webReference": "/videos",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Video player",
+      "intended": "PLACEHOLDER",
+      "webReference": "/videos",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Creator profile",
+      "intended": "PLACEHOLDER",
+      "webReference": "/videos",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Upload video",
+      "intended": "PLACEHOLDER",
+      "webReference": "/videos",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Promotional videos",
+      "intended": "PLACEHOLDER",
+      "webReference": "/videos",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "My Videos",
+      "intended": "PLACEHOLDER",
+      "webReference": "/videos",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Boost flows (paid)",
+      "intended": "BLOCKED",
+      "webReference": "boost",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Flexa Music home",
+      "intended": "Native",
+      "webReference": "/music",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Music search",
+      "intended": "Native",
+      "webReference": "/music",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Music library",
+      "intended": "Native",
+      "webReference": "/music",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Playlists",
+      "intended": "Native",
+      "webReference": "/music",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Now playing",
+      "intended": "Native",
+      "webReference": "/music",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Music upload",
+      "intended": "Native",
+      "webReference": "/music",
+      "notes": ""
+    },
+    {
+      "group": "Media",
+      "name": "Music sponsored ads",
+      "intended": "Native",
+      "webReference": "/music",
+      "notes": ""
+    },
+    {
+      "group": "Operations",
+      "name": "Driver onboarding / apply",
+      "intended": "PLACEHOLDER",
+      "webReference": null,
+      "notes": ""
+    },
+    {
+      "group": "Operations",
+      "name": "Driver dashboard",
+      "intended": "PLACEHOLDER",
+      "webReference": null,
+      "notes": ""
+    },
+    {
+      "group": "Operations",
+      "name": "Available deliveries",
+      "intended": "PLACEHOLDER",
+      "webReference": null,
+      "notes": ""
+    },
+    {
+      "group": "Operations",
+      "name": "Delivery details (driver)",
+      "intended": "PLACEHOLDER",
+      "webReference": null,
+      "notes": ""
+    },
+    {
+      "group": "Operations",
+      "name": "Accept delivery",
+      "intended": "PLACEHOLDER",
+      "webReference": null,
+      "notes": ""
+    },
+    {
+      "group": "Operations",
+      "name": "Pickup / status updates",
+      "intended": "PLACEHOLDER",
+      "webReference": null,
+      "notes": ""
+    },
+    {
+      "group": "Operations",
+      "name": "Driver delivery confirmation",
+      "intended": "PLACEHOLDER",
+      "webReference": null,
+      "notes": ""
+    },
+    {
+      "group": "Operations",
+      "name": "In-app admin",
+      "intended": "PLACEHOLDER",
+      "webReference": "/admin",
+      "notes": ""
+    },
+    {
+      "group": "Operations",
+      "name": "Moderation workflows",
+      "intended": "PLACEHOLDER",
+      "webReference": "/admin",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "Privacy Policy",
+      "intended": "WebView",
+      "webReference": "/privacy-policy",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "Terms of Service",
+      "intended": "WebView",
+      "webReference": "/terms",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "EULA",
+      "intended": "WebView",
+      "webReference": "/eula",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "About Flexa Market",
+      "intended": "WebView",
+      "webReference": "/about",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "FAQ / Help Center",
+      "intended": "WebView",
+      "webReference": "/help-center",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "Shipping policy",
+      "intended": "WebView",
+      "webReference": "/shipping-policy",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "Returns & refunds",
+      "intended": "WebView",
+      "webReference": "/returns",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "Seller policies",
+      "intended": "WebView",
+      "webReference": "/seller-policies",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "Prohibited items",
+      "intended": "WebView",
+      "webReference": "/prohibited-items",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "Community guidelines",
+      "intended": "WebView",
+      "webReference": "/community-guidelines",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "How to buy",
+      "intended": "WebView",
+      "webReference": "/guides/how-to-buy",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "How to sell",
+      "intended": "WebView",
+      "webReference": "/guides/how-to-sell",
+      "notes": ""
+    },
+    {
+      "group": "Read-only WebView",
+      "name": "Become a driver",
+      "intended": "WebView",
+      "webReference": "/guides/become-a-driver",
+      "notes": ""
+    },
+    {
+      "group": "Release-restricted",
+      "name": "Wallet",
+      "intended": "BLOCKED",
+      "webReference": "/wallet",
+      "notes": "Preserve release restrictions"
+    },
+    {
+      "group": "Release-restricted",
+      "name": "Card FM",
+      "intended": "BLOCKED",
+      "webReference": "/card",
+      "notes": "Preserve release restrictions"
+    },
+    {
+      "group": "Release-restricted",
+      "name": "Transfers",
+      "intended": "BLOCKED",
+      "webReference": "/wallet",
+      "notes": "Preserve release restrictions"
+    },
+    {
+      "group": "Release-restricted",
+      "name": "eSIM catalog",
+      "intended": "BLOCKED",
+      "webReference": null,
+      "notes": "Preserve release restrictions"
+    },
+    {
+      "group": "Release-restricted",
+      "name": "Loans",
+      "intended": "BLOCKED",
+      "webReference": "/loans",
+      "notes": "Preserve release restrictions"
+    },
+    {
+      "group": "Release-restricted",
+      "name": "Subscriptions (paid digital)",
+      "intended": "BLOCKED",
+      "webReference": "/subscription",
+      "notes": "Preserve release restrictions"
+    }
+  ],
+  "actualRoutes": [
+    {
+      "file": "app/(tabs)/inbox.tsx",
+      "nativeRoute": "/inbox",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/messages",
+      "notes": null
+    },
+    {
+      "file": "app/(tabs)/index.tsx",
+      "nativeRoute": "/",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/",
+      "notes": "2-col grid; green header; menu; category strip"
+    },
+    {
+      "file": "app/(tabs)/music.tsx",
+      "nativeRoute": "/music",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/music",
+      "notes": null
+    },
+    {
+      "file": "app/(tabs)/profile.tsx",
+      "nativeRoute": "/profile",
+      "currentImpl": "Real UI hub",
+      "target": "Native",
+      "webRoute": "/settings",
+      "notes": "Not public shop; use /seller/[id]"
+    },
+    {
+      "file": "app/(tabs)/search.tsx",
+      "nativeRoute": "/search",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/search",
+      "notes": "Supports ?category= slug"
+    },
+    {
+      "file": "app/(tabs)/sell.tsx",
+      "nativeRoute": "/sell",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/sell",
+      "notes": null
+    },
+    {
+      "file": "app/addresses.tsx",
+      "nativeRoute": "/addresses",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/settings/addresses",
+      "notes": null
+    },
+    {
+      "file": "app/admin.tsx",
+      "nativeRoute": "/admin",
+      "currentImpl": "NativePlaceholder",
+      "target": "PLACEHOLDER",
+      "webRoute": "/admin",
+      "notes": null
+    },
+    {
+      "file": "app/auth/forgot-password.tsx",
+      "nativeRoute": "/auth/forgot-password",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/auth/forgot-password",
+      "notes": "Moved off WebView per architecture"
+    },
+    {
+      "file": "app/auth/login.tsx",
+      "nativeRoute": "/auth/login",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/auth/login",
+      "notes": null
+    },
+    {
+      "file": "app/auth/register.tsx",
+      "nativeRoute": "/auth/register",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/auth/register",
+      "notes": null
+    },
+    {
+      "file": "app/batch2-preview/[slug].tsx",
+      "nativeRoute": "/batch2-preview/[slug]",
+      "currentImpl": "Present in app tree",
+      "target": "Native",
+      "webRoute": null,
+      "notes": "Not listed in architecture map routes array"
+    },
+    {
+      "file": "app/batch3-preview/[slug].tsx",
+      "nativeRoute": "/batch3-preview/[slug]",
+      "currentImpl": "Present in app tree",
+      "target": "Native",
+      "webRoute": null,
+      "notes": "Not listed in architecture map routes array"
+    },
+    {
+      "file": "app/boost.tsx",
+      "nativeRoute": "/boost",
+      "currentImpl": "NativePlaceholder",
+      "target": "PLACEHOLDER+BLOCKED",
+      "webRoute": null,
+      "notes": null
+    },
+    {
+      "file": "app/cart.tsx",
+      "nativeRoute": "/cart",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/cart",
+      "notes": null
+    },
+    {
+      "file": "app/categories.tsx",
+      "nativeRoute": "/categories",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/categories/:slug",
+      "notes": "ADDED for batch 1"
+    },
+    {
+      "file": "app/chat/[id].tsx",
+      "nativeRoute": "/chat/[id]",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/messages/:id",
+      "notes": null
+    },
+    {
+      "file": "app/chatbot.tsx",
+      "nativeRoute": "/chatbot",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/chatbot",
+      "notes": null
+    },
+    {
+      "file": "app/checkout-steps-preview.tsx",
+      "nativeRoute": "/checkout-steps-preview",
+      "currentImpl": "Present in app tree",
+      "target": "Native",
+      "webRoute": null,
+      "notes": "Not listed in architecture map routes array"
+    },
+    {
+      "file": "app/checkout-success.tsx",
+      "nativeRoute": "/checkout-success",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/checkout/success",
+      "notes": null
+    },
+    {
+      "file": "app/checkout.tsx",
+      "nativeRoute": "/checkout",
+      "currentImpl": "Real UI multi-step",
+      "target": "Native",
+      "webRoute": "cart checkout",
+      "notes": "address \u2192 shipping \u2192 payment \u2192 review"
+    },
+    {
+      "file": "app/delivery-tracking.tsx",
+      "nativeRoute": "/delivery-tracking",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/delivery/tracking/:id",
+      "notes": null
+    },
+    {
+      "file": "app/driver-apply.tsx",
+      "nativeRoute": "/driver-apply",
+      "currentImpl": "NativePlaceholder",
+      "target": "PLACEHOLDER",
+      "webRoute": null,
+      "notes": "Haiti driver tools \u2014 native target"
+    },
+    {
+      "file": "app/driver-dashboard.tsx",
+      "nativeRoute": "/driver-dashboard",
+      "currentImpl": "NativePlaceholder",
+      "target": "PLACEHOLDER",
+      "webRoute": null,
+      "notes": null
+    },
+    {
+      "file": "app/edit-profile.tsx",
+      "nativeRoute": "/edit-profile",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/profile/edit",
+      "notes": null
+    },
+    {
+      "file": "app/embed/[slug].tsx",
+      "nativeRoute": "/embed/[slug]",
+      "currentImpl": "SafeWebView",
+      "target": "WebView",
+      "webRoute": "(allowlist)",
+      "notes": "Legal/FAQ/guides only"
+    },
+    {
+      "file": "app/esim.tsx",
+      "nativeRoute": "/esim",
+      "currentImpl": "Deferred UI",
+      "target": "BLOCKED",
+      "webRoute": null,
+      "notes": null
+    },
+    {
+      "file": "app/favorites.tsx",
+      "nativeRoute": "/favorites",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/saved",
+      "notes": null
+    },
+    {
+      "file": "app/kyc.tsx",
+      "nativeRoute": "/kyc",
+      "currentImpl": "NativePlaceholder",
+      "target": "PLACEHOLDER",
+      "webRoute": null,
+      "notes": null
+    },
+    {
+      "file": "app/language-picker.tsx",
+      "nativeRoute": "/language-picker",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": null,
+      "notes": null
+    },
+    {
+      "file": "app/listing/[id].tsx",
+      "nativeRoute": "/listing/[id]",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/listings/:id",
+      "notes": null
+    },
+    {
+      "file": "app/loans.tsx",
+      "nativeRoute": "/loans",
+      "currentImpl": "Redirect \u2192 /",
+      "target": "PLACEHOLDER",
+      "webRoute": "/loans",
+      "notes": null
+    },
+    {
+      "file": "app/music/library.tsx",
+      "nativeRoute": "/music/library",
+      "currentImpl": "Present in app tree",
+      "target": "Native",
+      "webRoute": null,
+      "notes": "Not listed in architecture map routes array"
+    },
+    {
+      "file": "app/music/now-playing.tsx",
+      "nativeRoute": "/music/now-playing",
+      "currentImpl": "Present in app tree",
+      "target": "Native",
+      "webRoute": null,
+      "notes": "Not listed in architecture map routes array"
+    },
+    {
+      "file": "app/music/playlist/[id].tsx",
+      "nativeRoute": "/music/playlist/[id]",
+      "currentImpl": "Present in app tree",
+      "target": "Native",
+      "webRoute": null,
+      "notes": "Not listed in architecture map routes array"
+    },
+    {
+      "file": "app/music/playlists.tsx",
+      "nativeRoute": "/music/playlists",
+      "currentImpl": "Present in app tree",
+      "target": "Native",
+      "webRoute": null,
+      "notes": "Not listed in architecture map routes array"
+    },
+    {
+      "file": "app/music/search.tsx",
+      "nativeRoute": "/music/search",
+      "currentImpl": "Present in app tree",
+      "target": "Native",
+      "webRoute": null,
+      "notes": "Not listed in architecture map routes array"
+    },
+    {
+      "file": "app/music/sponsored-ads.tsx",
+      "nativeRoute": "/music/sponsored-ads",
+      "currentImpl": "Present in app tree",
+      "target": "Native",
+      "webRoute": null,
+      "notes": "Not listed in architecture map routes array"
+    },
+    {
+      "file": "app/music/upload.tsx",
+      "nativeRoute": "/music/upload",
+      "currentImpl": "Present in app tree",
+      "target": "Native",
+      "webRoute": null,
+      "notes": "Not listed in architecture map routes array"
+    },
+    {
+      "file": "app/my-boosts.tsx",
+      "nativeRoute": "/my-boosts",
+      "currentImpl": "NativePlaceholder",
+      "target": "PLACEHOLDER",
+      "webRoute": null,
+      "notes": null
+    },
+    {
+      "file": "app/my-listings.tsx",
+      "nativeRoute": "/my-listings",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/profile/{me}",
+      "notes": null
+    },
+    {
+      "file": "app/notifications.tsx",
+      "nativeRoute": "/notifications",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": null,
+      "notes": null
+    },
+    {
+      "file": "app/offers.tsx",
+      "nativeRoute": "/offers",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/offers",
+      "notes": null
+    },
+    {
+      "file": "app/orders/[id].tsx",
+      "nativeRoute": "/orders/[id]",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/orders/:id",
+      "notes": null
+    },
+    {
+      "file": "app/orders.tsx",
+      "nativeRoute": "/orders",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/orders",
+      "notes": null
+    },
+    {
+      "file": "app/sales.tsx",
+      "nativeRoute": "/sales",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/sales",
+      "notes": null
+    },
+    {
+      "file": "app/seller/[id].tsx",
+      "nativeRoute": "/seller/[id]",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/profile/:id",
+      "notes": "ADDED seller storefront"
+    },
+    {
+      "file": "app/settings.tsx",
+      "nativeRoute": "/settings",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/settings",
+      "notes": null
+    },
+    {
+      "file": "app/stripe-checkout.tsx",
+      "nativeRoute": "/stripe-checkout",
+      "currentImpl": "Real UI + system browser",
+      "target": "Native",
+      "webRoute": "buy-now",
+      "notes": null
+    },
+    {
+      "file": "app/subscription.tsx",
+      "nativeRoute": "/subscription",
+      "currentImpl": "NativePlaceholder",
+      "target": "PLACEHOLDER+BLOCKED",
+      "webRoute": null,
+      "notes": null
+    },
+    {
+      "file": "app/support/[id].tsx",
+      "nativeRoute": "/support/[id]",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/support/:id",
+      "notes": null
+    },
+    {
+      "file": "app/support.tsx",
+      "nativeRoute": "/support",
+      "currentImpl": "Real UI",
+      "target": "Native",
+      "webRoute": "/support",
+      "notes": "Tickets stay native"
+    },
+    {
+      "file": "app/videos.tsx",
+      "nativeRoute": "/videos",
+      "currentImpl": "NativePlaceholder",
+      "target": "PLACEHOLDER",
+      "webRoute": "/videos",
+      "notes": "Flexa TV native target \u2014 not yet built"
+    },
+    {
+      "file": "app/wallet.tsx",
+      "nativeRoute": "/wallet",
+      "currentImpl": "Redirect \u2192 profile",
+      "target": "BLOCKED",
+      "webRoute": "/wallet",
+      "notes": "Must not reopen via WebView"
+    },
+    {
+      "file": "app/website.tsx",
+      "nativeRoute": "/website",
+      "currentImpl": "NativePlaceholder",
+      "target": "PLACEHOLDER",
+      "webRoute": null,
+      "notes": "Intentionally no full-site shell"
+    }
+  ],
+  "duplicates": [
+    "checkout.tsx multi-step vs stripe-checkout.tsx single-item",
+    "Account /(tabs)/profile vs public /seller/[id]",
+    "batch2-preview / batch3-preview are capture helpers, not product routes"
+  ],
+  "missingVsExpectedNative": [
+    "Playlists",
+    "Now playing"
+  ]
+}

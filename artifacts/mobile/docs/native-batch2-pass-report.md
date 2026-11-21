@@ -1,5 +1,7 @@
 # Native batch 2 — pass report
 
+> **RETRACTION (2026-11-21):** Several WEB columns in `releases/native-batch2-screens/` were **unsigned Sign In / settings gates**, not the intended screens (notably My Orders + Order details). Corrected authenticated same-state captures and honest PASS/FAIL/BLOCKED live in `docs/native-parity-corrected-report.md` and `releases/parity-corrected-screens/`. Do not treat the original batch-2 side-by-sides as parity proof for auth-gated pages.
+
 **Platform:** Expo React Native (shared Android + iOS codebase)  
 **Evidence build:** Expo web preview @ `http://127.0.0.1:8081` (Hermes transform) + production website `https://flexamarket.com`  
 **Viewport:** 390×844 @2x  

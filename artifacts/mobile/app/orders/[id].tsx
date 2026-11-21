@@ -259,7 +259,11 @@ export default function OrderDetailScreen() {
             </View>
           ) : null}
 
-          {order.fmDelivery ? (
+          {order.fmDelivery &&
+          !(
+            order.fmDelivery.status === "cancelled" &&
+            ["delivered", "completed"].includes(order.orderStatus)
+          ) ? (
             <View style={styles.card}>
               <Text style={styles.section}>Flexa delivery</Text>
               <Text style={styles.line}>
@@ -282,6 +286,22 @@ export default function OrderDetailScreen() {
               >
                 <Text style={styles.secondaryBtnText}>Live tracking</Text>
               </Pressable>
+            </View>
+          ) : null}
+
+          {order.escrowReleased ? (
+            <View style={[styles.card, { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" }]}>
+              <Text style={[styles.section, { color: "#047857" }]}>
+                Funds released to seller
+              </Text>
+              {order.sellerEarnings != null ? (
+                <Text style={styles.line}>
+                  {formatMoney(Number(order.sellerEarnings), order.currency)}
+                  {order.escrowReleasedAt
+                    ? ` · ${formatDate(order.escrowReleasedAt)}`
+                    : ""}
+                </Text>
+              ) : null}
             </View>
           ) : null}
 

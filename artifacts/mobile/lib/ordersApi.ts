@@ -75,6 +75,8 @@ export type OrderDetail = {
   } | null;
   escrowReleased: boolean;
   escrowReleasedAt?: string | null;
+  sellerEarnings?: number | null;
+  commissionAmount?: number | null;
   autoReleaseAt?: string | null;
   deliveryType?: string | null;
   listingCountry: string | null;

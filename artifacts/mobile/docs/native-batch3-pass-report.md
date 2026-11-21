@@ -1,5 +1,7 @@
 # Native batch 3 — pass report
 
+> **RETRACTION (2026-11-21):** Most WEB columns in `releases/native-batch3-screens/` for seller/support screens were **unsigned Sign In / support landing / FlexaBot gate**, not the intended authenticated pages. See `docs/native-parity-corrected-report.md` for corrected authenticated captures and FAIL/BLOCKED status. Forgot-password and Music public captures remain valid references.
+
 **Platform:** Expo React Native (shared Android + iOS codebase)  
 **Evidence build:** Expo web preview @ `http://127.0.0.1:8081` + production website `https://flexamarket.com`  
 **Viewport:** 390×844 @2x  

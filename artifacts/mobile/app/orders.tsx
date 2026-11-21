@@ -83,6 +83,7 @@ export default function OrdersScreen() {
   const renderItem = ({ item }: { item: PurchaseOrder }) => {
     const img = item.listingImages?.[0] ?? null;
     const status = listStatusLabel(item);
+    const delivered = status.label === "Delivered";
     return (
       <Pressable
         style={styles.card}
@@ -96,23 +97,34 @@ export default function OrdersScreen() {
           </View>
         )}
         <View style={styles.meta}>
-          <Text style={styles.title} numberOfLines={2}>
+          <Text style={styles.title} numberOfLines={1}>
             {item.listingTitle}
           </Text>
-          <Text style={styles.sub}>
-            {orderRef(item.id)} · {formatDate(item.createdAt)}
-          </Text>
-          <Text style={styles.price}>
-            {formatMoney(item.amount, item.currency)}
-            {item.sellerName ? ` · ${item.sellerName}` : ""}
-          </Text>
-          <View style={[styles.badge, { backgroundColor: status.bg }]}>
+          <View style={styles.refRow}>
+            <Text style={styles.sub}>{orderRef(item.id)}</Text>
+            <Text style={styles.price}>
+              {formatMoney(item.amount, item.currency)}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.badge,
+              delivered ? styles.badgeOutline : { backgroundColor: status.bg },
+            ]}
+          >
+            {delivered ? (
+              <Feather name="check" size={12} color={status.color} />
+            ) : null}
             <Text style={[styles.badgeText, { color: status.color }]}>
               {status.label}
             </Text>
           </View>
+          {delivered && item.deliveredAt ? (
+            <Text style={styles.deliveredOn}>
+              {formatDate(item.deliveredAt)}
+            </Text>
+          ) : null}
         </View>
-        <Feather name="chevron-right" size={18} color="#94A3B8" />
       </Pressable>
     );
   };
@@ -128,9 +140,11 @@ export default function OrdersScreen() {
         >
           <Feather name="arrow-left" size={22} color="#0F172A" />
         </Pressable>
-        <Text style={styles.topTitle}>My orders</Text>
+        <Text style={styles.topTitle}>Orders</Text>
         <View style={{ width: 40 }} />
       </View>
+
+      <Text style={styles.pageHeading}>My Orders</Text>
 
       <View style={styles.filters}>
         {ORDER_FILTERS.map((key) => {
@@ -223,6 +237,14 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   topTitle: { fontSize: 17, fontWeight: "800", color: "#0F172A" },
+  pageHeading: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#0F172A",
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    letterSpacing: -0.4,
+  },
   filters: {
     flexDirection: "row",
     gap: 8,
@@ -232,12 +254,12 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: 10,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
-  chipOn: { backgroundColor: "#0F172A", borderColor: "#0F172A" },
+  chipOn: { backgroundColor: "#0B3D2E", borderColor: "#0B3D2E" },
   chipText: { fontSize: 13, fontWeight: "700", color: "#475569" },
   chipTextOn: { color: "#FFFFFF" },
   card: {
@@ -252,18 +274,33 @@ const styles = StyleSheet.create({
   },
   thumb: { width: 72, height: 72, borderRadius: 12, backgroundColor: "#E2E8F0" },
   thumbEmpty: { alignItems: "center", justifyContent: "center" },
-  meta: { flex: 1, gap: 3 },
+  meta: { flex: 1, gap: 4 },
   title: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
-  sub: { fontSize: 12, color: "#64748B" },
+  refRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  sub: { fontSize: 12, color: "#64748B", fontWeight: "600" },
   price: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
   badge: {
     alignSelf: "flex-start",
-    marginTop: 4,
+    marginTop: 2,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  badgeOutline: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#047857",
   },
   badgeText: { fontSize: 11, fontWeight: "800" },
+  deliveredOn: { fontSize: 11, color: "#64748B" },
   empty: {
     flex: 1,
     alignItems: "center",

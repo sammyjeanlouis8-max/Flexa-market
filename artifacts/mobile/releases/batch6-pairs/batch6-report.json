@@ -1,0 +1,271 @@
+{
+  "batch": 6,
+  "branch": "cursor/android-parity-batch5-21-40-2cb2",
+  "account": "Fanfan superadmin",
+  "locale": "en",
+  "viewport": "390x844@2x",
+  "selection": "inv 29-30 + 41-58",
+  "pages": [
+    {
+      "id": "01_settings",
+      "inv": 29,
+      "name": "Settings",
+      "webPath": "/settings",
+      "appPath": "/settings",
+      "kind": "native",
+      "result": "PASS",
+      "action": "Profile + shortcuts + Help; scroll",
+      "blocker": null,
+      "pair": "01_settings_side_by_side.png",
+      "extras": [
+        "01_settings_scroll_side_by_side.png"
+      ]
+    },
+    {
+      "id": "02_help",
+      "inv": 30,
+      "name": "Help & Support",
+      "webPath": "/settings/help",
+      "appPath": "/settings/help",
+      "kind": "native",
+      "result": "PASS",
+      "action": "Open chat \u2192 /support/1; FAQ; Back",
+      "blocker": null,
+      "pair": "02_help_side_by_side.png",
+      "extras": [
+        "02_help_faq_side_by_side.png"
+      ]
+    },
+    {
+      "id": "03_calculator",
+      "inv": 41,
+      "name": "CalcAI calculator",
+      "webPath": "/calculator",
+      "appPath": null,
+      "kind": "missing",
+      "result": "UNVERIFIED",
+      "action": "Open calculator",
+      "blocker": "No native /calculator",
+      "pair": "03_calculator_side_by_side.png"
+    },
+    {
+      "id": "04_help_center",
+      "inv": 42,
+      "name": "Help Center / FAQ / Contact",
+      "webPath": "/help-center",
+      "appPath": "/settings/help",
+      "kind": "partial",
+      "result": "PASS",
+      "action": "Open FAQ",
+      "blocker": null,
+      "pair": "04_help_center_side_by_side.png",
+      "notes": [
+        "APP maps to /settings/help"
+      ]
+    },
+    {
+      "id": "05_legal",
+      "inv": 43,
+      "name": "Legal (privacy)",
+      "webPath": "/privacy-policy",
+      "appPath": null,
+      "kind": "missing",
+      "result": "UNVERIFIED",
+      "action": "Read privacy",
+      "blocker": "No native legal screens",
+      "pair": "05_legal_side_by_side.png"
+    },
+    {
+      "id": "06_inbox",
+      "inv": 44,
+      "name": "Inbox / Messages",
+      "webPath": "/messages",
+      "appPath": "/inbox",
+      "kind": "native",
+      "result": "PASS",
+      "action": "Open conversation",
+      "blocker": null,
+      "pair": "06_inbox_side_by_side.png"
+    },
+    {
+      "id": "07_chat",
+      "inv": 45,
+      "name": "Chat thread",
+      "webPath": "/messages/74",
+      "appPath": "/chat/74",
+      "kind": "native",
+      "result": "PASS",
+      "action": "View thread",
+      "blocker": null,
+      "pair": "07_chat_side_by_side.png"
+    },
+    {
+      "id": "08_support",
+      "inv": 46,
+      "name": "Support tickets",
+      "webPath": "/support",
+      "appPath": "/support",
+      "kind": "native",
+      "result": "PASS",
+      "action": "Open ticket",
+      "blocker": null,
+      "pair": "08_support_side_by_side.png"
+    },
+    {
+      "id": "09_chatbot",
+      "inv": 47,
+      "name": "FlexaBot",
+      "webPath": "/chatbot",
+      "appPath": "/chatbot",
+      "kind": "native",
+      "result": "PASS",
+      "action": "Bot UI",
+      "blocker": null,
+      "pair": "09_chatbot_side_by_side.png"
+    },
+    {
+      "id": "10_sell",
+      "inv": 48,
+      "name": "Sell",
+      "webPath": "/sell",
+      "appPath": "/sell",
+      "kind": "native",
+      "result": "PASS",
+      "action": "Listing form",
+      "blocker": null,
+      "pair": "10_sell_side_by_side.png"
+    },
+    {
+      "id": "11_my_listings",
+      "inv": 49,
+      "name": "My Listings",
+      "webPath": "/profile/1",
+      "appPath": "/my-listings",
+      "kind": "native",
+      "result": "PASS",
+      "action": "List loads",
+      "blocker": null,
+      "pair": "11_my_listings_side_by_side.png"
+    },
+    {
+      "id": "12_edit_listing",
+      "inv": 50,
+      "name": "Edit listing",
+      "webPath": "/sell?edit=163",
+      "appPath": "/edit-listing/163",
+      "kind": "native",
+      "result": "PASS",
+      "action": "Load own listing #163",
+      "blocker": null,
+      "pair": "12_edit_listing_side_by_side.png"
+    },
+    {
+      "id": "13_image_upload",
+      "inv": 51,
+      "name": "Image upload",
+      "webPath": "/sell",
+      "appPath": null,
+      "kind": "missing",
+      "result": "UNVERIFIED",
+      "action": "Add photos",
+      "blocker": "No dedicated image-upload route",
+      "pair": "13_image_upload_side_by_side.png"
+    },
+    {
+      "id": "14_videos",
+      "inv": 52,
+      "name": "Video upload",
+      "webPath": "/videos",
+      "appPath": "/videos",
+      "kind": "placeholder",
+      "result": "CAPTURED",
+      "action": "Open videos",
+      "blocker": null,
+      "pair": "14_videos_side_by_side.png"
+    },
+    {
+      "id": "15_inventory",
+      "inv": 53,
+      "name": "Inventory / Restock",
+      "webPath": "/my-listings",
+      "appPath": null,
+      "kind": "missing",
+      "result": "UNVERIFIED",
+      "action": "Restock",
+      "blocker": "No native inventory/restock",
+      "pair": "15_inventory_side_by_side.png"
+    },
+    {
+      "id": "16_sales",
+      "inv": 54,
+      "name": "Sales dashboard",
+      "webPath": "/sales",
+      "appPath": "/sales",
+      "kind": "native",
+      "result": "PASS",
+      "action": "View sales",
+      "blocker": null,
+      "pair": "16_sales_side_by_side.png"
+    },
+    {
+      "id": "17_analytics",
+      "inv": 55,
+      "name": "Seller analytics",
+      "webPath": "/settings/analytics",
+      "appPath": null,
+      "kind": "missing",
+      "result": "UNVERIFIED",
+      "action": "Open analytics",
+      "blocker": "No native /settings/analytics",
+      "pair": "17_analytics_side_by_side.png"
+    },
+    {
+      "id": "18_orders",
+      "inv": 56,
+      "name": "Orders",
+      "webPath": "/orders",
+      "appPath": "/orders",
+      "kind": "native",
+      "result": "PASS",
+      "action": "Orders list",
+      "blocker": null,
+      "pair": "18_orders_side_by_side.png"
+    },
+    {
+      "id": "19_payouts",
+      "inv": 57,
+      "name": "Earnings / Payouts",
+      "webPath": "/settings/payments",
+      "appPath": null,
+      "kind": "missing",
+      "result": "UNVERIFIED",
+      "action": "Open payouts",
+      "blocker": "No native payouts; Play digital-goods guard",
+      "pair": "19_payouts_side_by_side.png"
+    },
+    {
+      "id": "20_boost",
+      "inv": 58,
+      "name": "Boost",
+      "webPath": "/boost",
+      "appPath": "/boost",
+      "kind": "placeholder",
+      "result": "CAPTURED",
+      "action": "Open boost",
+      "blocker": null,
+      "pair": "20_boost_side_by_side.png"
+    }
+  ],
+  "summary": {
+    "PASS": 12,
+    "CAPTURED": 2,
+    "UNVERIFIED": 6,
+    "FAIL": 0,
+    "total": 20
+  },
+  "handoff": {
+    "branch": "cursor/android-parity-batch5-21-40-2cb2",
+    "inventoryNext": "59-78",
+    "gallery": "INDEX.html"
+  }
+}

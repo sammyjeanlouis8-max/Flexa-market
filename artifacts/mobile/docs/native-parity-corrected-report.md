@@ -2,6 +2,7 @@
 
 **Captured:** 2026-11-21 (America/New_York)  
 **Account:** superadmin test (`FLEXA_TEST_SUPERADMIN`), user id 1, country Haiti, language EN  
+**Auth method:** Website **UI Sign In** (email/password + EULA). App uses `localStorage`/`AsyncStorage` `flexamarket_token` in a **separate Playwright browser context** (token-only seed is unreliable for some SPA routes; UI login is required for fair WEB captures).  
 **Shared order:** `#FM-000040` / API id `40` (Ventilateur) · Support ticket id `1` · Listing `73`  
 **Viewport:** 390×844 @2x  
 **Evidence platform:** Website `https://flexamarket.com` vs Expo web preview of shared React Native (Android + iOS codebase)  
@@ -84,32 +85,23 @@ Legend: **PASS** = same screen/state verified and no material visual/behavior mi
 | PDP gallery listing 73 | `/listings/73` | `/listing/73` | View product | **FAIL** |
 | Delivery tracking | `/delivery/tracking/40` | `/delivery-tracking` | Open tracking | **FAIL** |
 | My listings | `/sell` (no distinct web URL) | `/my-listings` | Open inventory | **FAIL** |
-| Edit profile | `/profile/edit` | `/edit-profile` | — | **BLOCKED** |
+| Edit profile | `/profile/edit` | `/edit-profile` | Open editor (UI login) | **FAIL** |
 | Checkout address/shipping/payment (web steps) | cart checkout sheet | `/checkout` multi-step | — | **BLOCKED** |
 | Order confirmation (live Stripe) | `/checkout/success` | `/checkout-success` | — | **BLOCKED** |
 | Android device proof | — | — | — | **BLOCKED** |
 | iOS device proof | — | — | — | **BLOCKED** |
 
-\*Orders/detail: **same-state content is verified** (same filter All, same order IDs). Marked FAIL because chrome (top icons / bottom tabs), card density, timeline, and payment-summary layout still differ from the website reference. List UI was tightened in this PR (heading, green filters, outline Delivered badge, ref+price row); cancelled Flexa-delivery card no longer contradicts Delivered status; escrow released banner added.
-
-### Edit profile BLOCKED — steps tried
-
-1. Seeded `localStorage.flexamarket_token` (same token that loads `/orders`).  
-2. Opened `/profile/edit` → redirected to `/auth/login`.  
-3. Tried `/settings/profile`, `/settings/edit` → 404.  
-4. `/settings` still shows “Sign in to access your settings” in Playwright despite token (orders/settings split).  
-5. Native `/edit-profile` loads with seeded token.  
-→ **BLOCKED** for fair WEB|APP pair until website edit-profile accepts the same session.
+\*Orders/detail: **same-state content is verified** (same filter All, same order IDs `#FM-000040` / `#FM-000001`). Marked FAIL because chrome (top icons / bottom tabs), card density, timeline, and payment-summary layout still differ from the website reference. List UI was tightened in this PR (heading, green filters, outline Delivered badge, ref+price row); cancelled Flexa-delivery card no longer contradicts Delivered status; escrow released banner added.
 
 ### Totals (this corrected pass)
 
 | | Count |
 |--|------:|
 | Authenticated same-state pairs attempted | 18 |
-| Content same-state verified (not Sign-In) | 17 |
+| Content same-state verified (not Sign-In) | **18** |
 | Visual/behavior **PASS** (100% match) | **0** |
-| **FAIL** (mismatch vs web reference) | **17** |
-| **BLOCKED** | **1** (+ checkout/confirmation/device rows above) |
+| **FAIL** (mismatch vs web reference) | **18** |
+| **BLOCKED** (checkout steps / live success / devices) | see rows above |
 | Expected inventory rows | 88 |
 | Actual Expo route modules | 55 |
 

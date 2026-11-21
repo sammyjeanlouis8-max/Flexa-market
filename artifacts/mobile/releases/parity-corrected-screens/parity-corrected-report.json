@@ -1,17 +1,18 @@
 {
-  "correctedAt": "2026-11-21T09:57:38.253Z",
-  "account": "superadmin via FLEXA_TEST_SUPERADMIN (id=1, Haiti)",
+  "correctedAt": "2026-11-21T10:08:41.439Z",
+  "account": "superadmin via UI login (FLEXA_TEST_SUPERADMIN)",
   "orderId": "40",
   "supportId": "1",
   "listingId": "73",
   "viewport": "390x844@2x",
+  "authMethod": "website UI Sign In + EULA checkbox; app localStorage flexamarket_token",
   "summary": {
     "PASS": 0,
-    "FAIL": 17,
-    "BLOCKED": 1,
+    "FAIL": 18,
+    "BLOCKED": 0,
     "total": 18,
-    "sameStateContentVerified": 17,
-    "note": "Visual 100% PASS count is 0. Content same-state fixes Sign-In invalid comparisons."
+    "sameStateContentVerified": 18,
+    "note": "Visual 100% PASS=0. Invalid Sign-In WEB comparisons corrected via UI login."
   },
   "screens": [
     {
@@ -19,313 +20,252 @@
       "label": "My Orders (filter=All)",
       "webPath": "/orders",
       "appPath": "/orders",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/orders",
-      "appFinalUrl": "http://127.0.0.1:8081/orders",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/orders"
     },
     {
       "id": "order_detail",
       "label": "Order details #40",
       "webPath": "/orders/40",
       "appPath": "/orders/40",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/orders/40",
-      "appFinalUrl": "http://127.0.0.1:8081/orders/40",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/orders/40"
     },
     {
       "id": "favorites",
       "label": "Favorites / Saved",
       "webPath": "/saved",
       "appPath": "/favorites",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/saved",
-      "appFinalUrl": "http://127.0.0.1:8081/favorites",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/saved"
     },
     {
       "id": "addresses",
       "label": "Addresses",
       "webPath": "/settings/addresses",
       "appPath": "/addresses",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/settings/addresses",
-      "appFinalUrl": "http://127.0.0.1:8081/addresses",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/settings/addresses"
     },
     {
       "id": "inbox",
       "label": "Inbox / Messages",
       "webPath": "/messages",
       "appPath": "/inbox",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/messages",
-      "appFinalUrl": "http://127.0.0.1:8081/inbox",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/messages"
     },
     {
       "id": "notifications",
       "label": "Notifications",
       "webPath": "/settings/notifications",
       "appPath": "/notifications",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/settings/notifications",
-      "appFinalUrl": "http://127.0.0.1:8081/notifications",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/settings/notifications"
     },
     {
       "id": "account_settings",
       "label": "Account / Settings (signed-in)",
       "webPath": "/settings",
       "appPath": "/profile",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB+APP signed-in verified; visual chrome/layout still differs"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/settings",
-      "appFinalUrl": "http://127.0.0.1:8081/profile",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/settings"
     },
     {
       "id": "sell",
       "label": "Sell / create listing",
       "webPath": "/sell",
       "appPath": "/sell",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/sell",
-      "appFinalUrl": "http://127.0.0.1:8081/sell",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/sell"
     },
     {
       "id": "sales",
       "label": "Seller sales",
       "webPath": "/sales",
       "appPath": "/sales",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/sales",
-      "appFinalUrl": "http://127.0.0.1:8081/sales",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/sales"
     },
     {
       "id": "offers",
       "label": "Private offers",
       "webPath": "/offers",
       "appPath": "/offers",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/offers",
-      "appFinalUrl": "http://127.0.0.1:8081/offers",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/offers"
     },
     {
       "id": "support",
       "label": "Support tickets",
       "webPath": "/support",
       "appPath": "/support",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/support",
-      "appFinalUrl": "http://127.0.0.1:8081/support",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/support"
     },
     {
       "id": "support_detail",
       "label": "Support ticket #1",
       "webPath": "/support/1",
       "appPath": "/support/1",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/support/1",
-      "appFinalUrl": "http://127.0.0.1:8081/support/1",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/support/1"
     },
     {
       "id": "edit_profile",
       "label": "Edit profile",
       "webPath": "/profile/edit",
       "appPath": "/edit-profile",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
-      "result": "BLOCKED",
+      "result": "FAIL",
       "reasons": [
-        "WEB still auth-gated after token seed (url=https://flexamarket.com/profile/edit)"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/profile/edit",
-      "appFinalUrl": "http://127.0.0.1:8081/edit-profile"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/profile/edit"
     },
     {
       "id": "chatbot",
       "label": "FlexaBot",
       "webPath": "/chatbot",
       "appPath": "/chatbot",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/chatbot",
-      "appFinalUrl": "http://127.0.0.1:8081/chatbot",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/chatbot"
     },
     {
       "id": "cart_populated",
       "label": "Cart (listing 73 seeded)",
       "webPath": "/cart",
       "appPath": "/cart",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/cart",
-      "appFinalUrl": "http://127.0.0.1:8081/cart",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/cart"
     },
     {
       "id": "pdp_gallery_0",
-      "label": "PDP gallery image 1/N",
+      "label": "PDP gallery listing 73",
       "webPath": "/listings/73",
       "appPath": "/listing/73",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/listings/73",
-      "appFinalUrl": "http://127.0.0.1:8081/listing/73",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/listings/73"
     },
     {
       "id": "tracking",
       "label": "Delivery tracking",
       "webPath": "/delivery/tracking/40",
       "appPath": "/delivery-tracking?orderId=40",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": null,
-      "webFinalUrl": "https://flexamarket.com/delivery/tracking/40",
-      "appFinalUrl": "http://127.0.0.1:8081/delivery-tracking?orderId=40",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/delivery/tracking/40"
     },
     {
       "id": "my_listings",
       "label": "My listings",
       "webPath": "/sell",
       "appPath": "/my-listings",
-      "platformEvidence": "Expo web preview (shared RN) vs flexamarket.com",
-      "androidDevice": "BLOCKED \u2014 emulator ADB offline",
-      "iosDevice": "BLOCKED \u2014 no iOS simulator in this environment",
       "result": "FAIL",
       "reasons": [
-        "Same-state content verified (not Sign-In), but visual/chrome/layout still mismatches website reference \u2014 see native-parity-corrected-report.md"
+        "Same-state WEB verified; visual chrome still differs \u2192 FAIL"
       ],
-      "note": "Web may not have a distinct /my-listings URL; capture signed-in sell hub",
-      "webFinalUrl": "https://flexamarket.com/sell",
-      "appFinalUrl": "http://127.0.0.1:8081/my-listings",
-      "sameStateContent": "verified"
+      "androidDevice": "BLOCKED",
+      "iosDevice": "BLOCKED",
+      "sameStateContent": "verified",
+      "webFinalUrl": "https://flexamarket.com/sell"
     }
-  ],
-  "priorInvalidComparisonsRetracted": [
-    "batch2 04_orders / 05_order_detail \u2014 WEB was Sign In",
-    "batch2 06_tracking \u2014 WEB was Home",
-    "batch2 07\u201310 auth screens \u2014 WEB was Sign In / settings gate",
-    "batch3 02\u201308, 10 \u2014 WEB was Sign In / support landing / FlexaBot gate",
-    "batch1 07\u201309 checkout \u2014 WEB was empty cart",
-    "batch1 10 confirmation \u2014 WEB was invalid payment session"
   ]
 }

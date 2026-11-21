@@ -1,6 +1,9 @@
 /**
  * Corrected parity captures: same account, same screen/state on website + native Expo.
+ * Website: UI Sign In + EULA (token-only localStorage seed is NOT enough for many routes).
+ * App: separate Playwright context + flexamarket_token in localStorage/AsyncStorage.
  * Rejects WEB captures that land on Sign In / auth gates.
+ * Visual 100% PASS is rare — content same-state verification is the first gate.
  */
 import { chromium } from "playwright";
 import { spawnSync } from "node:child_process";

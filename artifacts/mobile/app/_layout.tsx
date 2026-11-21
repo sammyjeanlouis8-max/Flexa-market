@@ -40,6 +40,7 @@ export default function RootLayout() {
                       <Stack.Screen name="auth/login" />
                       <Stack.Screen name="auth/register" />
                       <Stack.Screen name="listing/[id]" />
+                      <Stack.Screen name="webview-listing/[id]" />
                       <Stack.Screen name="checkout" />
                       <Stack.Screen name="checkout-success" />
                       <Stack.Screen name="orders" />
@@ -48,6 +49,7 @@ export default function RootLayout() {
                       <Stack.Screen name="wallet" />
                       <Stack.Screen name="chat/[id]" />
                       <Stack.Screen name="my-listings" />
+                      <Stack.Screen name="edit-listing/[id]" />
                       <Stack.Screen name="sales" />
                       <Stack.Screen name="offers" />
                       <Stack.Screen name="support" />

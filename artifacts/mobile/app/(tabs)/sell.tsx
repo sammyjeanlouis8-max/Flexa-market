@@ -184,6 +184,36 @@ export default function SellTab() {
     void uploadOne(item.key, item.uri, "image/jpeg", "product.jpg");
   };
 
+  const onSaveDraft = async () => {
+    // Drafts may be incomplete — images not required until publish.
+    if (!title.trim() && !description.trim() && doneUrls.length === 0) {
+      Alert.alert("Draft", "Add a title, description, or photo before saving a draft.");
+      return;
+    }
+    try {
+      const key = `flexa.listing.draft.${user?.id ?? "guest"}`;
+      const payload = {
+        title,
+        description,
+        price,
+        currency,
+        categoryId,
+        condition,
+        location,
+        city,
+        stock,
+        images: doneUrls,
+        savedAt: Date.now(),
+      };
+      const AsyncStorage = (await import("@react-native-async-storage/async-storage"))
+        .default;
+      await AsyncStorage.setItem(key, JSON.stringify(payload));
+      Alert.alert("Draft saved", "You can finish photos later before publishing.");
+    } catch (e) {
+      Alert.alert("Draft", e instanceof Error ? e.message : "Could not save draft");
+    }
+  };
+
   const onPublish = async () => {
     if (!token || !user) return;
     const draft: CreateListingInput = {
@@ -204,8 +234,20 @@ export default function SellTab() {
       Alert.alert("Check listing", err);
       return;
     }
+    // Publication requires at least one successfully uploaded usable image.
+    if (!doneUrls.length) {
+      Alert.alert(
+        "Photo required",
+        "Add at least one successfully uploaded product photo before publishing. Drafts can be saved without photos.",
+      );
+      return;
+    }
     if (images.some((i) => i.status === "uploading")) {
       Alert.alert("Uploading", "Wait for image uploads to finish.");
+      return;
+    }
+    if (images.some((i) => i.status === "error")) {
+      Alert.alert("Photo upload", "Fix failed uploads before publishing.");
       return;
     }
     setPublishing(true);
@@ -250,7 +292,11 @@ export default function SellTab() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.section}>Photos (required · max 5)</Text>
+        <Text style={styles.section}>Photos (required to publish · max 5)</Text>
+        <Text style={styles.hint}>
+          Drafts can be saved without photos. Publishing needs at least one successfully
+          uploaded product image (placeholders do not count).
+        </Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
           {images.map((img) => (
             <View key={img.key} style={styles.thumbWrap}>
@@ -358,6 +404,13 @@ export default function SellTab() {
         />
 
         <Pressable
+          style={[styles.draftBtn]}
+          onPress={() => void onSaveDraft()}
+          disabled={publishing}
+        >
+          <Text style={styles.draftText}>Save draft</Text>
+        </Pressable>
+        <Pressable
           style={[styles.publish, publishing && { opacity: 0.7 }]}
           onPress={() => void onPublish()}
           disabled={publishing}
@@ -369,8 +422,9 @@ export default function SellTab() {
           )}
         </Pressable>
         <Text style={styles.hint}>
-          Listings go through moderation. At least one uploaded image is required. Prohibited
-          items are rejected by the server.
+          Listings go through moderation. At least one uploaded product image is required to
+          publish (placeholders do not count). Drafts can be incomplete. Prohibited items are
+          rejected by the server.
         </Text>
       </ScrollView>
     </View>
@@ -482,8 +536,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  publish: {
+  draftBtn: {
     marginTop: 12,
+    height: 48,
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  draftText: { color: "#0F172A", fontWeight: "800", fontSize: 15 },
+  publish: {
+    marginTop: 10,
     height: 52,
     borderRadius: 999,
     backgroundColor: "#F97316",

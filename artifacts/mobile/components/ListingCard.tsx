@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
   Dimensions,
   Pressable,
@@ -12,6 +12,10 @@ import {
   type ViewStyle,
 } from "react-native";
 import type { Listing } from "@/lib/api";
+import {
+  hasUsableListingImage,
+  pickCoverImage,
+} from "@/lib/listingImages";
 
 const CARD_WIDTH = (Dimensions.get("window").width - 12 * 3) / 2;
 
@@ -21,6 +25,8 @@ interface ListingCardProps {
   isFavorited?: boolean;
   /** Override default fixed width (e.g. 48% inside padded Today's Picks). */
   style?: StyleProp<ViewStyle>;
+  /** Open Product Details in website WebView (default) or native PDP. */
+  openInWebView?: boolean;
 }
 
 export function ListingCard({
@@ -28,15 +34,35 @@ export function ListingCard({
   onFavoriteToggle,
   isFavorited = false,
   style,
+  openInWebView = true,
 }: ListingCardProps) {
-  const imageUri = item.images?.[0];
+  const usable = hasUsableListingImage(item.images);
+  const candidates = (item.images || []).filter(
+    (u): u is string => typeof u === "string" && u.trim().length > 0,
+  );
+  const [coverIndex, setCoverIndex] = useState(0);
+  const [allImagesFailed, setAllImagesFailed] = useState(false);
+  const imageUri =
+    pickCoverImage(item.images) ||
+    candidates[coverIndex] ||
+    null;
   const price = Number(item.price || 0);
   const currency = item.currency === "HTG" ? "G" : "$";
+
+  // Hide from public discovery grids when no usable image (placeholders don't count)
+  // or every candidate failed to load — keeps 2-col grids without empty gaps.
+  if (!usable || allImagesFailed) return null;
 
   return (
     <Pressable
       style={({ pressed }) => [styles.card, style, pressed && styles.pressed]}
-      onPress={() => router.push(`/listing/${item.id}`)}
+      onPress={() =>
+        router.push(
+          openInWebView
+            ? `/webview-listing/${item.id}`
+            : `/listing/${item.id}`,
+        )
+      }
       accessibilityRole="button"
       accessibilityLabel={item.title}
     >
@@ -47,7 +73,14 @@ export function ListingCard({
             style={styles.image}
             contentFit="cover"
             transition={200}
-            recyclingKey={`listing-${item.id}`}
+            recyclingKey={`listing-${item.id}-${coverIndex}`}
+            onError={() => {
+              if (coverIndex + 1 < candidates.length) {
+                setCoverIndex((i) => i + 1);
+              } else {
+                setAllImagesFailed(true);
+              }
+            }}
           />
         ) : (
           <View style={styles.imagePlaceholder}>

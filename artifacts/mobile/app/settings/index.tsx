@@ -121,8 +121,7 @@ export default function SettingsScreen() {
           badge: "NEW",
           onPress: () =>
             requireAuth(() => {
-              // Drafts are saved/restored on the native Sell screen.
-              router.push("/(tabs)/sell");
+              router.push("/my-drafts");
             }),
         },
       ] as const,

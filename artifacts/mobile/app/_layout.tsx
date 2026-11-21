@@ -68,6 +68,12 @@ export default function RootLayout() {
                       <Stack.Screen name="my-boosts" />
                       <Stack.Screen name="boost" />
                       <Stack.Screen name="videos" />
+                      <Stack.Screen name="my-drafts" />
+                      <Stack.Screen name="manager" />
+                      <Stack.Screen name="seller-registration" />
+                      <Stack.Screen name="agents" />
+                      <Stack.Screen name="credit-score" />
+                      <Stack.Screen name="tv" />
                       <Stack.Screen name="kyc" />
                       <Stack.Screen name="subscription" />
                       <Stack.Screen name="admin" />

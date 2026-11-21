@@ -1,11 +1,7 @@
-import NativePlaceholder from "@/components/NativePlaceholder";
+/** Driver registration — live website. */
 import React from "react";
+import WebContentScreen from "@/components/shell/WebContentScreen";
 
-export default function Screen() {
-  return (
-    <NativePlaceholder
-      title='Driver apply'
-      subtitle='Native driver application is queued.'
-    />
-  );
+export default function DriverApplyScreen() {
+  return <WebContentScreen path="/delivery/apply" />;
 }

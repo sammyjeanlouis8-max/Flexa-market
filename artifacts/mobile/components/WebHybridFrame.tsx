@@ -26,7 +26,6 @@ export default function WebHybridFrame({ path }: Props) {
 
   return (
     <View style={styles.root}>
-      {/* @ts-expect-error iframe is valid on react-native-web */}
       <iframe
         title="Flexa Market"
         src={src}
@@ -36,7 +35,6 @@ export default function WebHybridFrame({ path }: Props) {
           height: "100%",
           background: "#F8FAFC",
         }}
-        // Inject token after load via sibling bootstrap when possible.
         onLoad={(e: any) => {
           try {
             const win = e?.target?.contentWindow;

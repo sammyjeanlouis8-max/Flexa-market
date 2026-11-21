@@ -94,9 +94,9 @@
   ],
   "summaryCounts": {
     "FULLY_NATIVE": 28,
-    "PARTIALLY_NATIVE": 5,
+    "PARTIALLY_NATIVE": 14,
     "PLACEHOLDER": 12,
-    "MISSING": 30,
+    "MISSING": 21,
     "BLOCKED": 7
   },
   "features": [
@@ -146,34 +146,34 @@
       "name": "Phone login",
       "domain": "auth",
       "webRoute": "/auth/login-phone",
-      "nativeRoute": null,
+      "nativeRoute": "/embed/auth-phone-login",
       "role": "guest",
       "apis": [
         "/api/auth/login-phone",
         "/api/otp/*"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
-        "native phone OTP UI"
+        "full native UI still deferred; embedded WebView shipped"
       ],
-      "work": "Add auth/login-phone screen + OTP flow"
+      "work": "Temu hybrid batch 1: in-app SafeWebView (not system browser)"
     },
     {
       "id": "auth-forgot-password",
       "name": "Forgot password",
       "domain": "auth",
       "webRoute": "/auth/forgot-password",
-      "nativeRoute": null,
+      "nativeRoute": "/embed/auth-forgot-password",
       "role": "guest",
       "apis": [
         "/api/auth/forgot-password",
         "/api/recovery/*"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
         "recovery screens"
       ],
-      "work": "Native recovery wizard"
+      "work": "Temu hybrid batch 1: in-app SafeWebView (not system browser)"
     },
     {
       "id": "home",
@@ -376,16 +376,16 @@
       "name": "Public tracking",
       "domain": "customer",
       "webRoute": "/track/:trackingNumber",
-      "nativeRoute": null,
+      "nativeRoute": "/embed/public-tracking",
       "role": "guest+",
       "apis": [
         "/api/track/:trackingNumber"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
         "guest tracking screen"
       ],
-      "work": "Add /track native route"
+      "work": "Temu hybrid batch 1: in-app SafeWebView (not system browser)"
     },
     {
       "id": "delivery-confirm",
@@ -704,92 +704,92 @@
       "name": "Referral System / Leaderboard",
       "domain": "customer",
       "webRoute": "/leaderboard",
-      "nativeRoute": null,
+      "nativeRoute": "/embed/referrals",
       "role": "buyer",
       "apis": [
         "/api/referrals/*"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
         "leaderboard UI"
       ],
-      "work": "Later"
+      "work": "Temu hybrid batch 1: in-app SafeWebView (not system browser)"
     },
     {
       "id": "commission-promo",
       "name": "Commission promo",
       "domain": "customer",
       "webRoute": "/commission-promo",
-      "nativeRoute": null,
+      "nativeRoute": "/embed/commission-promo",
       "role": "buyer",
       "apis": [
         "/api/promo-purchase-commissions/*"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
         "promo UI"
       ],
-      "work": "Later"
+      "work": "Temu hybrid batch 1: in-app SafeWebView (not system browser)"
     },
     {
       "id": "jobs",
       "name": "Jobs board",
       "domain": "customer",
       "webRoute": "/jobs",
-      "nativeRoute": null,
+      "nativeRoute": "/embed/jobs",
       "role": "buyer",
       "apis": [
         "/api/jobs/*"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
         "jobs UI"
       ],
-      "work": "Later / geo-specific"
+      "work": "Temu hybrid batch 1: in-app SafeWebView (not system browser)"
     },
     {
       "id": "calculator",
       "name": "CalcAI calculator",
       "domain": "customer",
       "webRoute": "/calculator",
-      "nativeRoute": null,
+      "nativeRoute": "/embed/calculator",
       "role": "buyer",
       "apis": [
         "/api/calculator/ask"
       ],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
         "calculator UI"
       ],
-      "work": "Low priority"
+      "work": "Temu hybrid batch 1: in-app SafeWebView (not system browser)"
     },
     {
       "id": "help-center",
       "name": "Help Center / FAQ / Contact",
       "domain": "support",
       "webRoute": "/help-center,/faq,/contact,/settings/help",
-      "nativeRoute": null,
+      "nativeRoute": "/embed/help-center",
       "role": "guest+",
       "apis": [],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
         "static content screens"
       ],
-      "work": "Can ship as native markdown/content"
+      "work": "Temu hybrid batch 1: in-app SafeWebView (not system browser)"
     },
     {
       "id": "legal",
       "name": "Legal pages (privacy, terms, EULA, policies)",
       "domain": "support",
       "webRoute": "/privacy-policy,/terms,/eula,...",
-      "nativeRoute": null,
+      "nativeRoute": "/embed/legal",
       "role": "guest+",
       "apis": [],
-      "status": "MISSING",
+      "status": "PARTIALLY_NATIVE",
       "missing": [
         "in-app legal viewers"
       ],
-      "work": "Required for store compliance"
+      "work": "Temu hybrid batch 1: in-app SafeWebView (not system browser)"
     },
     {
       "id": "inbox",

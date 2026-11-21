@@ -19,6 +19,15 @@ const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap 
   { label: "Notifications", href: "/notifications", icon: "bell" },
   { label: "Settings", href: "/settings", icon: "settings" },
   { label: "Delivery tracking", href: "/delivery-tracking", icon: "map" },
+  // Temu-style hybrid (in-app WebView) — batch 1
+  { label: "Help Center", href: "/embed/help-center", icon: "help-circle" },
+  { label: "Track package", href: "/embed/public-tracking", icon: "truck" },
+  { label: "Jobs", href: "/embed/jobs", icon: "briefcase" },
+  { label: "CalcAI", href: "/embed/calculator", icon: "cpu" },
+  { label: "Referrals", href: "/embed/referrals", icon: "users" },
+  { label: "Commission promo", href: "/embed/commission-promo", icon: "percent" },
+  { label: "Privacy Policy", href: "/embed/privacy", icon: "shield" },
+  { label: "Terms of Service", href: "/embed/terms", icon: "file-text" },
 ];
 
 export default function ProfileTab() {

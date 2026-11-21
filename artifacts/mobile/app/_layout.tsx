@@ -56,6 +56,7 @@ export default function RootLayout() {
                   <Stack.Screen name="stripe-checkout" />
                   <Stack.Screen name="language-picker" />
                   <Stack.Screen name="esim" />
+                  <Stack.Screen name="embed/[slug]" />
                   <Stack.Screen name="notifications" />
                   <Stack.Screen name="settings" />
                   <Stack.Screen name="delivery-tracking" />

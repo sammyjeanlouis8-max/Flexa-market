@@ -165,4 +165,15 @@ describe("validation", () => {
     expect(result.rejectionCode).toBe("VALIDATION_FAILED");
     expect(result.decision).toBe("rejected");
   });
+
+  it("rejects blank or placeholder-only images", async () => {
+    const result = await evaluateProductEligibility({
+      title: "Nice lamp",
+      description: "Works perfectly, good condition",
+      imageUrls: ["", "https://placehold.co/600x400", "/api/storage/objects/"],
+      rulesOnly: true,
+    });
+    expect(result.rejectionCode).toBe("VALIDATION_FAILED");
+    expect(result.reason).toMatch(/image/i);
+  });
 });

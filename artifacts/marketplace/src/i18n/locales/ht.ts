@@ -833,7 +833,7 @@ export default {
       titleTooShort: "Tit la dwe gen omwen 3 karaktè.",
       categoryRequired: "Tanpri chwazi yon kategori.",
       descriptionRequired: "Deskripsyon pwodwi a obligatwa.",
-      photoRequired: "Tanpri telechaje omwen yon foto pwodwi.",
+      photoRequired: "Tanpri ajoute omwen yon foto pwodwi ki afiche.",
       photoUnsupported: "Fòma imaj sa a pa sipòte.",
       photoUploadFailed: "Telechajman imaj la echwe. Tanpri eseye ankò.",
       videoUploadFailed: "Telechajman videyo a echwe. Tanpri eseye ankò.",

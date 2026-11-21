@@ -44,6 +44,7 @@ export default function RootLayout() {
                   <Stack.Screen name="checkout" />
                   <Stack.Screen name="checkout-steps-preview" />
                   <Stack.Screen name="batch2-preview/[slug]" />
+                  <Stack.Screen name="batch3-preview/[slug]" />
                   <Stack.Screen name="checkout-success" />
                   <Stack.Screen name="orders" />
                   <Stack.Screen name="orders/[id]" />

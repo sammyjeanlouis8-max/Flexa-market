@@ -1,0 +1,73 @@
+{
+  "batch": 3,
+  "platform": "Expo web preview of shared React Native app (Android + iOS)",
+  "build": "local Expo bundler + https://flexamarket.com",
+  "viewport": "390x844@2x",
+  "disjointFrom": [
+    "batch1-shopping",
+    "batch2-account-orders"
+  ],
+  "capturedAt": "2026-11-21T09:49:44.721Z",
+  "screens": [
+    {
+      "id": "01_forgot_password",
+      "label": "1 Forgot password",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "02_sell",
+      "label": "2 Sell / create listing",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "03_my_listings",
+      "label": "3 My listings",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "04_sales",
+      "label": "4 Seller sales",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "05_offers",
+      "label": "5 Private offers",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "06_support",
+      "label": "6 Support tickets",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "07_support_detail",
+      "label": "7 Support ticket detail",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "08_edit_profile",
+      "label": "8 Edit profile",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "09_music",
+      "label": "9 Flexa Music",
+      "status": "captured",
+      "note": null
+    },
+    {
+      "id": "10_chatbot",
+      "label": "10 FlexaBot",
+      "status": "captured",
+      "note": null
+    }
+  ]
+}

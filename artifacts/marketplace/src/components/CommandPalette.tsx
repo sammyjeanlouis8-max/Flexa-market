@@ -18,6 +18,7 @@ import {
   HelpCircle,
   Sparkles,
   Calculator,
+  Warehouse,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -75,6 +76,7 @@ export function CommandPalette() {
       { href: "/offers", label: t("nav.offers", { defaultValue: "Offers" }), icon: Tag, auth: true },
       { href: "/subscription", label: t("nav.subscription", { defaultValue: "Subscription" }), icon: Crown, auth: true },
       { href: "/videos", label: t("nav.videos", { defaultValue: "Videos" }), icon: Film },
+      { href: "/wholesale", label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), icon: Warehouse, keywords: "wholesale bulk b2b" },
       { href: "/tv", label: "Flexa TV", icon: Tv },
       { href: "/music", label: "Flexa Music", icon: Music2 },
       { href: "/chatbot", label: "FlexaBot AI", icon: Sparkles },

@@ -155,6 +155,7 @@ export default {
     deliveryServicesSection: "Livraison & Services",
     myAccountSection: "Mon Compte",
     flexaServicesSection: "Services Flexa",
+    flexaWholesale: "Flexa Wholesale",
     preferencesSection: "Préférences",
     offersPromos: "Offres & Promotions",
     flexaPicks: "Flexa Picks",

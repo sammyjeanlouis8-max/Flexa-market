@@ -159,6 +159,7 @@ const BNPLPage                       = lazy(() => import("@/pages/BNPLPage"));
 const Leaderboard                    = lazy(() => import("@/pages/Leaderboard"));
 const FlexaTV                        = lazy(() => import("@/pages/FlexaTV"));
 const FlexaMusic                     = lazy(() => import("@/pages/FlexaMusic"));
+const FlexaWholesale                 = lazy(() => import("@/pages/FlexaWholesale"));
 const MusicSponsoredAds              = lazy(() => import("@/pages/MusicSponsoredAds"));
 const MusicSponsoredBreakHost        = lazy(() => import("@/components/music/MusicSponsoredBreak"));
 const MusicPublicPlayer              = lazy(() => import("@/pages/MusicPublicPlayer"));
@@ -389,6 +390,7 @@ function LayoutRoutes() {
           <Route path="/admin/vehicles" component={AdminVehiclePanel} />
           <Route path="/admin/drivers/live" component={AdminDriversLiveMap} />
           <Route path="/leaderboard" component={Leaderboard} />
+          <Route path="/wholesale" component={FlexaWholesale} />
           <Route path="/tv" component={FlexaTV} />
           <Route path="/music" component={FlexaMusic} />
           <Route path="/music/sponsored-ads" component={MusicSponsoredAds} />

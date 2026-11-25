@@ -6,6 +6,7 @@ import {
   Truck, ShieldCheck, User, Heart, Wallet, Crown, Settings, HelpCircle,
   Briefcase, Globe, LogOut, X, ChevronRight, Moon, Sun, Plus, Package,
   Store, Bell, Lock, MapPinned, Sparkles, Landmark, Tag, Award, LayoutGrid, BarChart3,
+  Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
@@ -321,6 +322,7 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
       id: "services",
       heading: t("nav.flexaServicesSection", { defaultValue: "Flexa Services" }),
       items: [
+        { icon: Warehouse, label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), href: "/wholesale", testId: "drawer-flexa-wholesale" },
         { icon: Tv, label: "Flexa TV", href: "/tv", testId: "drawer-flexa-tv" },
         { icon: Music2, label: "Flexa Music", href: "/music", testId: "drawer-flexa-music" },
         ...(user ? [

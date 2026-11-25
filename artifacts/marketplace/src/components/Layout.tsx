@@ -4,7 +4,7 @@ import { useBroadcast } from "@/contexts/broadcast";
 import {
   Home, Search, Plus, MessageCircle, User,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase, Menu, LayoutGrid,
-  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award,
+  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award, Warehouse,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import LanguagePickerModal from "@/components/LanguagePickerModal";
@@ -572,6 +572,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     {
       heading: t("nav.flexaServicesSection", { defaultValue: "Flexa Services" }),
       items: [
+        { href: "/wholesale", icon: Warehouse, label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), key: "flexa-wholesale" },
         { href: "/tv", icon: Tv, label: "Flexa TV", key: "flexa-tv" },
         { href: "/music", icon: Music2, label: "Flexa Music", key: "flexa-music" },
         ...(user ? [
@@ -612,7 +613,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     return location === path || location.startsWith(`${path}/`) || location.startsWith(`${path}?`);
   };
 
-  const moreActive = ["/settings", "/saved", "/my-drafts", "/bouillon", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos"].some(p =>
+  const moreActive = ["/settings", "/saved", "/my-drafts", "/bouillon", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos", "/wholesale", "/tv", "/music"].some(p =>
     location.startsWith(p)
   );
   const isHomePage = location === "/";

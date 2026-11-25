@@ -345,7 +345,7 @@ const AudioBubble = React.memo(function AudioBubble({
   const pendingFailed = pendingPhase === "failed";
 
   useEffect(() => {
-    if (knownDurationSec && knownDurationSec > 0 && duration <= 0) {
+    if (knownDurationSec && knownDurationSec > 0 && (!Number.isFinite(duration) || duration <= 0)) {
       setDuration(knownDurationSec);
     }
   }, [knownDurationSec, duration]);
@@ -489,6 +489,13 @@ const AudioBubble = React.memo(function AudioBubble({
     return `${m2}:${s2.toString().padStart(2, "0")}`;
   };
 
+  const updateAudioDuration = () => {
+    const actualDuration = audioRef.current?.duration;
+    if (typeof actualDuration === "number" && Number.isFinite(actualDuration) && actualDuration > 0) {
+      setDuration(actualDuration);
+    }
+  };
+
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: "4px 8px 4px 6px", width: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "center" }}>
@@ -497,7 +504,8 @@ const AudioBubble = React.memo(function AudioBubble({
         onPlaying={handlePlay}
         onPause={handlePause}
         onEnded={handleEnded}
-        onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
+        onLoadedMetadata={updateAudioDuration}
+        onDurationChange={updateAudioDuration}
         onStalled={handleStall} onSuspend={handleStall}
         onError={() => { setPlaying(false); setPlaybackError(true); stopRaf(); }}
       />
@@ -1351,7 +1359,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   const conv = convs?.find((cv: any) => cv.id === convId) as Conversation | undefined;
   const isSystemNotifications = conv?.conversationType === "system_notifications";
   // Abort hung POSTs so outbox rows can flip to "failed" instead of eternal Sending…
-  const sendMsg = useSendMessage({ request: { timeoutMs: 20_000 } });
+  const { mutate: sendChatMutation } = useSendMessage({ request: { timeoutMs: 20_000 } });
+  const { mutateAsync: sendVoiceMutation } = useSendMessage({ request: { timeoutMs: 20_000 } });
   const flushLockRef = useRef(false);
   const inFlightSendIdsRef = useRef(new Set<string>());
 
@@ -1501,7 +1510,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   }, opts?: { onFail?: (err: string) => void; onSuccess?: () => void }) => {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     if (user) socket.emitStopTyping(convId, user.id);
-    sendMsg.mutate({ id: convId, data: body as any }, {
+    sendChatMutation({ id: convId, data: body as any }, {
       onSuccess: () => {
         opts?.onSuccess?.();
         queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
@@ -1512,7 +1521,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         opts?.onFail?.(err?.message ?? "Send failed");
       },
     });
-  }, [convId, queryClient, sendMsg, socket, user]);
+  }, [convId, queryClient, sendChatMutation, socket, user]);
 
   const flushPendingTexts = useCallback(async () => {
     if (!navigator.onLine) return;
@@ -1537,7 +1546,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               settled = true;
               reject(new Error("Send timed out"));
             }, 20_000);
-            sendMsg.mutate(
+            sendChatMutation(
               {
                 id: convId,
                 data: {
@@ -1585,7 +1594,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     } finally {
       flushLockRef.current = false;
     }
-  }, [convId, queryClient, sendMsg]);
+  }, [convId, queryClient, sendChatMutation]);
 
   useEffect(() => {
     listPendingMessages(convId)
@@ -1841,55 +1850,46 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     }
   };
 
-  const sendQueuedVoice = useCallback((body: {
+  const sendQueuedVoice = useCallback(async (body: {
     messageType: "audio";
     mediaUrl: string;
     content: string;
     clientMessageId: string;
-  }) => new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const timer = window.setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        reject(new Error("Voice send timed out"));
-      }, 30_000);
-      sendMsg.mutate({ id: convId, data: body as any }, {
-        onSuccess: (createdMessage: any) => {
-            if (settled) return;
-            settled = true;
-            window.clearTimeout(timer);
-            // Put the confirmed message into the cache before removing its local
-            // outbox bubble. This prevents a successful voice send from
-            // disappearing in the gap before the refetch returns.
-            if (createdMessage?.id) {
-              queryClient.setQueryData(getGetMessagesQueryKey(convId), (old: any) => {
-                const list: any[] = Array.isArray(old) ? old : [];
-                return list.some(message => message.id === createdMessage.id)
-                  ? list
-                  : [...list, createdMessage];
-              });
-            }
-            queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
-            queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
-            setTimeout(() => scrollToBottom(true), 100);
-            resolve();
-          },
-        onError: (error) => {
-          if (settled) return;
-          settled = true;
-          window.clearTimeout(timer);
-          reject(error);
-        },
-      });
-    }), [convId, queryClient, sendMsg]);
+  }) => {
+    let timer: number | undefined;
+    try {
+      // Use the stable promise-returning mutation. Its result belongs to this
+      // request even if a text message is sent concurrently.
+      const createdMessage = await Promise.race([
+        sendVoiceMutation({ id: convId, data: body as any }),
+        new Promise<never>((_, reject) => {
+          timer = window.setTimeout(() => reject(new Error("Voice send timed out")), 30_000);
+        }),
+      ]);
+      // Populate the cache before removing the outbox bubble.
+      if (createdMessage?.id) {
+        queryClient.setQueryData(getGetMessagesQueryKey(convId), (old: any) => {
+          const list: any[] = Array.isArray(old) ? old : [];
+          return list.some(message => message.id === createdMessage.id)
+            ? list
+            : [...list, createdMessage];
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
+      queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
+      setTimeout(() => scrollToBottom(true), 100);
+    } finally {
+      if (timer !== undefined) window.clearTimeout(timer);
+    }
+  }, [convId, queryClient, sendVoiceMutation]);
 
     const cancelPendingVoiceSend = useCallback(async (id: string) => {
       cancelledVoiceIdsRef.current.add(id);
       await removePendingVoice(id).catch(() => {});
       setPendingVoices((current) => current.filter((voice) => voice.id !== id));
       if (sendingVoiceId === id) setSendingVoiceId(null);
-      // Unstick the queue if cancel happened while a hung WebView upload held the lock.
-      voiceQueueBusyRef.current = false;
+      // The current upload retains the lock until it settles. Its cancellation
+      // flag prevents the uploaded media from being sent as a message.
     }, [sendingVoiceId]);
 
     const flushPendingVoices = useCallback(async () => {
@@ -1979,6 +1979,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             await removePendingVoice(item.id);
             setPendingVoices(current => current.filter(voice => voice.id !== item.id));
           } catch (error) {
+            if (gen !== voiceFlushGenRef.current) return;
             if (cancelledVoiceIdsRef.current.has(item.id)) {
               await removePendingVoice(item.id).catch(() => {});
               setPendingVoices((current) => current.filter((voice) => voice.id !== item.id));
@@ -1993,7 +1994,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             setPendingVoices(current => current.map(voice => voice.id === item.id ? { ...voice, ...failure } : voice));
             break;
           } finally {
-            setSendingVoiceId(null);
+            if (gen === voiceFlushGenRef.current) setSendingVoiceId(null);
           }
         }
       } catch (error) {
@@ -2008,9 +2009,9 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     useEffect(() => {
       // Do not clear cancelledVoiceIdsRef on every callback identity change —
       // that re-queues a voice the user just cancelled mid-upload.
+      // Timer, focus and reconnect events may wake the queue while an upload
+      // is still running. The active flush owns the lock until it settles.
       const wakeQueue = () => {
-        // Allow a fresh flush after iOS timer throttling / tab resume.
-        voiceQueueBusyRef.current = false;
         void flushPendingVoices();
       };
       const onVisibility = () => {
@@ -2068,7 +2069,13 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     } else if (mr.state === "paused") {
       mr.resume();
       setRecordingPaused(false);
-      recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
+      const session = voiceSessionRef.current;
+      if (session) {
+        recordingTimerRef.current = setInterval(() => {
+          session.recordedSecs += 1;
+          setRecordingSecs(session.recordedSecs);
+        }, 1000);
+      }
     }
   };
 

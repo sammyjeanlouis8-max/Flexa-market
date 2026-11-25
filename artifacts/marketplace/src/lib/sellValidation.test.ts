@@ -33,6 +33,24 @@ describe("sellValidation", () => {
     expect(
       collectExtraPublishErrors({
         photoCount: 2,
+        imageUrls: ["", "https://placehold.co/x", "/api/storage/objects/"],
+        minPhotos: 1,
+        country: "Haiti",
+      }).photos,
+    ).toBe(SELL_VALIDATION_EN.photoRequired);
+
+    expect(
+      collectExtraPublishErrors({
+        photoCount: 0,
+        imageUrls: ["https://cdn.example.com/ok.jpg"],
+        minPhotos: 1,
+        country: "Haiti",
+      }).photos,
+    ).toBeUndefined();
+
+    expect(
+      collectExtraPublishErrors({
+        photoCount: 2,
         minPhotos: 2,
         country: "Haiti",
         isLocalDeliveryCountry: true,

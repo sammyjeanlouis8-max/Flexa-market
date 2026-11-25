@@ -3,6 +3,7 @@
  */
 import { getApiBase } from "./api";
 import type { Listing } from "./api";
+import { cleanListingImageUrls, hasDisplayableListingImage } from "./listingImages";
 
 export type Category = {
   id: number;
@@ -110,13 +111,14 @@ export async function createListing(
   input: CreateListingInput,
   opts: AuthOpts,
 ): Promise<Listing> {
-  if (!input.images?.length) {
+  const images = cleanListingImageUrls(input.images);
+  if (!hasDisplayableListingImage(images)) {
     throw new Error("At least one product image is required");
   }
   const res = await authedFetch("/listings", {
     ...opts,
     method: "POST",
-    body: input,
+    body: { ...input, images },
   });
   const data = await readJson(res);
   if (!res.ok) throw new Error(data.error || `Create listing failed (${res.status})`);
@@ -128,13 +130,18 @@ export async function updateListing(
   input: Partial<CreateListingInput>,
   opts: AuthOpts,
 ): Promise<Listing> {
-  if (input.images && input.images.length === 0) {
-    throw new Error("At least one product image is required");
+  const body = { ...input };
+  if (input.images !== undefined) {
+    const images = cleanListingImageUrls(input.images);
+    if (!hasDisplayableListingImage(images)) {
+      throw new Error("At least one product image is required");
+    }
+    body.images = images;
   }
   const res = await authedFetch(`/listings/${id}`, {
     ...opts,
     method: "PUT",
-    body: input,
+    body,
   });
   const data = await readJson(res);
   if (!res.ok) throw new Error(data.error || `Update listing failed (${res.status})`);
@@ -174,6 +181,6 @@ export function validateListingDraft(input: Partial<CreateListingInput>): string
   if (!input.categoryId) return "Select a category";
   if (!input.condition) return "Select condition";
   if (!input.location?.trim()) return "Location is required";
-  if (!input.images?.length) return "Add at least one product image";
+  if (!hasDisplayableListingImage(input.images)) return "Add at least one product image";
   return null;
 }

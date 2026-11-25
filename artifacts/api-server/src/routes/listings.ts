@@ -20,7 +20,7 @@ import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { emitListingEngagement } from "../lib/socketServer";
 import { queueNewListingPush } from "../lib/listing-notifications";
-import { cleanListingImages, hasUsableListingImage, listingHasUsableImageSql } from "../lib/listingMedia";
+import { cleanListingImages, hasUsableListingImage, keepPublicListingsWithPhotos, listingHasUsableImageSql } from "../lib/listingMedia";
 import {
   canonicalizeListingVideoUrl,
   normalizedVideoStorageKey,
@@ -615,14 +615,16 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   // products disappear behind a 503.
   if (!promaxSnapshot) {
     const legacyPage = paginateLegacyPage(rows, pageNum, limitNum);
-    const listings = await Promise.all(legacyPage.items.map((row) =>
-      formatListing(row.listings, row.users!, row.categories, row.subcategories, geoUser, {
-        distanceKm: row.distanceKm,
-        proximityLevel: scoreToLevel(Number(row.proximity ?? 0)),
-        promaxGroup: deriveLegacyPromaxGroup(isActiveVip(row.users ?? {}, promaxNow)),
-        promaxPosition: null,
-      }),
-    ));
+    const listings = keepPublicListingsWithPhotos(
+      await Promise.all(legacyPage.items.map((row) =>
+        formatListing(row.listings, row.users!, row.categories, row.subcategories, geoUser, {
+          distanceKm: row.distanceKm,
+          proximityLevel: scoreToLevel(Number(row.proximity ?? 0)),
+          promaxGroup: deriveLegacyPromaxGroup(isActiveVip(row.users ?? {}, promaxNow)),
+          promaxPosition: null,
+        }),
+      )),
+    );
     res.json({
       listings,
       total: legacyPage.total,
@@ -673,27 +675,29 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     return entry.row;
   }).slice(offset, offset + limitNum);
 
-  const listings = await Promise.all(rows.map(r =>
-    (() => {
-      const activeBoost = isActiveBoost(r.listings, promaxNow);
-      const activeVip = isActiveVip(r.users ?? {}, promaxNow);
-      const promaxGroup = derivePromaxViewerGroup(
-        activeBoost,
-        paidBoostListings.has(r.listings.id),
-        !demotedListingIds.has(r.listings.id),
-        activeVip,
-      );
-      const promaxPosition = promaxDisplayPositions.get(r.listings.id)
-        ?? promaxOrder.get(r.listings.id)?.position
-        ?? null;
-      return formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUser, {
-        distanceKm: r.distanceKm,
-        proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
-        promaxGroup,
-        promaxPosition,
-      });
-    })()
-  ));
+  const listings = keepPublicListingsWithPhotos(
+    await Promise.all(rows.map(r =>
+      (() => {
+        const activeBoost = isActiveBoost(r.listings, promaxNow);
+        const activeVip = isActiveVip(r.users ?? {}, promaxNow);
+        const promaxGroup = derivePromaxViewerGroup(
+          activeBoost,
+          paidBoostListings.has(r.listings.id),
+          !demotedListingIds.has(r.listings.id),
+          activeVip,
+        );
+        const promaxPosition = promaxDisplayPositions.get(r.listings.id)
+          ?? promaxOrder.get(r.listings.id)?.position
+          ?? null;
+        return formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUser, {
+          distanceKm: r.distanceKm,
+          proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
+          promaxGroup,
+          promaxPosition,
+        });
+      })()
+    )),
+  );
   res.json({
     listings,
     total,
@@ -769,10 +773,12 @@ router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> =
     )
     .limit(12);
 
-  res.json(await Promise.all(rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserT, {
-    distanceKm: r.distanceKm,
-    proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
-  }))));
+  res.json(keepPublicListingsWithPhotos(
+    await Promise.all(rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserT, {
+      distanceKm: r.distanceKm,
+      proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
+    }))),
+  ));
   } catch (err: any) {
     req.log.error({ err }, "GET TRENDING ERROR");
     if (!res.headersSent) res.status(500).json({ error: "Failed to load listings." });
@@ -837,13 +843,15 @@ router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => 
     )
     .limit(24);
 
-  res.json(await Promise.all(rows.map(async r => ({
-    ...await formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserF, {
-      distanceKm: r.distanceKm,
-      proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
-    }),
-    proximityScore: Number(r.proximity ?? 0),
-  }))));
+  res.json(keepPublicListingsWithPhotos(
+    await Promise.all(rows.map(async r => ({
+      ...await formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserF, {
+        distanceKm: r.distanceKm,
+        proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
+      }),
+      proximityScore: Number(r.proximity ?? 0),
+    }))),
+  ));
   } catch (err: any) {
     req.log.error({ err }, "GET FORYOU ERROR");
     if (!res.headersSent) res.status(500).json({ error: "Failed to load listings." });
@@ -892,10 +900,12 @@ router.get("/listings/featured", optionalAuth, async (req, res): Promise<void> =
     )
     .limit(8);
 
-  res.json(await Promise.all(rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserFeat, {
-    distanceKm: r.distanceKm,
-    proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
-  }))));
+  res.json(keepPublicListingsWithPhotos(
+    await Promise.all(rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserFeat, {
+      distanceKm: r.distanceKm,
+      proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
+    }))),
+  ));
   } catch (err: any) {
     req.log.error({ err }, "GET FEATURED ERROR");
     if (!res.headersSent) res.status(500).json({ error: "Failed to load listings." });
@@ -1040,12 +1050,14 @@ router.get("/listings/boosted-feed", optionalAuth, async (req, res): Promise<voi
     .limit(20);
 
   res.json({
-    listings: await Promise.all(rows.map(r =>
-      formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUser, {
-        distanceKm: r.distanceKm,
-        proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
-      })
-    )),
+    listings: keepPublicListingsWithPhotos(
+      await Promise.all(rows.map(r =>
+        formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUser, {
+          distanceKm: r.distanceKm,
+          proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
+        })
+      )),
+    ),
   });
   } catch (err: any) {
     req.log.error({ err }, "GET BOOSTED FEED ERROR");
@@ -2806,10 +2818,12 @@ router.get("/listings/personalized", requireAuth, async (req, res): Promise<void
     ).slice(0, 20);
 
     res.json({
-      listings: await Promise.all(ranked.map(({ row: r }) => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserP, {
-        distanceKm: r.distanceKm,
-        proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
-      }))),
+      listings: keepPublicListingsWithPhotos(
+        await Promise.all(ranked.map(({ row: r }) => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserP, {
+          distanceKm: r.distanceKm,
+          proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
+        }))),
+      ),
       searches: topTerms,
     });
   } catch (err: any) {

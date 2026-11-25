@@ -832,7 +832,7 @@ export default {
       titleTooShort: "Le titre doit contenir au moins 3 caractères.",
       categoryRequired: "Veuillez sélectionner une catégorie.",
       descriptionRequired: "La description du produit est obligatoire.",
-      photoRequired: "Veuillez téléverser au moins une photo du produit.",
+      photoRequired: "Veuillez ajouter au moins une photo produit qui s'affiche.",
       photoUnsupported: "Format d'image non pris en charge.",
       photoUploadFailed: "Échec du téléversement de l'image. Veuillez réessayer.",
       videoUploadFailed: "Échec du téléversement de la vidéo. Veuillez réessayer.",

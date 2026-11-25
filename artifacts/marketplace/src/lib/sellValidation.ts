@@ -3,6 +3,8 @@
  * English is the default; callers may pass translated strings via `messages`.
  */
 
+import { cleanListingImageUrls } from "./listingImages";
+
 export type SellSectionId = "info" | "media" | "pricing" | "delivery" | "review";
 
 export const SELL_FIELD_SECTION: Record<string, SellSectionId> = {
@@ -33,7 +35,7 @@ export const SELL_VALIDATION_EN = {
   titleTooShort: "Title must be at least 3 characters.",
   categoryRequired: "Please select a category.",
   descriptionRequired: "Product description is required.",
-  photoRequired: "Please upload at least one product photo.",
+  photoRequired: "Please add at least one product photo that displays.",
   photoUnsupported: "Unsupported image format.",
   photoUploadFailed: "Image upload failed. Please try again.",
   videoUploadFailed: "Video upload failed. Please try again.",
@@ -118,7 +120,10 @@ export function formatSectionMissingLabel(
 }
 
 export type PublishExtraInput = {
+  /** Uploaded photo slot count (fallback when imageUrls is omitted). */
   photoCount: number;
+  /** Prefer these URLs when present — only displayable ones count. */
+  imageUrls?: string[];
   minPhotos: number;
   country: string;
   dominicanDeliveryChoice?: "carrier" | "self_delivery" | null;
@@ -136,7 +141,10 @@ export function collectExtraPublishErrors(
   messages: SellValidationMessages = SELL_VALIDATION_EN,
 ): Record<string, string> {
   const errors: Record<string, string> = {};
-  if (input.photoCount < input.minPhotos) {
+  const displayableCount = Array.isArray(input.imageUrls)
+    ? cleanListingImageUrls(input.imageUrls).length
+    : input.photoCount;
+  if (displayableCount < input.minPhotos) {
     errors.photos = messages.photoRequired;
   }
 

@@ -139,6 +139,7 @@ export default function ListingCard({
   const { isFavorited, markFavorited, markUnfavorited } = useFavorites();
   const validImages = listing.images?.filter((img) => img && img.trim().length > 0) || [];
   const img = validImages[0] ?? null;
+  const secondaryImg = validImages[1] ?? null;
   const flag = listing.country ? COUNTRY_FLAGS[listing.country] : null;
   const displayLocation = listing.city ?? listing.location;
   const isOwner = user && listing.sellerId ? user.id === listing.sellerId : false;
@@ -148,10 +149,12 @@ export default function ListingCard({
   const [likeCount, setLikeCount] = useState(listing.favoriteCount ?? 0);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const [activeSrc, setActiveSrc] = useState<string | null>(img);
 
   useEffect(() => {
     setImgLoaded(false);
     setImageFailed(false);
+    setActiveSrc(img);
   }, [img]);
 
   const addFav = useAddFavorite();
@@ -283,7 +286,7 @@ export default function ListingCard({
               </div>
             ) : (
               <img
-                src={img!}
+                src={activeSrc ?? img!}
                 alt={listing.title}
                 {...listingImageProps({ priority, variant: "card" })}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -294,6 +297,16 @@ export default function ListingCard({
                 }}
                 onLoad={() => setImgLoaded(true)}
                 onError={(event) => {
+                  // Prefer the second product photo when the primary URL is broken.
+                  if (
+                    secondaryImg &&
+                    activeSrc !== secondaryImg &&
+                    event.currentTarget.src !== new URL(secondaryImg, window.location.href).href
+                  ) {
+                    setActiveSrc(secondaryImg);
+                    event.currentTarget.src = secondaryImg;
+                    return;
+                  }
                   if (previewFallbackImage && event.currentTarget.src !== new URL(previewFallbackImage, window.location.href).href) {
                     event.currentTarget.src = previewFallbackImage;
                     return;

@@ -40,6 +40,7 @@ import { evaluateDeliveryEligibility } from "@/lib/deliveryEligibility";
 
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
 import { listingImageProps } from "@/lib/listingImage";
+import { cleanListingImageUrls } from "@/lib/listingImages";
 import {
   consumeMarketplaceBackPath,
   markBackNavigation,
@@ -411,9 +412,7 @@ export default function ListingDetail() {
           : "Available on FLEXA MARKET.",
       ].filter(Boolean).join(" — ").slice(0, 160)
     : undefined;
-  const listingImages = Array.isArray((listing as any)?.images)
-    ? ((listing as any).images as string[]).filter(Boolean)
-    : [];
+  const listingImages = cleanListingImageUrls((listing as any)?.images);
 
   useSEO({
     title: listing?.title ?? undefined,
@@ -868,15 +867,8 @@ export default function ListingDetail() {
   }
   if (!listing) return <div className="max-w-4xl mx-auto px-4 py-8 text-center text-muted-foreground">{t("tr.listingNotFound")}</div>;
 
-  // Strip external placeholder service URLs that load successfully but show
-  // an orange "No Image" image (so onError never fires for them).
-  const images = ((listing as any).images ?? []).filter(
-    (url: unknown) =>
-      typeof url === "string" &&
-      url.trim().length > 0 &&
-      !url.includes("placehold.co") &&
-      !url.includes("via.placeholder.com"),
-  );
+  // Only count URLs that can actually render as product photos.
+  const images = cleanListingImageUrls((listing as any).images);
   const boostVideoUrl = (listing as any).boostVideoUrl as string | null ?? null;
   const listingVideoUrl = (listing as any).listingVideoUrl as string | null ?? null;
   const boostExpiresAt = (listing as any).boostExpiresAt as string | null ?? null;

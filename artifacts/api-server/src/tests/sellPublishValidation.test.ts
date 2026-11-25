@@ -91,4 +91,24 @@ describe("sellValidation helpers", () => {
       collectExtraPublishErrors({ photoCount: 0, minPhotos: 2, country: "Haiti" }).photos,
     ).toBe(SELL_VALIDATION_EN.photoRequired);
   });
+
+  it("requires displayable image URLs, not empty slots", () => {
+    expect(
+      collectExtraPublishErrors({
+        photoCount: 2,
+        imageUrls: ["", "https://placehold.co/x"],
+        minPhotos: 1,
+        country: "Haiti",
+      }).photos,
+    ).toBe(SELL_VALIDATION_EN.photoRequired);
+
+    expect(
+      collectExtraPublishErrors({
+        photoCount: 0,
+        imageUrls: ["/api/storage/objects/ok.jpg"],
+        minPhotos: 1,
+        country: "Haiti",
+      }).photos,
+    ).toBeUndefined();
+  });
 });

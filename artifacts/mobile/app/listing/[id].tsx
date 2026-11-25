@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,7 @@ import {
   isFavorite,
   removeFavorite,
 } from "@/lib/favoritesApi";
+import { cleanListingImageUrls } from "@/lib/listingImages";
 
 const WIDTH = Dimensions.get("window").width;
 
@@ -36,6 +37,7 @@ export default function ListingDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [imageIndex, setImageIndex] = useState(0);
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set());
   const [addedFlash, setAddedFlash] = useState(false);
   const [favorited, setFavorited] = useState(false);
   const [favBusy, setFavBusy] = useState(false);
@@ -49,7 +51,11 @@ export default function ListingDetailScreen() {
       setError(null);
       try {
         const data = await fetchListing(id, { token });
-        if (!cancelled) setListing(data);
+        if (!cancelled) {
+          setListing(data);
+          setFailedUrls(new Set());
+          setImageIndex(0);
+        }
         if (!cancelled && token) {
           const liked = await isFavorite(Number(id), { token });
           if (!cancelled) setFavorited(liked);
@@ -69,7 +75,18 @@ export default function ListingDetailScreen() {
     };
   }, [id, token]);
 
-  const images = listing?.images?.length ? listing.images : [];
+  const images = useMemo(() => {
+    const cleaned = cleanListingImageUrls(listing?.images ?? []);
+    return cleaned.filter((uri) => !failedUrls.has(uri));
+  }, [listing?.images, failedUrls]);
+
+  useEffect(() => {
+    if (images.length === 0) {
+      if (imageIndex !== 0) setImageIndex(0);
+      return;
+    }
+    if (imageIndex >= images.length) setImageIndex(0);
+  }, [images.length, imageIndex]);
   const price = Number(listing?.price || 0);
   const currency =
     listing?.currency === "HTG"
@@ -222,13 +239,21 @@ export default function ListingDetailScreen() {
               }}
             >
               {(images.length ? images : [null]).map((uri, i) => (
-                <View key={i} style={styles.hero}>
+                <View key={uri ?? `placeholder-${i}`} style={styles.hero}>
                   {uri ? (
                     <Image
                       source={{ uri }}
                       style={styles.heroImage}
                       contentFit="cover"
                       transition={200}
+                      onError={() => {
+                        setFailedUrls((prev) => {
+                          if (prev.has(uri)) return prev;
+                          const next = new Set(prev);
+                          next.add(uri);
+                          return next;
+                        });
+                      }}
                     />
                   ) : (
                     <View style={[styles.heroImage, styles.heroPlaceholder]}>
@@ -240,7 +265,7 @@ export default function ListingDetailScreen() {
             </ScrollView>
             {images.length > 1 ? (
               <Text style={styles.dots}>
-                {imageIndex + 1} / {images.length}
+                {Math.min(imageIndex, images.length - 1) + 1} / {images.length}
               </Text>
             ) : null}
 

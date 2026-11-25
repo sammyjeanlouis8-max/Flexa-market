@@ -65,6 +65,8 @@ function authHeaders(): HeadersInit {
 export async function fetchWholesaleProducts(params?: {
   q?: string;
   country?: string;
+  category?: string;
+  warehouseId?: number;
   mine?: boolean;
   status?: string;
   limit?: number;
@@ -73,6 +75,8 @@ export async function fetchWholesaleProducts(params?: {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
   if (params?.country) qs.set("country", params.country);
+  if (params?.category) qs.set("category", params.category);
+  if (params?.warehouseId != null) qs.set("warehouseId", String(params.warehouseId));
   if (params?.mine) qs.set("mine", "1");
   if (params?.status) qs.set("status", params.status);
   if (params?.limit != null) qs.set("limit", String(params.limit));

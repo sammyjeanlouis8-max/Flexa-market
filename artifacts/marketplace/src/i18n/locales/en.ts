@@ -1047,6 +1047,8 @@ export default {
     "houses-for-rent": "Houses for Rent",
     "houses-for-sale": "Houses for Sale",
     "cars": "Cars",
+    "car-rentals": "Car Rentals",
+    "motorcycles": "Motorcycles",
     all: "All",
     "baby-kids": "Baby & Kids",
     electronics: "Electronics",

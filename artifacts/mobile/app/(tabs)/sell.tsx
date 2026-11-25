@@ -362,7 +362,7 @@ export default function SellTab() {
                 <Pressable key={child.id} onPress={() => setSubcategoryId(child.id)}
                   style={[styles.chip, child.id === subcategoryId && styles.chipOn]}>
                   <Text style={[styles.chipText, child.id === subcategoryId && styles.chipTextOn]}>
-                    {["houses-for-rent", "houses-for-sale", "cars"].includes(child.slug ?? "") ? t(`market.${child.slug}`) : child.name}
+                    {["houses-for-rent", "houses-for-sale", "cars", "car-rentals", "motorcycles"].includes(child.slug ?? "") ? t(`market.${child.slug}`) : child.name}
                   </Text>
                 </Pressable>
               ))}

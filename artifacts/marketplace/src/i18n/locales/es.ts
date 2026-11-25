@@ -662,6 +662,8 @@ export default {
     "houses-for-rent": "Casas en alquiler",
     "houses-for-sale": "Casas en venta",
     "cars": "Autos en venta",
+    "car-rentals": "Autos en alquiler",
+    "motorcycles": "Motos",
     all: "Todo",
     "baby-kids": "Bebé y Niños",
     electronics: "Electrónica",

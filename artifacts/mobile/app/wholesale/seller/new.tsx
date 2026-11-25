@@ -155,10 +155,21 @@ export default function WholesaleSellerNewScreen() {
     });
   };
 
-  const doneUrls = useMemo(
-    () => media.filter((m) => m.status === "done" && m.remoteUrl).map((m) => m.remoteUrl!),
+  const donePhotoUrls = useMemo(
+    () =>
+      media
+        .filter((m) => m.kind === "image" && m.status === "done" && m.remoteUrl)
+        .map((m) => m.remoteUrl!),
     [media],
   );
+  const doneVideoUrls = useMemo(
+    () =>
+      media
+        .filter((m) => m.kind === "video" && m.status === "done" && m.remoteUrl)
+        .map((m) => m.remoteUrl!),
+    [media],
+  );
+  const doneUrls = donePhotoUrls;
 
   const verifiedWarehouses = useMemo(
     () => warehouses.filter((w) => w.verificationStatus === "verified" && w.isActive),
@@ -317,7 +328,7 @@ export default function WholesaleSellerNewScreen() {
     if (moq < 1) return "Minimum order quantity must be at least 1.";
     const stock = Math.floor(Number(draft.stockQuantity) || -1);
     if (stock < 0) return "Stock quantity is required.";
-    if (doneUrls.length < 1) return "Add at least one product image before publishing.";
+    if (donePhotoUrls.length < 1) return "Add at least one valid product photo before publishing (videos do not count).";
     if (media.some((m) => m.status === "uploading")) return "Wait for uploads to finish.";
     if (!draft.warehouseId) {
       return "Select a verified warehouse. You can only sell in countries where you have a verified depot.";
@@ -348,7 +359,8 @@ export default function WholesaleSellerNewScreen() {
       category: draft.category.trim() || null,
       warehouseId: draft.warehouseId,
       sku: draft.sku || null,
-      images: doneUrls,
+      images: donePhotoUrls,
+      videos: doneVideoUrls,
       offersLocalDelivery: draft.offersLocalDelivery,
       offersWarehousePickup: draft.offersWarehousePickup,
       contactOnly: true,
@@ -460,8 +472,8 @@ export default function WholesaleSellerNewScreen() {
             </View>
           ))}
         </View>
-        {doneUrls.length < 1 ? (
-          <Text style={styles.warn}>At least one product image is required to publish.</Text>
+        {donePhotoUrls.length < 1 ? (
+          <Text style={styles.warn}>At least one valid product photo is required to publish (videos do not count).</Text>
         ) : null}
 
         <Field label="Title" value={draft.title} onChange={(v) => updateDraft({ title: v })} placeholder="Rice 50lb bags" />

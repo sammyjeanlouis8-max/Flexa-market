@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
@@ -11,11 +10,11 @@ import {
   View,
 } from "react-native";
 import { WholesaleGate } from "@/components/wholesale/WholesaleGate";
+import { WholesaleProductList } from "@/components/wholesale/WholesaleProductList";
 import { WholesaleShell } from "@/components/wholesale/WholesaleShell";
 import { useAuth } from "@/context/AuthContext";
 import {
   fetchWholesaleProductsPage,
-  formatMoney,
   type WholesaleProduct,
 } from "@/lib/wholesaleApi";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
@@ -25,31 +24,44 @@ export default function WholesaleSearchScreen() {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [searched, setSearched] = useState(false);
   const country = user?.country || "";
+  const limit = 20;
 
-  const search = useCallback(async () => {
-    if (!token) return;
-    if (!country) {
-      setError("Your account country is required to search Flexa Wholesale.");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const page = await fetchWholesaleProductsPage(
-        { q: q.trim() || undefined, country, limit: 30 },
-        { token },
-      );
-      setProducts(page.products);
-    } catch (e: any) {
-      setError(e?.message || "Search failed");
-      setProducts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [token, q, country]);
+  const search = useCallback(
+    async (nextOffset = 0, append = false) => {
+      if (!token) return;
+      if (!country) {
+        setError("Your account country is required to search Flexa Wholesale.");
+        return;
+      }
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      setError(null);
+      setSearched(true);
+      try {
+        const page = await fetchWholesaleProductsPage(
+          { q: q.trim() || undefined, country, limit, offset: nextOffset },
+          { token },
+        );
+        setProducts((prev) => (append ? [...prev, ...page.products] : page.products));
+        setHasMore(page.pagination.hasMore);
+        setOffset(nextOffset + page.products.length);
+      } catch (e: any) {
+        setError(e?.message || "Search failed");
+        if (!append) setProducts([]);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [token, q, country],
+  );
 
   return (
     <WholesaleGate>
@@ -62,44 +74,29 @@ export default function WholesaleSearchScreen() {
             placeholderTextColor={T.muted}
             style={styles.search}
             returnKeyType="search"
-            onSubmitEditing={() => void search()}
+            onSubmitEditing={() => void search(0, false)}
             testID="wholesale-native-search"
           />
-          <Pressable style={styles.searchBtn} onPress={() => void search()}>
+          <Pressable style={styles.searchBtn} onPress={() => void search(0, false)}>
             <Feather name="search" size={18} color={T.white} />
           </Pressable>
         </View>
-        {loading ? (
-          <ActivityIndicator color={T.accent} />
-        ) : error ? (
-          <Text style={styles.error}>{error}</Text>
-        ) : products.length === 0 ? (
-          <Text style={styles.empty}>No matches in {country || "your country"}.</Text>
+        {!searched && !loading ? (
+          <Text style={styles.empty}>Search verified warehouse stock in {country || "your country"}.</Text>
         ) : (
-          <View style={styles.list}>
-            {products.map((p) => (
-              <Pressable
-                key={p.id}
-                style={styles.row}
-                onPress={() => router.push(`/wholesale/products/${p.id}`)}
-              >
-                {p.images?.[0] ? (
-                  <Image source={{ uri: p.images[0] }} style={styles.thumb} contentFit="cover" />
-                ) : (
-                  <View style={styles.thumb} />
-                )}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.title} numberOfLines={1}>
-                    {p.title}
-                  </Text>
-                  <Text style={styles.meta}>
-                    {formatMoney(p.unitPrice, p.currency)} · {p.country}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
-          </View>
+          <WholesaleProductList
+            products={products}
+            loading={loading}
+            error={error}
+            empty={`No matches in ${country || "your country"}.`}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={() => void search(offset, true)}
+          />
         )}
+        <Pressable style={styles.link} onPress={() => router.push("/wholesale/featured")}>
+          <Text style={styles.linkText}>Browse featured</Text>
+        </Pressable>
       </WholesaleShell>
     </WholesaleGate>
   );
@@ -124,20 +121,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  list: { gap: 8 },
-  row: {
-    flexDirection: "row",
-    gap: 12,
-    alignItems: "center",
-    backgroundColor: T.white,
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: T.line,
-  },
-  thumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: T.mint },
-  title: { fontSize: 14, fontWeight: "700", color: T.ink },
-  meta: { marginTop: 2, fontSize: 12, color: T.muted },
   empty: { color: T.muted },
-  error: { color: T.danger, fontWeight: "700" },
+  link: { marginTop: 16 },
+  linkText: { color: T.accent, fontWeight: "700" },
 });

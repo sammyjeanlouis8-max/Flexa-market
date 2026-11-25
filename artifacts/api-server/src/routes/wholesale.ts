@@ -11,6 +11,13 @@ import {
   wholesaleInventoryTable,
   wholesaleFavoritesTable,
   wholesaleInquiriesTable,
+  wholesaleSellerProfilesTable,
+  wholesaleDocumentsTable,
+  wholesaleBlocksTable,
+  wholesaleDisputesTable,
+  wholesaleNotificationsTable,
+  wholesaleTeamMembersTable,
+  wholesaleCompareSessionsTable,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
 import {
@@ -102,6 +109,8 @@ function shapeProduct(
     unitPrice: row.unitPrice,
     currency: row.currency,
     images: row.images ?? [],
+    videos: row.videos ?? [],
+    featured: !!row.featured,
     category: row.category,
     country: row.country,
     city: row.city,
@@ -342,8 +351,10 @@ router.patch("/wholesale/warehouses/:id", requireWholesaleAccess, async (req, re
 router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Promise<void> => {
   const q = String(req.query.q ?? "").trim().slice(0, 100);
   const category = String(req.query.category ?? "").trim().slice(0, 80) || null;
+  const city = String(req.query.city ?? "").trim().slice(0, 80) || null;
   const warehouseId = req.query.warehouseId != null ? Number(req.query.warehouseId) : null;
   const statusFilter = String(req.query.status ?? "").trim();
+  const featuredOnly = String(req.query.featured ?? "") === "1";
   const mine = String(req.query.mine ?? "") === "1";
   const isAdmin = !!req.user?.isSuperAdmin;
   const userId = req.userId!;
@@ -384,6 +395,8 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
     }
   }
   if (category) conds.push(eq(wholesaleProductsTable.category, category));
+  if (city) conds.push(sql`lower(${wholesaleProductsTable.city}) = lower(${city})`);
+  if (featuredOnly) conds.push(eq(wholesaleProductsTable.featured, true));
   if (warehouseId && Number.isFinite(warehouseId)) {
     conds.push(eq(wholesaleProductsTable.warehouseId, warehouseId));
   }
@@ -532,6 +545,9 @@ router.post("/wholesale/products", requireWholesaleAccess, async (req, res): Pro
   const images = Array.isArray(body.images)
     ? body.images.map((x: unknown) => String(x).trim()).filter(Boolean).slice(0, 8)
     : [];
+  const videos = Array.isArray(body.videos)
+    ? body.videos.map((x: unknown) => String(x).trim()).filter(Boolean).slice(0, 4)
+    : [];
   const tiersInput = Array.isArray(body.tiers) ? body.tiers : [];
   const category = body.category ? String(body.category).trim().slice(0, 80) : null;
   const currency = String(body.currency ?? "USD").trim().slice(0, 8) || "USD";
@@ -551,7 +567,7 @@ router.post("/wholesale/products", requireWholesaleAccess, async (req, res): Pro
     return;
   }
   if (images.length < 1 && status === "active") {
-    res.status(400).json({ error: "At least one product image is required to publish" });
+    res.status(400).json({ error: "At least one valid product photo is required to publish (videos do not count)" });
     return;
   }
   if (!["active", "draft", "archived"].includes(status)) {
@@ -604,6 +620,8 @@ router.post("/wholesale/products", requireWholesaleAccess, async (req, res): Pro
     unitPrice,
     currency: currency.toUpperCase(),
     images,
+    videos,
+    featured: !!body.featured,
     category,
     country: warehouse?.country ?? (body.country ? String(body.country).slice(0, 80) : null),
     city: warehouse?.city ?? (body.city ? String(body.city).slice(0, 80) : null),
@@ -712,7 +730,7 @@ router.patch("/wholesale/products/:id", requireWholesaleAccess, async (req, res)
       patch.warehouseCity = wh.city;
       const imgs = Array.isArray(body.images) ? body.images : existing.images;
       if (!imgs?.length) {
-        res.status(400).json({ error: "At least one product image is required to publish" });
+        res.status(400).json({ error: "At least one valid product photo is required to publish (videos do not count)" });
         return;
       }
     }
@@ -723,6 +741,12 @@ router.patch("/wholesale/products/:id", requireWholesaleAccess, async (req, res)
   if (Array.isArray(body.images)) {
     patch.images = body.images.map((x: unknown) => String(x).trim()).filter(Boolean).slice(0, 8);
   }
+  if (Array.isArray(body.videos)) {
+    patch.videos = body.videos.map((x: unknown) => String(x).trim()).filter(Boolean).slice(0, 4);
+  }
+  if (body.featured != null) patch.featured = !!body.featured;
+  if (body.offersLocalDelivery != null) patch.offersLocalDelivery = !!body.offersLocalDelivery;
+  if (body.offersWarehousePickup != null) patch.offersWarehousePickup = !!body.offersWarehousePickup;
   if (body.warehouseId != null) {
     const whId = Number(body.warehouseId);
     const [wh] = await db.select().from(wholesaleWarehousesTable).where(eq(wholesaleWarehousesTable.id, whId)).limit(1);
@@ -1064,8 +1088,10 @@ router.get("/wholesale/inquiries", requireWholesaleAccess, async (req, res): Pro
       qty: r.inquiry.qty,
       message: r.inquiry.message,
       status: r.inquiry.status,
+      quotedUnitPrice: r.inquiry.quotedUnitPrice,
       conversationId: r.inquiry.conversationId,
       createdAt: r.inquiry.createdAt.toISOString(),
+      updatedAt: r.inquiry.updatedAt.toISOString(),
     })),
   });
 });
@@ -1360,6 +1386,964 @@ router.get("/wholesale/admin/overview", requireWholesaleAccess, async (req, res)
     },
     sellers: sellers.length,
     publicLaunch: WHOLESALE_PUBLIC_LAUNCH,
+  });
+});
+
+/* ─── Seller profile / onboarding / settings / hours / plans ─────────────── */
+
+async function getOrCreateSellerProfile(userId: number) {
+  const [existing] = await db
+    .select()
+    .from(wholesaleSellerProfilesTable)
+    .where(eq(wholesaleSellerProfilesTable.userId, userId))
+    .limit(1);
+  if (existing) return existing;
+  const [created] = await db
+    .insert(wholesaleSellerProfilesTable)
+    .values({ userId })
+    .returning();
+  return created;
+}
+
+function shapeSellerProfile(row: typeof wholesaleSellerProfilesTable.$inferSelect) {
+  let hours: Record<string, unknown> = {};
+  let settings: Record<string, unknown> = {};
+  try {
+    hours = JSON.parse(row.hoursJson || "{}");
+  } catch {
+    hours = {};
+  }
+  try {
+    settings = JSON.parse(row.settingsJson || "{}");
+  } catch {
+    settings = {};
+  }
+  return {
+    id: row.id,
+    userId: row.userId,
+    businessName: row.businessName,
+    bio: row.bio,
+    phone: row.phone,
+    website: row.website,
+    plan: row.plan,
+    onboardingComplete: row.onboardingComplete,
+    verificationStatus: row.verificationStatus,
+    hours,
+    settings,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+router.get("/wholesale/seller/profile", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const profile = await getOrCreateSellerProfile(req.userId!);
+  res.json({ profile: shapeSellerProfile(profile) });
+});
+
+router.patch("/wholesale/seller/profile", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  await getOrCreateSellerProfile(userId);
+  const body = req.body ?? {};
+  const patch: Partial<typeof wholesaleSellerProfilesTable.$inferInsert> = {
+    updatedAt: new Date(),
+  };
+  if (body.businessName != null) patch.businessName = String(body.businessName).slice(0, 160);
+  if (body.bio != null) patch.bio = String(body.bio).slice(0, 2000);
+  if (body.phone != null) patch.phone = String(body.phone).slice(0, 40) || null;
+  if (body.website != null) patch.website = String(body.website).slice(0, 200) || null;
+  if (body.plan != null) {
+    const plan = String(body.plan).slice(0, 40);
+    if (!["free", "growth", "pro"].includes(plan)) {
+      res.status(400).json({ error: "Invalid plan" });
+      return;
+    }
+    patch.plan = plan;
+  }
+  if (body.onboardingComplete != null) patch.onboardingComplete = !!body.onboardingComplete;
+  if (body.hours != null) {
+    patch.hoursJson = JSON.stringify(body.hours ?? {});
+  }
+  if (body.settings != null) {
+    patch.settingsJson = JSON.stringify(body.settings ?? {});
+  }
+  if (body.verificationStatus != null && req.user?.isSuperAdmin) {
+    patch.verificationStatus = String(body.verificationStatus).slice(0, 40);
+  }
+  const [updated] = await db
+    .update(wholesaleSellerProfilesTable)
+    .set(patch)
+    .where(eq(wholesaleSellerProfilesTable.userId, userId))
+    .returning();
+  res.json({ profile: shapeSellerProfile(updated) });
+});
+
+router.get("/wholesale/seller/analytics", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const [productStats] = await db
+    .select({
+      active: sql<number>`count(*) filter (where ${wholesaleProductsTable.status} = 'active')`,
+      draft: sql<number>`count(*) filter (where ${wholesaleProductsTable.status} = 'draft')`,
+      featured: sql<number>`count(*) filter (where ${wholesaleProductsTable.featured} = true)`,
+      totalStock: sql<number>`coalesce(sum(${wholesaleProductsTable.stockQuantity}), 0)`,
+    })
+    .from(wholesaleProductsTable)
+    .where(eq(wholesaleProductsTable.sellerId, userId));
+
+  const [inquiryStats] = await db
+    .select({
+      open: sql<number>`count(*) filter (where ${wholesaleInquiriesTable.status} = 'open')`,
+      quoted: sql<number>`count(*) filter (where ${wholesaleInquiriesTable.status} = 'quoted')`,
+      closed: sql<number>`count(*) filter (where ${wholesaleInquiriesTable.status} = 'closed')`,
+      total: sql<number>`count(*)`,
+    })
+    .from(wholesaleInquiriesTable)
+    .where(eq(wholesaleInquiriesTable.sellerId, userId));
+
+  const warehouses = await db
+    .select()
+    .from(wholesaleWarehousesTable)
+    .where(eq(wholesaleWarehousesTable.sellerId, userId));
+
+  const profile = await getOrCreateSellerProfile(userId);
+
+  res.json({
+    products: {
+      active: Number(productStats?.active ?? 0),
+      draft: Number(productStats?.draft ?? 0),
+      featured: Number(productStats?.featured ?? 0),
+      totalStock: Number(productStats?.totalStock ?? 0),
+    },
+    inquiries: {
+      open: Number(inquiryStats?.open ?? 0),
+      quoted: Number(inquiryStats?.quoted ?? 0),
+      closed: Number(inquiryStats?.closed ?? 0),
+      total: Number(inquiryStats?.total ?? 0),
+    },
+    warehouses: {
+      total: warehouses.length,
+      verified: warehouses.filter((w) => w.verificationStatus === "verified").length,
+      pending: warehouses.filter((w) => w.verificationStatus === "pending").length,
+    },
+    plan: profile.plan,
+    verificationStatus: profile.verificationStatus,
+  });
+});
+
+router.get("/wholesale/seller/customers", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const rows = await db
+    .select({
+      buyerId: wholesaleInquiriesTable.buyerId,
+      buyerName: usersTable.name,
+      buyerAvatar: usersTable.avatar,
+      inquiries: sql<number>`count(*)::int`,
+      lastAt: sql<Date>`max(${wholesaleInquiriesTable.createdAt})`,
+    })
+    .from(wholesaleInquiriesTable)
+    .innerJoin(usersTable, eq(usersTable.id, wholesaleInquiriesTable.buyerId))
+    .where(eq(wholesaleInquiriesTable.sellerId, userId))
+    .groupBy(wholesaleInquiriesTable.buyerId, usersTable.name, usersTable.avatar)
+    .orderBy(sql`max(${wholesaleInquiriesTable.createdAt}) desc`)
+    .limit(100);
+
+  res.json({
+    customers: rows.map((r) => ({
+      buyerId: r.buyerId,
+      buyerName: r.buyerName,
+      buyerAvatar: r.buyerAvatar,
+      inquiries: Number(r.inquiries),
+      lastAt: r.lastAt,
+    })),
+  });
+});
+
+router.get("/wholesale/seller/earnings", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const closed = await db
+    .select()
+    .from(wholesaleInquiriesTable)
+    .where(
+      and(
+        eq(wholesaleInquiriesTable.sellerId, userId),
+        eq(wholesaleInquiriesTable.status, "closed"),
+      ),
+    )
+    .orderBy(desc(wholesaleInquiriesTable.updatedAt))
+    .limit(100);
+
+  let estimatedTotal = 0;
+  const deals = closed.map((row) => {
+    const unit = row.quotedUnitPrice ?? 0;
+    const line = unit * row.qty;
+    estimatedTotal += line;
+    return {
+      id: row.id,
+      productId: row.productId,
+      qty: row.qty,
+      quotedUnitPrice: row.quotedUnitPrice,
+      estimatedTotal: line,
+      updatedAt: row.updatedAt,
+    };
+  });
+
+  res.json({
+    estimatedTotal,
+    closedDeals: deals.length,
+    deals,
+    note: "Flexa Wholesale is chat-only — earnings are estimated from closed quoted inquiries, not checkout payments.",
+  });
+});
+
+/* ─── Documents ──────────────────────────────────────────────────────────── */
+
+router.get("/wholesale/seller/documents", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const rows = await db
+    .select()
+    .from(wholesaleDocumentsTable)
+    .where(eq(wholesaleDocumentsTable.sellerId, userId))
+    .orderBy(desc(wholesaleDocumentsTable.createdAt));
+  res.json({ documents: rows });
+});
+
+router.post("/wholesale/seller/documents", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const body = req.body ?? {};
+  const title = String(body.title ?? "").trim().slice(0, 160);
+  const fileUrl = String(body.fileUrl ?? "").trim();
+  const docType = String(body.docType ?? "business").trim().slice(0, 40) || "business";
+  if (!title || !fileUrl) {
+    res.status(400).json({ error: "Title and fileUrl are required" });
+    return;
+  }
+  const [created] = await db
+    .insert(wholesaleDocumentsTable)
+    .values({ sellerId: userId, title, fileUrl, docType, status: "pending" })
+    .returning();
+  res.status(201).json({ document: created });
+});
+
+router.delete("/wholesale/seller/documents/:id", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  const [existing] = await db
+    .select()
+    .from(wholesaleDocumentsTable)
+    .where(eq(wholesaleDocumentsTable.id, id))
+    .limit(1);
+  if (!existing || existing.sellerId !== req.userId) {
+    res.status(404).json({ error: "Document not found" });
+    return;
+  }
+  await db.delete(wholesaleDocumentsTable).where(eq(wholesaleDocumentsTable.id, id));
+  res.json({ ok: true });
+});
+
+/* ─── Team ───────────────────────────────────────────────────────────────── */
+
+router.get("/wholesale/seller/team", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const rows = await db
+    .select()
+    .from(wholesaleTeamMembersTable)
+    .where(eq(wholesaleTeamMembersTable.ownerId, req.userId!))
+    .orderBy(desc(wholesaleTeamMembersTable.createdAt));
+  res.json({ members: rows });
+});
+
+router.post("/wholesale/seller/team", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const email = String(req.body?.email ?? "").trim().toLowerCase().slice(0, 160);
+  const role = String(req.body?.role ?? "staff").trim().slice(0, 40) || "staff";
+  if (!email || !email.includes("@")) {
+    res.status(400).json({ error: "Valid email required" });
+    return;
+  }
+  const [memberUser] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(sql`lower(${usersTable.email}) = ${email}`)
+    .limit(1);
+  const [created] = await db
+    .insert(wholesaleTeamMembersTable)
+    .values({
+      ownerId: req.userId!,
+      email,
+      role,
+      memberUserId: memberUser?.id ?? null,
+      status: memberUser ? "active" : "invited",
+    })
+    .returning();
+  res.status(201).json({ member: created });
+});
+
+router.delete("/wholesale/seller/team/:id", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [existing] = await db
+    .select()
+    .from(wholesaleTeamMembersTable)
+    .where(eq(wholesaleTeamMembersTable.id, id))
+    .limit(1);
+  if (!existing || existing.ownerId !== req.userId) {
+    res.status(404).json({ error: "Member not found" });
+    return;
+  }
+  await db.delete(wholesaleTeamMembersTable).where(eq(wholesaleTeamMembersTable.id, id));
+  res.json({ ok: true });
+});
+
+/* ─── Compare ────────────────────────────────────────────────────────────── */
+
+router.get("/wholesale/compare", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const country = normalizeWholesaleCountry(req.user?.country ?? null);
+  const rows = await db
+    .select({
+      id: wholesaleCompareSessionsTable.id,
+      productId: wholesaleCompareSessionsTable.productId,
+      createdAt: wholesaleCompareSessionsTable.createdAt,
+      product: wholesaleProductsTable,
+    })
+    .from(wholesaleCompareSessionsTable)
+    .innerJoin(
+      wholesaleProductsTable,
+      eq(wholesaleCompareSessionsTable.productId, wholesaleProductsTable.id),
+    )
+    .where(eq(wholesaleCompareSessionsTable.userId, userId))
+    .orderBy(desc(wholesaleCompareSessionsTable.createdAt))
+    .limit(8);
+
+  const products = rows
+    .map((r) => r.product)
+    .filter((p) => {
+      if (!country) return true;
+      return countriesMatch(p.country, country);
+    });
+
+  res.json({ products: products.map((p) => shapeProduct(p, null)) });
+});
+
+router.post("/wholesale/compare", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const productId = Number(req.body?.productId);
+  if (!Number.isFinite(productId)) {
+    res.status(400).json({ error: "productId required" });
+    return;
+  }
+  const existing = await db
+    .select()
+    .from(wholesaleCompareSessionsTable)
+    .where(eq(wholesaleCompareSessionsTable.userId, userId));
+  if (existing.length >= 4 && !existing.some((e) => e.productId === productId)) {
+    res.status(400).json({ error: "Compare list is full (max 4). Remove one first." });
+    return;
+  }
+  await db
+    .insert(wholesaleCompareSessionsTable)
+    .values({ userId, productId })
+    .onConflictDoNothing({
+      target: [wholesaleCompareSessionsTable.userId, wholesaleCompareSessionsTable.productId],
+    });
+  res.status(201).json({ ok: true });
+});
+
+router.delete("/wholesale/compare/:productId", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const productId = Number(req.params.productId);
+  await db
+    .delete(wholesaleCompareSessionsTable)
+    .where(
+      and(
+        eq(wholesaleCompareSessionsTable.userId, req.userId!),
+        eq(wholesaleCompareSessionsTable.productId, productId),
+      ),
+    );
+  res.json({ ok: true });
+});
+
+/* ─── Blocks ─────────────────────────────────────────────────────────────── */
+
+router.get("/wholesale/blocks", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      id: wholesaleBlocksTable.id,
+      blockedId: wholesaleBlocksTable.blockedId,
+      reason: wholesaleBlocksTable.reason,
+      createdAt: wholesaleBlocksTable.createdAt,
+      blockedName: usersTable.name,
+      blockedAvatar: usersTable.avatar,
+    })
+    .from(wholesaleBlocksTable)
+    .innerJoin(usersTable, eq(usersTable.id, wholesaleBlocksTable.blockedId))
+    .where(eq(wholesaleBlocksTable.blockerId, req.userId!))
+    .orderBy(desc(wholesaleBlocksTable.createdAt));
+  res.json({ blocks: rows });
+});
+
+router.post("/wholesale/blocks", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const blockedId = Number(req.body?.blockedId);
+  const reason = String(req.body?.reason ?? "").trim().slice(0, 400);
+  if (!Number.isFinite(blockedId) || blockedId === req.userId) {
+    res.status(400).json({ error: "Valid blockedId required" });
+    return;
+  }
+  const [created] = await db
+    .insert(wholesaleBlocksTable)
+    .values({ blockerId: req.userId!, blockedId, reason })
+    .onConflictDoNothing({
+      target: [wholesaleBlocksTable.blockerId, wholesaleBlocksTable.blockedId],
+    })
+    .returning();
+  res.status(201).json({ block: created ?? null, ok: true });
+});
+
+router.delete("/wholesale/blocks/:blockedId", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const blockedId = Number(req.params.blockedId);
+  await db
+    .delete(wholesaleBlocksTable)
+    .where(
+      and(
+        eq(wholesaleBlocksTable.blockerId, req.userId!),
+        eq(wholesaleBlocksTable.blockedId, blockedId),
+      ),
+    );
+  res.json({ ok: true });
+});
+
+/* ─── Disputes ───────────────────────────────────────────────────────────── */
+
+router.get("/wholesale/disputes", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const isAdmin = !!req.user?.isSuperAdmin;
+  const rows = isAdmin
+    ? await db
+        .select()
+        .from(wholesaleDisputesTable)
+        .orderBy(desc(wholesaleDisputesTable.createdAt))
+        .limit(100)
+    : await db
+        .select()
+        .from(wholesaleDisputesTable)
+        .where(
+          sql`${wholesaleDisputesTable.openerId} = ${userId} OR ${wholesaleDisputesTable.againstId} = ${userId}`,
+        )
+        .orderBy(desc(wholesaleDisputesTable.createdAt))
+        .limit(100);
+  res.json({ disputes: rows });
+});
+
+router.post("/wholesale/disputes", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const againstId = Number(req.body?.againstId);
+  const reason = String(req.body?.reason ?? "").trim().slice(0, 1000);
+  const productId = req.body?.productId != null ? Number(req.body.productId) : null;
+  const inquiryId = req.body?.inquiryId != null ? Number(req.body.inquiryId) : null;
+  if (!Number.isFinite(againstId) || !reason) {
+    res.status(400).json({ error: "againstId and reason are required" });
+    return;
+  }
+  const [created] = await db
+    .insert(wholesaleDisputesTable)
+    .values({
+      openerId: req.userId!,
+      againstId,
+      reason,
+      productId: Number.isFinite(productId as number) ? productId : null,
+      inquiryId: Number.isFinite(inquiryId as number) ? inquiryId : null,
+    })
+    .returning();
+  res.status(201).json({ dispute: created });
+});
+
+router.patch("/wholesale/disputes/:id", requireWholesaleAccess, async (req, res): Promise<void> => {
+  if (!req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Super Admin only" });
+    return;
+  }
+  const id = Number(req.params.id);
+  const status = String(req.body?.status ?? "").trim();
+  if (!["open", "resolved", "rejected"].includes(status)) {
+    res.status(400).json({ error: "Invalid status" });
+    return;
+  }
+  const [updated] = await db
+    .update(wholesaleDisputesTable)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(wholesaleDisputesTable.id, id))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.json({ dispute: updated });
+});
+
+/* ─── Notifications ──────────────────────────────────────────────────────── */
+
+router.get("/wholesale/notifications", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const { limit, offset } = parsePagination(req.query);
+  const userId = req.userId!;
+  const [countRow] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(wholesaleNotificationsTable)
+    .where(eq(wholesaleNotificationsTable.userId, userId));
+  const rows = await db
+    .select()
+    .from(wholesaleNotificationsTable)
+    .where(eq(wholesaleNotificationsTable.userId, userId))
+    .orderBy(desc(wholesaleNotificationsTable.createdAt))
+    .limit(limit)
+    .offset(offset);
+  const total = Number(countRow?.total ?? 0);
+  res.json({
+    notifications: rows,
+    pagination: { limit, offset, total, hasMore: offset + rows.length < total },
+  });
+});
+
+router.post("/wholesale/notifications/read", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const ids = Array.isArray(req.body?.ids)
+    ? req.body.ids.map((x: unknown) => Number(x)).filter((n: number) => Number.isFinite(n))
+    : [];
+  const userId = req.userId!;
+  if (ids.length === 0) {
+    await db
+      .update(wholesaleNotificationsTable)
+      .set({ readAt: new Date() })
+      .where(
+        and(
+          eq(wholesaleNotificationsTable.userId, userId),
+          sql`${wholesaleNotificationsTable.readAt} IS NULL`,
+        ),
+      );
+  } else {
+    await db
+      .update(wholesaleNotificationsTable)
+      .set({ readAt: new Date() })
+      .where(
+        and(
+          eq(wholesaleNotificationsTable.userId, userId),
+          inArray(wholesaleNotificationsTable.id, ids),
+        ),
+      );
+  }
+  res.json({ ok: true });
+});
+
+/* ─── Inquiry detail + quote ─────────────────────────────────────────────── */
+
+router.get("/wholesale/inquiries/:id", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  const [row] = await db
+    .select()
+    .from(wholesaleInquiriesTable)
+    .where(eq(wholesaleInquiriesTable.id, id))
+    .limit(1);
+  if (!row) {
+    res.status(404).json({ error: "Inquiry not found" });
+    return;
+  }
+  const userId = req.userId!;
+  if (row.buyerId !== userId && row.sellerId !== userId && !req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  let product = null;
+  if (row.productId) {
+    const [p] = await db
+      .select()
+      .from(wholesaleProductsTable)
+      .where(eq(wholesaleProductsTable.id, row.productId))
+      .limit(1);
+    if (p) product = shapeProduct(p, null);
+  }
+  const [buyer] = await db
+    .select({ id: usersTable.id, name: usersTable.name, avatar: usersTable.avatar })
+    .from(usersTable)
+    .where(eq(usersTable.id, row.buyerId))
+    .limit(1);
+  const [seller] = await db
+    .select({ id: usersTable.id, name: usersTable.name, avatar: usersTable.avatar })
+    .from(usersTable)
+    .where(eq(usersTable.id, row.sellerId))
+    .limit(1);
+
+  res.json({
+    inquiry: {
+      ...row,
+      product,
+      buyer,
+      seller,
+    },
+  });
+});
+
+router.patch("/wholesale/inquiries/:id", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [existing] = await db
+    .select()
+    .from(wholesaleInquiriesTable)
+    .where(eq(wholesaleInquiriesTable.id, id))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Inquiry not found" });
+    return;
+  }
+  const userId = req.userId!;
+  const isSeller = existing.sellerId === userId;
+  const isBuyer = existing.buyerId === userId;
+  if (!isSeller && !isBuyer && !req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const body = req.body ?? {};
+  const patch: Partial<typeof wholesaleInquiriesTable.$inferInsert> = { updatedAt: new Date() };
+  if (body.status != null) {
+    const status = String(body.status);
+    if (!["open", "quoted", "closed"].includes(status)) {
+      res.status(400).json({ error: "Invalid status" });
+      return;
+    }
+    if (status === "quoted" && !isSeller && !req.user?.isSuperAdmin) {
+      res.status(403).json({ error: "Only the seller can quote" });
+      return;
+    }
+    patch.status = status;
+  }
+  if (body.quotedUnitPrice != null) {
+    if (!isSeller && !req.user?.isSuperAdmin) {
+      res.status(403).json({ error: "Only the seller can set a quote" });
+      return;
+    }
+    const price = Number(body.quotedUnitPrice);
+    if (!Number.isFinite(price) || price <= 0) {
+      res.status(400).json({ error: "Invalid quote price" });
+      return;
+    }
+    patch.quotedUnitPrice = price;
+    if (!patch.status) patch.status = "quoted";
+  }
+  const [updated] = await db
+    .update(wholesaleInquiriesTable)
+    .set(patch)
+    .where(eq(wholesaleInquiriesTable.id, id))
+    .returning();
+
+  if (patch.status === "quoted" || patch.quotedUnitPrice != null) {
+    await db.insert(wholesaleNotificationsTable).values({
+      userId: existing.buyerId,
+      title: "New wholesale quote",
+      body: `Seller quoted inquiry #${id}`,
+      kind: "quote",
+      href: `/wholesale/quotes/${id}`,
+    });
+  }
+  if (patch.status === "closed") {
+    await db.insert(wholesaleNotificationsTable).values({
+      userId: isBuyer ? existing.sellerId : existing.buyerId,
+      title: "Wholesale deal closed",
+      body: `Inquiry #${id} marked closed`,
+      kind: "deal",
+      href: `/wholesale/deals`,
+    });
+  }
+
+  res.json({ inquiry: updated });
+});
+
+/* ─── Storefront (seller store) ──────────────────────────────────────────── */
+
+router.get("/wholesale/stores/:sellerId", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const sellerId = Number(req.params.sellerId);
+  if (!Number.isFinite(sellerId)) {
+    res.status(400).json({ error: "Invalid seller id" });
+    return;
+  }
+  const [seller] = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      avatar: usersTable.avatar,
+      country: usersTable.country,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, sellerId))
+    .limit(1);
+  if (!seller) {
+    res.status(404).json({ error: "Seller not found" });
+    return;
+  }
+  const [profile] = await db
+    .select()
+    .from(wholesaleSellerProfilesTable)
+    .where(eq(wholesaleSellerProfilesTable.userId, sellerId))
+    .limit(1);
+
+  const buyerCountry = normalizeWholesaleCountry(req.user?.country ?? null);
+  const isAdmin = !!req.user?.isSuperAdmin;
+  const { limit, offset } = parsePagination(req.query);
+
+  const conds = [
+    eq(wholesaleProductsTable.sellerId, sellerId),
+    eq(wholesaleProductsTable.status, "active"),
+  ];
+  if (!isAdmin) {
+    if (!buyerCountry) {
+      res.status(400).json({ error: "Your account country is required" });
+      return;
+    }
+    conds.push(...buyerVisibleWarehouseConds(buyerCountry));
+  }
+
+  const whereClause = and(...conds);
+  const [countRow] = await db
+    .select({ total: sql<number>`count(distinct ${wholesaleProductsTable.id})::int` })
+    .from(wholesaleProductsTable)
+    .innerJoin(
+      wholesaleWarehousesTable,
+      eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id),
+    )
+    .where(whereClause);
+  const total = Number(countRow?.total ?? 0);
+  const productRows = await db
+    .select({ product: wholesaleProductsTable })
+    .from(wholesaleProductsTable)
+    .innerJoin(
+      wholesaleWarehousesTable,
+      eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id),
+    )
+    .where(whereClause)
+    .orderBy(desc(wholesaleProductsTable.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  const warehouseConds = [
+    eq(wholesaleWarehousesTable.sellerId, sellerId),
+    eq(wholesaleWarehousesTable.verificationStatus, "verified"),
+    eq(wholesaleWarehousesTable.isActive, true),
+  ];
+  if (buyerCountry && !isAdmin) {
+    warehouseConds.push(sql`lower(${wholesaleWarehousesTable.country}) = lower(${buyerCountry})`);
+  }
+  const warehouses = await db
+    .select()
+    .from(wholesaleWarehousesTable)
+    .where(and(...warehouseConds));
+
+  res.json({
+    seller,
+    profile: profile ? shapeSellerProfile(profile) : null,
+    warehouses: warehouses.map(shapeWarehouse),
+    products: productRows.map((r) => shapeProduct(r.product, null)),
+    pagination: { limit, offset, total, hasMore: offset + productRows.length < total },
+  });
+});
+
+/* ─── Media library (seller product assets) ──────────────────────────────── */
+
+router.get("/wholesale/seller/media", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const products = await db
+    .select({
+      id: wholesaleProductsTable.id,
+      title: wholesaleProductsTable.title,
+      images: wholesaleProductsTable.images,
+      videos: wholesaleProductsTable.videos,
+      status: wholesaleProductsTable.status,
+      updatedAt: wholesaleProductsTable.updatedAt,
+    })
+    .from(wholesaleProductsTable)
+    .where(eq(wholesaleProductsTable.sellerId, userId))
+    .orderBy(desc(wholesaleProductsTable.updatedAt))
+    .limit(100);
+
+  const photos: Array<{ productId: number; title: string; url: string; status: string }> = [];
+  const videos: Array<{ productId: number; title: string; url: string; status: string }> = [];
+  for (const p of products) {
+    for (const url of p.images ?? []) {
+      photos.push({ productId: p.id, title: p.title, url, status: p.status });
+    }
+    for (const url of p.videos ?? []) {
+      videos.push({ productId: p.id, title: p.title, url, status: p.status });
+    }
+  }
+  res.json({ photos, videos });
+});
+
+/* ─── Admin extras ───────────────────────────────────────────────────────── */
+
+router.get("/wholesale/admin/categories", requireWholesaleAccess, async (req, res): Promise<void> => {
+  if (!req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Super Admin only" });
+    return;
+  }
+  const rows = await db
+    .select({
+      category: wholesaleProductsTable.category,
+      count: sql<number>`count(*)::int`,
+      active: sql<number>`count(*) filter (where ${wholesaleProductsTable.status} = 'active')::int`,
+    })
+    .from(wholesaleProductsTable)
+    .where(sql`${wholesaleProductsTable.category} IS NOT NULL`)
+    .groupBy(wholesaleProductsTable.category)
+    .orderBy(sql`count(*) desc`);
+  res.json({
+    categories: rows.map((r) => ({
+      category: r.category,
+      count: Number(r.count),
+      active: Number(r.active),
+    })),
+  });
+});
+
+router.get("/wholesale/admin/countries", requireWholesaleAccess, async (req, res): Promise<void> => {
+  if (!req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Super Admin only" });
+    return;
+  }
+  const productCountries = await db
+    .select({
+      country: wholesaleProductsTable.country,
+      products: sql<number>`count(*)::int`,
+    })
+    .from(wholesaleProductsTable)
+    .where(sql`${wholesaleProductsTable.country} IS NOT NULL`)
+    .groupBy(wholesaleProductsTable.country);
+
+  const warehouseCountries = await db
+    .select({
+      country: wholesaleWarehousesTable.country,
+      warehouses: sql<number>`count(*)::int`,
+      verified: sql<number>`count(*) filter (where ${wholesaleWarehousesTable.verificationStatus} = 'verified')::int`,
+    })
+    .from(wholesaleWarehousesTable)
+    .groupBy(wholesaleWarehousesTable.country);
+
+  const map = new Map<string, { country: string; products: number; warehouses: number; verified: number }>();
+  for (const r of productCountries) {
+    const key = (r.country || "").toLowerCase();
+    map.set(key, {
+      country: r.country || "",
+      products: Number(r.products),
+      warehouses: 0,
+      verified: 0,
+    });
+  }
+  for (const r of warehouseCountries) {
+    const key = (r.country || "").toLowerCase();
+    const prev = map.get(key) ?? { country: r.country, products: 0, warehouses: 0, verified: 0 };
+    prev.warehouses = Number(r.warehouses);
+    prev.verified = Number(r.verified);
+    map.set(key, prev);
+  }
+  res.json({ countries: [...map.values()].sort((a, b) => a.country.localeCompare(b.country)) });
+});
+
+router.get("/wholesale/admin/sellers", requireWholesaleAccess, async (req, res): Promise<void> => {
+  if (!req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Super Admin only" });
+    return;
+  }
+  const rows = await db
+    .select({
+      sellerId: wholesaleWarehousesTable.sellerId,
+      sellerName: usersTable.name,
+      sellerAvatar: usersTable.avatar,
+      warehouses: sql<number>`count(*)::int`,
+      verified: sql<number>`count(*) filter (where ${wholesaleWarehousesTable.verificationStatus} = 'verified')::int`,
+    })
+    .from(wholesaleWarehousesTable)
+    .innerJoin(usersTable, eq(usersTable.id, wholesaleWarehousesTable.sellerId))
+    .groupBy(wholesaleWarehousesTable.sellerId, usersTable.name, usersTable.avatar)
+    .orderBy(sql`count(*) desc`)
+    .limit(200);
+
+  const profiles = await db.select().from(wholesaleSellerProfilesTable);
+  const profileMap = new Map(profiles.map((p) => [p.userId, p]));
+
+  res.json({
+    sellers: rows.map((r) => {
+      const profile = profileMap.get(r.sellerId);
+      return {
+        sellerId: r.sellerId,
+        sellerName: r.sellerName,
+        sellerAvatar: r.sellerAvatar,
+        warehouses: Number(r.warehouses),
+        verified: Number(r.verified),
+        plan: profile?.plan ?? "free",
+        verificationStatus: profile?.verificationStatus ?? "unverified",
+        onboardingComplete: profile?.onboardingComplete ?? false,
+      };
+    }),
+  });
+});
+
+router.get("/wholesale/admin/chats", requireWholesaleAccess, async (req, res): Promise<void> => {
+  if (!req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Super Admin only" });
+    return;
+  }
+  const rows = await db
+    .select({
+      id: conversationsTable.id,
+      buyerId: conversationsTable.buyerId,
+      sellerId: conversationsTable.sellerId,
+      lastMessage: conversationsTable.lastMessage,
+      lastMessageAt: conversationsTable.lastMessageAt,
+      conversationType: conversationsTable.conversationType,
+    })
+    .from(conversationsTable)
+    .where(eq(conversationsTable.conversationType, "wholesale"))
+    .orderBy(desc(conversationsTable.lastMessageAt))
+    .limit(100);
+  res.json({ conversations: rows });
+});
+
+router.get("/wholesale/admin/flags", requireWholesaleAccess, async (req, res): Promise<void> => {
+  if (!req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Super Admin only" });
+    return;
+  }
+  // Flagged = active products with zero photos, or missing warehouse (data integrity)
+  const flagged = await db
+    .select()
+    .from(wholesaleProductsTable)
+    .where(
+      and(
+        eq(wholesaleProductsTable.status, "active"),
+        sql`(cardinality(${wholesaleProductsTable.images}) = 0 OR ${wholesaleProductsTable.warehouseId} IS NULL)`,
+      ),
+    )
+    .orderBy(desc(wholesaleProductsTable.updatedAt))
+    .limit(100);
+  res.json({ products: flagged.map((p) => shapeProduct(p, null)) });
+});
+
+router.get("/wholesale/admin/reports", requireWholesaleAccess, async (req, res): Promise<void> => {
+  if (!req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Super Admin only" });
+    return;
+  }
+  const disputes = await db
+    .select()
+    .from(wholesaleDisputesTable)
+    .orderBy(desc(wholesaleDisputesTable.createdAt))
+    .limit(100);
+  const [overview] = await db
+    .select({
+      openDisputes: sql<number>`count(*) filter (where ${wholesaleDisputesTable.status} = 'open')`,
+      total: sql<number>`count(*)`,
+    })
+    .from(wholesaleDisputesTable);
+  res.json({
+    overview: {
+      openDisputes: Number(overview?.openDisputes ?? 0),
+      totalDisputes: Number(overview?.total ?? 0),
+    },
+    disputes,
   });
 });
 

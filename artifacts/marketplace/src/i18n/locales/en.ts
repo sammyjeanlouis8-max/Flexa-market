@@ -195,6 +195,8 @@ export default {
     tabDepots: "Depots",
     tabInquiries: "Chat",
     tabAdmin: "Admin",
+    brandLine: "Wholesale · chat only · country depots",
+    backHome: "Back to Flexa Wholesale",
     searchPlaceholder: "Search wholesale products…",
     emptyTitle: "No wholesale products yet",
     emptyBody: "List bulk stock from your warehouse. Buyers contact you in chat — no checkout.",

@@ -12,10 +12,10 @@ import {
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { href: "/wholesale", labelKey: "wholesale.tabCatalog", fallback: "Catalog", icon: LayoutGrid, match: (p: string) => p === "/wholesale" || p.startsWith("/wholesale/categories") || p.startsWith("/wholesale/search") || p.startsWith("/wholesale/country") },
+  { href: "/wholesale", labelKey: "wholesale.tabCatalog", fallback: "Catalog", icon: LayoutGrid, match: (p: string) => p === "/wholesale" || p.startsWith("/wholesale/categories") || p.startsWith("/wholesale/search") || p.startsWith("/wholesale/country") || p.startsWith("/wholesale/featured") || p.startsWith("/wholesale/compare") || p.startsWith("/wholesale/recent") || p.startsWith("/wholesale/help") || p.startsWith("/wholesale/pickup") || p.startsWith("/wholesale/map") || p.startsWith("/wholesale/city") },
   { href: "/wholesale/warehouses", labelKey: "wholesale.tabDepots", fallback: "Depots", icon: Warehouse, match: (p: string) => p.startsWith("/wholesale/warehouses") || p.startsWith("/wholesale/stores") },
-  { href: "/wholesale/inquiries", labelKey: "wholesale.tabInquiries", fallback: "Chat", icon: MessageCircle, match: (p: string) => p.startsWith("/wholesale/inquiries") || p.startsWith("/wholesale/favorites") || p.startsWith("/wholesale/notifications") },
-  { href: "/wholesale/seller", labelKey: "wholesale.tabSeller", fallback: "Seller", icon: PackagePlus, match: (p: string) => p.startsWith("/wholesale/seller") },
+  { href: "/wholesale/inquiries", labelKey: "wholesale.tabInquiries", fallback: "Chat", icon: MessageCircle, match: (p: string) => p.startsWith("/wholesale/inquiries") || p.startsWith("/wholesale/favorites") || p.startsWith("/wholesale/notifications") || p.startsWith("/wholesale/deals") || p.startsWith("/wholesale/quotes") || p.startsWith("/wholesale/disputes") || p.startsWith("/wholesale/blocked") },
+  { href: "/wholesale/seller", labelKey: "wholesale.tabSeller", fallback: "Seller", icon: PackagePlus, match: (p: string) => p.startsWith("/wholesale/seller") || p.startsWith("/wholesale/verification") },
   { href: "/wholesale/admin", labelKey: "wholesale.tabAdmin", fallback: "Admin", icon: Store, match: (p: string) => p.startsWith("/wholesale/admin") },
 ] as const;
 
@@ -26,42 +26,45 @@ export function WholesaleShell({
   actions,
 }: {
   children: ReactNode;
+  /** Page section name — never replaces the Flexa Wholesale brand. */
   title?: string;
   subtitle?: string;
   actions?: ReactNode;
 }) {
   const { t } = useTranslation();
   const [location] = useLocation();
+  const brand = t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" });
 
   return (
     <div className="min-h-[calc(100dvh-3.5rem)] bg-[hsl(152,22%,97%)] dark:bg-[hsl(152,14%,8%)]">
       <header className="sticky top-0 z-30 border-b border-[hsl(152,30%,22%)]/20 bg-[hsl(152,55%,16%)] text-white">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-3 py-3 sm:px-4">
           <Link
-            href="/"
+            href="/wholesale"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/15"
-            aria-label={t("common.back", { defaultValue: "Back" })}
+            aria-label={t("wholesale.backHome", { defaultValue: "Back to Flexa Wholesale" })}
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[hsl(152,65%,20%)]">
-              <Warehouse className="h-4 w-4" />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[hsl(152,65%,20%)] shadow-sm">
+              <Warehouse className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-white/70">
-                Flexa Market
-              </p>
-              <h1 className="truncate text-[17px] font-extrabold leading-tight">
-                {title ?? t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" })}
+              <h1 className="truncate text-[19px] font-extrabold leading-tight tracking-tight sm:text-[21px]">
+                {brand}
               </h1>
-              {subtitle && <p className="truncate text-[11px] text-white/75">{subtitle}</p>}
+              <p className="truncate text-[11px] font-medium text-white/70">
+                {t("wholesale.brandLine", {
+                  defaultValue: "Wholesale · chat only · country depots",
+                })}
+              </p>
             </div>
           </div>
           {actions}
         </div>
 
-        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-3 pb-2 sm:px-4" aria-label="Wholesale">
+        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-3 pb-2 sm:px-4" aria-label="Flexa Wholesale">
           {TABS.map((tab) => {
             const active = tab.match(location);
             const Icon = tab.icon;
@@ -84,6 +87,14 @@ export function WholesaleShell({
       </header>
 
       <main className="mx-auto max-w-5xl px-3 py-4 pb-24 sm:px-4 sm:py-5">
+        {(title || subtitle) && (
+          <div className="mb-4">
+            {title && (
+              <h2 className="text-xl font-extrabold tracking-tight text-foreground sm:text-2xl">{title}</h2>
+            )}
+            {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
+          </div>
+        )}
         {children}
       </main>
     </div>

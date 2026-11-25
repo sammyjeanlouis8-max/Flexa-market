@@ -74,7 +74,16 @@ export default function WholesaleProductPage() {
   }
 
   return (
-    <WholesaleShell title={product?.title ?? t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" })}>
+    <WholesaleShell
+      title={product?.title}
+      subtitle={
+        product
+          ? t("wholesale.productSubtitle", {
+              defaultValue: "Wholesale listing · chat seller · depot pickup",
+            })
+          : undefined
+      }
+    >
       {loading ? (
         <div className="h-72 animate-pulse rounded-2xl bg-muted/70" />
       ) : error || !product ? (

@@ -11,11 +11,19 @@ if (!process.env.DATABASE_URL) {
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
-// DigitalOcean managed PostgreSQL uses a self-signed CA — skip chain verification.
-// Neon and other hosted providers use trusted certs so rejectUnauthorized stays true.
-const sslConfig = DATABASE_URL.includes("ondigitalocean.com")
-  ? { rejectUnauthorized: false }
-  : true;
+// Local / explicit disable: no TLS. DigitalOcean managed Postgres uses a
+// self-signed CA — skip chain verification. Other hosted providers keep
+// rejectUnauthorized true (trusted certs).
+function resolvePgSsl(url: string): boolean | { rejectUnauthorized: boolean } {
+  if (/[?&]sslmode=disable\b/i.test(url) || /@(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url)) {
+    return false;
+  }
+  if (url.includes("ondigitalocean.com")) {
+    return { rejectUnauthorized: false };
+  }
+  return true;
+}
+const sslConfig = resolvePgSsl(DATABASE_URL);
 
 // Pool sizing: default 15 (was 10). Override with PG_POOL_MAX for DO capacity planning.
 // Keep well under managed Postgres connection limits when running multiple app instances.

@@ -1,15 +1,11 @@
-import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
+import { WholesaleLiveProductsPage } from "@/pages/wholesale/WholesaleLiveProducts";
 
 export default function WholesaleRecent() {
   return (
-    <WholesaleSimplePage
+    <WholesaleLiveProductsPage
       title="Recently viewed"
-      subtitle="Bulk listings you opened."
-      items={[
-        { title: "Rice 50lb bags", meta: "Haiti · Delmas", href: "/wholesale/products/101", badge: "Viewed" },
-        { title: "Cooking oil cartons", meta: "Haiti · Cap", href: "/wholesale/products/102", badge: "Viewed" },
-
-      ]}
+      subtitle="Bulk listings from the live catalog."
+      badge="Live"
     />
   );
 }

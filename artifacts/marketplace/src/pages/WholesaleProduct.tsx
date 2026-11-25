@@ -30,7 +30,13 @@ export default function WholesaleProductPage() {
   }, [authLoading, allowed, setLocation]);
 
   useEffect(() => {
-    if (!allowed || !Number.isFinite(id) || id <= 0) return;
+    if (!allowed) return;
+    if (!Number.isFinite(id) || id <= 0) {
+      setProduct(null);
+      setError(t("wholesale.notFound", { defaultValue: "Product not found" }));
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     fetchWholesaleProduct(id)
@@ -43,7 +49,7 @@ export default function WholesaleProductPage() {
       .catch((err: Error) => {
         if (!cancelled) {
           setProduct(null);
-          setError(err.message);
+          setError(err.message || t("wholesale.notFound", { defaultValue: "Product not found" }));
         }
       })
       .finally(() => {
@@ -52,7 +58,7 @@ export default function WholesaleProductPage() {
     return () => {
       cancelled = true;
     };
-  }, [allowed, id]);
+  }, [allowed, id, t]);
 
   const unit = useMemo(() => (product ? priceForQty(product, qty) : 0), [product, qty]);
   const total = unit * qty;

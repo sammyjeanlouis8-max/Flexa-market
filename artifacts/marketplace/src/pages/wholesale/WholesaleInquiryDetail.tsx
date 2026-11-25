@@ -1,19 +1,15 @@
-import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
+import { WholesaleLiveProductsPage } from "@/pages/wholesale/WholesaleLiveProducts";
 
 export default function WholesaleInquiryDetail() {
   return (
-    <WholesaleSimplePage
+    <WholesaleLiveProductsPage
       title="Inquiry"
-      subtitle="Chat thread summary for a wholesale quote."
+      subtitle="Open a live product, then continue the quote in Market chat."
       stats={[
-        { label: "Status", value: "Open" },
-        { label: "Qty", value: "40" },
+        { label: "Flow", value: "Chat" },
+        { label: "Checkout", value: "None" },
       ]}
-      items={[
-        { title: "Message seller", meta: "Continue in Market chat", href: "/messages", badge: "Chat" },
-        { title: "View product", meta: "Rice 50lb bags", href: "/wholesale/products/101", badge: "Product" },
-
-      ]}
+      badge="Product"
     />
   );
 }

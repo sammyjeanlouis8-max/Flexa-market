@@ -63,7 +63,8 @@ export default function WholesaleProductScreen() {
 
   const onChat = async () => {
     if (!token || !product) return;
-    if (user?.id === product.sellerId) {
+    const isSa = !!(user as any)?.isSuperAdmin || (user as any)?.role === "superadmin";
+    if (user?.id === product.sellerId && !isSa) {
       Alert.alert("That's your listing", "Open Seller to edit this product.");
       return;
     }

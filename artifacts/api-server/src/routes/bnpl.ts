@@ -1,3 +1,4 @@
+import { contactOnlyError, hasContactOnlyListing } from "../lib/contactOnlyCheckout";
 import { Router } from "express";
 import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
 import { db, usersTable, transactionsTable, listingsTable, promoWalletTable, walletTransactionsTable, notificationsTable } from "@workspace/db";
@@ -117,6 +118,10 @@ router.post("/bnpl/checkout", requireAuth, async (req: any, res: Response): Prom
 
     const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, Number(listingId)));
     if (!listing) { res.status(404).json({ error: "Lis pa jwenn" }); return; }
+    if (await hasContactOnlyListing([listing])) {
+      res.status(409).json(contactOnlyError);
+      return;
+    }
     if (listing.status !== "available") { res.status(400).json({ error: "Lis pa disponib" }); return; }
     if (listing.sellerId === req.userId) { res.status(400).json({ error: "Ou pa ka achte pwòp bagay ou" }); return; }
 

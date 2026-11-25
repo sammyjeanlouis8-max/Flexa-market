@@ -1382,7 +1382,7 @@ export default function Sell() {
                           </div>
                           {selectedSub && (
                             <div className="text-xs text-muted-foreground truncate mt-0.5">
-                              {selectedSub.name}
+                              {t(`categories.${selectedSub.slug}`, { defaultValue: selectedSub.name as string })}
                             </div>
                           )}
                         </div>
@@ -1486,7 +1486,7 @@ export default function Sell() {
                                   {sub.icon && (
                                     <span className="text-xl w-8 text-center shrink-0">{sub.icon}</span>
                                   )}
-                                  <span className="flex-1 text-sm font-medium">{sub.name}</span>
+                                  <span className="flex-1 text-sm font-medium">{t(`categories.${sub.slug}`, { defaultValue: sub.name as string })}</span>
                                   {isSelected && <Check className="h-4 w-4 text-primary shrink-0" />}
                                 </button>
                               </li>

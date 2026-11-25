@@ -18,6 +18,9 @@ export type Listing = {
   city?: string | null;
   location?: string | null;
   country?: string | null;
+  categorySlug?: string | null;
+  subcategorySlug?: string | null;
+  subcategory?: string | null;
   category?: string | null;
   condition?: string | null;
   status?: string | null;

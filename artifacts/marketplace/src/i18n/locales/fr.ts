@@ -1028,6 +1028,11 @@ export default {
     myStore: "Ma boutique",
 },
   categories: {
+    "houses-for-rent": "Maisons à louer",
+    "houses-for-sale": "Maisons à vendre",
+    "cars": "Voitures à vendre",
+    "car-rentals": "Voitures à louer",
+    "motorcycles": "Motos",
     all: "Tout",
     "baby-kids": "Bébé & Enfants",
     electronics: "Électronique",

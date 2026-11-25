@@ -22,6 +22,13 @@ export const LANGUAGES: { code: Lang; label: string; native: string; flag: strin
 
 const T: Record<Lang, Record<string, string>> = {
   en: {
+    "market.subcategory": "Subcategory",
+    "market.houses-for-rent": "Houses for Rent",
+    "market.houses-for-sale": "Houses for Sale",
+    "market.cars": "Cars",
+    "market.car-rentals": "Car Rentals",
+    "market.motorcycles": "Motorcycles",
+    "market.chat": "Chat",
     wholesale_add: "Add",
     wholesale_addDepot: "Add warehouse",
     wholesale_address: "Address",
@@ -359,6 +366,13 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   ht: {
+    "market.subcategory": "Soukategori",
+    "market.houses-for-rent": "Kay pou lwe",
+    "market.houses-for-sale": "Kay pou vann",
+    "market.cars": "Machin pou vann",
+    "market.car-rentals": "Machin pou lwe",
+    "market.motorcycles": "Moto",
+    "market.chat": "Chat",
     wholesale_add: "Ajoute",
     wholesale_addDepot: "Ajoute depo",
     wholesale_address: "Adrès",
@@ -696,6 +710,13 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   fr: {
+    "market.subcategory": "Sous-catégorie",
+    "market.houses-for-rent": "Maisons à louer",
+    "market.houses-for-sale": "Maisons à vendre",
+    "market.cars": "Voitures à vendre",
+    "market.car-rentals": "Voitures à louer",
+    "market.motorcycles": "Motos",
+    "market.chat": "Discuter",
     wholesale_add: "Ajouter",
     wholesale_addDepot: "Ajouter un dépôt",
     wholesale_address: "Adresse",
@@ -1033,6 +1054,13 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   es: {
+    "market.subcategory": "Subcategoría",
+    "market.houses-for-rent": "Casas en alquiler",
+    "market.houses-for-sale": "Casas en venta",
+    "market.cars": "Autos en venta",
+    "market.car-rentals": "Autos en alquiler",
+    "market.motorcycles": "Motos",
+    "market.chat": "Chat",
     wholesale_add: "Añadir",
     wholesale_addDepot: "Agregar depósito",
     wholesale_address: "Dirección",

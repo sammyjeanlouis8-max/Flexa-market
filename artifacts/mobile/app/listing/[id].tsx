@@ -1,3 +1,4 @@
+import { isContactOnlyListing } from "../../../../lib/marketplace-policy/contact-only.mjs";
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -13,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { fetchListing, type Listing } from "@/lib/api";
@@ -29,6 +31,7 @@ const WIDTH = Dimensions.get("window").width;
 
 export default function ListingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { t } = useLanguage();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { token, user } = useAuth();
@@ -95,6 +98,7 @@ export default function ListingDetailScreen() {
         ? "RD$"
         : "$";
   const listingId = Number(listing?.id || id);
+  const contactOnly = isContactOnlyListing(listing);
   const inCart = listingId ? isInCart(listingId) : false;
   const isOwnListing =
     !!user?.id && !!listing?.sellerId && user.id === listing.sellerId;
@@ -312,10 +316,10 @@ export default function ListingDetailScreen() {
                 disabled={msgBusy || isOwnListing}
               >
                 <Text style={styles.secondaryCtaText}>
-                  {msgBusy ? "Opening…" : "Message"}
+                  {msgBusy ? "Opening…" : contactOnly ? t("market.chat") : "Message"}
                 </Text>
               </Pressable>
-              {dominican && !isOwnListing ? (
+              {contactOnly ? null : dominican && !isOwnListing ? (
                 <Pressable
                   style={styles.primaryCta}
                   onPress={() => {
@@ -353,7 +357,7 @@ export default function ListingDetailScreen() {
                 </Pressable>
               )}
             </View>
-            {dominican && !isOwnListing ? (
+            {contactOnly ? null : dominican && !isOwnListing ? (
               <Pressable style={styles.cartAlt} onPress={onAddToCart}>
                 <Text style={styles.cartAltText}>
                   {inCart

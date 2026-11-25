@@ -1029,6 +1029,11 @@ export default {
     myStore: "Boutik mwen",
 },
   categories: {
+    "houses-for-rent": "Kay pou lwe",
+    "houses-for-sale": "Kay pou vann",
+    "cars": "Machin pou vann",
+    "car-rentals": "Machin pou lwe",
+    "motorcycles": "Moto",
     all: "Tout",
     "baby-kids": "Bebe & Timoun",
     electronics: "Elektwonik",

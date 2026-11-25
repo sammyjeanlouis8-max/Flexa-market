@@ -66,6 +66,7 @@ async function main() {
       ],
       "real-estate": [
         { name: "Houses for Sale", slug: "houses-for-sale", icon: "🏡" },
+        { name: "Houses for Rent", slug: "houses-for-rent", icon: "🏡" },
         { name: "Apartments for Rent", slug: "apartments-for-rent", icon: "🏢" },
         { name: "Land", slug: "land", icon: "🌿" },
         { name: "Commercial Property", slug: "commercial-property", icon: "🏬" },

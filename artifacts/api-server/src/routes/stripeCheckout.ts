@@ -1,3 +1,4 @@
+import { contactOnlyError, hasContactOnlyListing } from "../lib/contactOnlyCheckout";
 import { Router } from "express";
 import { db, usersTable, transactionsTable, listingsTable, promoWalletTable, walletTransactionsTable, boostsTable, notificationsTable, sellerPayoutAccountsTable, offersTable } from "@workspace/db";
 import { sendPushToUser } from "../lib/push";
@@ -185,6 +186,10 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       .where(eq(listingsTable.id, Number(listingId)));
 
     if (!listing) return res.status(404).json({ error: "Listing not found" });
+    if (await hasContactOnlyListing([listing])) {
+      res.status(409).json(contactOnlyError);
+      return;
+    }
     if (listing.status !== "available") return res.status(400).json({ error: "Listing is not available" });
     if ((listing as any).moderationStatus && (listing as any).moderationStatus !== "approved") {
       return res.status(409).json({ error: "Listing is not available for purchase", code: "LISTING_NOT_APPROVED" });

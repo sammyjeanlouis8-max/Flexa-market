@@ -18,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import { uploadLocalFile } from "@/lib/mediaUpload";
 import { cleanListingImageUrls } from "@/lib/listingImages";
@@ -48,6 +49,7 @@ type LocalImage = {
 };
 
 export default function SellTab() {
+  const { t } = useLanguage();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
@@ -58,7 +60,9 @@ export default function SellTab() {
   const [price, setPrice] = useState("");
   const [currency, setCurrency] = useState<"USD" | "HTG" | "DOP">("USD");
   const [condition, setCondition] = useState<CreateListingInput["condition"]>("good");
+  const [subcategoryId, setSubcategoryId] = useState<number | null>(null);
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const children = categories.find((category) => category.id === categoryId)?.children ?? [];
   const [location, setLocation] = useState(user?.city || user?.location || "");
   const [city, setCity] = useState(user?.city || "");
   const [stock, setStock] = useState("1");
@@ -196,6 +200,7 @@ export default function SellTab() {
       price: Number(price),
       currency,
       categoryId: categoryId!,
+      subcategoryId,
       condition,
       location: location.trim() || city.trim() || user.country || "Unknown",
       city: city.trim() || undefined,
@@ -337,7 +342,10 @@ export default function SellTab() {
             <Pressable
               key={c.id}
               style={[styles.chip, categoryId === c.id && styles.chipOn]}
-              onPress={() => setCategoryId(c.id)}
+              onPress={() => {
+                if (categoryId !== c.id) setSubcategoryId(null);
+                setCategoryId(c.id);
+              }}
             >
               <Text style={[styles.chipText, categoryId === c.id && styles.chipTextOn]}>
                 {c.name}
@@ -345,6 +353,22 @@ export default function SellTab() {
             </Pressable>
           ))}
         </View>
+
+        {children.length > 0 && (
+          <>
+            <Text style={styles.label}>{t("market.subcategory")}</Text>
+            <View style={styles.wrapChips}>
+              {children.map((child) => (
+                <Pressable key={child.id} onPress={() => setSubcategoryId(child.id)}
+                  style={[styles.chip, child.id === subcategoryId && styles.chipOn]}>
+                  <Text style={[styles.chipText, child.id === subcategoryId && styles.chipTextOn]}>
+                    {["houses-for-rent", "houses-for-sale", "cars", "car-rentals", "motorcycles"].includes(child.slug ?? "") ? t(`market.${child.slug}`) : child.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
 
         <Field label="City" value={city} onChangeText={setCity} placeholder="City" />
         <Field

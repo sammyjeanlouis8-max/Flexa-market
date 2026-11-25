@@ -59,6 +59,7 @@ const SUBCATEGORIES: Record<string, { name: string; slug: string; icon: string }
 
   "real-estate": [
     { name: "Houses for Sale",         slug: "houses-for-sale",     icon: "🏡" },
+    { name: "Houses for Rent",         slug: "houses-for-rent",     icon: "🏡" },
     { name: "Apartments for Rent",     slug: "apartments-for-rent", icon: "🏢" },
     { name: "Rooms for Rent",          slug: "rooms-for-rent",      icon: "🛏️" },
     { name: "Land & Plots",            slug: "land",                icon: "🌿" },

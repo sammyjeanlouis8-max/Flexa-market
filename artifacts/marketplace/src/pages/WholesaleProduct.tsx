@@ -84,7 +84,9 @@ export default function WholesaleProductPage() {
 
   const onChatSeller = async () => {
     if (!product || chatting) return;
-    if (user?.id === product.sellerId) {
+    // While wholesale is Super-Admin gated, allow SA preview threads on own listings.
+    const isSa = !!(user as any)?.isSuperAdmin || (user as any)?.role === "superadmin";
+    if (user?.id === product.sellerId && !isSa) {
       setError(t("wholesale.ownListing", { defaultValue: "That's your listing — open Seller to edit it." }));
       return;
     }

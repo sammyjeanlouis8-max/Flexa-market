@@ -41,10 +41,12 @@ export function pathFromNotificationData(
     return listingId ? `/listing/${listingId}` : "/";
   }
   if (screen === "delivery" || screen === "tracking" || screen === "delivery_tracking") {
-    return "/delivery-tracking";
+    const deliveryId = pick("deliveryId", "referenceId", "id");
+    return deliveryId ? `/delivery-tracking?id=${deliveryId}` : "/orders";
   }
   if (screen === "profile" || screen === "follower" || screen === "follow") {
-    return "/notifications";
+    const profileId = pick("userId", "actorId", "profileId", "id");
+    return profileId ? `/profile/${profileId}` : "/notifications";
   }
   if (screen === "wallet" || screen === "transaction") return "/wallet";
   if (screen === "sales" || screen === "seller") return "/sales";
@@ -80,10 +82,12 @@ export function pathFromNotificationData(
     return "/wallet";
   }
   if (type.includes("delivery") || type.includes("driver")) {
-    return "/delivery-tracking";
+    const deliveryId = pick("deliveryId", "referenceId");
+    return deliveryId ? `/delivery-tracking?id=${deliveryId}` : "/orders";
   }
   if (type === "follow" || type === "new_follower") {
-    return "/notifications";
+    const profileId = pick("userId", "actorId", "profileId");
+    return profileId ? `/profile/${profileId}` : "/notifications";
   }
 
   const url = typeof data.url === "string" ? data.url : null;

@@ -113,11 +113,12 @@ test("root layout registers Phase 3B routes and LanguageProvider", () => {
   for (const name of [
     "addresses",
     "edit-profile",
+    "profile/[id]",
     "stripe-checkout",
     "language-picker",
     "esim",
     "wallet",
   ]) {
-    assert.match(layout, new RegExp(`name="${name}"`));
+    assert.match(layout, new RegExp(`name="${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
   }
 });

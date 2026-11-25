@@ -330,7 +330,8 @@ function DriverCard({ driver, isMoto }: { driver: Driver; isMoto: boolean }) {
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
 export default function DeliveryTrackingScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id?: string }>();
+  const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : undefined;
   const { token, user } = useAuth();
   const router = useRouter();
 
@@ -342,7 +343,13 @@ export default function DeliveryTrackingScreen() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = useCallback(async (silent = false) => {
-    if (!id) return;
+    if (!id) {
+      if (!silent) {
+        setError("Pa gen ID livrezon.");
+        setLoading(false);
+      }
+      return;
+    }
     if (!silent) setLoading(true);
     try {
       const headers: Record<string, string> = {

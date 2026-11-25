@@ -4,6 +4,7 @@ import { eq, and, desc, or, sql, inArray, isNull, notInArray } from "drizzle-orm
 import { alias } from "drizzle-orm/pg-core";
 import { releaseEscrow } from "./transactions";
 import { emitDriverLocation, emitAdminDriverUpdate, emitDeliveryStatus } from "../lib/socketServer";
+import { safeNotify } from "../lib/safeNotify";
 
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { logAdminAction } from "../lib/auditLogger";
@@ -137,26 +138,36 @@ export async function runStaleDriverAssignmentJob(): Promise<number> {
     const sellerMessage = "Chofè ki te aksepte livrezon an pa t rive nan 60 minit. Sistèm nan ap chèche yon lòt chofè otomatikman.";
     const driverMessage = "Livrezon sa a retire sou kont ou paske pa t gen pwogrè pickup pandan 60 minit. Li retounen nan lis livrezon disponib yo.";
 
+    const systemActorId =
+      delivery.abandonedDriverUserId
+      || delivery.sellerId
+      || delivery.buyerId;
     await Promise.all([
-      db.insert(notificationsTable).values({
+      safeNotify({
+        referenceId: delivery.id,
+        actorId: systemActorId,
         userId: delivery.buyerId,
         type: "driver_timeout",
         isRead: false,
         message: buyerMessage,
-      } as any).catch(() => {}),
-      db.insert(notificationsTable).values({
+      }),
+      safeNotify({
+        referenceId: delivery.id,
+        actorId: systemActorId,
         userId: delivery.sellerId,
         type: "driver_timeout",
         isRead: false,
         message: sellerMessage,
-      } as any).catch(() => {}),
+      }),
       delivery.abandonedDriverUserId
-        ? db.insert(notificationsTable).values({
+        ? safeNotify({
+            referenceId: delivery.id,
+            actorId: systemActorId,
             userId: delivery.abandonedDriverUserId,
             type: "driver_timeout",
             isRead: false,
             message: driverMessage,
-          } as any).catch(() => {})
+          })
         : Promise.resolve(),
       delivery.abandonedDriverUserId
         ? db.update(driversTable)
@@ -494,12 +505,13 @@ router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
     [app] = await db.insert(driverApplicationsTable).values(values as any).returning();
   }
 
-  await db.insert(notificationsTable).values({
-    userId,
+  await safeNotify({
+      actorId: userId,
+      userId,
     type: "driver_application_submitted",
     isRead: false,
     message: "Your Flexa Market driver application was submitted and is pending review.",
-  } as any).catch(() => {});
+    }, req.log);
 
   const appId = `DRV-${String(app.id).padStart(10, "0")}`;
   res.status(201).json({ application: app, applicationId: appId });
@@ -628,11 +640,12 @@ router.patch("/admin/delivery/applications/:id/approve", requireAdmin, async (re
   }
 
   // Notify driver
-  await db.insert(notificationsTable).values({
-    userId: app.userId,
+  await safeNotify({
+      actorId: app.userId,
+      userId: app.userId,
     type: "driver_approved",
     isRead: false,
-  } as any).catch(() => {});
+    }, req.log);
 
   res.json({ success: true });
 });
@@ -659,11 +672,12 @@ router.patch("/admin/delivery/applications/:id/reject", requireAdmin, async (req
     await db.update(driversTable).set({ status: "suspended" }).where(eq(driversTable.userId, app.userId)).catch(() => {});
   }
 
-  await db.insert(notificationsTable).values({
-    userId: app.userId,
+  await safeNotify({
+      actorId: adminId,
+      userId: app.userId,
     type: "driver_rejected",
     isRead: false,
-  } as any).catch(() => {});
+    }, req.log);
 
   res.json({ success: true });
 });
@@ -688,11 +702,12 @@ router.patch("/admin/delivery/applications/:id/request-changes", requireAdmin, a
     updatedAt: new Date(),
   } as any).where(eq(driverApplicationsTable.id, appId));
 
-  await db.insert(notificationsTable).values({
-    userId: app.userId,
+  await safeNotify({
+      actorId: adminId,
+      userId: app.userId,
     type: "driver_needs_changes",
     isRead: false,
-  } as any).catch(() => {});
+    }, req.log);
 
   await logAdminAction(req, {
     actionType: "driver_request_changes",
@@ -736,7 +751,10 @@ router.patch("/admin/delivery/applications/:id/suspend", requireAdmin, async (re
 
   await db.update(driverApplicationsTable).set({ status: "suspended", reviewedById: adminId, reviewedAt: now }).where(eq(driverApplicationsTable.id, appId));
 
-  await db.insert(notificationsTable).values({ userId: app.userId, type: "driver_suspended", isRead: false } as any).catch(() => {});
+  await safeNotify({
+      actorId: adminId,
+      userId: app.userId, type: "driver_suspended", isRead: false
+    }, req.log);
 
   res.json({ success: true });
 });
@@ -762,7 +780,10 @@ router.patch("/admin/delivery/applications/:id/unsuspend", requireAdmin, async (
 
   await db.update(driverApplicationsTable).set({ status: "approved", reviewedById: adminId, reviewedAt: new Date() }).where(eq(driverApplicationsTable.id, appId));
 
-  await db.insert(notificationsTable).values({ userId: app.userId, type: "driver_unsuspended", isRead: false } as any).catch(() => {});
+  await safeNotify({
+      actorId: adminId,
+      userId: app.userId, type: "driver_unsuspended", isRead: false
+    }, req.log);
 
   res.json({ success: true });
 });
@@ -1352,14 +1373,14 @@ router.post("/delivery/:id/accept", requireAuth, async (req, res): Promise<void>
 
   // Notify buyer: driver accepted + reveal verification code immediately
   // The buyer must show this code to the driver upon delivery — it is secret.
-  await db.insert(notificationsTable).values({
-    userId: delivery.buyerId,
+  await safeNotify({
+      userId: delivery.buyerId,
     actorId: userId,
     type: "driver_assigned",
     isRead: false,
     referenceId: deliveryId,
     message: `Yon chofè aksepte kòmand ou. Kòd sekrè ou: ${code}. Kenbe kòd sa — ba li chofè a SÈLMAN lè li rive ba ou kòmand lan. Pa pataje li ak pèsonn.`,
-  } as any).catch(() => {});
+    }, req.log);
 
   // Send SMS to buyer with the secret code
   if (delivery.buyerId) {
@@ -1513,12 +1534,14 @@ router.post("/delivery/:id/seller-accept", requireAuth, async (req, res): Promis
   if (!updated) { res.status(409).json({ error: "Delivery already taken" }); return; }
 
   // Notify buyer: seller is self-delivering + share code
-  await db.insert(notificationsTable).values({
-    userId: delivery.buyerId,
+  await safeNotify({
+      referenceId: deliveryId,
+      actorId: req.userId!,
+      userId: delivery.buyerId,
     type: "driver_assigned",
     isRead: false,
     message: `Machann nan ap fè livrezon li menm. Kòd sekrè ou: ${code}. Montre li kòd sa SÈLMAN lè li rive ba ou kòmand lan.`,
-  } as any).catch(() => {});
+    }, req.log);
 
   // SMS buyer
   if (delivery.buyerId) {
@@ -1613,7 +1636,7 @@ router.patch("/delivery/:id/seller-status", requireAuth, async (req, res): Promi
   emitDeliveryStatus(deliveryId, { status });
 
   for (const uid of [delivery.buyerId, delivery.sellerId]) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
       userId: uid,
       actorId: req.userId!,
       type: "delivery_status_update",
@@ -1622,7 +1645,7 @@ router.patch("/delivery/:id/seller-status", requireAuth, async (req, res): Promi
       message: status === "seller_arrived"
         ? `Machann nan rive nan adrès ou — montre li kòd konfirmasyon an pou finalise livrezon an.`
         : `Estati livrezon #FL-${deliveryId} mete ajou: ${status}`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   res.json({ delivery: updated });
@@ -1736,21 +1759,25 @@ router.post("/delivery/:id/seller-verify-code", requireAuth, async (req, res): P
   }
 
   // 4. Notify buyer — delivered
-  await db.insert(notificationsTable).values({
-    userId: delivery.buyerId,
+  await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.buyerId,
+      userId: delivery.buyerId,
     type: "delivery_completed",
     isRead: false,
     message: `✅ Livrezon #FL-${deliveryId} konfime! Machann nan ban ou kòmand lan avèk siksè.`,
-  } as any).catch(() => {});
+    }, req.log);
 
   // 5. Notify seller — delivery fee credited
   if (deliveryFeeEarnings > 0) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.buyerId,
       userId,
       type: "delivery_paid",
       isRead: false,
       message: `💰 $${deliveryFeeEarnings.toFixed(2)} kòb livrezon kredite nan FM Wallet ou — livrezon #FL-${deliveryId} konfime!`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   emitDeliveryStatus(deliveryId, { status: "delivered" });
@@ -1835,14 +1862,14 @@ router.patch("/delivery/:id/status", requireAuth, async (req, res): Promise<void
     const msg = (status === "picked_up" && isBuyer)
       ? `Chofe a pran kòmand ou epi li sou wout ba ou. Ba li kòd ou a lè li rive.`
       : undefined;
-    await db.insert(notificationsTable).values({
+    await safeNotify({
       userId: uid,
       type: `delivery_${status}`,
       isRead: false,
       actorId: userId,
       referenceId: deliveryId,
       ...(msg ? { message: msg } : {}),
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   // Real-time push for every transition so the buyer/seller tracking screen
@@ -1999,12 +2026,14 @@ router.post("/delivery/:id/verify-code", requireAuth, async (req, res): Promise<
       .catch(() => {});
 
     // Notify driver of wallet credit with exact amount
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: req.userId!,
       userId,
       type: "delivery_paid",
       isRead: false,
       message: `💰 $${driverEarningsUsd.toFixed(2)} kredite nan kont FM ou imedyatman — livrezon #FL-${deliveryId} konfime!`,
-    } as any).catch(() => {});
+    }, req.log);
 
     // SMS driver with earnings amount
     const [driverUser] = await db.select({ phone: usersTable.phone }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -2073,12 +2102,14 @@ router.post("/delivery/:id/verify-code", requireAuth, async (req, res): Promise<
       ? `💰 $${sellerEarningsAmt.toFixed(2)} kredite nan kont FM ou imedyatman — livrezon #FL-${deliveryId} livré avèk siksè!`
       : `✅ Livrezon #FL-${deliveryId} livré avèk siksè! Kòb ou kredite nan kont FM ou.`;
 
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.sellerId,
       userId: delivery.sellerId,
       type: "delivery_delivered",
       isRead: false,
       message: sellerMsg,
-    } as any).catch(() => {});
+    }, req.log);
 
     // SMS seller
     const [sellerUser] = await db.select({ phone: usersTable.phone }).from(usersTable).where(eq(usersTable.id, delivery.sellerId)).limit(1);
@@ -2089,12 +2120,14 @@ router.post("/delivery/:id/verify-code", requireAuth, async (req, res): Promise<
 
   // Notify buyer of successful delivery
   if (delivery.buyerId) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.buyerId,
       userId: delivery.buyerId,
       type: "delivery_delivered",
       isRead: false,
       message: `✅ Livrezon #FL-${deliveryId} konfime! Chofè a livré kòmand ou avèk siksè.`,
-    } as any).catch(() => {});
+    }, req.log);
     await pushBoth(
       delivery.buyerId,
       "Flexa Market ✅",
@@ -2186,12 +2219,14 @@ router.post("/delivery/:id/report-buyer-absent", requireAuth, async (req, res): 
   // Notify buyer — with deadline info
   if (delivery.buyerId) {
     const deadlineStr = deadline.toLocaleTimeString("fr-HT", { hour: "2-digit", minute: "2-digit" });
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: userId,
       userId: delivery.buyerId,
       type: "delivery_buyer_absent",
       isRead: false,
       message: `⚠️ Chofè a rive men ou pa la. Ou gen jiska ${deadlineStr} (${BUYER_ABSENT_GRACE_HOURS}h) pou reskède livrezon an. Sinon kòmand retounen bay machann epi ou ap resevwa ranbousman pou pwodwi a.`,
-    } as any).catch(() => {});
+    }, req.log);
 
     const [buyer] = await db.select({ phone: usersTable.phone })
       .from(usersTable).where(eq(usersTable.id, delivery.buyerId)).limit(1);
@@ -2205,12 +2240,14 @@ router.post("/delivery/:id/report-buyer-absent", requireAuth, async (req, res): 
 
   // Notify seller — informational
   if (delivery.sellerId) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.buyerId,
       userId: delivery.sellerId,
       type: "delivery_buyer_absent",
       isRead: false,
       message: `ℹ️ Achtè a pa t disponib pou resevwa kòmand li. N ap tann reskèd pandan ${BUYER_ABSENT_GRACE_HOURS}h. Si li pa reskède, kòmand retounen ba ou.`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   req.log.info({ deliveryId, driverUserId: userId, deadline }, "Buyer absent at delivery — grace period started");
@@ -2262,12 +2299,14 @@ router.post("/delivery/:id/reschedule", requireAuth, async (req, res): Promise<v
 
   // Notify driver with new code
   if (delivery.driverUserId) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: userId,
       userId: delivery.driverUserId,
       type: "delivery_rescheduled",
       isRead: false,
       message: `✅ Achtè a reskède! Retounen ba li kòmand lan. Nouvo kòd konfimasyon: ${newCode}`,
-    } as any).catch(() => {});
+    }, req.log);
 
     const [driver] = await db.select({ phone: usersTable.phone })
       .from(usersTable).where(eq(usersTable.id, delivery.driverUserId)).limit(1);
@@ -2367,12 +2406,14 @@ router.post("/delivery/:id/driver-return", requireAuth, async (req, res): Promis
       .where(eq(usersTable.id, delivery.sellerId))
       .limit(1);
 
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: userId,
       userId: delivery.sellerId,
       type: "delivery_returned",
       isRead: false,
       message: `📦 Chofè a ap retounen atik ou a — achtè a pa t prezan. Kòd konfirmasyon retou ou: ${sellerReturnCode}. Bay chofè a kòd sa SÈLMAN lè li rive kay ou. Pa pataje li avèk okenn lòt moun.`,
-    } as any).catch(() => {});
+    }, req.log);
 
     if (seller?.phone) {
       await sendSms(
@@ -2384,12 +2425,14 @@ router.post("/delivery/:id/driver-return", requireAuth, async (req, res): Promis
 
   // Notify buyer: driver is heading back with the item
   if (delivery.buyerId) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.buyerId,
       userId: delivery.buyerId,
       type: "delivery_returned",
       isRead: false,
       message: `📦 Chofè a ap retounen kòmand lan bay machann. Lè retou a konfime, ou ap resevwa ranbousman ou otomatikman.`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   req.log.info({ deliveryId, driverUserId: userId, sellerReturnCode }, "Driver initiated return (buyer absent) — awaiting seller return code confirmation");
@@ -2470,15 +2513,17 @@ router.post("/delivery/:id/confirm-buyer-return", requireAuth, async (req, res):
         }).catch(() => {});
       }
 
-      await db.insert(notificationsTable).values({
-        userId: buyerId,
+      await safeNotify({
+      referenceId: deliveryId,
+      actorId: req.userId!,
+      userId: buyerId,
         type: "delivery_returned",
         isRead: false,
         message: `📦 Retou konfime. ${refundAmt > 0
           ? `💰 $${refundAmt.toFixed(2)} ajoute nan wallet ou (pri $${tx.amount.toFixed(2)} − frè retou $${feeUsd.toFixed(2)}).`
           : "Pa gen ranbousman — frè livrezon kouvri tout kòb la."
         } Kontakte machann nan si ou vle ranje nouvo livrezon.`,
-      } as any).catch(() => {});
+    }, req.log);
     }
   }
 
@@ -2503,22 +2548,26 @@ router.post("/delivery/:id/confirm-buyer-return", requireAuth, async (req, res):
     await db.update(driversTable)
       .set({ earningsTotal: sql`${driversTable.earningsTotal} + ${driverTotal}`, updatedAt: now } as any)
       .where(eq(driversTable.userId, userId));
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: req.userId!,
       userId,
       type: "delivery_returned",
       isRead: false,
       message: `✅ Retou konfime pa machann! $${driverTotal.toFixed(2)} ($${driverFeePerTrip.toFixed(2)} ale + $${driverFeePerTrip.toFixed(2)} retou) kredite nan kont ou imedyatman.`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   // Notify seller
   if (delivery.sellerId) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.sellerId,
       userId: delivery.sellerId,
       type: "delivery_returned",
       isRead: false,
       message: `✅ Ou konfime retou kòmand #FL-${deliveryId}. Atik la nan men ou. Si achtè a vle resevwa l, li dwe peye frè nouvo livrezon via transfert FM.`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   req.log.info({ deliveryId, driverUserId: userId, driverTotal, refundAmt }, "Buyer-absent return confirmed by seller code");
@@ -2559,12 +2608,14 @@ router.post("/delivery/:id/seller-closed", requireAuth, async (req, res): Promis
     .limit(20);
 
   for (const admin of adminUsers) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: userId,
       userId: admin.id,
       type: "delivery_seller_closed",
       isRead: false,
       message: `🔴 Livrezon #FL-${deliveryId}: chofè a rive kay machann pou retounen atik la men machann nan pa t prezan (pòt fèmen). Chofè a ap kenbe atik la an sekirite. Kontakte machann nan pou ranje nouvo tentativ retou.`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   // Notify seller
@@ -2575,12 +2626,14 @@ router.post("/delivery/:id/seller-closed", requireAuth, async (req, res): Promis
       .where(eq(usersTable.id, delivery.sellerId))
       .limit(1);
 
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: userId,
       userId: delivery.sellerId,
       type: "delivery_seller_closed",
       isRead: false,
       message: `⚠️ Chofè a rive pou retounen atik ou a men li pa jwenn ou (pòt fèmen). Atik la an sekirite ak chofè a. Admin FlexaMarket ap kontakte ou byento pou ranje retou a.`,
-    } as any).catch(() => {});
+    }, req.log);
 
     if (seller?.phone) {
       await sendSms(
@@ -2663,12 +2716,14 @@ router.post("/delivery/:id/report-failed", requireAuth, async (req, res): Promis
       .where(eq(usersTable.id, delivery.sellerId))
       .limit(1);
 
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.sellerId,
       userId: delivery.sellerId,
       type: "delivery_failed_pickup",
       isRead: false,
       message: `Chofe a rive men ou pa t prezan. Kòd retour ou: ${returnCode}. Bay chofe a kòd sa pou konfime retour a.`,
-    } as any).catch(() => {});
+    }, req.log);
 
     if (seller?.phone) {
       await sendSms(
@@ -2680,12 +2735,14 @@ router.post("/delivery/:id/report-failed", requireAuth, async (req, res): Promis
 
   // Notify buyer they'll be charged delivery fee twice
   if (delivery.buyerId) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.buyerId,
       userId: delivery.buyerId,
       type: "delivery_failed_pickup",
       isRead: false,
       message: `Machann nan pa t prezan pou chofe a. Ou pral peye frè livrezon an 2 fwa (ale + retou).`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   req.log.info({ deliveryId, driverUserId: userId, returnCode }, "Delivery failed pickup reported");
@@ -2756,12 +2813,14 @@ router.post("/delivery/:id/confirm-return", requireAuth, async (req, res): Promi
   // Notify buyer and seller that return is complete
   for (const uid of [delivery.buyerId, delivery.sellerId]) {
     if (!uid) continue;
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.buyerId,
       userId: uid,
       type: "delivery_returned",
       isRead: false,
       message: `Chofe a fin konfime retou livrezon #FL-${deliveryId}.`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   req.log.info({ deliveryId, driverUserId: userId, driverReturnEarnings }, "Delivery return confirmed");
@@ -2998,12 +3057,14 @@ router.post("/admin/deliveries/:id/cancel", requireAdmin, async (req, res): Prom
   }
 
   if (cancellation.buyerId && cancellation.refundedAmount !== null) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: req.userId!,
       userId: cancellation.buyerId,
       type: "order_update",
       isRead: false,
       message: `Livrezon #FL-${deliveryId} anile pa admin. $${cancellation.refundedAmount.toFixed(2)} retounen nan Kat FM ou imedyatman.`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   req.log.info({
@@ -3086,23 +3147,27 @@ router.post("/admin/deliveries/:id/force-complete", requireAdmin, async (req, re
         earningsTotal: sql`${driversTable.earningsTotal} + ${driverPay}`,
       }).where(eq(driversTable.userId, delivery.driverUserId)).catch(() => {});
       // Notify driver
-      await db.insert(notificationsTable).values({
-        userId: delivery.driverUserId,
+      await safeNotify({
+      referenceId: deliveryId,
+      actorId: req.userId!,
+      userId: delivery.driverUserId,
         type: "delivery_paid",
         isRead: false,
         message: `💰 $${driverPay.toFixed(2)} kredite nan Kat FM ou — livrezon #FL-${deliveryId} fini pa admin.`,
-      } as any).catch(() => {});
+    }, req.log);
     }
   }
 
   // 4. Notify buyer
   if (delivery.buyerId) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
+      actorId: delivery.buyerId,
       userId: delivery.buyerId,
       type: "order_update",
       isRead: false,
       message: `Livrezon #FL-${deliveryId} ou a fini avèk siksè (konfime pa admin). Mèsi pou konfyans ou!`,
-    } as any).catch(() => {});
+    }, req.log);
   }
 
   req.log.info({ deliveryId, adminId: req.userId }, "Admin force-completed delivery");
@@ -3362,11 +3427,12 @@ router.patch("/admin/delivery/applications/:id/request-changes", requireAdmin, a
     updatedAt: new Date(),
   } as any).where(eq(driverApplicationsTable.id, appId));
 
-  await db.insert(notificationsTable).values({
-    userId: app.userId,
+  await safeNotify({
+      actorId: adminId,
+      userId: app.userId,
     type: "driver_needs_changes",
     isRead: false,
-  } as any).catch(() => {});
+    }, req.log);
 
   res.json({ success: true });
 });
@@ -3385,11 +3451,12 @@ router.patch("/admin/delivery/applications/:id/reactivate", requireAdmin, async 
 
   await db.update(driversTable).set({ status: "active" }).where(eq(driversTable.userId, app.userId));
 
-  await db.insert(notificationsTable).values({
-    userId: app.userId,
+  await safeNotify({
+      actorId: adminId,
+      userId: app.userId,
     type: "driver_approved",
     isRead: false,
-  } as any).catch(() => {});
+    }, req.log);
 
   res.json({ success: true });
 });
@@ -3899,12 +3966,13 @@ router.post("/delivery/:id/driver-cancel", requireAuth, async (req, res): Promis
 
   // Notify buyer that the driver cancelled and order is back in the pool
   if (delivery.buyerId) {
-    await db.insert(notificationsTable).values({
+    await safeNotify({
+      referenceId: deliveryId,
       userId: delivery.buyerId,
       type: "driver_assigned",
       actorId: userId,
       message: "Chofe a anile livrezon an. Kòmand ou ap chèche yon nouvo chofe. Ou p ap peye anyen anplis.",
-    } as any).catch(() => {});
+    }, req.log);
     await pushBoth(
       delivery.buyerId,
       "Flexa Market",

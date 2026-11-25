@@ -444,7 +444,8 @@ export default function CheckoutScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.methodTitle}>Flexa Wallet (Card FM)</Text>
                 <Text style={styles.methodSub}>
-                  Cart checkout uses wallet balance only — same as the website.
+                  Multi-item cart checkout uses wallet balance only — same as
+                  the website.
                 </Text>
               </View>
               <Feather name="check-circle" size={20} color="#F97316" />
@@ -461,10 +462,31 @@ export default function CheckoutScreen() {
                 </Text>
               )}
             </View>
-            <Text style={styles.hint}>
-              Stripe card checkout is available for single-item purchases and
-              wallet top-ups — not multi-item cart checkout.
-            </Text>
+            {checkoutItems.length === 1 ? (
+              <Pressable
+                style={styles.stripeOffer}
+                onPress={() =>
+                  router.push({
+                    pathname: "/stripe-checkout",
+                    params: { listingId: String(checkoutItems[0].listingId) },
+                  })
+                }
+              >
+                <Feather name="external-link" size={18} color="#0F172A" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.methodTitle}>Pay with card (Stripe)</Text>
+                  <Text style={styles.methodSub}>
+                    Single-item checkout opens Stripe hosted payment.
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={18} color="#94A3B8" />
+              </Pressable>
+            ) : (
+              <Text style={styles.hint}>
+                Stripe card checkout is available for single-item purchases and
+                wallet top-ups — not multi-item cart checkout.
+              </Text>
+            )}
             {walletAvailable != null && walletAvailable < estimatedTotal ? (
               <Text style={styles.warn}>
                 Balance may be insufficient for the estimated total ($
@@ -631,6 +653,16 @@ const styles = StyleSheet.create({
   },
   methodTitle: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
   methodSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  stripeOffer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#FFFFFF",
+  },
   feeRow: {
     flexDirection: "row",
     justifyContent: "space-between",

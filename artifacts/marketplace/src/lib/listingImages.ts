@@ -29,6 +29,17 @@ export function isDisplayableListingImageUrl(url: unknown): boolean {
     return storageKey.replace(/^\/+/, "").trim().length > 0;
   }
 
+  // Wasabi image proxy: /api/storage/wasabi-image?key=<object-key>
+  const wasabiMatch = image.match(/^\/api\/storage\/wasabi-image\?([^#]*)$/i);
+  if (wasabiMatch) {
+    try {
+      const key = new URLSearchParams(wasabiMatch[1]).get("key");
+      return Boolean(key && key.replace(/^\/+/, "").trim().length > 0);
+    } catch {
+      return false;
+    }
+  }
+
   return false;
 }
 

@@ -9,8 +9,12 @@ describe("listingImages client helper", () => {
   it("mirrors API displayable rules", () => {
     expect(isDisplayableListingImageUrl("https://cdn.example.com/p.jpg")).toBe(true);
     expect(isDisplayableListingImageUrl("/api/storage/objects/x.jpg")).toBe(true);
+    expect(
+      isDisplayableListingImageUrl("/api/storage/wasabi-image?key=uploads%2Fa.jpeg"),
+    ).toBe(true);
     expect(isDisplayableListingImageUrl("")).toBe(false);
     expect(isDisplayableListingImageUrl("/api/storage/objects/")).toBe(false);
+    expect(isDisplayableListingImageUrl("/api/storage/wasabi-image?key=")).toBe(false);
     expect(isDisplayableListingImageUrl("https://placehold.co/1")).toBe(false);
   });
 

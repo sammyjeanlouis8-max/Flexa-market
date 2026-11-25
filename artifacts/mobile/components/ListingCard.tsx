@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Dimensions,
   Pressable,
@@ -29,9 +29,15 @@ export function ListingCard({
   isFavorited = false,
   style,
 }: ListingCardProps) {
-  const imageUri = item.images?.[0];
+  const primaryUri = item.images?.[0] ?? null;
+  const secondaryUri = item.images?.[1] ?? null;
+  const [imageUri, setImageUri] = useState<string | null>(primaryUri);
   const price = Number(item.price || 0);
   const currency = item.currency === "HTG" ? "G" : "$";
+
+  useEffect(() => {
+    setImageUri(primaryUri);
+  }, [primaryUri, item.id]);
 
   return (
     <Pressable
@@ -47,7 +53,12 @@ export function ListingCard({
             style={styles.image}
             contentFit="cover"
             transition={200}
-            recyclingKey={`listing-${item.id}`}
+            recyclingKey={`listing-${item.id}-${imageUri}`}
+            onError={() => {
+              if (secondaryUri && imageUri !== secondaryUri) {
+                setImageUri(secondaryUri);
+              }
+            }}
           />
         ) : (
           <View style={styles.imagePlaceholder}>

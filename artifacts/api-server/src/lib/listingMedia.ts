@@ -4,12 +4,14 @@ import {
   cleanListingImages,
   hasUsableListingImage,
   isDisplayableListingImageUrl,
+  keepPublicListingsWithPhotos,
 } from "./listingImageUrls";
 
 export {
   cleanListingImages,
   hasUsableListingImage,
   isDisplayableListingImageUrl,
+  keepPublicListingsWithPhotos,
 };
 
 /**
@@ -27,6 +29,7 @@ export function listingHasUsableImageSql() {
         listing_image ~* '^https?://[^[:space:]]+'
         OR listing_image ~ '^/api/storage/objects/[^[:space:]]+'
         OR listing_image ~ '^/objects/[^[:space:]]+'
+        OR listing_image ~* '^/api/storage/wasabi-image\\?([^#]*&)?key=[^&[:space:]]+'
       )
   )`;
 }
@@ -52,6 +55,7 @@ export async function runListingMediaCleanup(): Promise<number> {
             listing_image ~* '^https?://[^[:space:]]+'
             OR listing_image ~ '^/api/storage/objects/[^[:space:]]+'
             OR listing_image ~ '^/objects/[^[:space:]]+'
+            OR listing_image ~* '^/api/storage/wasabi-image\\?([^#]*&)?key=[^&[:space:]]+'
           )
       )
     `)

@@ -15,9 +15,14 @@ describe("listingMedia displayable URLs", () => {
     expect(isDisplayableListingImageUrl("http://cdn.example.com/photo.webp")).toBe(true);
   });
 
-  it("accepts storage proxy and legacy object paths with a key", () => {
+  it("accepts storage proxy, wasabi-image, and legacy object paths with a key", () => {
     expect(isDisplayableListingImageUrl("/api/storage/objects/uploads/a.jpg")).toBe(true);
     expect(isDisplayableListingImageUrl("/objects/uploads/a.jpg")).toBe(true);
+    expect(
+      isDisplayableListingImageUrl(
+        "/api/storage/wasabi-image?key=uploads%2Fimages%2Fa.jpeg",
+      ),
+    ).toBe(true);
   });
 
   it("rejects blank, placeholder, and empty storage keys", () => {
@@ -28,6 +33,8 @@ describe("listingMedia displayable URLs", () => {
     expect(isDisplayableListingImageUrl("https://via.placeholder.com/300")).toBe(false);
     expect(isDisplayableListingImageUrl("/api/storage/objects/")).toBe(false);
     expect(isDisplayableListingImageUrl("/objects/")).toBe(false);
+    expect(isDisplayableListingImageUrl("/api/storage/wasabi-image")).toBe(false);
+    expect(isDisplayableListingImageUrl("/api/storage/wasabi-image?key=")).toBe(false);
     expect(isDisplayableListingImageUrl("https://cdn.example.com/")).toBe(false);
     expect(isDisplayableListingImageUrl("not-a-url")).toBe(false);
   });

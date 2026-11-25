@@ -12,7 +12,7 @@ import {
   wholesaleFavoritesTable,
   wholesaleInquiriesTable,
 } from "@workspace/db";
-import { requireAuth } from "../middlewares/auth";
+import { getRole, requireAuth } from "../middlewares/auth";
 import {
   countriesMatch,
   isWarehouseBuyerVisible,
@@ -25,6 +25,12 @@ const router = Router();
 
 /** Keep in sync with marketplace `WHOLESALE_PUBLIC_LAUNCH` until public launch. */
 const WHOLESALE_PUBLIC_LAUNCH = false;
+
+/** Super Admin only while public launch is false — excludes regular admin/moderator/seller. */
+function isWholesaleSuperAdmin(user: { isSuperAdmin?: boolean; role?: string | null } | null | undefined): boolean {
+  if (!user) return false;
+  return !!user.isSuperAdmin || getRole(user as any) === "superadmin";
+}
 
 export {
   countriesMatch,
@@ -60,7 +66,7 @@ async function loadProductWithWarehouse(productId: number) {
 
 async function requireWholesaleAccess(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1], next: Parameters<typeof requireAuth>[2]) {
   await requireAuth(req, res, async () => {
-    if (WHOLESALE_PUBLIC_LAUNCH || req.user?.isSuperAdmin) {
+    if (WHOLESALE_PUBLIC_LAUNCH || isWholesaleSuperAdmin(req.user)) {
       next();
       return;
     }

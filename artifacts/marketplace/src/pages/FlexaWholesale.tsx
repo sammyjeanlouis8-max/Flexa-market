@@ -3,8 +3,8 @@ import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { MapPin, Package, Plus, Search, Warehouse } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
+import { WholesalePageGate } from "@/components/wholesale/WholesalePageGate";
 import { WholesaleEmpty, WholesaleShell } from "@/components/wholesale/WholesaleShell";
-import { canAccessWholesale } from "@/lib/wholesaleAccess";
 import { SUPPORTED_COUNTRIES, COUNTRY_FLAGS } from "@/lib/countries";
 import {
   fetchWholesaleProducts,
@@ -13,11 +13,10 @@ import {
 } from "@/lib/wholesaleApi";
 import { cn } from "@/lib/utils";
 
-export default function FlexaWholesale() {
+function FlexaWholesaleCatalog() {
   const { t } = useTranslation();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const allowed = canAccessWholesale(user);
   const [q, setQ] = useState("");
   const [country, setCountry] = useState(user?.country ?? "");
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
@@ -25,16 +24,10 @@ export default function FlexaWholesale() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!allowed) setLocation("/");
-  }, [authLoading, allowed, setLocation]);
-
-  useEffect(() => {
     if (user?.country && !country) setCountry(user.country);
   }, [user?.country, country]);
 
   useEffect(() => {
-    if (!allowed) return;
     let cancelled = false;
     setLoading(true);
     fetchWholesaleProducts({
@@ -59,15 +52,7 @@ export default function FlexaWholesale() {
     return () => {
       cancelled = true;
     };
-  }, [allowed, q, country]);
-
-  if (authLoading || !allowed) {
-    return (
-      <div className="mx-auto max-w-lg px-4 py-10 text-sm text-muted-foreground">
-        {t("common.loading", { defaultValue: "Loading…" })}
-      </div>
-    );
-  }
+  }, [q, country]);
 
   return (
     <WholesaleShell
@@ -224,5 +209,14 @@ export default function FlexaWholesale() {
         })}
       </p>
     </WholesaleShell>
+  );
+}
+
+/** Super Admin gated wholesale home — menu entry links here (/wholesale). */
+export default function FlexaWholesale() {
+  return (
+    <WholesalePageGate>
+      <FlexaWholesaleCatalog />
+    </WholesalePageGate>
   );
 }

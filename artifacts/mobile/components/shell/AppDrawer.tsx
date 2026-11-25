@@ -128,13 +128,20 @@ export function AppDrawer() {
       });
     }
 
+    if (canAccessWholesale(user)) {
+      out.push({
+        id: "wholesale",
+        heading: "FLEXA WHOLESALE",
+        items: [
+          { icon: "home", label: "Flexa Wholesale", href: "/wholesale", testID: "drawer-flexa-wholesale" },
+        ],
+      });
+    }
+
     out.push({
       id: "services",
       heading: "FLEXA SERVICES",
       items: [
-        ...(canAccessWholesale(user)
-          ? ([{ icon: "home", label: "Flexa Wholesale", href: "/wholesale", testID: "drawer-flexa-wholesale" }] as DrawerItem[])
-          : []),
         { icon: "music", label: "Flexa Music", href: "/music", testID: "drawer-flexa-music" },
         ...(user
           ? ([{ icon: "zap", label: "My Boosts", href: "/my-boosts", testID: "drawer-my-boosts" }] as DrawerItem[])

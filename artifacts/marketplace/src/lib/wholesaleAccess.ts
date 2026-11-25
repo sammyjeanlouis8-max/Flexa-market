@@ -1,4 +1,4 @@
-import { isAdminUser, isSuperAdminUser, type ScopeUser } from "@/lib/adminCountryAccess";
+import type { ScopeUser } from "@/lib/adminCountryAccess";
 
 /**
  * Flexa Wholesale rollout gate.
@@ -11,13 +11,18 @@ import { isAdminUser, isSuperAdminUser, type ScopeUser } from "@/lib/adminCountr
  */
 export const WHOLESALE_PUBLIC_LAUNCH = false;
 
-function isModeratorUser(user: ScopeUser): boolean {
-  return user?.role === "moderator";
+function staffRole(user: ScopeUser): string {
+  return String(user?.role ?? "").trim().toLowerCase();
 }
 
-/** Menu + /wholesale access during the Market-native rebuild. */
+/**
+ * Menu + /wholesale access during the Market-native rebuild.
+ * Uses the same staff signals as the Admin badge / admin drawer chrome.
+ */
 export function canAccessWholesale(user: ScopeUser | null | undefined): boolean {
   if (!user) return false;
   if (WHOLESALE_PUBLIC_LAUNCH) return true;
-  return isSuperAdminUser(user) || isAdminUser(user) || isModeratorUser(user);
+  if (user.isSuperAdmin || user.isAdmin) return true;
+  const role = staffRole(user);
+  return role === "superadmin" || role === "admin" || role === "moderator";
 }

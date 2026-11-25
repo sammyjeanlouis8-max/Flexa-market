@@ -9,12 +9,13 @@ describe("canAccessWholesale", () => {
 
   it("allows Super Admins, Admins, and Moderators", () => {
     assert.equal(canAccessWholesale({ isSuperAdmin: true }), true);
-    assert.equal(canAccessWholesale({ isSuperAdmin: true, isAdmin: true, role: "superadmin" }), true);
-    assert.equal(canAccessWholesale({ role: "superadmin" }), true);
     assert.equal(canAccessWholesale({ isAdmin: true }), true);
     assert.equal(canAccessWholesale({ isAdmin: true, role: "admin" }), true);
     assert.equal(canAccessWholesale({ role: "admin" }), true);
+    assert.equal(canAccessWholesale({ role: "Admin" }), true);
     assert.equal(canAccessWholesale({ role: "moderator" }), true);
+    assert.equal(canAccessWholesale({ role: "Moderator" }), true);
+    assert.equal(canAccessWholesale({ role: "superadmin" }), true);
   });
 
   it("hides wholesale from regular users and support", () => {

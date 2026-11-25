@@ -46,9 +46,9 @@ function canAccessWholesaleStaff(
   user: { isSuperAdmin?: boolean; isAdmin?: boolean; role?: string | null } | null | undefined,
 ): boolean {
   if (!user) return false;
-  if (isWholesaleSuperAdmin(user)) return true;
-  const role = getRole(user as any);
-  return role === "admin" || role === "moderator" || !!user.isAdmin;
+  if (user.isSuperAdmin || user.isAdmin) return true;
+  const role = String(getRole(user as any) || user.role || "").trim().toLowerCase();
+  return role === "superadmin" || role === "admin" || role === "moderator";
 }
 
 export {

@@ -26,6 +26,7 @@ import { ChatDateDivider } from "@/components/ChatDateDivider";
 import { buildChatTimeline, formatChatTime, sameChatGroup } from "@/lib/chatTimeline";
 import {
   listPendingVoices,
+  recoverStalePendingVoices,
   removePendingVoice,
   savePendingVoice,
   updatePendingVoice,
@@ -108,7 +109,7 @@ async function uploadMedia(
   file: Blob,
   contentType: string,
   token: string,
-  timeoutMs = 45_000,
+  timeoutMs = 35_000,
 ): Promise<string> {
   if (!file.size || file.size < 1) {
     throw new Error("Empty media file");
@@ -313,7 +314,7 @@ type VoicePendingPhase = "queued" | "uploading" | "sending" | "waiting" | "faile
 
 const AudioBubble = React.memo(function AudioBubble({
   src, isMe, theme, timestamp, statusIcon, isListened, onListened,
-  pendingPhase, onCancelPending, onRetryPending,
+  pendingPhase, onCancelPending, onRetryPending, knownDurationSec,
 }: {
   src: string; isMe: boolean; theme: (typeof T)[ChatTheme];
   timestamp: string; statusIcon: React.ReactNode;
@@ -322,6 +323,8 @@ const AudioBubble = React.memo(function AudioBubble({
   pendingPhase?: VoicePendingPhase | null;
   onCancelPending?: () => void;
   onRetryPending?: () => void;
+  /** Prefer recorded duration when iOS metadata stays at 0:00. */
+  knownDurationSec?: number;
 }) {
   const { t } = useTranslation();
   const audioRef     = useRef<HTMLAudioElement>(null);
@@ -334,12 +337,18 @@ const AudioBubble = React.memo(function AudioBubble({
   const stallRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [playing,  setPlaying]  = useState(false);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(knownDurationSec && knownDurationSec > 0 ? knownDurationSec : 0);
   const [fracSnap, setFracSnap] = useState(0); // low-freq React state for time display
   const [playbackError, setPlaybackError] = useState(false);
   const [playbackRate, setPlaybackRate] = useState<1 | 1.5 | 2>(1);
   const inFlight = pendingPhase === "uploading" || pendingPhase === "sending";
   const pendingFailed = pendingPhase === "failed";
+
+  useEffect(() => {
+    if (knownDurationSec && knownDurationSec > 0 && duration <= 0) {
+      setDuration(knownDurationSec);
+    }
+  }, [knownDurationSec, duration]);
 
   const N = VOICE_BARS.length;
 
@@ -756,6 +765,7 @@ function PendingVoiceBubble({
             pendingPhase={phase}
             onCancelPending={onCancel}
             onRetryPending={onRetry}
+            knownDurationSec={item.durationSec}
           />
         )}
       </div>
@@ -1225,6 +1235,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     stream: MediaStream;
     chunks: Blob[];
     recordedMime: string;
+    recordedSecs: number;
     cancelled: boolean;
     failed: boolean;
     finalized: boolean;
@@ -1232,6 +1243,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   } | null>(null);
   const voiceBusyRef = useRef(false);
   const cancelledVoiceIdsRef = useRef<Set<string>>(new Set());
+  const voiceFlushGenRef = useRef(0);
 
   useEffect(() => {
     if (!showEmojiPanel) return;
@@ -1739,6 +1751,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         stream: activeStream,
         chunks: [] as Blob[],
         recordedMime,
+        recordedSecs: 0,
         cancelled: false,
         failed: false,
         finalized: false,
@@ -1753,15 +1766,26 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         if (mediaRecorderRef.current === session.recorder) mediaRecorderRef.current = null;
         try {
           if (session.cancelled || session.failed) return;
-          const blob = new Blob(session.chunks, { type: session.recordedMime });
-          if (blob.size < 100) return;
+          // iOS often emits the last chunk a tick after `stop` — wait briefly.
+          await new Promise((r) => window.setTimeout(r, 80));
+          const blob = new Blob(session.chunks, { type: session.recordedMime || "audio/mp4" });
+          // Reject near-empty captures (header-only) that show 0:00 and never send.
+          if (blob.size < 800 || session.recordedSecs < 1) {
+            toast({ title: t("messages.voiceTooShort", { defaultValue: "Hold a bit longer to record" }), variant: "destructive" });
+            return;
+          }
           try {
             // Persist before uploading so a weak connection cannot destroy the recording.
             const uploadMime = normalizeUploadMime(
               session.recordedMime,
               /iPad|iPhone|iPod/.test(navigator.userAgent) ? "audio/mp4" : "audio/webm",
             );
-            const queuedVoice = await savePendingVoice({ conversationId: convId, blob, mimeType: uploadMime });
+            const queuedVoice = await savePendingVoice({
+              conversationId: convId,
+              blob,
+              mimeType: uploadMime,
+              durationSec: Math.max(1, session.recordedSecs),
+            });
             setPendingVoices(current => [...current.filter(item => item.id !== queuedVoice.id), queuedVoice]);
             setTimeout(() => scrollToBottom(true), 50);
             void flushPendingVoices();
@@ -1776,7 +1800,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       };
       session.finalize = finalizeSession;
       voiceSessionRef.current = session;
-      mr.ondataavailable = e => { if (e.data.size > 0) session.chunks.push(e.data); };
+      mr.ondataavailable = e => { if (e.data && e.data.size > 0) session.chunks.push(e.data); };
       mr.onstop = () => { void session.finalize(); };
       mr.onerror = () => {
         session.failed = true;
@@ -1792,13 +1816,22 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           queueMicrotask(() => { void session.finalize(); });
         }
       };
-      mr.start(100);
+      // Prefer timeslice chunks; iOS may ignore — onstop still fires with full blob.
+      try {
+        mr.start(250);
+      } catch {
+        mr.start();
+      }
       mediaRecorderRef.current = mr;
       setIsRecording(true);
       setRecordingPaused(false);
       setRecordingSecs(0);
+      session.recordedSecs = 0;
       startRecordingMeter(stream);
-      recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
+      recordingTimerRef.current = setInterval(() => {
+        session.recordedSecs += 1;
+        setRecordingSecs(session.recordedSecs);
+      }, 1000);
     } catch {
       stream?.getTracks().forEach(t => t.stop());
       voiceBusyRef.current = false;
@@ -1861,9 +1894,13 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
 
     const flushPendingVoices = useCallback(async () => {
       if (voiceQueueBusyRef.current || isRestricted) return;
+      const gen = ++voiceFlushGenRef.current;
       voiceQueueBusyRef.current = true;
       try {
+        // Unstick rows left as uploading/sending after a WKWebView hang / killed tab.
+        await recoverStalePendingVoices(convId).catch(() => 0);
         const pending = await listPendingVoices(convId);
+        if (gen !== voiceFlushGenRef.current) return;
         setPendingVoices(pending);
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           for (const item of pending) {
@@ -1877,8 +1914,25 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           return;
         }
         for (const item of pending) {
+          if (gen !== voiceFlushGenRef.current) return;
           if (cancelledVoiceIdsRef.current.has(item.id)) {
             await removePendingVoice(item.id).catch(() => {});
+            continue;
+          }
+          // Skip empty buffers that can never upload (legacy 0:00 stuck notes).
+          if (!item.mediaUrl && (!item.bytes || item.bytes.byteLength < 800)) {
+            await updatePendingVoice(item.id, {
+              status: "failed",
+              lastError: "Recording too short",
+              attempts: item.attempts + 1,
+            }).catch(() => {});
+            setPendingVoices((current) =>
+              current.map((voice) =>
+                voice.id === item.id
+                  ? { ...voice, status: "failed" as const, lastError: "Recording too short" }
+                  : voice,
+              ),
+            );
             continue;
           }
           setSendingVoiceId(item.id);
@@ -1904,6 +1958,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               );
               const blob = new Blob([item.bytes], { type: mime });
               mediaUrl = await uploadMedia(blob, mime, authToken);
+              if (gen !== voiceFlushGenRef.current) return;
               if (cancelledVoiceIdsRef.current.has(item.id)) {
                 await removePendingVoice(item.id).catch(() => {});
                 continue;
@@ -1919,6 +1974,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               content: "",
               clientMessageId: item.id,
             });
+            if (gen !== voiceFlushGenRef.current) return;
             cancelledVoiceIdsRef.current.delete(item.id);
             await removePendingVoice(item.id);
             setPendingVoices(current => current.filter(voice => voice.id !== item.id));
@@ -1943,27 +1999,35 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       } catch (error) {
         console.error("Unable to process pending voice messages", error);
       } finally {
-        voiceQueueBusyRef.current = false;
+        if (gen === voiceFlushGenRef.current) {
+          voiceQueueBusyRef.current = false;
+        }
       }
     }, [convId, isRestricted, sendQueuedVoice, token]);
 
     useEffect(() => {
-      // Do not clear cancelledVoiceIdsRef here — token/callback churn would
-      // re-queue a voice the user just cancelled mid-upload.
-      voiceQueueBusyRef.current = false;
-      const wakeQueue = () => { void flushPendingVoices(); };
+      // Do not clear cancelledVoiceIdsRef on every callback identity change —
+      // that re-queues a voice the user just cancelled mid-upload.
+      const wakeQueue = () => {
+        // Allow a fresh flush after iOS timer throttling / tab resume.
+        voiceQueueBusyRef.current = false;
+        void flushPendingVoices();
+      };
+      const onVisibility = () => {
+        if (document.visibilityState === "visible") wakeQueue();
+      };
       void flushPendingVoices();
       window.addEventListener("online", wakeQueue);
       window.addEventListener("focus", wakeQueue);
-      document.addEventListener("visibilitychange", wakeQueue);
-      const retryTimer = window.setInterval(wakeQueue, 15000);
+      document.addEventListener("visibilitychange", onVisibility);
+      const retryTimer = window.setInterval(wakeQueue, 12_000);
       return () => {
+        voiceFlushGenRef.current += 1;
         window.removeEventListener("online", wakeQueue);
         window.removeEventListener("focus", wakeQueue);
-        document.removeEventListener("visibilitychange", wakeQueue);
+        document.removeEventListener("visibilitychange", onVisibility);
         window.clearInterval(retryTimer);
         voiceQueueBusyRef.current = false;
-        cancelledVoiceIdsRef.current.clear();
       };
     }, [flushPendingVoices]);
 
@@ -1978,7 +2042,17 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     setVoiceFinalizing(true);
     stopRecordingMeter();
     if (session.recorder.state !== "inactive") {
-      session.recorder.stop();
+      // Flush the final AAC/WebM fragment before stop — critical on iOS WKWebView.
+      try {
+        if (typeof session.recorder.requestData === "function") {
+          session.recorder.requestData();
+        }
+      } catch { /* ignore */ }
+      try {
+        session.recorder.stop();
+      } catch {
+        void session.finalize();
+      }
     } else {
       void session.finalize();
     }

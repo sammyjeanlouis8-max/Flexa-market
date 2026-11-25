@@ -1253,6 +1253,7 @@ export default {
     userBlocked: "User blocked",
     blockFailed: "Could not block user",
     voiceUploadFailed: "Voice message upload failed. Please try again.",
+    voiceTooShort: "Hold a bit longer to record",
     voiceSending: "Sending…",
     voiceUploading: "Uploading…",
     voicePlay: "Play voice message",

@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
-import { Plus } from "lucide-react";
+import { Plus, Warehouse } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { WholesaleEmpty, WholesaleShell } from "@/components/wholesale/WholesaleShell";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
+import { SUPPORTED_COUNTRIES, COUNTRY_FLAGS, citiesFor } from "@/lib/countries";
 import {
   createWholesaleProduct,
   fetchWholesaleProducts,
@@ -28,10 +29,16 @@ export default function WholesaleSeller() {
   const [minOrderQty, setMinOrderQty] = useState("10");
   const [stockQuantity, setStockQuantity] = useState("100");
   const [wholesaleUnitType, setWholesaleUnitType] = useState("unit");
+  const [country, setCountry] = useState(user?.country ?? "Haiti");
+  const [city, setCity] = useState("");
+  const [warehouseName, setWarehouseName] = useState("");
+  const [warehouseCity, setWarehouseCity] = useState("");
   const [tier2Qty, setTier2Qty] = useState("50");
   const [tier2Price, setTier2Price] = useState("");
   const [tier3Qty, setTier3Qty] = useState("100");
   const [tier3Price, setTier3Price] = useState("");
+
+  const cities = citiesFor(country);
 
   const reload = () => {
     setLoading(true);
@@ -54,8 +61,20 @@ export default function WholesaleSeller() {
     reload();
   }, [allowed]);
 
+  useEffect(() => {
+    if (user?.country) setCountry(user.country);
+  }, [user?.country]);
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!country.trim() || !warehouseName.trim()) {
+      setError(
+        t("wholesale.warehouseRequired", {
+          defaultValue: "Country and warehouse / depot name are required.",
+        }),
+      );
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -85,7 +104,10 @@ export default function WholesaleSeller() {
         minOrderQty: Number(minOrderQty) || 1,
         stockQuantity: Number(stockQuantity) || 0,
         wholesaleUnitType,
-        country: user?.country ?? null,
+        country,
+        city: city || null,
+        warehouseName: warehouseName.trim(),
+        warehouseCity: warehouseCity.trim() || city || null,
         contactOnly: true,
         offersWarehousePickup: true,
         tiers,
@@ -94,6 +116,8 @@ export default function WholesaleSeller() {
       setTitle("");
       setDescription("");
       setUnitPrice("");
+      setWarehouseName("");
+      setWarehouseCity("");
       setTier2Price("");
       setTier3Price("");
       setLocation(`/wholesale/products/${created.id}`);
@@ -115,7 +139,9 @@ export default function WholesaleSeller() {
   return (
     <WholesaleShell
       title={t("wholesale.sellerTitle", { defaultValue: "My wholesale" })}
-      subtitle={t("wholesale.sellerSubtitle", { defaultValue: "Publish bulk products on the shared Market database." })}
+      subtitle={t("wholesale.sellerSubtitle", {
+        defaultValue: "List bulk stock from your depot. Buyers chat you — no buy button.",
+      })}
       actions={
         <button
           type="button"
@@ -130,6 +156,12 @@ export default function WholesaleSeller() {
         </button>
       }
     >
+      <p className="mb-3 rounded-xl border border-[hsl(152,30%,80%)] bg-[hsl(152,40%,96%)] px-3 py-2 text-[12px] text-[hsl(152,40%,24%)] dark:border-[hsl(152,20%,28%)] dark:bg-[hsl(152,18%,14%)] dark:text-[hsl(152,30%,78%)]">
+        {t("wholesale.sellerModelNote", {
+          defaultValue: "Sell wholesale in your country from your warehouse. Deals close in Market chat only.",
+        })}
+      </p>
+
       {error && (
         <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       )}
@@ -163,6 +195,79 @@ export default function WholesaleSeller() {
               className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
             />
           </div>
+
+          <div className="rounded-xl border border-[hsl(152,30%,80%)] bg-[hsl(152,30%,96%)] p-3 dark:border-[hsl(152,20%,28%)] dark:bg-[hsl(152,20%,14%)]">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[hsl(152,45%,28%)]">
+              <Warehouse className="h-3.5 w-3.5" />
+              {t("wholesale.depotSection", { defaultValue: "Country & warehouse" })}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  {t("wholesale.country", { defaultValue: "Country" })}
+                </label>
+                <select
+                  required
+                  value={country}
+                  onChange={(e) => {
+                    setCountry(e.target.value);
+                    setCity("");
+                  }}
+                  className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                  data-testid="wholesale-seller-country"
+                >
+                  {SUPPORTED_COUNTRIES.map((c) => (
+                    <option key={c} value={c}>
+                      {COUNTRY_FLAGS[c] ? `${COUNTRY_FLAGS[c]} ` : ""}
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  {t("wholesale.city", { defaultValue: "City" })}
+                </label>
+                <select
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                >
+                  <option value="">{t("wholesale.selectCity", { defaultValue: "Select city" })}</option>
+                  {cities.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  {t("wholesale.warehouseName", { defaultValue: "Warehouse / depot name" })}
+                </label>
+                <input
+                  required
+                  value={warehouseName}
+                  onChange={(e) => setWarehouseName(e.target.value)}
+                  placeholder={t("wholesale.warehousePlaceholder", { defaultValue: "e.g. Delmas Depot" })}
+                  className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                  data-testid="wholesale-warehouse-name"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  {t("wholesale.warehouseCity", { defaultValue: "Depot city" })}
+                </label>
+                <input
+                  value={warehouseCity}
+                  onChange={(e) => setWarehouseCity(e.target.value)}
+                  placeholder={city || t("wholesale.warehouseCityHint", { defaultValue: "City of the warehouse" })}
+                  className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div>
               <label className="text-xs font-semibold text-muted-foreground">
@@ -259,7 +364,7 @@ export default function WholesaleSeller() {
           >
             {saving
               ? t("common.saving", { defaultValue: "Saving…" })
-              : t("wholesale.publish", { defaultValue: "Publish wholesale product" })}
+              : t("wholesale.publish", { defaultValue: "Publish for chat buyers" })}
           </button>
         </form>
       )}
@@ -274,7 +379,7 @@ export default function WholesaleSeller() {
         <WholesaleEmpty
           title={t("wholesale.sellerEmptyTitle", { defaultValue: "No wholesale listings yet" })}
           body={t("wholesale.sellerEmptyBody", {
-            defaultValue: "Create bulk products with volume pricing. Buyers contact you in Market chat.",
+            defaultValue: "Add warehouse stock with volume pricing. Buyers reach you in Market chat only.",
           })}
           action={
             <button
@@ -299,6 +404,8 @@ export default function WholesaleSeller() {
                   <p className="truncate text-sm font-semibold">{p.title}</p>
                   <p className="text-xs text-muted-foreground">
                     {formatMoney(p.unitPrice, p.currency)} · min {p.minOrderQty} · stock {p.stockQuantity}
+                    {p.warehouseName ? ` · ${p.warehouseName}` : ""}
+                    {p.country ? ` · ${p.country}` : ""}
                   </p>
                 </div>
                 <span className="shrink-0 rounded-md bg-[hsl(152,40%,92%)] px-2 py-0.5 text-[10px] font-bold uppercase text-[hsl(152,50%,28%)] dark:bg-[hsl(152,30%,20%)] dark:text-[hsl(152,50%,75%)]">

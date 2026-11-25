@@ -200,7 +200,8 @@ router.post("/wholesale/products", requireWholesaleAccess, async (req, res): Pro
     stockQuantity,
     sku: body.sku ? String(body.sku).slice(0, 60) : null,
     status: "active",
-    contactOnly: body.contactOnly !== false,
+    // Wholesale is chat-only: no checkout / buy button on Market.
+    contactOnly: true,
     offersLocalDelivery: !!body.offersLocalDelivery,
     offersWarehousePickup: body.offersWarehousePickup !== false,
   }).returning();

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import { useTranslation } from "react-i18next";
-import { MessageCircle, Package, Warehouse } from "lucide-react";
+import { MapPin, MessageCircle, Package, Warehouse } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { WholesaleShell } from "@/components/wholesale/WholesaleShell";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
@@ -56,6 +56,14 @@ export default function WholesaleProductPage() {
 
   const unit = useMemo(() => (product ? priceForQty(product, qty) : 0), [product, qty]);
   const total = unit * qty;
+  const place = product
+    ? [product.city, product.country].filter(Boolean).join(" · ")
+    : "";
+  const depot =
+    product?.warehouseName ||
+    (product?.offersWarehousePickup
+      ? t("wholesale.pickup", { defaultValue: "Warehouse pickup available" })
+      : null);
 
   if (authLoading || !allowed) {
     return (
@@ -102,11 +110,13 @@ export default function WholesaleProductPage() {
           <div className="space-y-4">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[hsl(152,45%,32%)]">
-                {product.category || t("wholesale.bulkBadge", { defaultValue: "Bulk" })}
+                {product.category || t("wholesale.bulkBadge", { defaultValue: "Bulk" })} ·{" "}
+                {t("wholesale.wholesaleOnly", { defaultValue: "Wholesale only" })}
               </p>
               <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-foreground">{product.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {product.sellerName} · {product.country || "—"}
+                {product.sellerName}
+                {place ? ` · ${place}` : ""}
               </p>
             </div>
 
@@ -162,34 +172,40 @@ export default function WholesaleProductPage() {
                 {t("wholesale.stock", { defaultValue: "Stock" })} {product.stockQuantity}
               </p>
               <p className="mt-3 text-lg font-extrabold">
-                {t("wholesale.total", { defaultValue: "Total" })}: {formatMoney(total, product.currency)}
+                {t("wholesale.quoteTotal", { defaultValue: "Quote total" })}: {formatMoney(total, product.currency)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("wholesale.chatOnlyHint", {
+                  defaultValue: "No online checkout — negotiate and confirm in chat.",
+                })}
               </p>
             </div>
 
             <div className="flex flex-col gap-2">
-              {product.contactOnly ? (
-                <Link
-                  href={`/messages?userId=${product.sellerId}`}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[hsl(152,55%,28%)] text-sm font-bold text-white"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  {t("wholesale.contactSeller", { defaultValue: "Contact seller" })}
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  className="inline-flex h-12 items-center justify-center rounded-xl bg-[hsl(152,55%,28%)] text-sm font-bold text-white"
-                  disabled
-                >
-                  {t("wholesale.orderSoon", { defaultValue: "Checkout coming soon" })}
-                </button>
-              )}
-              {(product.warehouseName || product.offersWarehousePickup) && (
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Warehouse className="h-3.5 w-3.5" />
-                  {product.warehouseName || t("wholesale.pickup", { defaultValue: "Warehouse pickup available" })}
-                  {product.warehouseCity ? ` · ${product.warehouseCity}` : ""}
-                </p>
+              <Link
+                href={`/messages?userId=${product.sellerId}`}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[hsl(152,55%,28%)] text-sm font-bold text-white"
+                data-testid="wholesale-chat-seller"
+              >
+                <MessageCircle className="h-4 w-4" />
+                {t("wholesale.contactSeller", { defaultValue: "Chat with seller" })}
+              </Link>
+              {(depot || place) && (
+                <div className="space-y-1 rounded-xl border border-[hsl(152,30%,80%)] bg-[hsl(152,35%,96%)] px-3 py-2.5 text-xs text-[hsl(152,40%,28%)] dark:border-[hsl(152,20%,28%)] dark:bg-[hsl(152,18%,14%)] dark:text-[hsl(152,30%,78%)]">
+                  {depot && (
+                    <p className="flex items-center gap-1.5 font-semibold">
+                      <Warehouse className="h-3.5 w-3.5" />
+                      {product.warehouseName || depot}
+                      {product.warehouseCity ? ` · ${product.warehouseCity}` : ""}
+                    </p>
+                  )}
+                  {place && (
+                    <p className="flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {t("wholesale.sellsInCountry", { defaultValue: "Sells in" })} {place}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 

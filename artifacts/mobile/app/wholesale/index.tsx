@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { useLanguage } from "@/context/LanguageContext";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -24,6 +25,7 @@ import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 const PAGE_SIZE = 20;
 
 export default function WholesaleCatalogScreen() {
+  const { t } = useLanguage();
   const { token, user } = useAuth();
   const router = useRouter();
   const [q, setQ] = useState("");

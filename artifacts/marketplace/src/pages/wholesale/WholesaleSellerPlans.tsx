@@ -10,7 +10,7 @@ export default function WholesaleSellerPlans() {
     <WholesalePageGate>
       <WholesaleShell
         title={t("wholesale.plansTitle", { defaultValue: "Seller plans" })}
-        subtitle="Unlock more depots and featured catalog slots."
+        subtitle={t("wholesale.plansSubtitle")}
       >
         <div className="grid gap-3 sm:grid-cols-3">
           {WHOLESALE_PLANS.map((p) => (

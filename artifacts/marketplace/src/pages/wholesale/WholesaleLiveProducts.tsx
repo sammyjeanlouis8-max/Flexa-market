@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
 import { WholesalePageGate } from "@/components/wholesale/WholesalePageGate";
 import {
   WholesaleEmpty,
@@ -16,26 +17,40 @@ import {
 /** Shared live product list — never links to fake demo product IDs. */
 export function WholesaleLiveProductsPage({
   title,
+  titleKey,
   subtitle,
+  subtitleKey,
   category,
   country,
   stats,
-  emptyTitle = "No wholesale products yet",
-  emptyBody = "Listings from verified depots appear here.",
+  emptyTitle,
+  emptyBody,
   badge,
 }: {
-  title: string;
+  title?: string;
+  titleKey?: string;
   subtitle?: string;
+  subtitleKey?: string;
   category?: string;
   country?: string;
-  stats?: Array<{ label: string; value: string | number }>;
+  stats?: Array<{ label: string; labelKey?: string; value: string | number }>;
   emptyTitle?: string;
   emptyBody?: string;
   badge?: string | ((p: WholesaleProduct) => string | undefined);
 }) {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const resolvedTitle = titleKey ? t(titleKey, { defaultValue: title || titleKey }) : title || "";
+  const resolvedSubtitle = subtitleKey
+    ? t(subtitleKey, { defaultValue: subtitle || "" })
+    : subtitle;
+  const resolvedEmptyTitle =
+    emptyTitle || t("wholesale.emptyTitle", { defaultValue: "No wholesale products yet" });
+  const resolvedEmptyBody =
+    emptyBody || t("wholesale.emptyLiveBody", { defaultValue: "Listings from verified depots appear here." });
 
   useEffect(() => {
     let cancelled = false;
@@ -60,11 +75,15 @@ export function WholesaleLiveProductsPage({
 
   return (
     <WholesalePageGate>
-      <WholesaleShell title={title} subtitle={subtitle}>
+      <WholesaleShell title={resolvedTitle} subtitle={resolvedSubtitle}>
         {stats && stats.length > 0 && (
           <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {stats.map((s) => (
-              <WholesaleStat key={s.label} label={s.label} value={s.value} />
+              <WholesaleStat
+                key={s.labelKey || s.label}
+                label={s.labelKey ? t(s.labelKey, { defaultValue: s.label }) : s.label}
+                value={s.value}
+              />
             ))}
           </div>
         )}
@@ -79,11 +98,11 @@ export function WholesaleLiveProductsPage({
           </div>
         ) : products.length === 0 ? (
           <WholesaleEmpty
-            title={emptyTitle}
-            body={emptyBody}
+            title={resolvedEmptyTitle}
+            body={resolvedEmptyBody}
             action={
               <Link href="/wholesale" className="text-sm font-semibold underline">
-                Back to catalog
+                {t("wholesale.backCatalog", { defaultValue: "Back to catalog" })}
               </Link>
             }
           />
@@ -97,7 +116,7 @@ export function WholesaleLiveProductsPage({
                 meta={[
                   formatMoney(p.unitPrice, p.currency),
                   p.city || p.country,
-                  `min ${p.minOrderQty}`,
+                  `${t("wholesale.minOrder", { defaultValue: "Min" })} ${p.minOrderQty}`,
                 ]
                   .filter(Boolean)
                   .join(" · ")}
@@ -120,6 +139,7 @@ export function WholesaleLiveProductCards({
   badge?: string;
   children?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -155,7 +175,7 @@ export function WholesaleLiveProductCards({
       <div className="space-y-2">
         {children}
         <Link href="/wholesale" className="inline-block text-sm font-semibold underline">
-          Back to catalog
+          {t("wholesale.backCatalog", { defaultValue: "Back to catalog" })}
         </Link>
       </div>
     );

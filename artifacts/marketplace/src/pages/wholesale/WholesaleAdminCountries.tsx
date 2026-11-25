@@ -3,10 +3,10 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleAdminCountries() {
   return (
     <WholesaleSimplePage
-      title="Admin · countries"
-      subtitle="Countries enabled for depot selling."
+      titleKey="wholesale.adminCountries"
+      subtitleKey="wholesale.adminCountriesSub"
       stats={[
-        { label: "Live", value: "3" },
+        { label: "Live", labelKey: "wholesale.live", value: "3" },
       ]}
       items={[
         { title: "Haiti", meta: "4 depots", href: "/wholesale/country/Haiti", badge: "On" },

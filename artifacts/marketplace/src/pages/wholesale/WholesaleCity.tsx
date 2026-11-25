@@ -3,10 +3,10 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleCity() {
   return (
     <WholesaleSimplePage
-      title="City wholesale"
-      subtitle="Depots and bulk stock near this city."
+      titleKey="wholesale.cityTitle"
+      subtitleKey="wholesale.citySubtitle"
       stats={[
-        { label: "Depots", value: "2" },
+        { label: "Depots", labelKey: "wholesale.depots", value: "2" },
       ]}
       items={[
         { title: "Flexa Delmas Depot", meta: "12 products", href: "/wholesale/stores/1", badge: "Delmas" },

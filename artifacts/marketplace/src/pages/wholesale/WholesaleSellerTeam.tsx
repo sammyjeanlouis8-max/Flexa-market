@@ -3,10 +3,10 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleSellerTeam() {
   return (
     <WholesaleSimplePage
-      title="Team"
-      subtitle="Staff who answer wholesale chat."
+      titleKey="wholesale.teamTitle"
+      subtitleKey="wholesale.teamSubtitle"
       stats={[
-        { label: "Members", value: "3" },
+        { label: "Members", labelKey: "wholesale.members", value: "3" },
       ]}
       items={[
         { title: "Sammy · Owner", meta: "All depots", href: "/wholesale/seller/settings", badge: "Owner" },

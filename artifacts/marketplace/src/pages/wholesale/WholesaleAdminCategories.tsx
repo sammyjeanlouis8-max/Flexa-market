@@ -3,10 +3,10 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleAdminCategories() {
   return (
     <WholesaleSimplePage
-      title="Admin · categories"
-      subtitle="Manage wholesale category taxonomy."
+      titleKey="wholesale.adminCategories"
+      subtitleKey="wholesale.adminSubtitle"
       stats={[
-        { label: "Categories", value: "6" },
+        { label: "Categories", labelKey: "wholesale.categoriesTitle", value: "6" },
       ]}
       items={[
         { title: "Food & Grocery", meta: "48 listings", href: "/wholesale/categories/food-grocery", badge: "Edit" },

@@ -3,10 +3,10 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleSellerReviews() {
   return (
     <WholesaleSimplePage
-      title="Reviews"
-      subtitle="Feedback after depot pickup deals."
+      titleKey="wholesale.reviewsTitle"
+      subtitleKey="wholesale.reviewsSubtitle"
       stats={[
-        { label: "Rating", value: "4.8" },
+        { label: "Rating", labelKey: "wholesale.rating", value: "4.8" },
       ]}
       items={[
         { title: "Hotel Karibe", meta: "Fast depot pickup", href: "/wholesale/seller/customers", badge: "★★★★★" },

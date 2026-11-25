@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { WholesalePageGate } from "@/components/wholesale/WholesalePageGate";
 import {
@@ -15,6 +16,7 @@ import {
 } from "@/lib/wholesaleApi";
 
 export default function WholesaleSellerAnalytics() {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
   const [depots, setDepots] = useState<WholesaleWarehouse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,25 +52,25 @@ export default function WholesaleSellerAnalytics() {
 
   return (
     <WholesalePageGate>
-      <WholesaleShell title="Analytics" subtitle="Views, chats, closed deals — no cart metrics.">
+      <WholesaleShell title={t("wholesale.analyticsTitle")} subtitle={t("wholesale.analyticsSubtitle")}>
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <WholesaleStat label="Listings" value={loading ? "…" : products.length} />
-          <WholesaleStat label="Depots" value={loading ? "…" : depots.length} />
-          <WholesaleStat label="Model" value="Chat only" />
+          <WholesaleStat label={t("wholesale.listings")} value={loading ? "…" : products.length} />
+          <WholesaleStat label={t("wholesale.depots")} value={loading ? "…" : depots.length} />
+          <WholesaleStat label={t("wholesale.model")} value={t("wholesale.chatOnly")} />
         </div>
         {loading ? (
           <div className="h-24 animate-pulse rounded-2xl bg-muted/70" />
         ) : !top && !topDepot ? (
           <WholesaleEmpty
-            title="No seller analytics yet"
-            body="Publish a verified-depot listing to see top products here."
+            title={t("wholesale.noAnalytics")}
+            body={t("wholesale.noAnalyticsBody")}
           />
         ) : (
           <div className="space-y-2">
             {top && (
               <WholesaleListCard
                 href={`/wholesale/products/${top.id}`}
-                title="Top listing"
+                title={t("wholesale.topListing")}
                 meta={`${top.title} · ${formatMoney(top.unitPrice, top.currency)}`}
                 badge="#1"
               />
@@ -76,7 +78,7 @@ export default function WholesaleSellerAnalytics() {
             {topDepot && (
               <WholesaleListCard
                 href={`/wholesale/stores/${topDepot.id}`}
-                title="Top depot"
+                title={t("wholesale.topDepot")}
                 meta={`${topDepot.name} · ${topDepot.city}`}
                 badge="#1"
               />

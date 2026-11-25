@@ -3,10 +3,10 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleSellerAvailability() {
   return (
     <WholesaleSimplePage
-      title="Stock alerts"
-      subtitle="Low-stock warnings for depot SKUs."
+      titleKey="wholesale.availabilityTitle"
+      subtitleKey="wholesale.availabilitySubtitle"
       stats={[
-        { label: "Alerts", value: "3" },
+        { label: "Alerts", labelKey: "wholesale.alerts", value: "3" },
       ]}
       items={[
         { title: "Water pallets", meta: "Under 50 cases", href: "/wholesale/seller/inventory", badge: "Alert" },

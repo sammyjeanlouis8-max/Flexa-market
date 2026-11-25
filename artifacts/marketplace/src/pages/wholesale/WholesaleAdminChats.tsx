@@ -3,11 +3,11 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleAdminChats() {
   return (
     <WholesaleSimplePage
-      title="Admin · chat moderation"
-      subtitle="Wholesale inquiry health."
+      titleKey="wholesale.adminChats"
+      subtitleKey="wholesale.adminSubtitle"
       stats={[
-        { label: "Open", value: "23" },
-        { label: "Flagged", value: "2" },
+        { label: "Open", labelKey: "wholesale.openLabel", value: "23" },
+        { label: "Flagged", labelKey: "wholesale.flagged", value: "2" },
       ]}
       items={[
         { title: "Flagged chat #88", meta: "Possible spam", href: "/messages", badge: "Flag" },

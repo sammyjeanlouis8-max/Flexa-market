@@ -149,6 +149,16 @@ if (initialLng !== "en" && ASYNC_LOADERS[initialLng]) {
     .catch(() => { /* leave on EN if the chunk fails to load */ });
 }
 
+// Keep Wholesale cookie in sync with the resolved Market language on boot.
+try {
+  if (typeof document !== "undefined") {
+    const maxAge = 60 * 60 * 24 * 365;
+    document.cookie = `${STORAGE_KEY}=${encodeURIComponent(initialLng)};path=/;max-age=${maxAge};SameSite=Lax`;
+  }
+} catch {
+  /* ignore */
+}
+
 // ── preloadLanguage ───────────────────────────────────────────────────────────
 /** Ensure a locale bundle is loaded into i18next (idempotent). */
 export async function preloadLanguage(lang: SupportedLanguage): Promise<void> {
@@ -178,6 +188,14 @@ export async function setLanguage(lang: SupportedLanguage): Promise<void> {
   await preloadLanguage(lang);
   localStorage.setItem(STORAGE_KEY, lang);
   localStorage.setItem(EXPLICIT_KEY, "1");
+  // Mirror into a cookie so Flexa Wholesale (same-site / sister host) can inherit
+  // the Market language without a separate picker.
+  try {
+    const maxAge = 60 * 60 * 24 * 365;
+    document.cookie = `${STORAGE_KEY}=${encodeURIComponent(lang)};path=/;max-age=${maxAge};SameSite=Lax`;
+  } catch {
+    /* non-browser / privacy mode — localStorage still holds the choice */
+  }
   await i18n.changeLanguage(lang);
 }
 

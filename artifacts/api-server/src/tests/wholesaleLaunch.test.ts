@@ -67,4 +67,15 @@ describe("GET /api/wholesale/launch", () => {
       expect(body.native).toBe(true);
     });
   });
+
+  it("appends Market language to the external Wholesale URL", async () => {
+    process.env.FLEXA_WHOLESALE_PUBLIC_URL = "https://wholesale.example.com/";
+    await withServer(async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/wholesale/launch?lang=ht`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.url).toBe("https://wholesale.example.com?lang=ht");
+      expect(body.lang).toBe("ht");
+    });
+  });
 });

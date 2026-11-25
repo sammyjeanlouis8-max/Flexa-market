@@ -51,7 +51,7 @@ export default function WholesaleCountry() {
       >
         <div className="mb-4 grid grid-cols-2 gap-3">
           <WholesaleStat label="Depots" value={loading ? "…" : depots.length} />
-          <WholesaleStat label="Buy flow" value="Chat only" />
+          <WholesaleStat label={t("wholesale.buyFlow")} value={t("wholesale.chatOnly")} />
         </div>
         {error && (
           <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>

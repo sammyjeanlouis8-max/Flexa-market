@@ -97,7 +97,7 @@ function FlexaWholesaleCatalog() {
     >
       <p className="mb-3 rounded-xl border border-[hsl(152,30%,80%)] bg-[hsl(152,40%,96%)] px-3 py-2 text-[12px] text-[hsl(152,40%,24%)] dark:border-[hsl(152,20%,28%)] dark:bg-[hsl(152,18%,14%)] dark:text-[hsl(152,30%,78%)]">
         {t("wholesale.modelNote", {
-          defaultValue: "Angro sèlman · pa gen bouton achte · chat ak vandè · depo nan peyi yo.",
+          defaultValue: "Wholesale only · no buy button · chat the seller · depot in their country.",
         })}
       </p>
       <div className="mb-4 flex flex-wrap gap-2">

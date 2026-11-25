@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -8,6 +9,7 @@ import { fetchInquiries } from "@/lib/wholesaleApi";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function BuyerInquiriesScreen() {
+  const { t } = useLanguage();
   const { token } = useAuth();
   const router = useRouter();
   const [rows, setRows] = useState<Awaited<ReturnType<typeof fetchInquiries>>>([]);
@@ -35,7 +37,7 @@ export default function BuyerInquiriesScreen() {
 
   return (
     <WholesaleGate>
-      <WholesaleShell title="My inquiries" subtitle="From Flexa Wholesale · chat with sellers">
+      <WholesaleShell title={t("wholesale_inquiriesTitle")} subtitle="From Flexa Wholesale · chat with sellers">
         {loading ? (
           <ActivityIndicator color={T.accent} />
         ) : error ? (

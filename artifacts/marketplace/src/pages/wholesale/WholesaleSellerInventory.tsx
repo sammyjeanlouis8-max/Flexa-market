@@ -3,11 +3,11 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleSellerInventory() {
   return (
     <WholesaleSimplePage
-      title="Depot inventory"
-      subtitle="Stock by warehouse — chat buyers see live qty."
+      titleKey="wholesale.inventoryTitle"
+      subtitleKey="wholesale.inventorySubtitle"
       stats={[
-        { label: "SKUs", value: "24" },
-        { label: "Low stock", value: "3" },
+        { label: "SKUs", labelKey: "wholesale.skus", value: "24" },
+        { label: "Low stock", labelKey: "wholesale.lowStock", value: "3" },
       ]}
       items={[
         { title: "Rice 50lb", meta: "Delmas · 420", href: "/wholesale/seller/products/101/edit", badge: "OK" },

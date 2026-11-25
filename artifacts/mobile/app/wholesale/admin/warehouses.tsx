@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
@@ -12,6 +13,7 @@ import {
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function AdminWarehousesScreen() {
+  const { t } = useLanguage();
   const { token, user } = useAuth();
   const [rows, setRows] = useState<WholesaleWarehouse[]>([]);
   const [filter, setFilter] = useState<"pending" | "verified" | "rejected" | "all">("pending");
@@ -68,7 +70,7 @@ export default function AdminWarehousesScreen() {
 
   return (
     <WholesaleGate>
-      <WholesaleShell title="Admin · depots" subtitle="Verify warehouse ownership by country">
+      <WholesaleShell title={t("wholesale_adminDepots")} subtitle="Verify warehouse ownership by country">
         <View style={styles.filters}>
           {(["pending", "verified", "rejected", "all"] as const).map((f) => (
             <Pressable

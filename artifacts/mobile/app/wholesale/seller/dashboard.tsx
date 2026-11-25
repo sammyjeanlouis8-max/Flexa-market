@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
@@ -9,6 +10,7 @@ import { fetchSellerStats, type WholesaleSellerStats } from "@/lib/wholesaleApi"
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleSellerDashboardScreen() {
+  const { t } = useLanguage();
   const { token } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<WholesaleSellerStats | null>(null);
@@ -36,7 +38,7 @@ export default function WholesaleSellerDashboardScreen() {
 
   return (
     <WholesaleGate>
-      <WholesaleShell title="Seller dashboard" subtitle="Depot stock · chats · verified countries">
+      <WholesaleShell title={t("wholesale_sellerDashTitle")} subtitle="Depot stock · chats · verified countries">
         {loading ? (
           <ActivityIndicator color={T.accent} />
         ) : error ? (

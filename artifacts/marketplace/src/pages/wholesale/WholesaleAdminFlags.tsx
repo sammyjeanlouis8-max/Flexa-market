@@ -1,11 +1,13 @@
+import { useTranslation } from "react-i18next";
 import { WholesaleLiveProductsPage } from "@/pages/wholesale/WholesaleLiveProducts";
 
 export default function WholesaleAdminFlags() {
+  const { t } = useTranslation();
   return (
     <WholesaleLiveProductsPage
-      title="Admin · flagged listings"
-      subtitle="Review live wholesale products (no demo product IDs)."
-      badge="Review"
+      titleKey="wholesale.adminFlags"
+      subtitleKey="wholesale.adminFlagsSub"
+      badge={t("wholesale.badgeReview", { defaultValue: "Review" })}
     />
   );
 }

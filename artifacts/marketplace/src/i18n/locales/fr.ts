@@ -1,3 +1,5 @@
+import { wholesaleFr } from "../wholesaleLocales";
+
 export default {
   cardCancellation: {
     title: "Annulation et remboursement carte", policy: "Avant l'expédition, vous pouvez annuler et demander un remboursement sur la carte utilisée. Aucun crédit dans le portefeuille Flexa.",
@@ -182,6 +184,7 @@ export default {
     backToMarketplace: "Retour au marché",
     taglineShort: "Acheter · Vendre · Livraison",
 },
+  wholesale: wholesaleFr,
   videoFeed: {
     title: "Vidéos promotionnelles",
     filterAll: "Tout",

@@ -1,3 +1,5 @@
+import { wholesaleEs } from "../wholesaleLocales";
+
 export default {
   footer: {
     tagline: "El mercado de la comunidad — compra, vende y encuentra trabajo cerca de ti.",
@@ -3441,6 +3443,7 @@ export default {
   
     easyReturns: "Devoluciones fáciles",
 },
+  wholesale: wholesaleEs,
   videoFeed: {
     title: "Videos promocionales",
     filterAll: "Todos",

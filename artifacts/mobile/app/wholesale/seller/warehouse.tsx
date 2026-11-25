@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 /**
  * Multi-warehouse management — residential address is NOT used for selling.
  * Sellers living abroad can sell in a country only with a verified warehouse there.
@@ -36,6 +37,7 @@ const emptyForm = () => ({
 });
 
 export default function WholesaleSellerWarehousesScreen() {
+  const { t } = useLanguage();
   const { token, user } = useAuth();
   const [rows, setRows] = useState<WholesaleWarehouse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,7 +143,7 @@ export default function WholesaleSellerWarehousesScreen() {
   return (
     <WholesaleGate>
       <WholesaleShell
-        title="My warehouses"
+        title={t("wholesale_myDepotTitle")}
         subtitle="Separate from your home address · multi-country depots"
         headerRight={
           <Pressable style={styles.addBtn} onPress={() => setShowForm((v) => !v)} testID="wholesale-add-warehouse">

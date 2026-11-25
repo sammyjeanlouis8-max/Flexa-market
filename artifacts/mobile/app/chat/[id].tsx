@@ -781,20 +781,24 @@ export default function ChatThreadScreen() {
                         <Feather name="package" size={28} color="#64748B" />
                       </View>
                     )}
-                    <Text style={styles.wholesaleCardEyebrow}>Flexa Wholesale</Text>
+                    <Text style={styles.wholesaleCardEyebrow}>{t("wholesale_cardEyebrow")}</Text>
                     <Text style={styles.wholesaleCardTitle} numberOfLines={2}>
                       {wholesaleCard.title}
                     </Text>
                     {priceLabel ? <Text style={styles.wholesaleCardPrice}>{priceLabel}</Text> : null}
                     <Text style={styles.wholesaleCardMeta}>
-                      MOQ {wholesaleCard.minOrderQty} {wholesaleCard.wholesaleUnitType}
-                      {wholesaleCard.qty ? ` · quote qty ${wholesaleCard.qty}` : ""}
+                      {t("wholesale_moqLabel")
+                        .replace("{{qty}}", String(wholesaleCard.minOrderQty))
+                        .replace("{{unit}}", wholesaleCard.wholesaleUnitType)}
+                      {wholesaleCard.qty
+                        ? ` · ${t("wholesale_quoteQtyLabel").replace("{{qty}}", String(wholesaleCard.qty))}`
+                        : ""}
                     </Text>
                     <Pressable
                       style={styles.wholesaleCardCta}
                       onPress={() => router.push(`/wholesale/products/${wholesaleCard.productId}`)}
                     >
-                      <Text style={styles.wholesaleCardCtaText}>View product</Text>
+                      <Text style={styles.wholesaleCardCtaText}>{t("wholesale_viewProduct")}</Text>
                       <Feather name="chevron-right" size={14} color="#F97316" />
                     </Pressable>
                   </View>

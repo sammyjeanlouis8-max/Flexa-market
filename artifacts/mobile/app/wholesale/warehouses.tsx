@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -8,6 +9,7 @@ import { fetchWarehouses, type WholesaleWarehouse } from "@/lib/wholesaleApi";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleWarehousesBrowseScreen() {
+  const { t } = useLanguage();
   const { token, user } = useAuth();
   const router = useRouter();
   const [rows, setRows] = useState<WholesaleWarehouse[]>([]);
@@ -47,7 +49,7 @@ export default function WholesaleWarehousesBrowseScreen() {
 
   return (
     <WholesaleGate>
-      <WholesaleShell title="Warehouses & depots" subtitle="Verified stock locations by country">
+      <WholesaleShell title={t("wholesale_depotsTitle")} subtitle="Verified stock locations by country">
         <View style={styles.searchRow}>
           <TextInput
             value={country}

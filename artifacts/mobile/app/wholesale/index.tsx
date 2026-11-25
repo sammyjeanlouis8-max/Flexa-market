@@ -14,36 +14,63 @@ import { WholesaleGate } from "@/components/wholesale/WholesaleGate";
 import { WholesaleShell } from "@/components/wholesale/WholesaleShell";
 import { useAuth } from "@/context/AuthContext";
 import {
-  fetchWholesaleProducts,
+  fetchWholesaleProductsPage,
   formatMoney,
+  type WholesalePagination,
   type WholesaleProduct,
 } from "@/lib/wholesaleApi";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
+const PAGE_SIZE = 20;
+
 export default function WholesaleCatalogScreen() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
+  const [pagination, setPagination] = useState<WholesalePagination | null>(null);
+  const marketplaceCountry = user?.country || "";
 
-  const load = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const rows = await fetchWholesaleProducts({ q: q.trim() || undefined }, { token });
-      setProducts(rows);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, [token, q]);
+  const load = useCallback(
+    async (offset = 0, append = false) => {
+      if (!token) return;
+      if (!marketplaceCountry) {
+        setError("Set your profile country to browse Flexa Wholesale in your marketplace.");
+        setLoading(false);
+        setProducts([]);
+        return;
+      }
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      setError(null);
+      try {
+        const page = await fetchWholesaleProductsPage(
+          {
+            q: q.trim() || undefined,
+            country: marketplaceCountry,
+            limit: PAGE_SIZE,
+            offset,
+          },
+          { token },
+        );
+        setProducts((prev) => (append ? [...prev, ...page.products] : page.products));
+        setPagination(page.pagination);
+      } catch (e: any) {
+        setError(e?.message || "Failed to load");
+        if (!append) setProducts([]);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [token, q, marketplaceCountry],
+  );
 
   useEffect(() => {
-    void load();
+    void load(0, false);
   }, [load]);
 
   return (
@@ -61,11 +88,12 @@ export default function WholesaleCatalogScreen() {
         }
       >
         <Text style={styles.lead}>
-          Wholesale only — chat vendors in your country who stock a warehouse.
+          Wholesale only — chat vendors stocking a verified warehouse in{" "}
+          {marketplaceCountry || "your country"}.
         </Text>
         <View style={styles.banner}>
           <Text style={styles.bannerText}>
-            No buy button · chat the seller · depot in their country
+            Strict country filter · no buy button · depot pickup · page {PAGE_SIZE}
           </Text>
         </View>
 
@@ -86,14 +114,14 @@ export default function WholesaleCatalogScreen() {
           <TextInput
             value={q}
             onChangeText={setQ}
-            placeholder="Search wholesale products..."
+            placeholder={`Search in ${marketplaceCountry || "your country"}…`}
             placeholderTextColor={T.muted}
             style={styles.search}
             returnKeyType="search"
-            onSubmitEditing={() => void load()}
+            onSubmitEditing={() => void load(0, false)}
             testID="wholesale-search-input"
           />
-          <Pressable style={styles.searchBtn} onPress={() => void load()}>
+          <Pressable style={styles.searchBtn} onPress={() => void load(0, false)}>
             <Feather name="search" size={18} color={T.white} />
           </Pressable>
         </View>
@@ -105,9 +133,9 @@ export default function WholesaleCatalogScreen() {
         ) : products.length === 0 ? (
           <View style={styles.empty}>
             <Feather name="package" size={28} color={T.accent} />
-            <Text style={styles.emptyTitle}>No wholesale products yet</Text>
+            <Text style={styles.emptyTitle}>No wholesale products in {marketplaceCountry || "this country"}</Text>
             <Text style={styles.emptyBody}>
-              List bulk stock from your warehouse. Buyers contact you in chat — no checkout.
+              Sellers need a verified warehouse here. Cross-country stock stays in its depot country.
             </Text>
             <Pressable style={styles.primary} onPress={() => router.push("/wholesale/seller/new")}>
               <Text style={styles.primaryText}>+ Create wholesale product</Text>
@@ -141,7 +169,7 @@ export default function WholesaleCatalogScreen() {
                   {formatMoney(p.unitPrice, p.currency)} / {p.wholesaleUnitType}
                 </Text>
                 <Text style={styles.meta}>
-                  Min {p.minOrderQty} · {p.sellerName || "Seller"}
+                  Min {p.minOrderQty} · {p.sellerName || "Seller"} · {p.country}
                 </Text>
                 {p.warehouseName ? (
                   <Text style={styles.depot} numberOfLines={1}>
@@ -151,6 +179,26 @@ export default function WholesaleCatalogScreen() {
                 ) : null}
               </Pressable>
             ))}
+            {pagination?.hasMore ? (
+              <Pressable
+                style={styles.loadMore}
+                onPress={() => void load(products.length, true)}
+                disabled={loadingMore}
+                testID="wholesale-load-more"
+              >
+                {loadingMore ? (
+                  <ActivityIndicator color={T.forest} />
+                ) : (
+                  <Text style={styles.loadMoreText}>
+                    Load more ({products.length}/{pagination.total})
+                  </Text>
+                )}
+              </Pressable>
+            ) : pagination ? (
+              <Text style={styles.footer}>
+                Showing {products.length} of {pagination.total} in {marketplaceCountry}
+              </Text>
+            ) : null}
           </View>
         )}
 
@@ -233,6 +281,14 @@ const styles = StyleSheet.create({
   price: { paddingHorizontal: 12, marginTop: 4, fontSize: 15, fontWeight: "800", color: T.accent },
   meta: { paddingHorizontal: 12, marginTop: 2, fontSize: 12, color: T.muted },
   depot: { paddingHorizontal: 12, paddingBottom: 12, marginTop: 4, fontSize: 12, color: T.muted },
+  loadMore: {
+    marginTop: 4,
+    backgroundColor: T.mint,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  loadMoreText: { color: T.forest, fontWeight: "800" },
   empty: {
     alignItems: "center",
     padding: 24,
@@ -242,7 +298,7 @@ const styles = StyleSheet.create({
     borderColor: T.line,
     backgroundColor: T.white,
   },
-  emptyTitle: { marginTop: 10, fontSize: 15, fontWeight: "800", color: T.ink },
+  emptyTitle: { marginTop: 10, fontSize: 15, fontWeight: "800", color: T.ink, textAlign: "center" },
   emptyBody: { marginTop: 6, fontSize: 13, color: T.muted, textAlign: "center", lineHeight: 18 },
   primary: {
     marginTop: 14,
@@ -252,6 +308,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   primaryText: { color: T.white, fontWeight: "800", fontSize: 13 },
-  error: { color: T.danger, marginTop: 16 },
+  error: { color: T.danger, marginTop: 16, fontWeight: "700" },
   footer: { marginTop: 24, textAlign: "center", fontSize: 11, color: T.muted },
 });

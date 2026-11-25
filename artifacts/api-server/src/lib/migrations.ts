@@ -3461,6 +3461,114 @@ export async function runStartupMigrations(): Promise<void> {
     sql: `CREATE INDEX IF NOT EXISTS wholesale_price_tiers_product_idx ON wholesale_price_tiers(product_id)`,
   });
 
+  migrations.push({
+    name: "wholesale_warehouses.create",
+    sql: `CREATE TABLE IF NOT EXISTS wholesale_warehouses (
+      id SERIAL PRIMARY KEY,
+      seller_id INTEGER NOT NULL REFERENCES users(id),
+      name TEXT NOT NULL,
+      country TEXT NOT NULL,
+      region TEXT,
+      city TEXT NOT NULL,
+      address TEXT NOT NULL DEFAULT '',
+      latitude REAL,
+      longitude REAL,
+      verification_status TEXT NOT NULL DEFAULT 'pending',
+      verified_at TIMESTAMPTZ,
+      verified_by INTEGER REFERENCES users(id),
+      rejection_reason TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "wholesale_warehouses.seller_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_warehouses_seller_idx ON wholesale_warehouses(seller_id)`,
+  });
+  migrations.push({
+    name: "wholesale_warehouses.country_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_warehouses_country_idx ON wholesale_warehouses(country)`,
+  });
+  migrations.push({
+    name: "wholesale_warehouses.status_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_warehouses_status_idx ON wholesale_warehouses(verification_status)`,
+  });
+  migrations.push({
+    name: "wholesale_products.warehouse_id",
+    sql: `ALTER TABLE wholesale_products ADD COLUMN IF NOT EXISTS warehouse_id INTEGER REFERENCES wholesale_warehouses(id)`,
+  });
+  migrations.push({
+    name: "wholesale_products.warehouse_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_products_warehouse_idx ON wholesale_products(warehouse_id)`,
+  });
+  migrations.push({
+    name: "wholesale_inventory.create",
+    sql: `CREATE TABLE IF NOT EXISTS wholesale_inventory (
+      id SERIAL PRIMARY KEY,
+      warehouse_id INTEGER NOT NULL REFERENCES wholesale_warehouses(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES wholesale_products(id) ON DELETE CASCADE,
+      stock_quantity INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "wholesale_inventory.warehouse_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_inventory_warehouse_idx ON wholesale_inventory(warehouse_id)`,
+  });
+  migrations.push({
+    name: "wholesale_inventory.product_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_inventory_product_idx ON wholesale_inventory(product_id)`,
+  });
+  migrations.push({
+    name: "wholesale_inventory.warehouse_product_uidx",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS wholesale_inventory_warehouse_product_uidx ON wholesale_inventory(warehouse_id, product_id)`,
+  });
+  migrations.push({
+    name: "wholesale_favorites.create",
+    sql: `CREATE TABLE IF NOT EXISTS wholesale_favorites (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES wholesale_products(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "wholesale_favorites.user_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_favorites_user_idx ON wholesale_favorites(user_id)`,
+  });
+  migrations.push({
+    name: "wholesale_favorites.user_product_uidx",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS wholesale_favorites_user_product_uidx ON wholesale_favorites(user_id, product_id)`,
+  });
+  migrations.push({
+    name: "wholesale_inquiries.create",
+    sql: `CREATE TABLE IF NOT EXISTS wholesale_inquiries (
+      id SERIAL PRIMARY KEY,
+      buyer_id INTEGER NOT NULL REFERENCES users(id),
+      seller_id INTEGER NOT NULL REFERENCES users(id),
+      product_id INTEGER REFERENCES wholesale_products(id) ON DELETE SET NULL,
+      qty INTEGER NOT NULL DEFAULT 1,
+      message TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      conversation_id INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "wholesale_inquiries.buyer_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_inquiries_buyer_idx ON wholesale_inquiries(buyer_id)`,
+  });
+  migrations.push({
+    name: "wholesale_inquiries.seller_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_inquiries_seller_idx ON wholesale_inquiries(seller_id)`,
+  });
+  migrations.push({
+    name: "wholesale_inquiries.status_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_inquiries_status_idx ON wholesale_inquiries(status)`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

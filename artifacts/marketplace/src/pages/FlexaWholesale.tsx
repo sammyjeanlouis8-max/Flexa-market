@@ -90,6 +90,23 @@ export default function FlexaWholesale() {
           defaultValue: "Angro sèlman · pa gen bouton achte · chat ak vandè · depo nan peyi yo.",
         })}
       </p>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {[
+          { href: "/wholesale/categories", label: t("wholesale.categoriesTitle", { defaultValue: "Categories" }) },
+          { href: "/wholesale/warehouses", label: t("wholesale.depotsTitle", { defaultValue: "Depots" }) },
+          { href: "/wholesale/search", label: t("wholesale.searchTitle", { defaultValue: "Search" }) },
+          { href: "/wholesale/help", label: t("wholesale.helpTitle", { defaultValue: "How it works" }) },
+          { href: "/wholesale/country/Haiti", label: "Haiti" },
+        ].map((l) => (
+          <Link
+            key={l.href}
+            href={l.href}
+            className="rounded-lg border border-border/70 bg-white px-3 py-1.5 text-[12px] font-semibold dark:bg-[hsl(152,16%,12%)]"
+          >
+            {l.label}
+          </Link>
+        ))}
+      </div>
 
       <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_220px]">
         <div className="relative">

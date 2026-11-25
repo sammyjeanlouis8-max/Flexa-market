@@ -531,6 +531,21 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
         { href: "/videos", icon: Film, label: t("nav.videos"), key: "videos" },
       ],
     },
+    // Super Admin only — immediately visible under Home & Discover (WHOLESALE_PUBLIC_LAUNCH=false).
+    ...(canSeeWholesale
+      ? [{
+          heading: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),
+          items: [
+            {
+              href: "/wholesale",
+              icon: Warehouse,
+              label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),
+              key: "flexa-wholesale",
+              highlight: true,
+            },
+          ],
+        }]
+      : []),
     ...(user ? [{
       heading: t("nav.boutiqueSection", { defaultValue: "Shop & Products" }),
       items: [
@@ -574,9 +589,6 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     {
       heading: t("nav.flexaServicesSection", { defaultValue: "Flexa Services" }),
       items: [
-        ...(canSeeWholesale
-          ? [{ href: "/wholesale", icon: Warehouse, label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), key: "flexa-wholesale" }]
-          : []),
         { href: "/tv", icon: Tv, label: "Flexa TV", key: "flexa-tv" },
         { href: "/music", icon: Music2, label: "Flexa Music", key: "flexa-music" },
         ...(user ? [

@@ -264,6 +264,22 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
         { icon: Film, label: t("nav.videos"), href: "/videos", testId: "drawer-promo-videos" },
       ],
     },
+    // Super Admin only — immediately visible under Home & Discover (WHOLESALE_PUBLIC_LAUNCH=false).
+    ...(canSeeWholesale
+      ? [{
+          id: "wholesale",
+          heading: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),
+          items: [
+            {
+              icon: Warehouse,
+              label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),
+              href: "/wholesale",
+              testId: "drawer-flexa-wholesale",
+              accent: "emerald" as const,
+            },
+          ] as NavItem[],
+        }]
+      : []),
     ...(canSeeSellerTools ? [{
       id: "boutique",
       heading: t("nav.boutiqueSection", { defaultValue: "Shop & Products" }),
@@ -324,9 +340,6 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
       id: "services",
       heading: t("nav.flexaServicesSection", { defaultValue: "Flexa Services" }),
       items: [
-        ...(canSeeWholesale
-          ? [{ icon: Warehouse, label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), href: "/wholesale", testId: "drawer-flexa-wholesale" } as NavItem]
-          : []),
         { icon: Tv, label: "Flexa TV", href: "/tv", testId: "drawer-flexa-tv" },
         { icon: Music2, label: "Flexa Music", href: "/music", testId: "drawer-flexa-music" },
         ...(user ? [

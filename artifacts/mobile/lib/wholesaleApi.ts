@@ -80,6 +80,13 @@ export type WholesaleSellerStats = {
   sellableCountries: string[];
 };
 
+export type WholesalePagination = {
+  limit: number;
+  offset: number;
+  total: number;
+  hasMore: boolean;
+};
+
 type AuthOpts = { token: string; signal?: AbortSignal };
 
 async function readJson(res: Response): Promise<any> {
@@ -98,6 +105,48 @@ function headers(token: string): HeadersInit {
   };
 }
 
+export async function fetchWholesaleProductsPage(
+  params: {
+    q?: string;
+    country?: string;
+    category?: string;
+    warehouseId?: number;
+    mine?: boolean;
+    status?: string;
+    limit?: number;
+    offset?: number;
+    page?: number;
+  } | undefined,
+  opts: AuthOpts,
+): Promise<{ products: WholesaleProduct[]; pagination: WholesalePagination; countryFilter?: string | null }> {
+  const qs = new URLSearchParams();
+  if (params?.q) qs.set("q", params.q);
+  if (params?.country) qs.set("country", params.country);
+  if (params?.category) qs.set("category", params.category);
+  if (params?.warehouseId) qs.set("warehouseId", String(params.warehouseId));
+  if (params?.mine) qs.set("mine", "1");
+  if (params?.status) qs.set("status", params.status);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  if (params?.page != null) qs.set("page", String(params.page));
+  const res = await fetch(`${getApiBase()}/wholesale/products?${qs}`, {
+    headers: headers(opts.token),
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || "Failed to load wholesale products");
+  return {
+    products: data.products ?? [],
+    pagination: data.pagination ?? {
+      limit: params?.limit ?? 20,
+      offset: params?.offset ?? 0,
+      total: (data.products ?? []).length,
+      hasMore: false,
+    },
+    countryFilter: data.countryFilter ?? params?.country ?? null,
+  };
+}
+
 export async function fetchWholesaleProducts(
   params: {
     q?: string;
@@ -106,27 +155,23 @@ export async function fetchWholesaleProducts(
     warehouseId?: number;
     mine?: boolean;
     status?: string;
+    limit?: number;
+    offset?: number;
   } | undefined,
   opts: AuthOpts,
 ): Promise<WholesaleProduct[]> {
-  const qs = new URLSearchParams();
-  if (params?.q) qs.set("q", params.q);
-  if (params?.country) qs.set("country", params.country);
-  if (params?.category) qs.set("category", params.category);
-  if (params?.warehouseId) qs.set("warehouseId", String(params.warehouseId));
-  if (params?.mine) qs.set("mine", "1");
-  if (params?.status) qs.set("status", params.status);
-  const res = await fetch(`${getApiBase()}/wholesale/products?${qs}`, {
-    headers: headers(opts.token),
-    signal: opts.signal,
-  });
-  const data = await readJson(res);
-  if (!res.ok) throw new Error(data.error || "Failed to load wholesale products");
-  return data.products ?? [];
+  const page = await fetchWholesaleProductsPage(params, opts);
+  return page.products;
 }
 
-export async function fetchWholesaleProduct(id: number, opts: AuthOpts): Promise<WholesaleProduct> {
-  const res = await fetch(`${getApiBase()}/wholesale/products/${id}`, {
+export async function fetchWholesaleProduct(
+  id: number,
+  opts: AuthOpts & { country?: string },
+): Promise<WholesaleProduct> {
+  const qs = new URLSearchParams();
+  if (opts.country) qs.set("country", opts.country);
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await fetch(`${getApiBase()}/wholesale/products/${id}${suffix}`, {
     headers: headers(opts.token),
     signal: opts.signal,
   });
@@ -167,7 +212,15 @@ export async function patchWholesaleProduct(
 }
 
 export async function fetchWarehouses(
-  params: { mine?: boolean; country?: string; verified?: boolean; admin?: boolean; status?: string } | undefined,
+  params: {
+    mine?: boolean;
+    country?: string;
+    verified?: boolean;
+    admin?: boolean;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  } | undefined,
   opts: AuthOpts,
 ): Promise<WholesaleWarehouse[]> {
   const qs = new URLSearchParams();
@@ -176,6 +229,8 @@ export async function fetchWarehouses(
   if (params?.verified === false) qs.set("verified", "0");
   if (params?.admin) qs.set("admin", "1");
   if (params?.status) qs.set("status", params.status);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
   const res = await fetch(`${getApiBase()}/wholesale/warehouses?${qs}`, {
     headers: headers(opts.token),
     signal: opts.signal,
@@ -256,21 +311,33 @@ export async function fetchSellerStats(opts: AuthOpts): Promise<WholesaleSellerS
   return data as WholesaleSellerStats;
 }
 
-export async function fetchFavorites(opts: AuthOpts): Promise<WholesaleProduct[]> {
-  const res = await fetch(`${getApiBase()}/wholesale/favorites`, {
+export async function fetchFavorites(
+  opts: AuthOpts & { country?: string; limit?: number; offset?: number },
+): Promise<{ products: WholesaleProduct[]; pagination: WholesalePagination }> {
+  const qs = new URLSearchParams();
+  if (opts.country) qs.set("country", opts.country);
+  if (opts.limit != null) qs.set("limit", String(opts.limit));
+  if (opts.offset != null) qs.set("offset", String(opts.offset));
+  const res = await fetch(`${getApiBase()}/wholesale/favorites?${qs}`, {
     headers: headers(opts.token),
     signal: opts.signal,
   });
   const data = await readJson(res);
   if (!res.ok) throw new Error(data.error || "Failed to load favorites");
-  return (data.favorites ?? []).map((f: any) => f.product);
+  return {
+    products: (data.favorites ?? []).map((f: any) => f.product),
+    pagination: data.pagination ?? { limit: 20, offset: 0, total: 0, hasMore: false },
+  };
 }
 
-export async function addFavorite(productId: number, opts: AuthOpts): Promise<void> {
+export async function addFavorite(
+  productId: number,
+  opts: AuthOpts & { country?: string },
+): Promise<void> {
   const res = await fetch(`${getApiBase()}/wholesale/favorites`, {
     method: "POST",
     headers: headers(opts.token),
-    body: JSON.stringify({ productId }),
+    body: JSON.stringify({ productId, country: opts.country }),
     signal: opts.signal,
   });
   const data = await readJson(res);

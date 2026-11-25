@@ -13,24 +13,31 @@ import {
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleFavoritesScreen() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const router = useRouter();
   const [rows, setRows] = useState<WholesaleProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const country = user?.country || "";
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      setRows(await fetchFavorites({ token }));
+      if (!country) {
+        setError("Set your profile country to see favorites in your marketplace.");
+        setRows([]);
+        return;
+      }
+      const page = await fetchFavorites({ token, country, limit: 50 });
+      setRows(page.products);
     } catch (e: any) {
       setError(e?.message || "Failed to load favorites");
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, country]);
 
   useFocusEffect(
     useCallback(() => {
@@ -40,13 +47,18 @@ export default function WholesaleFavoritesScreen() {
 
   return (
     <WholesaleGate>
-      <WholesaleShell title="Favorites" subtitle="Saved wholesale products">
+      <WholesaleShell
+        title="Favorites"
+        subtitle={country ? `Saved in ${country} only` : "Saved wholesale products"}
+      >
         {loading ? (
           <ActivityIndicator color={T.accent} />
         ) : error ? (
           <Text style={styles.error}>{error}</Text>
         ) : rows.length === 0 ? (
-          <Text style={styles.empty}>No favorites yet — heart a product from its detail page.</Text>
+          <Text style={styles.empty}>
+            No favorites in {country || "your country"} — heart a product from its detail page.
+          </Text>
         ) : (
           <View style={styles.list}>
             {rows.map((p) => (

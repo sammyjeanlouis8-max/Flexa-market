@@ -8,10 +8,10 @@ import { fetchWarehouses, type WholesaleWarehouse } from "@/lib/wholesaleApi";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleWarehousesBrowseScreen() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const router = useRouter();
   const [rows, setRows] = useState<WholesaleWarehouse[]>([]);
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState(user?.country || "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,9 +20,15 @@ export default function WholesaleWarehousesBrowseScreen() {
     setLoading(true);
     setError(null);
     try {
+      const marketplace = country.trim() || user?.country || "";
+      if (!marketplace) {
+        setError("Set a marketplace country to browse verified depots.");
+        setRows([]);
+        return;
+      }
       setRows(
         await fetchWarehouses(
-          { country: country.trim() || undefined, verified: true },
+          { country: marketplace, verified: true, limit: 50 },
           { token },
         ),
       );
@@ -31,7 +37,7 @@ export default function WholesaleWarehousesBrowseScreen() {
     } finally {
       setLoading(false);
     }
-  }, [token, country]);
+  }, [token, country, user?.country]);
 
   useFocusEffect(
     useCallback(() => {

@@ -13,11 +13,24 @@ import {
   wholesaleInquiriesTable,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
+import {
+  countriesMatch,
+  normalizeWholesaleCountry,
+  parsePagination,
+  resolveBuyerCountry,
+} from "../lib/wholesaleCountry";
 
 const router = Router();
 
 /** Keep in sync with marketplace `WHOLESALE_PUBLIC_LAUNCH` until public launch. */
 const WHOLESALE_PUBLIC_LAUNCH = false;
+
+export {
+  countriesMatch,
+  normalizeWholesaleCountry,
+  parsePagination,
+  resolveBuyerCountry,
+} from "../lib/wholesaleCountry";
 
 async function requireWholesaleAccess(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1], next: Parameters<typeof requireAuth>[2]) {
   await requireAuth(req, res, async () => {
@@ -112,14 +125,35 @@ router.get("/wholesale/launch", (_req, res): void => {
 
 router.get("/wholesale/warehouses", requireWholesaleAccess, async (req, res): Promise<void> => {
   const mine = String(req.query.mine ?? "") === "1";
-  const country = String(req.query.country ?? "").trim().slice(0, 80) || null;
   const verifiedOnly = String(req.query.verified ?? "1") !== "0";
   const adminAll = String(req.query.admin ?? "") === "1" && !!req.user?.isSuperAdmin;
   const userId = req.userId!;
+  const { limit, offset } = parsePagination(req.query);
+
+  const resolved = resolveBuyerCountry({
+    queryCountry: String(req.query.country ?? ""),
+    profileCountry: req.user?.country ?? null,
+    mine,
+    admin: adminAll,
+  });
+  if (resolved.error) {
+    res.status(400).json({ error: resolved.error });
+    return;
+  }
+  const country = resolved.country;
 
   const conds = [eq(wholesaleWarehousesTable.isActive, true)];
   if (mine) conds.push(eq(wholesaleWarehousesTable.sellerId, userId));
-  if (country) conds.push(eq(wholesaleWarehousesTable.country, country));
+  // Strict buyer-country filter for public browse (not mine / not admin).
+  if (!mine && !adminAll) {
+    if (!country) {
+      res.status(400).json({ error: "Marketplace country is required" });
+      return;
+    }
+    conds.push(sql`lower(${wholesaleWarehousesTable.country}) = lower(${country})`);
+  } else if (country) {
+    conds.push(sql`lower(${wholesaleWarehousesTable.country}) = lower(${country})`);
+  }
   if (!mine && !adminAll && verifiedOnly) {
     conds.push(eq(wholesaleWarehousesTable.verificationStatus, "verified"));
   }
@@ -128,6 +162,13 @@ router.get("/wholesale/warehouses", requireWholesaleAccess, async (req, res): Pr
     conds.push(eq(wholesaleWarehousesTable.verificationStatus, String(req.query.status).trim()));
   }
 
+  const whereClause = and(...conds);
+  const [countRow] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(wholesaleWarehousesTable)
+    .where(whereClause);
+  const total = Number(countRow?.total ?? 0);
+
   const rows = await db
     .select({
       warehouse: wholesaleWarehousesTable,
@@ -135,12 +176,15 @@ router.get("/wholesale/warehouses", requireWholesaleAccess, async (req, res): Pr
     })
     .from(wholesaleWarehousesTable)
     .leftJoin(usersTable, eq(wholesaleWarehousesTable.sellerId, usersTable.id))
-    .where(and(...conds))
+    .where(whereClause)
     .orderBy(desc(wholesaleWarehousesTable.createdAt))
-    .limit(200);
+    .limit(limit)
+    .offset(offset);
 
   res.json({
     warehouses: rows.map((r) => shapeWarehouse(r.warehouse, r.sellerName)),
+    pagination: { limit, offset, total, hasMore: offset + rows.length < total },
+    countryFilter: !mine && !adminAll ? country : country,
   });
 });
 
@@ -267,12 +311,24 @@ router.patch("/wholesale/warehouses/:id", requireWholesaleAccess, async (req, re
 
 router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Promise<void> => {
   const q = String(req.query.q ?? "").trim().slice(0, 100);
-  const country = String(req.query.country ?? "").trim().slice(0, 80) || null;
   const category = String(req.query.category ?? "").trim().slice(0, 80) || null;
   const warehouseId = req.query.warehouseId != null ? Number(req.query.warehouseId) : null;
   const statusFilter = String(req.query.status ?? "").trim();
   const mine = String(req.query.mine ?? "") === "1";
   const userId = req.userId!;
+  const { limit, offset } = parsePagination(req.query);
+
+  const resolved = resolveBuyerCountry({
+    queryCountry: String(req.query.country ?? ""),
+    profileCountry: req.user?.country ?? null,
+    mine,
+    admin: false,
+  });
+  if (resolved.error) {
+    res.status(400).json({ error: resolved.error });
+    return;
+  }
+  const country = resolved.country;
 
   const conds = [];
   if (mine) {
@@ -282,8 +338,17 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
     }
   } else {
     conds.push(eq(wholesaleProductsTable.status, "active"));
+    // Strict: buyers only see stock available in their marketplace country.
+    if (!country) {
+      res.status(400).json({ error: "Marketplace country is required" });
+      return;
+    }
+    conds.push(sql`lower(${wholesaleProductsTable.country}) = lower(${country})`);
   }
-  if (country) conds.push(eq(wholesaleProductsTable.country, country));
+  // Sellers may still filter their own listings by country (multi-warehouse).
+  if (mine && country) {
+    conds.push(sql`lower(${wholesaleProductsTable.country}) = lower(${country})`);
+  }
   if (category) conds.push(eq(wholesaleProductsTable.category, category));
   if (warehouseId && Number.isFinite(warehouseId)) {
     conds.push(eq(wholesaleProductsTable.warehouseId, warehouseId));
@@ -291,6 +356,13 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
   if (q) {
     conds.push(sql`(${wholesaleProductsTable.title} ILIKE ${`%${q}%`} OR ${wholesaleProductsTable.description} ILIKE ${`%${q}%`})`);
   }
+
+  const whereClause = and(...conds);
+  const [countRow] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(wholesaleProductsTable)
+    .where(whereClause);
+  const total = Number(countRow?.total ?? 0);
 
   const rows = await db
     .select({
@@ -303,9 +375,10 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
     .from(wholesaleProductsTable)
     .leftJoin(usersTable, eq(wholesaleProductsTable.sellerId, usersTable.id))
     .leftJoin(wholesaleWarehousesTable, eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id))
-    .where(and(...conds))
+    .where(whereClause)
     .orderBy(desc(wholesaleProductsTable.createdAt))
-    .limit(100);
+    .limit(limit)
+    .offset(offset);
 
   const productIds = rows.map((r) => r.product.id);
   const tiers = productIds.length
@@ -328,6 +401,8 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
         r.warehouse,
       ),
     ),
+    pagination: { limit, offset, total, hasMore: offset + rows.length < total },
+    countryFilter: mine ? country : country,
   });
 });
 
@@ -355,6 +430,21 @@ router.get("/wholesale/products/:id", requireWholesaleAccess, async (req, res): 
   if (!row) {
     res.status(404).json({ error: "Product not found" });
     return;
+  }
+
+  const isOwner = row.product.sellerId === req.userId;
+  const isAdmin = !!req.user?.isSuperAdmin;
+  if (!isOwner && !isAdmin) {
+    const buyerCountry =
+      normalizeWholesaleCountry(String(req.query.country ?? "")) ||
+      normalizeWholesaleCountry(req.user?.country ?? null);
+    if (!buyerCountry || !countriesMatch(row.product.country, buyerCountry)) {
+      res.status(404).json({
+        error: "Product not available in your marketplace country",
+        countryFilter: buyerCountry,
+      });
+      return;
+    }
   }
 
   const tiers = await db
@@ -735,6 +825,32 @@ router.patch("/wholesale/inventory/:id", requireWholesaleAccess, async (req, res
 
 router.get("/wholesale/favorites", requireWholesaleAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
+  const { limit, offset } = parsePagination(req.query);
+  const resolved = resolveBuyerCountry({
+    queryCountry: String(req.query.country ?? ""),
+    profileCountry: req.user?.country ?? null,
+    mine: false,
+    admin: false,
+  });
+  if (resolved.error || !resolved.country) {
+    res.status(400).json({ error: resolved.error || "Marketplace country is required" });
+    return;
+  }
+  const country = resolved.country;
+
+  const whereClause = and(
+    eq(wholesaleFavoritesTable.userId, userId),
+    sql`lower(${wholesaleProductsTable.country}) = lower(${country})`,
+    eq(wholesaleProductsTable.status, "active"),
+  );
+
+  const [countRow] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(wholesaleFavoritesTable)
+    .innerJoin(wholesaleProductsTable, eq(wholesaleFavoritesTable.productId, wholesaleProductsTable.id))
+    .where(whereClause);
+  const total = Number(countRow?.total ?? 0);
+
   const rows = await db
     .select({
       favorite: wholesaleFavoritesTable,
@@ -748,9 +864,10 @@ router.get("/wholesale/favorites", requireWholesaleAccess, async (req, res): Pro
     .innerJoin(wholesaleProductsTable, eq(wholesaleFavoritesTable.productId, wholesaleProductsTable.id))
     .leftJoin(usersTable, eq(wholesaleProductsTable.sellerId, usersTable.id))
     .leftJoin(wholesaleWarehousesTable, eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id))
-    .where(eq(wholesaleFavoritesTable.userId, userId))
+    .where(whereClause)
     .orderBy(desc(wholesaleFavoritesTable.createdAt))
-    .limit(100);
+    .limit(limit)
+    .offset(offset);
 
   const productIds = rows.map((r) => r.product.id);
   const tiers = productIds.length
@@ -774,6 +891,8 @@ router.get("/wholesale/favorites", requireWholesaleAccess, async (req, res): Pro
         r.warehouse,
       ),
     })),
+    pagination: { limit, offset, total, hasMore: offset + rows.length < total },
+    countryFilter: country,
   });
 });
 
@@ -787,6 +906,21 @@ router.post("/wholesale/favorites", requireWholesaleAccess, async (req, res): Pr
   const [product] = await db.select().from(wholesaleProductsTable).where(eq(wholesaleProductsTable.id, productId)).limit(1);
   if (!product) {
     res.status(404).json({ error: "Product not found" });
+    return;
+  }
+  const buyerCountry =
+    normalizeWholesaleCountry(String(req.body?.country ?? "")) ||
+    normalizeWholesaleCountry(req.user?.country ?? null);
+  if (!buyerCountry || !countriesMatch(product.country, buyerCountry)) {
+    res.status(400).json({
+      error: "Can only favorite products available in your marketplace country",
+      countryFilter: buyerCountry,
+      productCountry: product.country,
+    });
+    return;
+  }
+  if (product.status !== "active") {
+    res.status(400).json({ error: "Product is not active" });
     return;
   }
   const [existing] = await db

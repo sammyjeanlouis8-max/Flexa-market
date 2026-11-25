@@ -67,12 +67,16 @@ export async function fetchWholesaleProducts(params?: {
   country?: string;
   mine?: boolean;
   status?: string;
+  limit?: number;
+  offset?: number;
 }): Promise<WholesaleProduct[]> {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
   if (params?.country) qs.set("country", params.country);
   if (params?.mine) qs.set("mine", "1");
   if (params?.status) qs.set("status", params.status);
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
   const res = await fetch(`/api/wholesale/products?${qs.toString()}`, { headers: authHeaders() });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Failed to load wholesale products");

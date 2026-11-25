@@ -40,7 +40,7 @@ export default function WholesaleProductScreen() {
     if (!token || !Number.isFinite(productId)) return;
     let alive = true;
     setLoading(true);
-    fetchWholesaleProduct(productId, { token })
+    fetchWholesaleProduct(productId, { token, country: user?.country || undefined })
       .then((p) => {
         if (!alive) return;
         setProduct(p);
@@ -56,7 +56,7 @@ export default function WholesaleProductScreen() {
     return () => {
       alive = false;
     };
-  }, [token, productId]);
+  }, [token, productId, user?.country]);
 
   const unit = useMemo(() => (product ? priceForQty(product, qty) : 0), [product, qty]);
   const total = unit * qty;
@@ -93,7 +93,7 @@ export default function WholesaleProductScreen() {
         await removeFavorite(product.id, { token });
         setFavorited(false);
       } else {
-        await addFavorite(product.id, { token });
+        await addFavorite(product.id, { token, country: user?.country || product.country || undefined });
         setFavorited(true);
       }
     } catch (e: any) {

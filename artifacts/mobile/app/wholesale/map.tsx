@@ -8,7 +8,7 @@ import { fetchWarehouses, type WholesaleWarehouse } from "@/lib/wholesaleApi";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleMapScreen() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [rows, setRows] = useState<WholesaleWarehouse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,14 +18,20 @@ export default function WholesaleMapScreen() {
     setLoading(true);
     setError(null);
     try {
-      const list = await fetchWarehouses({ verified: true }, { token });
+      const country = user?.country;
+      if (!country) {
+        setError("Set your profile country to see warehouses on the map.");
+        setRows([]);
+        return;
+      }
+      const list = await fetchWarehouses({ verified: true, country, limit: 50 }, { token });
       setRows(list.filter((w) => w.latitude != null && w.longitude != null));
     } catch (e: any) {
       setError(e?.message || "Failed to load map depots");
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, user?.country]);
 
   useFocusEffect(
     useCallback(() => {

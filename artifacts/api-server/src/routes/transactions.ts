@@ -376,6 +376,7 @@ export async function releaseEscrow(
     actorId: tx.userId,
     type: "order_delivered",
     listingId: tx.listingId ?? undefined,
+    referenceId: tx.id,
   }).catch(() => {});
 
   // Auto-create a MonCash payout record for mobile-money orders so the admin
@@ -556,7 +557,9 @@ async function runAutoRelease(): Promise<void> {
             // Notify buyer
             await db.insert(notificationsTable).values({
               userId: buyerId,
+              actorId: buyerId,
               type: "delivery_returned",
+              referenceId: d.id,
               message: `📦 Ou pa t reskède. Kòmand retounen bay machann otomatikman. ${refundAmt > 0 ? `💰 Ranbousman $${refundAmt.toFixed(2)} ajoute nan wallet ou (frè retou $${feeUsd.toFixed(2)} dedwi).` : "Pa gen ranbousman — frè livrezon kouvri tout kòb la."}`,
             } as any).catch(() => {});
           }
@@ -587,7 +590,9 @@ async function runAutoRelease(): Promise<void> {
             // Notify driver
             await db.insert(notificationsTable).values({
               userId: d.driverUserId,
+              actorId: d.driverUserId,
               type: "delivery_returned",
+              referenceId: d.id,
               message: `✅ Delè reskèd ekspire (auto-retou). $${driverFee.toFixed(2)} krédite nan kont ou (2× frè: ale + retou).`,
             } as any).catch(() => {});
           }
@@ -597,7 +602,9 @@ async function runAutoRelease(): Promise<void> {
         if (d.sellerId) {
           await db.insert(notificationsTable).values({
             userId: d.sellerId,
+            actorId: d.sellerId,
             type: "delivery_returned",
+            referenceId: d.id,
             message: `📦 Achtè a pa t reskède. Kòmand retounen ba ou. Pwodwi ou disponib ankò.`,
           } as any).catch(() => {});
         }
@@ -1322,8 +1329,10 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
         : "";
       await db.insert(notificationsTable).values({
         userId: tx.userId,
+        actorId: req.userId!,
         type: "driver_assigned",
         isRead: false,
+        referenceId: busDelivery?.id ?? tx.id,
         message: `📦 Kòmand ou nan wout pa bis/transpò${cityLine}. Transpòtè: ${driverName?.trim() || "—"} (${driverPhone.trim()}).${notifNote} Kòd sekrè ou: ${busCode}. Bay machann nan kòd la PA MESAJ sèlman lè ou resevwa atik la — sa ap libere lajan li imedyatman.`,
       } as any).catch(() => {});
 
@@ -1429,8 +1438,10 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
       // Notify buyer with the secret code
       await db.insert(notificationsTable).values({
         userId: tx.userId,
+        actorId: req.userId!,
         type: "driver_assigned",
         isRead: false,
+        referenceId: personalDelivery?.id ?? tx.id,
         message: `Chofè ou a ap vini. Kòd sekrè ou: ${personalCode}. Ba li chofè a SÈLMAN lè li rive ba ou kòmand lan. Pa pataje li ak pèsonn.`,
       } as any).catch(() => {});
 
@@ -1739,6 +1750,7 @@ router.post("/orders/:id/pickup-update", requireAuth, async (req, res): Promise<
       actorId: tx.userId,
       type: "order_delivered",
       listingId: tx.listingId ?? undefined,
+      referenceId: tx.id,
     }).catch(() => {});
 
     res.json({ ok: true, orderStatus: status });
@@ -1814,6 +1826,7 @@ router.post("/orders/:id/deliver", requireAuth, async (req, res): Promise<void> 
     actorId: ctx.listing.sellerId,
     type: "order_delivered",
     listingId: ctx.listing.id,
+    referenceId: orderId,
   }).catch(() => {});
 
   void sendPushToUser(tx.userId, {
@@ -2544,6 +2557,7 @@ router.post("/transactions/:id/cancel", requireAuth, async (req, res): Promise<v
       type: "order_cancelled",
       actorId: userId,
       listingId: cancellation.listingId ?? undefined,
+      referenceId: txId,
     } as any).catch(() => {});
   }
 
@@ -2705,6 +2719,7 @@ router.post("/orders/:id/seller-reject", requireAuth, async (req, res): Promise<
       type: "order_cancelled",
       actorId: userId,
       listingId: rejection.listingId ?? undefined,
+      referenceId: txId,
       message: rejection.paymentMethod === "wallet"
         ? `Machann nan te refize kòmand #${txId} ou a. $${rejection.refundAmount.toFixed(2)} tounen nan pòtfèy ou imedyatman.`
         : `Machann nan te refize kòmand #${txId} ou a. Ou pral resevwa ranbousman ou — kontakte sipò si ou pa resevwa l nan 48h.`,

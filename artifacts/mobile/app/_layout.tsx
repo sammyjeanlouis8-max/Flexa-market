@@ -55,6 +55,7 @@ export default function RootLayout() {
                       <Stack.Screen name="chatbot" />
                       <Stack.Screen name="addresses" />
                       <Stack.Screen name="edit-profile" />
+                      <Stack.Screen name="profile/[id]" />
                       <Stack.Screen name="stripe-checkout" />
                       <Stack.Screen name="language-picker" />
                       <Stack.Screen name="esim" />

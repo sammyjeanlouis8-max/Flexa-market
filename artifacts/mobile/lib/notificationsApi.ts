@@ -152,8 +152,7 @@ export function notificationNativeHref(n: AppNotification): string {
   }
 
   if (n.type === "follow" || n.type === "new_follower") {
-    // Native shell has no public profile route; keep the inbox open with the row marked read.
-    return "/notifications";
+    return n.actorId ? `/profile/${n.actorId}` : "/notifications";
   }
 
   switch (n.type) {
@@ -173,7 +172,9 @@ export function notificationNativeHref(n: AppNotification): string {
     case "delivery_returned":
     case "driver_assigned":
     case "driver_timeout":
-      return "/delivery-tracking";
+      return n.referenceId
+        ? `/delivery-tracking?id=${n.referenceId}`
+        : "/orders";
     case "delivery_paid":
     case "delivery_earnings":
     case "delivery_hold_release":
@@ -216,7 +217,7 @@ export function notificationNativeHref(n: AppNotification): string {
       return "/subscription";
     default:
       if (n.type.startsWith("delivery_") || n.type.startsWith("driver_")) {
-        return "/delivery-tracking";
+        return n.referenceId ? `/delivery-tracking?id=${n.referenceId}` : "/orders";
       }
       if (n.listingId) return `/listing/${n.listingId}`;
       if (n.referenceId) return `/orders/${n.referenceId}`;

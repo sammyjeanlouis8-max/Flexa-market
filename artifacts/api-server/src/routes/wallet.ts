@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { db, promoWalletTable, walletTransactionsTable, walletTransfersTable, platformSettingsTable, usersTable, rechargeCardsTable, notificationsTable } from "@workspace/db";
+import { db, promoWalletTable, walletTransactionsTable, walletTransfersTable, platformSettingsTable, usersTable, rechargeCardsTable } from "@workspace/db";
 import { eq, desc, sql, and, gte, ilike, or, not } from "drizzle-orm";
 import { requireAuth, requireCardNotBlocked, requireAdmin, requireFinanceAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { getStripeClient } from "../lib/stripeClient";
 import { getOrCreateStripeCustomer } from "../lib/stripeCustomer";
 import { modernCheckoutSessionExtras } from "../lib/stripePaymentCapabilities";
+import { safeNotify } from "../lib/safeNotify";
 
 const router = Router();
 
@@ -254,17 +255,12 @@ export async function applyRechargeCredits(
       paymentRef: paymentRef ? `${paymentRef}:fee` : undefined,
       note: `Frè rechaj ${(rechargeFeePct * 100).toFixed(1)}% — rechaj brut $${grossAmountUsd.toFixed(2)}`,
     });
-    await database.insert(notificationsTable).values({
+    await safeNotify({
       userId,
+      actorId: userId,
       type: "wallet_fee",
-      isRead: false,
-      meta: JSON.stringify({
-        message: `Frè rechaj ${(rechargeFeePct * 100).toFixed(1)}% — $${feeUsd.toFixed(2)} dedwi sou rechaj $${grossAmountUsd.toFixed(2)} ou a.`,
-        feeUsd,
-        netUsd,
-        grossAmountUsd,
-      }),
-    } as any).catch(() => {});
+      message: `Frè rechaj ${(rechargeFeePct * 100).toFixed(1)}% — $${feeUsd.toFixed(2)} dedwi sou rechaj $${grossAmountUsd.toFixed(2)} ou a.`,
+    });
   }
 
   logger.info({ userId, grossAmountUsd, feeUsd, netUsd }, "Recharge credits applied");
@@ -464,16 +460,13 @@ export async function payReferralBonusIfEligible(userId: number, rechargeAmountU
       toUserId: referrerId,
     });
 
-    // Notify referrer
-    await db.insert(notificationsTable).values({
+    // Notify referrer (actor = invited friend who recharged)
+    await safeNotify({
       userId: referrerId,
+      actorId: userId,
       type: "referral_commission_income",
-      isRead: false,
-      meta: JSON.stringify({
-        message: `+$0.50 — yon zanmi ou te envite fè premye rechaj li. Lajan an nan balans promo ou.`,
-        amount: REFERRAL_TO_REFERRER_USD,
-      }),
-    } as any).catch(() => {});
+      message: `+$0.50 — yon zanmi ou te envite fè premye rechaj li. Lajan an nan balans promo ou.`,
+    });
 
     logger.info({ referrerId, userId, referrerCredit: REFERRAL_TO_REFERRER_USD, rechargeAmountUsd }, "Referral bonus: $0.50 credited to referrer promoBalance");
   }
@@ -789,31 +782,36 @@ router.post("/wallet/transfer", requireAuth, requireCardNotBlocked, async (req, 
   // ── 9. Atomic debit sender — floor enforced in WHERE to prevent race conditions ──
   // Including MIN_FLOOR in the SQL guard ensures that even under concurrent requests
   // that both pass the pre-check, the balance can never drop below $1.50.
-  await db.update(promoWalletTable)
+  // `.returning()` is required: a no-op UPDATE (0 rows) must abort before credit.
+  const [debited] = await db.update(promoWalletTable)
     .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${parsedAmount}`, updatedAt: new Date() })
     .where(
       and(
         eq(promoWalletTable.userId, req.userId!),
         sql`${promoWalletTable.balanceUsd} >= ${parsedAmount + MIN_FLOOR - 0.0001}`,
       ),
-    );
+    )
+    .returning({ balanceUsd: promoWalletTable.balanceUsd, userId: promoWalletTable.userId });
 
-  // Re-verify debit went through (balance must not go negative)
-  const [afterDebit] = await db.select({ balanceUsd: promoWalletTable.balanceUsd })
-    .from(promoWalletTable).where(eq(promoWalletTable.userId, req.userId!));
-  if (!afterDebit || afterDebit.balanceUsd < -0.01) {
-    // Rollback: restore sender balance
-    await db.update(promoWalletTable)
-      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${parsedAmount}`, updatedAt: new Date() })
-      .where(eq(promoWalletTable.userId, req.userId!));
+  if (!debited) {
     res.status(400).json({ error: "Echèk transfè — balans ensifizan" });
     return;
   }
 
   // Receiver gets net amount (gross minus 2% platform fee)
-  await db.update(promoWalletTable)
+  const [credited] = await db.update(promoWalletTable)
     .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${netAmount}`, updatedAt: new Date() })
-    .where(eq(promoWalletTable.userId, receiverWallet.userId));
+    .where(eq(promoWalletTable.userId, receiverWallet.userId))
+    .returning({ userId: promoWalletTable.userId });
+
+  if (!credited) {
+    // Roll back sender debit if receiver wallet vanished mid-transfer.
+    await db.update(promoWalletTable)
+      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${parsedAmount}`, updatedAt: new Date() })
+      .where(eq(promoWalletTable.userId, req.userId!));
+    res.status(500).json({ error: "Echèk transfè — kont destinasyon pa disponib" });
+    return;
+  }
 
   // ── 10. Audit log both sides ──────────────────────────────────────────────
   await db.insert(walletTransactionsTable).values({
@@ -853,21 +851,25 @@ router.post("/wallet/transfer", requireAuth, requireCardNotBlocked, async (req, 
     ipAddress: req.ip ?? null,
   }).catch(() => {});
 
-  // ── 11. Notify receiver ───────────────────────────────────────────────────
-  await db.insert(notificationsTable).values({
-    userId:  receiverWallet.userId,
-    actorId: req.userId!,
-    type:    "transfer_received",
-    message: `$${netAmount.toFixed(2)} depi ${senderWallet.accountNumber ?? "FM"}`,
-  }).catch(() => {});
-
-  // Notify sender (confirmation)
-  await db.insert(notificationsTable).values({
-    userId:  req.userId!,
-    actorId: req.userId!,
-    type:    "transfer_sent",
-    message: `$${parsedAmount.toFixed(2)} voye ba ${receiverUser?.name ?? normalizedAcct}`,
-  }).catch(() => {});
+  // ── 11. Notify receiver + sender (actorId required; failures logged) ──────
+  await safeNotify(
+    {
+      userId: receiverWallet.userId,
+      actorId: req.userId!,
+      type: "transfer_received",
+      message: `$${netAmount.toFixed(2)} depi ${senderWallet.accountNumber ?? "FM"}`,
+    },
+    req.log,
+  );
+  await safeNotify(
+    {
+      userId: req.userId!,
+      actorId: req.userId!,
+      type: "transfer_sent",
+      message: `$${parsedAmount.toFixed(2)} voye ba ${receiverUser?.name ?? normalizedAcct}`,
+    },
+    req.log,
+  );
 
   logger.info({
     senderId: req.userId,

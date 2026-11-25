@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigationChrome } from "@/context/NavigationContext";
+import { canAccessWholesale } from "@/lib/wholesaleAccess";
 import { fetchWalletBalance } from "@/lib/walletApi";
 
 type IconName = React.ComponentProps<typeof Feather>["name"];
@@ -131,6 +132,9 @@ export function AppDrawer() {
       id: "services",
       heading: "FLEXA SERVICES",
       items: [
+        ...(canAccessWholesale(user)
+          ? ([{ icon: "home", label: "Flexa Wholesale", href: "/wholesale", testID: "drawer-flexa-wholesale" }] as DrawerItem[])
+          : []),
         { icon: "music", label: "Flexa Music", href: "/music", testID: "drawer-flexa-music" },
         ...(user
           ? ([{ icon: "zap", label: "My Boosts", href: "/my-boosts", testID: "drawer-my-boosts" }] as DrawerItem[])

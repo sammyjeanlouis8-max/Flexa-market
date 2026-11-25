@@ -140,9 +140,11 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
       listingId: r.conv.listingId,
       listingTitle: r.conv.conversationType === "agent_recharge"
         ? "💼 Agent Recharge"
-        : isSystemNotifications
-          ? "Message System"
-          : (r.listing?.title ?? "Deleted listing"),
+        : r.conv.conversationType === "wholesale"
+          ? "From Flexa Wholesale"
+          : isSystemNotifications
+            ? "Message System"
+            : (r.listing?.title ?? "Deleted listing"),
       listingImage: r.listing?.images?.[0] ?? r.listing?.boostImageUrl ?? null,
       listingPrice: r.listing?.price ?? 0,
       listingIsVideoOnly: r.listing?.status === "hidden",

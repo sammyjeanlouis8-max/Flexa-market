@@ -3,6 +3,8 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   usersTable,
+  conversationsTable,
+  messagesTable,
   wholesalePriceTiersTable,
   wholesaleProductsTable,
 } from "@workspace/db";
@@ -287,6 +289,98 @@ router.patch("/wholesale/products/:id", requireWholesaleAccess, async (req, res)
     .limit(1);
 
   res.json({ product: shapeProduct(updated, seller ?? null, tiers) });
+});
+
+/**
+ * Chat-only wholesale inquiry. Creates/reuses conversationType=wholesale
+ * (listingId null) and seeds a "From Flexa Wholesale" opener.
+ */
+router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const buyerId = req.userId!;
+  const sellerId = Number(req.body?.sellerId);
+  const productId = Number(req.body?.productId);
+  const productTitle = String(req.body?.productTitle ?? "Wholesale product").trim().slice(0, 160);
+  const qty = Math.max(1, Math.floor(Number(req.body?.qty) || 1));
+
+  if (!Number.isFinite(sellerId) || sellerId <= 0) {
+    res.status(400).json({ error: "Invalid seller" });
+    return;
+  }
+  if (buyerId === sellerId) {
+    res.status(400).json({ error: "Cannot chat with yourself" });
+    return;
+  }
+
+  const marker = `[wholesale:${productId || 0}]`;
+  const [existing] = await db
+    .select()
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.buyerId, buyerId),
+        eq(conversationsTable.sellerId, sellerId),
+        eq(conversationsTable.conversationType, "wholesale"),
+        sql`${conversationsTable.lastMessage} ILIKE ${`%${marker}%`}`,
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    res.json({ id: existing.id, conversationType: "wholesale", productId: productId || null });
+    return;
+  }
+
+  // Also reuse any open wholesale thread with this seller.
+  const [open] = await db
+    .select()
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.buyerId, buyerId),
+        eq(conversationsTable.sellerId, sellerId),
+        eq(conversationsTable.conversationType, "wholesale"),
+      ),
+    )
+    .orderBy(desc(conversationsTable.lastMessageAt))
+    .limit(1);
+
+  const opener = `From Flexa Wholesale · ${productTitle} · qty ${qty} ${marker}`;
+
+  if (open) {
+    await db.insert(messagesTable).values({
+      conversationId: open.id,
+      senderId: buyerId,
+      content: opener,
+      messageType: "text",
+    });
+    await db
+      .update(conversationsTable)
+      .set({ lastMessage: opener, lastMessageAt: new Date() })
+      .where(eq(conversationsTable.id, open.id));
+    res.json({ id: open.id, conversationType: "wholesale", productId: productId || null });
+    return;
+  }
+
+  const [conv] = await db
+    .insert(conversationsTable)
+    .values({
+      listingId: null,
+      buyerId,
+      sellerId,
+      conversationType: "wholesale",
+      lastMessage: opener,
+      lastMessageAt: new Date(),
+    })
+    .returning();
+
+  await db.insert(messagesTable).values({
+    conversationId: conv.id,
+    senderId: buyerId,
+    content: opener,
+    messageType: "text",
+  });
+
+  res.status(201).json({ id: conv.id, conversationType: "wholesale", productId: productId || null });
 });
 
 export default router;

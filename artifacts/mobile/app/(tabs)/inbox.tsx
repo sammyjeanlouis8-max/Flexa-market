@@ -127,9 +127,18 @@ export default function InboxTab() {
             </Text>
             <Text style={styles.time}>{formatMessageTime(item.lastMessageAt)}</Text>
           </View>
-          <Text style={styles.listing} numberOfLines={1}>
-            {item.listingTitle}
-          </Text>
+          <View style={styles.listingRow}>
+            {item.conversationType === "wholesale" ? (
+              <View style={styles.wholesaleBadge}>
+                <Text style={styles.wholesaleBadgeText}>Wholesale</Text>
+              </View>
+            ) : null}
+            <Text style={styles.listing} numberOfLines={1}>
+              {item.conversationType === "wholesale"
+                ? item.listingTitle || "From Flexa Wholesale"
+                : item.listingTitle}
+            </Text>
+          </View>
           <Text style={[styles.preview, unread && styles.previewUnread]} numberOfLines={1}>
             {item.lastMessage || "No messages yet"}
           </Text>
@@ -261,7 +270,20 @@ const styles = StyleSheet.create({
   name: { flex: 1, fontSize: 15, fontWeight: "700", color: "#0F172A" },
   nameUnread: { fontWeight: "800" },
   time: { fontSize: 11, color: "#94A3B8", fontWeight: "600" },
-  listing: { fontSize: 12, color: "#F97316", fontWeight: "600", marginTop: 2 },
+  listingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  listing: { flex: 1, fontSize: 12, color: "#F97316", fontWeight: "600" },
+  wholesaleBadge: {
+    backgroundColor: "#D6EFE3",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  wholesaleBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#1B7A4E",
+    textTransform: "uppercase",
+  },
   preview: { fontSize: 13, color: "#64748B", marginTop: 2 },
   previewUnread: { color: "#0F172A", fontWeight: "600" },
   badge: {

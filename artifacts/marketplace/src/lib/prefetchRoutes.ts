@@ -50,6 +50,7 @@ const ROUTE_IMPORTERS: Record<string, () => Promise<unknown>> = {
       import("@/pages/VideoFavorites"),
     ]),
   "/wholesale": () => import("@/pages/FlexaWholesale"),
+  "/wholesale/seller": () => import("@/pages/WholesaleSeller"),
   "/tv": () => import("@/pages/FlexaTV"),
   "/music": () => import("@/pages/FlexaMusic"),
   "/offers": () => import("@/pages/Offers"),
@@ -76,6 +77,8 @@ function normalizePath(href: string): string {
   if (path.startsWith("/settings")) return "/settings";
   if (path.startsWith("/music")) return "/music";
   if (path.startsWith("/tv")) return "/tv";
+  if (path.startsWith("/wholesale/seller")) return "/wholesale/seller";
+  if (path.startsWith("/wholesale/products/")) return "/wholesale";
   if (path.startsWith("/wholesale")) return "/wholesale";
   if (path.startsWith("/wallet")) return "/wallet";
   return path;

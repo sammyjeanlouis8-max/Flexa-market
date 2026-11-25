@@ -85,11 +85,13 @@ import tvRouter from "./tv";
 import musicRouter from "./music";
 import storeManagerRouter from "./storeManager";
 import bridgeRouter from "./bridge";
+import wholesaleRouter from "./wholesale";
 import { extractToken, verifyToken } from "../lib/auth";
 import { loadAuthUser } from "../middlewares/auth";
 
 const router: IRouter = Router();
 router.use(bridgeRouter);
+router.use(wholesaleRouter);
 
 // ─── Rate Limiters ────────────────────────────────────────────────────────────
 

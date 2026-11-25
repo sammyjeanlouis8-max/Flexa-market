@@ -11,17 +11,6 @@ import { decodeBridgeUserId, encodeBridgeUserId, isWholesaleCreditSource, requir
 
 const router = Router();
 
-/** Public launch config so Market can open Wholesale from the side menu. */
-router.get("/wholesale/launch", (_req, res): void => {
-  const raw = process.env.FLEXA_WHOLESALE_PUBLIC_URL || process.env.FLEXA_WHOLESALE_BASE_URL || "";
-  const url = raw.trim().replace(/\/$/, "") || null;
-  res.json({
-    configured: !!url,
-    url,
-    label: "Flexa Wholesale",
-  });
-});
-
 router.use("/bridge/v1", requireBridgeHmac);
 
 router.post("/bridge/v1/users/search", async (req, res): Promise<void> => {

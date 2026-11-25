@@ -1,79 +1,56 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, ArrowUpRight, Package, Wallet, Warehouse } from "lucide-react";
+import { Package, Plus, Search, Warehouse } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
-import { cn } from "@/lib/utils";
+import { WholesaleEmpty, WholesaleShell } from "@/components/wholesale/WholesaleShell";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
-
-type LaunchPayload = {
-  configured: boolean;
-  url: string | null;
-  label?: string;
-};
-
-function clientWholesaleUrl(): string | null {
-  const fromEnv = (import.meta.env.VITE_FLEXA_WHOLESALE_URL as string | undefined)?.trim();
-  return fromEnv ? fromEnv.replace(/\/$/, "") : null;
-}
-
-function openWholesale(url: string) {
-  // Same-tab navigation keeps Market → Wholesale feeling like one product.
-  window.location.assign(url);
-}
+import {
+  fetchWholesaleProducts,
+  formatMoney,
+  type WholesaleProduct,
+} from "@/lib/wholesaleApi";
+import { cn } from "@/lib/utils";
 
 export default function FlexaWholesale() {
   const { t } = useTranslation();
   const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
-  const [launch, setLaunch] = useState<LaunchPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const allowed = canAccessWholesale(user);
+  const [q, setQ] = useState("");
+  const [products, setProducts] = useState<WholesaleProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
-    if (!allowed) {
-      setLocation("/");
-      return;
-    }
+    if (!allowed) setLocation("/");
   }, [authLoading, allowed, setLocation]);
 
   useEffect(() => {
     if (!allowed) return;
     let cancelled = false;
-    const envUrl = clientWholesaleUrl();
-    if (envUrl) {
-      setLaunch({ configured: true, url: envUrl, label: "Flexa Wholesale" });
-      return;
-    }
-
-    fetch("/api/wholesale/launch")
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<LaunchPayload>;
-      })
-      .then((data) => {
-        if (!cancelled) setLaunch(data);
-      })
-      .catch(() => {
+    setLoading(true);
+    fetchWholesaleProducts({ q: q.trim() || undefined, country: user?.country ?? undefined })
+      .then((list) => {
         if (!cancelled) {
-          setLaunch({ configured: false, url: null });
-          setError(t("wholesale.loadError", { defaultValue: "Could not load Wholesale launch info." }));
+          setProducts(list);
+          setError(null);
         }
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setProducts([]);
+          setError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
-
     return () => {
       cancelled = true;
     };
-  }, [allowed, t]);
-
-  useEffect(() => {
-    if (!allowed || !launch?.configured || !launch.url) return;
-    const timer = window.setTimeout(() => openWholesale(launch.url!), 450);
-    return () => window.clearTimeout(timer);
-  }, [allowed, launch?.configured, launch?.url]);
-
-  const ready = !!launch?.configured && !!launch.url;
+  }, [allowed, q, user?.country]);
 
   if (authLoading || !allowed) {
     return (
@@ -84,114 +61,111 @@ export default function FlexaWholesale() {
   }
 
   return (
-    <div className="relative min-h-[calc(100dvh-4rem)] overflow-hidden bg-[hsl(152,28%,97%)] dark:bg-[hsl(152,18%,8%)]">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_hsl(152,55%,36%)_0%,_transparent_55%),linear-gradient(180deg,_hsl(152,45%,18%)_0%,_transparent_42%)] opacity-90 dark:opacity-70"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-16 top-24 h-56 w-56 rounded-full bg-[hsl(152,60%,42%)]/25 blur-3xl"
-      />
-
-      <div className="relative mx-auto flex min-h-[calc(100dvh-4rem)] max-w-lg flex-col px-4 pb-10 pt-4 sm:px-6">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setLocation("/")}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur hover:bg-white/25"
-            aria-label={t("common.back", { defaultValue: "Back" })}
-            data-testid="wholesale-back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="mt-10 flex flex-1 flex-col justify-center">
-          <div className="flex items-center gap-3">
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-[hsl(152,65%,22%)] shadow-lg shadow-black/10">
-              <Warehouse className="h-7 w-7" strokeWidth={2.25} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/75">
-                Flexa Market
-              </p>
-              <h1 className="truncate text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-                {t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" })}
-              </h1>
-            </div>
-          </div>
-
-          <p className="mt-5 max-w-md text-[15px] leading-relaxed text-white/90">
-            {t("wholesale.tagline", {
-              defaultValue: "Buy in bulk from verified vendors — one Flexa account, one wallet bridge.",
-            })}
-          </p>
-
-          <div className="mt-8 space-y-3">
-            {ready ? (
-              <button
-                type="button"
-                onClick={() => openWholesale(launch!.url!)}
-                className={cn(
-                  "inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3.5",
-                  "text-[15px] font-semibold text-[hsl(152,65%,18%)] shadow-lg shadow-black/15",
-                  "active:scale-[0.99] transition-transform",
-                )}
-                data-testid="wholesale-open"
-              >
-                {t("wholesale.open", { defaultValue: "Open Flexa Wholesale" })}
-                <ArrowUpRight className="h-4 w-4" />
-              </button>
-            ) : (
-              <div
-                className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white/90 backdrop-blur"
-                data-testid="wholesale-pending"
-              >
-                {launch === null
-                  ? t("common.loading", { defaultValue: "Loading…" })
-                  : t("wholesale.pending", {
-                      defaultValue:
-                        "Wholesale is linked in Flexa Market. Storefront URL is not configured on this environment yet.",
-                    })}
-                {error && <p className="mt-2 text-xs text-white/70">{error}</p>}
-              </div>
-            )}
-
-            {user && (
-              <Link
-                href="/wallet/transfer"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 bg-transparent px-4 py-3 text-[14px] font-medium text-white hover:bg-white/10"
-                data-testid="wholesale-wallet-transfer"
-              >
-                <Wallet className="h-4 w-4" />
-                {t("wholesale.walletTransfer", {
-                  defaultValue: "Transfer wallet ↔ Wholesale",
-                })}
-              </Link>
-            )}
-          </div>
-
-          <ul className="mt-10 space-y-3 text-sm text-white/85">
-            <li className="flex items-start gap-2.5">
-              <Package className="mt-0.5 h-4 w-4 shrink-0 text-emerald-200" />
-              <span>
-                {t("wholesale.bulletBulk", {
-                  defaultValue: "Wholesale catalog, vendor subscriptions, and bulk pricing.",
-                })}
-              </span>
-            </li>
-            <li className="flex items-start gap-2.5">
-              <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-emerald-200" />
-              <span>
-                {t("wholesale.bulletWallet", {
-                  defaultValue: "Cross-app wallet transfers already connect Market and Wholesale.",
-                })}
-              </span>
-            </li>
-          </ul>
-        </div>
+    <WholesaleShell
+      subtitle={t("wholesale.tagline", {
+        defaultValue: "Buy in bulk from verified vendors — one Flexa account, one wallet.",
+      })}
+      actions={
+        <Link
+          href="/wholesale/seller"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-[12px] font-bold text-[hsl(152,65%,18%)]"
+          data-testid="wholesale-add-cta"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t("wholesale.sellCta", { defaultValue: "Sell wholesale" })}
+        </Link>
+      }
+    >
+      <div className="relative mb-4">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t("wholesale.searchPlaceholder", { defaultValue: "Search wholesale products…" })}
+          className="h-11 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none ring-[hsl(152,55%,35%)] focus:ring-2 dark:bg-[hsl(152,16%,12%)]"
+          data-testid="wholesale-search"
+        />
       </div>
-    </div>
+
+      {error && (
+        <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </p>
+      )}
+
+      {loading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-48 animate-pulse rounded-2xl bg-muted/70" />
+          ))}
+        </div>
+      ) : products.length === 0 ? (
+        <WholesaleEmpty
+          title={t("wholesale.emptyTitle", { defaultValue: "No wholesale products yet" })}
+          body={t("wholesale.emptyBody", {
+            defaultValue: "Add your first bulk listing. Super Admin preview — same Flexa Market database.",
+          })}
+          action={
+            <Link
+              href="/wholesale/seller"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[hsl(152,55%,28%)] px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              <Plus className="h-4 w-4" />
+              {t("wholesale.createFirst", { defaultValue: "Create wholesale product" })}
+            </Link>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {products.map((p) => {
+            const img = p.images?.[0];
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setLocation(`/wholesale/products/${p.id}`)}
+                className={cn(
+                  "overflow-hidden rounded-2xl border border-border/70 bg-white text-left shadow-sm",
+                  "transition-transform active:scale-[0.99] dark:bg-[hsl(152,16%,12%)]",
+                )}
+                data-testid={`wholesale-card-${p.id}`}
+              >
+                <div className="relative aspect-[4/3] bg-[hsl(152,20%,92%)] dark:bg-[hsl(152,18%,18%)]">
+                  {img ? (
+                    <img src={img} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-[hsl(152,35%,40%)]">
+                      <Package className="h-8 w-8" />
+                    </div>
+                  )}
+                  <span className="absolute left-2 top-2 rounded-md bg-[hsl(152,55%,18%)]/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                    {t("wholesale.bulkBadge", { defaultValue: "Bulk" })}
+                  </span>
+                </div>
+                <div className="space-y-1 p-2.5">
+                  <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-foreground">{p.title}</p>
+                  <p className="text-[13px] font-bold text-[hsl(152,55%,28%)]">
+                    {formatMoney(p.unitPrice, p.currency)}
+                    <span className="ml-1 text-[11px] font-medium text-muted-foreground">
+                      / {p.wholesaleUnitType}
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {t("wholesale.minOrder", { defaultValue: "Min" })} {p.minOrderQty} · {p.sellerName || "Seller"}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+        <Warehouse className="h-3.5 w-3.5" />
+        {t("wholesale.nativeNote", {
+          defaultValue: "Native on Flexa Market · same database · Super Admin preview",
+        })}
+      </p>
+    </WholesaleShell>
   );
 }

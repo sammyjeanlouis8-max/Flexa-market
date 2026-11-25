@@ -37,6 +37,12 @@ import {
   type Conversation,
 } from "@/lib/chatApi";
 import {
+  WHOLESALE_CARD_MESSAGE_TYPE,
+  parseWholesaleCard,
+} from "@/lib/wholesaleChatCard";
+import { consumeWholesaleChatReturn } from "@/lib/wholesaleNavContext";
+import { formatMoney } from "@/lib/wholesaleApi";
+import {
   emitStopTyping,
   emitTyping,
   getChatSocket,
@@ -611,9 +617,17 @@ export default function ChatThreadScreen() {
       <View style={styles.topBar}>
         <Pressable
           style={styles.back}
-          onPress={() =>
-            router.canGoBack() ? router.back() : router.replace("/(tabs)/inbox")
-          }
+          onPress={() => {
+            void (async () => {
+              const wholesaleReturn = await consumeWholesaleChatReturn();
+              if (wholesaleReturn) {
+                router.replace(wholesaleReturn as any);
+                return;
+              }
+              if (router.canGoBack()) router.back();
+              else router.replace("/(tabs)/inbox");
+            })();
+          }}
         >
           <Feather name="arrow-left" size={22} color="#0F172A" />
         </Pressable>
@@ -739,6 +753,54 @@ export default function ChatThreadScreen() {
                     ? copy.delivered
                     : copy.sent
                 : "";
+
+            const wholesaleCard =
+              !deleted &&
+              (msg.messageType === WHOLESALE_CARD_MESSAGE_TYPE ||
+                msg.messageType === "wholesale_card" ||
+                (msg.messageType === "text" && msg.content?.includes("[wholesale:")))
+                ? parseWholesaleCard(msg.content)
+                : null;
+
+            if (wholesaleCard) {
+              const cardImg = wholesaleCard.image || media || null;
+              const priceLabel =
+                wholesaleCard.unitPrice > 0
+                  ? `${formatMoney(wholesaleCard.unitPrice, wholesaleCard.currency)} / ${wholesaleCard.wholesaleUnitType}`
+                  : null;
+              return (
+                <View
+                  style={[styles.bubbleWrap, mine ? styles.mine : styles.theirs]}
+                  testID="wholesale-product-card"
+                >
+                  <View style={styles.wholesaleCard}>
+                    {cardImg ? (
+                      <Image source={{ uri: cardImg }} style={styles.wholesaleCardImage} contentFit="cover" />
+                    ) : (
+                      <View style={[styles.wholesaleCardImage, styles.wholesaleCardImageEmpty]}>
+                        <Feather name="package" size={28} color="#64748B" />
+                      </View>
+                    )}
+                    <Text style={styles.wholesaleCardEyebrow}>Flexa Wholesale</Text>
+                    <Text style={styles.wholesaleCardTitle} numberOfLines={2}>
+                      {wholesaleCard.title}
+                    </Text>
+                    {priceLabel ? <Text style={styles.wholesaleCardPrice}>{priceLabel}</Text> : null}
+                    <Text style={styles.wholesaleCardMeta}>
+                      MOQ {wholesaleCard.minOrderQty} {wholesaleCard.wholesaleUnitType}
+                      {wholesaleCard.qty ? ` · quote qty ${wholesaleCard.qty}` : ""}
+                    </Text>
+                    <Pressable
+                      style={styles.wholesaleCardCta}
+                      onPress={() => router.push(`/wholesale/products/${wholesaleCard.productId}`)}
+                    >
+                      <Text style={styles.wholesaleCardCtaText}>View product</Text>
+                      <Feather name="chevron-right" size={14} color="#F97316" />
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            }
 
             return (
               <View style={[styles.bubbleWrap, mine ? styles.mine : styles.theirs]}>
@@ -1017,4 +1079,58 @@ const styles = StyleSheet.create({
   },
   sendDisabled: { backgroundColor: "#FDBA74" },
   sendRecording: { backgroundColor: "#EF4444" },
+  wholesaleCard: {
+    width: 260,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingBottom: 12,
+  },
+  wholesaleCardImage: { width: "100%", height: 132, backgroundColor: "#F1F5F4" },
+  wholesaleCardImageEmpty: { alignItems: "center", justifyContent: "center" },
+  wholesaleCardEyebrow: {
+    marginTop: 10,
+    marginHorizontal: 12,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: GREEN,
+  },
+  wholesaleCardTitle: {
+    marginTop: 4,
+    marginHorizontal: 12,
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  wholesaleCardPrice: {
+    marginTop: 6,
+    marginHorizontal: 12,
+    fontSize: 14,
+    fontWeight: "800",
+    color: ORANGE,
+  },
+  wholesaleCardMeta: {
+    marginTop: 4,
+    marginHorizontal: 12,
+    fontSize: 12,
+    color: "#64748B",
+  },
+  wholesaleCardCta: {
+    marginTop: 10,
+    marginHorizontal: 12,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: ORANGE,
+  },
+  wholesaleCardCtaText: { color: ORANGE, fontSize: 12, fontWeight: "700" },
 });

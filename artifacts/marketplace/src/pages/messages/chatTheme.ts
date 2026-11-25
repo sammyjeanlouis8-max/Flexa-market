@@ -21,7 +21,7 @@ export type Conversation = {
   unreadCount: number;
 };
 
-export type MsgType = "text" | "image" | "video" | "audio";
+export type MsgType = "text" | "image" | "video" | "audio" | "wholesale_card";
 
 export type ChatMessage = {
   id: number;

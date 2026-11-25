@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { APPLY_BRAND, HAITI_COMMUNES_BY_DEPARTMENT, HAITI_DEPARTMENTS } from "@/lib/haitiCommunes";
 
-type WizardStep = 0 | 1 | 2 | 3 | 4 | 5; // 0 welcome, 1-4 form, 5 success
+type WizardStep = 0 | 1 | 2 | 3 | 4 | 5;
 
 type FormState = {
   fullName: string;
@@ -27,7 +27,10 @@ type FormState = {
   licensePlate: string;
   workDepartment: string;
   workCommunes: string[];
+  /** National ID / CIN / passport */
   photoId: string | null;
+  /** Selfie holding the ID */
+  photoSelfieWithId: string | null;
   photoLicense: string | null;
   photoVehicleDoc: string | null;
   acceptedTerms: boolean;
@@ -48,12 +51,15 @@ const EMPTY: FormState = {
   workDepartment: "",
   workCommunes: [],
   photoId: null,
+  photoSelfieWithId: null,
   photoLicense: null,
   photoVehicleDoc: null,
   acceptedTerms: false,
 };
 
-const LS_KEY = "fm_driver_apply_v2";
+function lsKey(userId: number | string | undefined) {
+  return userId ? `fm_driver_apply_v2_${userId}` : "fm_driver_apply_v2_anon";
+}
 
 function splitName(full: string): { firstName: string; lastName: string } {
   const parts = full.trim().split(/\s+/).filter(Boolean);
@@ -76,13 +82,14 @@ function ageFromDob(dob: string): number | null {
   return (Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000);
 }
 
-async function uploadFile(file: File, token: string): Promise<string> {
+async function uploadDriverFile(file: File, token: string, field: string): Promise<string> {
   if (file.size > 12 * 1024 * 1024) throw new Error("File too large (max 12MB)");
   const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
   if (!allowed.includes(file.type)) throw new Error("Unsupported file type");
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch("/api/upload", {
+  fd.append("field", field);
+  const res = await fetch("/api/delivery/application/upload", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: fd,
@@ -123,14 +130,16 @@ function StepProgress({ step }: { step: number }) {
 }
 
 function DocSlot({
-  label, hint, url, onUpload, onClear, uploading,
+  label, hint, url, onUpload, onClear, uploading, testId,
 }: {
   label: string; hint: string; url: string | null;
   onUpload: (file: File) => void; onClear: () => void; uploading: boolean;
+  testId?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { t } = useTranslation();
   return (
-    <div className="rounded-2xl border border-border bg-card p-3 space-y-2">
+    <div className="rounded-2xl border border-border bg-card p-3 space-y-2" data-testid={testId}>
       <div className="flex items-start gap-3">
         <span className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: APPLY_BRAND.soft, color: APPLY_BRAND.success }}>
           <FileText className="h-5 w-5" />
@@ -149,10 +158,10 @@ function DocSlot({
         <div className="rounded-xl overflow-hidden border border-border bg-muted/30">
           {url.toLowerCase().includes(".pdf") ? (
             <a href={url} target="_blank" rel="noopener noreferrer" className="block p-3 text-sm font-semibold underline" style={{ color: APPLY_BRAND.success }}>
-              View uploaded document
+              {t("driverApplyPro.viewDoc", { defaultValue: "View uploaded document" })}
             </a>
           ) : (
-            <img src={url} alt="" className="h-28 w-full object-cover" />
+            <img src={url} alt={label} className="h-28 w-full object-cover" />
           )}
         </div>
       ) : (
@@ -164,7 +173,9 @@ function DocSlot({
           style={{ borderColor: APPLY_BRAND.softBorder, color: APPLY_BRAND.success }}
         >
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-          Upload
+          {uploading
+            ? t("driverApplyPro.uploading", { defaultValue: "Uploading…" })
+            : t("driverApplyPro.upload", { defaultValue: "Upload" })}
         </button>
       )}
       <input
@@ -186,7 +197,7 @@ function DocSlot({
 export default function ApplyForDriver() {
   const { user, token } = useAuth();
   const [, setLocation] = useLocation();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
 
   const [step, setStep] = useState<WizardStep>(0);
@@ -195,8 +206,11 @@ export default function ApplyForDriver() {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<{ id: string; at: string; status: string } | null>(null);
   const [existingStatus, setExistingStatus] = useState<string | null>(null);
+  const [applicationDbId, setApplicationDbId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -227,19 +241,26 @@ export default function ApplyForDriver() {
           setStep(5);
           return;
         }
-        // Resume draft / needs_changes / rejected into form
-        const saved = localStorage.getItem(LS_KEY);
+
+        // Only resume THIS user's local draft (not another person on the same phone)
+        const saved = localStorage.getItem(lsKey(user.id));
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            if (parsed?.form) setForm({ ...EMPTY, ...parsed.form });
-            if (typeof parsed?.step === "number" && parsed.step >= 1 && parsed.step <= 4) {
-              setStep(parsed.step as WizardStep);
+            if (parsed?.userId && Number(parsed.userId) !== Number(user.id)) {
+              localStorage.removeItem(lsKey(user.id));
+            } else if (parsed?.form) {
+              setForm({ ...EMPTY, ...parsed.form });
+              if (typeof parsed?.step === "number" && parsed.step >= 1 && parsed.step <= 4) {
+                setStep(parsed.step as WizardStep);
+              }
             }
           } catch { /* ignore */ }
         }
+
         if (app && ["draft", "needs_changes", "rejected"].includes(app.status)) {
           setExistingStatus(app.status);
+          setApplicationDbId(app.id);
           const zones = (() => {
             try { return JSON.parse(app.workZones || "[]"); } catch { return []; }
           })();
@@ -250,16 +271,26 @@ export default function ApplyForDriver() {
             phone: app.callPhone || app.whatsappNumber || prev.phone,
             email: app.internetProvider?.includes("@") ? app.internetProvider : prev.email || user.email || "",
             address: app.address || prev.address,
+            residentialDepartment: app.residentialDepartment || prev.residentialDepartment,
             residentialCommune: app.city || prev.residentialCommune,
             vehicleType: app.vehicleType === "car" ? "car" : app.vehicleType === "moto" ? "moto" : app.vehicleType ? "other" : prev.vehicleType,
             vehicleBrand: app.vehicleBrand || prev.vehicleBrand,
             vehicleModel: app.vehicleModel || prev.vehicleModel,
             licensePlate: app.licensePlateNumber || prev.licensePlate,
             workCommunes: Array.isArray(zones) ? zones : prev.workCommunes,
-            photoId: app.photoIdSelfie || app.facePhotoHoldingId || prev.photoId,
+            photoId: app.photoNationalId || prev.photoId,
+            photoSelfieWithId: app.facePhotoHoldingId || prev.photoSelfieWithId,
             photoLicense: app.photoLicenseFront || prev.photoLicense,
             photoVehicleDoc: app.photoVehicleRegistration || prev.photoVehicleDoc,
           }));
+          // Do not load dual-written legacy ID into selfie slot when uncertain
+          if (app.docsNeedReview && app.photoIdSelfie && app.facePhotoHoldingId && app.photoIdSelfie === app.facePhotoHoldingId && !app.photoNationalId) {
+            setForm((prev) => ({
+              ...prev,
+              photoId: app.photoIdSelfie || prev.photoId,
+              photoSelfieWithId: null,
+            }));
+          }
         } else {
           setForm((prev) => ({
             ...prev,
@@ -276,10 +307,11 @@ export default function ApplyForDriver() {
   }, [user, token, setLocation]);
 
   useEffect(() => {
+    if (!user?.id) return;
     if (step >= 1 && step <= 4) {
-      localStorage.setItem(LS_KEY, JSON.stringify({ step, form }));
+      localStorage.setItem(lsKey(user.id), JSON.stringify({ userId: user.id, step, form }));
     }
-  }, [step, form]);
+  }, [step, form, user?.id]);
 
   const residentialCommunes = form.residentialDepartment
     ? HAITI_COMMUNES_BY_DEPARTMENT[form.residentialDepartment] || []
@@ -308,80 +340,123 @@ export default function ApplyForDriver() {
       vehicleModel: form.vehicleModel || null,
       licensePlateNumber: form.licensePlate || null,
       workZones: form.workCommunes,
-      photoIdSelfie: form.photoId,
-      facePhotoHoldingId: form.photoId,
+      photoNationalId: form.photoId,
+      facePhotoHoldingId: form.photoSelfieWithId,
+      // Do not put national ID into selfie fields
+      photoIdSelfie: null,
       photoLicenseFront: form.photoLicense,
       photoVehicleRegistration: form.photoVehicleDoc,
+      selfiePhotoUrl: form.photoSelfieWithId,
+      acceptedTerms: form.acceptedTerms,
       hasSmartphone: true,
       hasStableInternet: true,
       hasFastPhone: true,
+      lang: i18n.language?.split("-")[0] || "en",
     };
-  }, [form]);
+  }, [form, i18n.language]);
 
-  async function saveDraft(silent = false) {
+  async function saveDraft(silent = false): Promise<boolean> {
     setSaving(true);
+    setSaveError(null);
     try {
       const res = await fetch("/api/delivery/application/draft", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          "Accept-Language": i18n.language || "en",
         },
         body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Could not save draft");
+      if (data?.application?.id) setApplicationDbId(data.application.id);
+      setLastSavedAt(new Date().toISOString());
       if (!silent) {
         toast({ title: t("driverApplyPro.draftSaved", { defaultValue: "Progress saved" }) });
       }
       return true;
     } catch (e: any) {
-      if (!silent) toast({ title: e?.message || "Error", variant: "destructive" });
+      const msg = e?.message || "Error";
+      setSaveError(msg);
+      toast({ title: msg, variant: "destructive" });
       return false;
     } finally {
       setSaving(false);
     }
   }
 
-  async function submit() {
+  async function submit(): Promise<boolean> {
     if (!form.acceptedTerms) {
       toast({
         title: t("driverApplyPro.acceptTerms", { defaultValue: "Please accept the driver terms" }),
         variant: "destructive",
       });
-      return;
+      return false;
     }
     setSubmitting(true);
+    setSaveError(null);
     try {
       const res = await fetch("/api/delivery/apply", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          "Accept-Language": i18n.language || "en",
         },
         body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Submit failed");
-      localStorage.removeItem(LS_KEY);
+      if (res.status === 409 && data?.code === "ALREADY_SUBMITTED") {
+        setSubmitted({
+          id: data.applicationId || `DRV-${data?.application?.id || ""}`,
+          at: new Date().toISOString(),
+          status: data.status || "pending",
+        });
+        setStep(5);
+        return true;
+      }
+      if (!res.ok) {
+        if (data?.missingDocuments?.length) {
+          const names = data.missingDocuments.map((d: any) => d.label).join(", ");
+          throw new Error(data.error || `${t("driverApplyPro.errMissingDocs", { defaultValue: "Missing documents" })}: ${names}`);
+        }
+        throw new Error(data?.error || "Submit failed");
+      }
+      if (user?.id) localStorage.removeItem(lsKey(user.id));
       setSubmitted({
         id: data.applicationId || `DRV-${data.application?.id}`,
         at: data.application?.updatedAt || data.application?.createdAt || new Date().toISOString(),
-        status: data.application?.status || "pending",
+        status: data.application?.status || data.status || "pending",
       });
       setStep(5);
+      return true;
     } catch (e: any) {
-      toast({ title: e?.message || "Error", variant: "destructive" });
+      const msg = e?.message || "Error";
+      setSaveError(msg);
+      toast({ title: msg, variant: "destructive" });
+      return false;
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handleUpload(key: "photoId" | "photoLicense" | "photoVehicleDoc", file: File) {
+  async function handleUpload(
+    key: "photoId" | "photoSelfieWithId" | "photoLicense" | "photoVehicleDoc",
+    file: File,
+  ) {
     setUploading(key);
+    setSaveError(null);
     try {
-      const url = await uploadFile(file, token!);
+      const fieldMap = {
+        photoId: "photoNationalId",
+        photoSelfieWithId: "facePhotoHoldingId",
+        photoLicense: "photoLicenseFront",
+        photoVehicleDoc: "photoVehicleRegistration",
+      } as const;
+      const url = await uploadDriverFile(file, token!, fieldMap[key]);
       setForm((f) => ({ ...f, [key]: url }));
+      setLastSavedAt(null); // require a fresh server save confirmation
     } catch (e: any) {
       toast({ title: e?.message || "Upload failed", variant: "destructive" });
     } finally {
@@ -411,29 +486,45 @@ export default function ApplyForDriver() {
     }
     if (s === 3) {
       if (!form.photoId) return t("driverApplyPro.errId", { defaultValue: "Upload a national ID document" });
+      if (!form.photoSelfieWithId) {
+        return t("driverApplyPro.errSelfieId", { defaultValue: "Upload a selfie holding your ID" });
+      }
       if (form.vehicleType === "car" && !form.photoLicense) {
         return t("driverApplyPro.errLicense", { defaultValue: "Driver’s license is required for cars" });
       }
       if ((form.vehicleType === "moto" || form.vehicleType === "car") && !form.photoVehicleDoc) {
         return t("driverApplyPro.errVehicleDoc", { defaultValue: "Upload the vehicle document" });
       }
+      if (!form.acceptedTerms) {
+        return t("driverApplyPro.acceptTerms", { defaultValue: "Please accept the driver terms" });
+      }
+    }
+    if (s === 4 && !form.acceptedTerms) {
+      return t("driverApplyPro.acceptTerms", { defaultValue: "Please accept the driver terms" });
     }
     return null;
   }
 
   async function goNext() {
+    if (saving || submitting || uploading) return;
     const err = validateStep(step);
     if (err) {
       toast({ title: err, variant: "destructive" });
       return;
     }
-    await saveDraft(true);
+    const saved = await saveDraft(true);
+    if (!saved) {
+      // Stay on the same step; saveError + Retry are shown
+      return;
+    }
     if (step === 4) {
       await submit();
       return;
     }
     setStep((s) => (s + 1) as WizardStep);
   }
+
+  const busy = saving || submitting || !!uploading;
 
   if (!user || loadingGate) {
     return (
@@ -443,7 +534,6 @@ export default function ApplyForDriver() {
     );
   }
 
-  // ── Welcome ──
   if (step === 0) {
     return (
       <div className="max-w-lg mx-auto pb-28" data-testid="driver-apply-welcome">
@@ -511,7 +601,6 @@ export default function ApplyForDriver() {
     );
   }
 
-  // ── Success / status ──
   if (step === 5 && submitted) {
     return (
       <div className="max-w-lg mx-auto px-4 py-8 pb-28 space-y-5" data-testid="driver-apply-success">
@@ -576,6 +665,7 @@ export default function ApplyForDriver() {
           variant="ghost"
           size="sm"
           className="-ml-2"
+          disabled={busy}
           onClick={() => setStep((s) => (s <= 1 ? 0 : ((s - 1) as WizardStep)))}
         >
           <ChevronLeft className="h-4 w-4 mr-1" />
@@ -594,7 +684,55 @@ export default function ApplyForDriver() {
             {t("driverApplyPro.needsChanges", { defaultValue: "Additional information was requested. Update and resubmit." })}
           </p>
         )}
+        {applicationDbId != null && (
+          <p className="text-[11px] text-muted-foreground mt-1 font-mono">
+            DRV-{String(applicationDbId).padStart(10, "0")}
+          </p>
+        )}
       </div>
+
+      {(busy || saveError || lastSavedAt) && (
+        <div
+          className={`rounded-xl border px-3 py-2 text-xs font-semibold flex items-center gap-2 ${
+            saveError
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-border bg-muted/40 text-muted-foreground"
+          }`}
+          data-testid="apply-save-status"
+        >
+          {uploading ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {t("driverApplyPro.uploading", { defaultValue: "Uploading…" })}
+            </>
+          ) : saving || submitting ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {submitting
+                ? t("driverApplyPro.submitting", { defaultValue: "Submitting…" })
+                : t("driverApplyPro.saving", { defaultValue: "Saving…" })}
+            </>
+          ) : saveError ? (
+            <>
+              <AlertCircle className="h-3.5 w-3.5" />
+              <span className="flex-1">{saveError}</span>
+              <button
+                type="button"
+                className="underline font-bold"
+                onClick={() => void goNext()}
+                data-testid="apply-retry-save"
+              >
+                {t("driverApplyPro.retry", { defaultValue: "Retry" })}
+              </button>
+            </>
+          ) : lastSavedAt ? (
+            <>
+              <Check className="h-3.5 w-3.5" style={{ color: APPLY_BRAND.success }} />
+              {t("driverApplyPro.savedConfirmed", { defaultValue: "Saved" })}
+            </>
+          ) : null}
+        </div>
+      )}
 
       {step === 1 && (
         <div className="space-y-3">
@@ -749,10 +887,11 @@ export default function ApplyForDriver() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             {t("driverApplyPro.docsHint", {
-              defaultValue: "Upload the documents required to verify your account.",
+              defaultValue: "Upload the documents required to verify your account. Each photo has its own slot.",
             })}
           </p>
           <DocSlot
+            testId="doc-national-id"
             label={t("driverApplyPro.docId", { defaultValue: "National ID" })}
             hint={t("driverApplyPro.docIdHint", { defaultValue: "CIN, national ID, or passport" })}
             url={form.photoId}
@@ -760,8 +899,18 @@ export default function ApplyForDriver() {
             onUpload={(f) => handleUpload("photoId", f)}
             onClear={() => setForm({ ...form, photoId: null })}
           />
+          <DocSlot
+            testId="doc-selfie-with-id"
+            label={t("driverApplyPro.docSelfieId", { defaultValue: "Selfie holding ID" })}
+            hint={t("driverApplyPro.docSelfieIdHint", { defaultValue: "Hold your ID next to your face" })}
+            url={form.photoSelfieWithId}
+            uploading={uploading === "photoSelfieWithId"}
+            onUpload={(f) => handleUpload("photoSelfieWithId", f)}
+            onClear={() => setForm({ ...form, photoSelfieWithId: null })}
+          />
           {form.vehicleType !== "other" && (
             <DocSlot
+              testId="doc-license"
               label={t("driverApplyPro.docLicense", { defaultValue: "Driver’s license" })}
               hint={
                 form.vehicleType === "car"
@@ -776,6 +925,7 @@ export default function ApplyForDriver() {
           )}
           {(form.vehicleType === "moto" || form.vehicleType === "car") && (
             <DocSlot
+              testId="doc-vehicle"
               label={t("driverApplyPro.docVehicle", { defaultValue: "Vehicle document" })}
               hint={t("driverApplyPro.docVehicleHint", { defaultValue: "Registration / technical sheet" })}
               url={form.photoVehicleDoc}
@@ -823,7 +973,12 @@ export default function ApplyForDriver() {
             </p>
             <p>
               {t("driverApplyPro.docsReady", { defaultValue: "Documents" })}:{" "}
-              {[form.photoId && "ID", form.photoLicense && "License", form.photoVehicleDoc && "Vehicle"]
+              {[
+                form.photoId && t("driverApplyPro.docId", { defaultValue: "National ID" }),
+                form.photoSelfieWithId && t("driverApplyPro.docSelfieId", { defaultValue: "Selfie holding ID" }),
+                form.photoLicense && t("driverApplyPro.docLicense", { defaultValue: "Driver’s license" }),
+                form.photoVehicleDoc && t("driverApplyPro.docVehicle", { defaultValue: "Vehicle document" }),
+              ]
                 .filter(Boolean)
                 .join(", ") || "—"}
             </p>
@@ -843,19 +998,26 @@ export default function ApplyForDriver() {
         <Button
           variant="outline"
           className="flex-1 h-12 font-bold rounded-xl"
-          disabled={saving || submitting}
-          onClick={() => saveDraft(false)}
+          disabled={busy}
+          onClick={() => void saveDraft(false)}
+          data-testid="apply-save-draft"
         >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t("driverApplyPro.save", { defaultValue: "Save" })}
+          {saving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : lastSavedAt && !saveError ? (
+            t("driverApplyPro.savedConfirmed", { defaultValue: "Saved" })
+          ) : (
+            t("driverApplyPro.save", { defaultValue: "Save" })
+          )}
         </Button>
         <Button
           className="flex-[2] h-12 font-bold rounded-xl text-white"
           style={{ background: APPLY_BRAND.primary }}
-          disabled={saving || submitting}
-          onClick={goNext}
+          disabled={busy}
+          onClick={() => void goNext()}
           data-testid="apply-continue"
         >
-          {submitting ? (
+          {submitting || saving ? (
             <Loader2 className="h-5 w-5 animate-spin" />
           ) : step === 4 ? (
             t("driverApplyPro.submit", { defaultValue: "Submit application" })

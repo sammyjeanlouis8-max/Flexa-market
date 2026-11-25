@@ -29,6 +29,16 @@ import {
 } from "../lib/haitiGeography";
 import { notifyBuyerHaitiDeliveryPin } from "../lib/haitiDeliveryPinNotify";
 import { isDomesticHaitiPinDelivery } from "../lib/deliveryConfirmationPolicy";
+import {
+  findMissingDriverDocs,
+  isUncertainDriverPhotoAssignment,
+} from "../../../../lib/marketplace-policy/haiti-driver-docs.mjs";
+import {
+  driverDocUpload,
+  uploadDriverDocument,
+  serveDriverDocument,
+  documentBelongsToApplicant,
+} from "../lib/driverDocAccess";
 
 /** @deprecated Prefer haitiZonesApiPayload / HAITI_COMMUNES_BY_DEPARTMENT */
 export const HAITI_DEPARTMENT_CITIES = HAITI_COMMUNES_BY_DEPARTMENT;
@@ -336,7 +346,7 @@ function buildApplicationValues(userId: number, country: string, body: any, stat
     phoneBrand, phoneModel, phoneOs, internetProvider,
     vehicleType, vehicleBrand, vehicleModel, vehicleYear, vehicleColor,
     licensePlateNumber, licenseNumber, licenseExpiry,
-    photoFront, photoSide, photoBody, photoIdSelfie,
+    photoFront, photoSide, photoBody, photoIdSelfie, photoNationalId,
     photoVehicleRegistration, photoVehicleInsurance,
     photoLicenseFront, photoLicenseBack,
     photoVehicleFront, photoVehicleSide, photoLicensePlate, photoVehicleBack,
@@ -344,6 +354,7 @@ function buildApplicationValues(userId: number, country: string, body: any, stat
     insuranceNumber, selfiePhotoUrl,
     bankName, bankAccountName, bankAccountNumber, preferredPaymentMethod,
     workZones, workHours, maxDeliveryKm, residentialDepartment,
+    docsNeedReview,
   } = body;
 
   const phone = String(callPhone || whatsappNumber || "").trim().slice(0, 30);
@@ -352,7 +363,14 @@ function buildApplicationValues(userId: number, country: string, body: any, stat
   const resolvedLast = String(lastName || "").trim().slice(0, 80)
     || (nameParts.length > 1 ? nameParts.slice(1).join(" ").slice(0, 80) : "Driver");
 
-  return {
+  const nationalId = photoNationalId ? String(photoNationalId) : null;
+  const holdingId = facePhotoHoldingId ? String(facePhotoHoldingId) : null;
+  // Never dual-write the national ID into selfie slots.
+  let idSelfie = photoIdSelfie ? String(photoIdSelfie) : null;
+  if (nationalId && idSelfie && idSelfie === nationalId) idSelfie = null;
+  if (holdingId && idSelfie && idSelfie === holdingId && nationalId) idSelfie = null;
+
+  const values: Record<string, unknown> = {
     userId,
     status,
     firstName: resolvedFirst,
@@ -381,7 +399,8 @@ function buildApplicationValues(userId: number, country: string, body: any, stat
     photoFront: (photoFront ?? photoVehicleFront) ? String(photoFront ?? photoVehicleFront) : null,
     photoSide: (photoSide ?? photoVehicleSide) ? String(photoSide ?? photoVehicleSide) : null,
     photoBody: photoBody ? String(photoBody) : null,
-    photoIdSelfie: photoIdSelfie ? String(photoIdSelfie) : null,
+    photoIdSelfie: idSelfie,
+    photoNationalId: nationalId,
     photoVehicleRegistration: photoVehicleRegistration ? String(photoVehicleRegistration) : null,
     photoVehicleInsurance: photoVehicleInsurance ? String(photoVehicleInsurance) : null,
     photoLicenseFront: photoLicenseFront ? String(photoLicenseFront) : null,
@@ -392,10 +411,10 @@ function buildApplicationValues(userId: number, country: string, body: any, stat
     facePhotoFront: facePhotoFront ? String(facePhotoFront) : null,
     facePhotoLeft: facePhotoLeft ? String(facePhotoLeft) : null,
     facePhotoRight: facePhotoRight ? String(facePhotoRight) : null,
-    facePhotoHoldingId: facePhotoHoldingId ? String(facePhotoHoldingId) : null,
+    facePhotoHoldingId: holdingId,
     photoVehicleBack: photoVehicleBack ? String(photoVehicleBack) : null,
     insuranceNumber: insuranceNumber ? String(insuranceNumber).trim().slice(0, 80) : null,
-    selfiePhotoUrl: selfiePhotoUrl ? String(selfiePhotoUrl) : null,
+    selfiePhotoUrl: selfiePhotoUrl ? String(selfiePhotoUrl) : holdingId,
     bankName: bankName ? String(bankName).trim().slice(0, 120) : null,
     bankAccountName: bankAccountName ? String(bankAccountName).trim().slice(0, 120) : null,
     bankAccountNumber: bankAccountNumber ? String(bankAccountNumber).trim().slice(0, 60) : null,
@@ -403,11 +422,52 @@ function buildApplicationValues(userId: number, country: string, body: any, stat
     workZones: workZones ? JSON.stringify(workZones) : null,
     workHours: workHours ? JSON.stringify(workHours) : null,
     maxDeliveryKm: maxDeliveryKm ? Number(maxDeliveryKm) : null,
+    residentialDepartment: residentialDepartment ? String(residentialDepartment).trim().slice(0, 80) : null,
+    docsNeedReview: docsNeedReview === true
+      || isUncertainDriverPhotoAssignment({
+        photoNationalId: nationalId,
+        photoIdSelfie: idSelfie,
+        facePhotoHoldingId: holdingId,
+      }),
     updatedAt: new Date(),
   };
+  return values;
 }
 
-// PUT /api/delivery/application/draft — save/resume draft without submitting for review
+// POST /api/delivery/application/upload — private driver KYC document (owner-scoped)
+router.post(
+  "/delivery/application/upload",
+  requireAuth,
+  (req, res, next) => {
+    driverDocUpload.single("file")(req, res, (err: any) => {
+      if (err) {
+        res.status(400).json({ error: err?.message || "Upload failed" });
+        return;
+      }
+      next();
+    });
+  },
+  async (req, res): Promise<void> => {
+    if (!req.file) {
+      res.status(400).json({ error: "No file provided" });
+      return;
+    }
+    try {
+      const uploaded = await uploadDriverDocument(req.userId!, req.file.buffer, req.file.mimetype);
+      res.status(201).json({ url: uploaded.url, key: uploaded.key, field: req.body?.field || null });
+    } catch (err: any) {
+      req.log?.error?.({ err }, "driver doc upload failed");
+      res.status(500).json({ error: err?.message || "Upload failed" });
+    }
+  },
+);
+
+// GET /api/delivery/application/document?key= — owner or authorized admin only
+router.get("/delivery/application/document", requireAuth, async (req, res): Promise<void> => {
+  await serveDriverDocument(req, res);
+});
+
+// PUT /api/delivery/application/draft — save/resume incomplete draft (no doc gate)
 router.put("/delivery/application/draft", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const country = req.user?.country ?? "Haiti";
@@ -421,7 +481,12 @@ router.put("/delivery/application/draft", requireAuth, async (req, res): Promise
 
   const blocking = apps.find((a) => ["pending", "approved"].includes(a.status));
   if (blocking) {
-    res.status(409).json({ error: "Application already submitted", status: blocking.status, application: blocking });
+    res.status(409).json({
+      error: "Application already submitted",
+      code: "ALREADY_SUBMITTED",
+      status: blocking.status,
+      application: blocking,
+    });
     return;
   }
 
@@ -432,7 +497,11 @@ router.put("/delivery/application/draft", requireAuth, async (req, res): Promise
   if (editable) {
     [app] = await db
       .update(driverApplicationsTable)
-      .set({ ...values, status: editable.status === "needs_changes" ? "needs_changes" : "draft", allowEdit: false } as any)
+      .set({
+        ...values,
+        status: editable.status === "needs_changes" ? "needs_changes" : "draft",
+        allowEdit: false,
+      } as any)
       .where(eq(driverApplicationsTable.id, editable.id))
       .returning();
   } else {
@@ -443,21 +512,23 @@ router.put("/delivery/application/draft", requireAuth, async (req, res): Promise
     application: app,
     applicationId: `DRV-${String(app.id).padStart(10, "0")}`,
     draft: true,
+    saved: true,
   });
 });
 
-// POST /api/delivery/apply — submit driver application
+// POST /api/delivery/apply — submit for review (pending) after Haiti doc validation
 router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const country = req.user?.country ?? null;
+  const lang = String(req.headers["accept-language"] || req.body?.lang || "en").slice(0, 2).toLowerCase();
 
   if (!country) {
-    res.status(400).json({ error: "Country not set on your account" });
+    res.status(400).json({ error: "Country not set on your account", code: "COUNTRY_REQUIRED" });
     return;
   }
 
   const apps = await db
-    .select({ id: driverApplicationsTable.id, status: driverApplicationsTable.status })
+    .select()
     .from(driverApplicationsTable)
     .where(eq(driverApplicationsTable.userId, userId))
     .orderBy(desc(driverApplicationsTable.createdAt))
@@ -465,33 +536,109 @@ router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
 
   if (apps.some((a) => ["pending", "approved"].includes(a.status))) {
     const hit = apps.find((a) => ["pending", "approved"].includes(a.status))!;
-    res.status(409).json({ error: "Application already submitted", status: hit.status });
+    res.status(409).json({
+      error: "Application already submitted",
+      code: "ALREADY_SUBMITTED",
+      status: hit.status,
+      applicationId: `DRV-${String(hit.id).padStart(10, "0")}`,
+    });
     return;
   }
 
   const {
-    firstName, lastName, dateOfBirth, address, city,
-    whatsappNumber, callPhone,
+    firstName, lastName, dateOfBirth, city,
+    whatsappNumber, callPhone, vehicleType, acceptedTerms,
+    photoNationalId, facePhotoHoldingId, photoLicenseFront, photoVehicleRegistration,
   } = req.body;
 
   if (!firstName || !lastName || !city || !(whatsappNumber || callPhone)) {
-    res.status(400).json({ error: "Missing required fields" });
+    res.status(400).json({ error: "Missing required fields", code: "MISSING_FIELDS" });
     return;
   }
 
-  // Basic age gate when DOB provided (must be 18+)
+  if (acceptedTerms !== true && acceptedTerms !== "true") {
+    res.status(400).json({
+      error: lang === "ht"
+        ? "Ou dwe aksepte règleman chofè yo"
+        : lang === "fr"
+          ? "Veuillez accepter les règles chauffeur"
+          : "Please accept the driver terms",
+      code: "TERMS_REQUIRED",
+    });
+    return;
+  }
+
   if (dateOfBirth) {
     const dob = new Date(String(dateOfBirth));
     if (!Number.isNaN(dob.getTime())) {
       const age = (Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000);
       if (age < 18) {
-        res.status(400).json({ error: "Applicants must be at least 18 years old" });
+        res.status(400).json({
+          error: lang === "ht" ? "Ou dwe gen omwen 18 an" : "Applicants must be at least 18 years old",
+          code: "AGE_REQUIRED",
+        });
         return;
       }
     }
   }
 
+  const docSnapshot = {
+    photoNationalId: photoNationalId || null,
+    facePhotoHoldingId: facePhotoHoldingId || null,
+    photoLicenseFront: photoLicenseFront || null,
+    photoVehicleRegistration: photoVehicleRegistration || null,
+  };
+  const missing = findMissingDriverDocs(docSnapshot, vehicleType, lang === "ht" || lang === "fr" ? lang : "en");
+  if (missing.length > 0) {
+    // Persist as draft so the driver does not lose progress
+    const draftValues = buildApplicationValues(userId, country, req.body, "draft");
+    const editableDraft = apps.find((a) => ["draft", "needs_changes", "rejected"].includes(a.status));
+    if (editableDraft) {
+      await db
+        .update(driverApplicationsTable)
+        .set({
+          ...draftValues,
+          status: editableDraft.status === "needs_changes" ? "needs_changes" : "draft",
+        } as any)
+        .where(eq(driverApplicationsTable.id, editableDraft.id));
+    } else {
+      await db.insert(driverApplicationsTable).values(draftValues as any);
+    }
+    const names = missing.map((m: { label: string }) => m.label).join(", ");
+    res.status(400).json({
+      error: lang === "ht"
+        ? `Dokiman manke: ${names}`
+        : lang === "fr"
+          ? `Documents manquants : ${names}`
+          : `Missing documents: ${names}`,
+      code: "MISSING_DOCUMENTS",
+      missingDocuments: missing,
+      status: "draft",
+    });
+    return;
+  }
+
+  // Cars: license photo must be uploaded and belong to this applicant
+  const vt = String(vehicleType || "").toLowerCase();
+  if (vt === "car") {
+    const ok = await documentBelongsToApplicant(userId, photoLicenseFront);
+    if (!ok) {
+      res.status(400).json({
+        error: lang === "ht"
+          ? "Foto lisans lan pa asosye ak dosye ou. Tanpri monte lisans lan ankò."
+          : lang === "fr"
+            ? "La photo du permis n'est pas associée à votre dossier. Veuillez la téléverser à nouveau."
+            : "License photo is not associated with your application. Please upload it again.",
+        code: "LICENSE_NOT_ASSOCIATED",
+        missingDocuments: [{ code: "license_front", field: "photoLicenseFront", label: lang === "ht" ? "Lisans chofè" : "Driver's license" }],
+        status: "draft",
+      });
+      return;
+    }
+  }
+
   const values = buildApplicationValues(userId, country, req.body, "pending");
+  (values as any).docsNeedReview = false;
   const editable = apps.find((a) => ["draft", "needs_changes", "rejected"].includes(a.status));
 
   let app;
@@ -506,15 +653,15 @@ router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
   }
 
   await safeNotify({
-      actorId: userId,
-      userId,
+    actorId: userId,
+    userId,
     type: "driver_application_submitted",
     isRead: false,
     message: "Your Flexa Market driver application was submitted and is pending review.",
-    }, req.log);
+  }, req.log);
 
   const appId = `DRV-${String(app.id).padStart(10, "0")}`;
-  res.status(201).json({ application: app, applicationId: appId });
+  res.status(201).json({ application: app, applicationId: appId, status: "pending" });
 });
 
 // ── Admin: Driver Application Management ──────────────────────────────────────
@@ -551,6 +698,8 @@ router.get("/admin/delivery/applications", requireAdmin, async (req, res): Promi
       photoSide: driverApplicationsTable.photoSide,
       photoBody: driverApplicationsTable.photoBody,
       photoIdSelfie: driverApplicationsTable.photoIdSelfie,
+      photoNationalId: (driverApplicationsTable as any).photoNationalId,
+      docsNeedReview: (driverApplicationsTable as any).docsNeedReview,
       photoVehicleRegistration: driverApplicationsTable.photoVehicleRegistration,
       photoVehicleInsurance: driverApplicationsTable.photoVehicleInsurance,
       photoLicenseFront: driverApplicationsTable.photoLicenseFront,
@@ -558,10 +707,21 @@ router.get("/admin/delivery/applications", requireAdmin, async (req, res): Promi
       photoVehicleFront: driverApplicationsTable.photoVehicleFront,
       photoVehicleSide: driverApplicationsTable.photoVehicleSide,
       photoLicensePlate: driverApplicationsTable.photoLicensePlate,
+      photoVehicleBack: (driverApplicationsTable as any).photoVehicleBack,
       facePhotoFront: driverApplicationsTable.facePhotoFront,
       facePhotoLeft: driverApplicationsTable.facePhotoLeft,
       facePhotoRight: driverApplicationsTable.facePhotoRight,
       facePhotoHoldingId: driverApplicationsTable.facePhotoHoldingId,
+      selfiePhotoUrl: (driverApplicationsTable as any).selfiePhotoUrl,
+      workZones: (driverApplicationsTable as any).workZones,
+      workHours: (driverApplicationsTable as any).workHours,
+      maxDeliveryKm: (driverApplicationsTable as any).maxDeliveryKm,
+      bankName: (driverApplicationsTable as any).bankName,
+      bankAccountName: (driverApplicationsTable as any).bankAccountName,
+      bankAccountNumber: (driverApplicationsTable as any).bankAccountNumber,
+      preferredPaymentMethod: (driverApplicationsTable as any).preferredPaymentMethod,
+      insuranceNumber: (driverApplicationsTable as any).insuranceNumber,
+      residentialDepartment: (driverApplicationsTable as any).residentialDepartment,
       adminNote: driverApplicationsTable.adminNote,
       dateOfBirth: driverApplicationsTable.dateOfBirth,
       address: driverApplicationsTable.address,

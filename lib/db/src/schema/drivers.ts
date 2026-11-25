@@ -34,6 +34,11 @@ export const driverApplicationsTable = pgTable("driver_applications", {
   photoSide: text("photo_side"),
   photoBody: text("photo_body"),
   photoIdSelfie: text("photo_id_selfie"),
+  /** National ID / CIN / passport scan (distinct from selfie-with-ID). */
+  photoNationalId: text("photo_national_id"),
+  /** When legacy uploads mixed ID into selfie slots — admin must verify labels. */
+  docsNeedReview: boolean("docs_need_review").notNull().default(false),
+  residentialDepartment: text("residential_department"),
   // New dedicated document photo fields (added migration 202-208)
   photoVehicleRegistration: text("photo_vehicle_registration"),
   photoVehicleInsurance: text("photo_vehicle_insurance"),

@@ -1368,6 +1368,9 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "driver_applications.photo_vehicle_front",        sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_vehicle_front text" });
   migrations.push({ name: "driver_applications.photo_vehicle_side",         sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_vehicle_side text" });
   migrations.push({ name: "driver_applications.photo_license_plate",        sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_license_plate text" });
+  migrations.push({ name: "driver_applications.photo_national_id", sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_national_id text" });
+  migrations.push({ name: "driver_applications.docs_need_review", sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS docs_need_review boolean NOT NULL DEFAULT false" });
+  migrations.push({ name: "driver_applications.residential_department", sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS residential_department text" });
 
   // 209-210 — security balance + first recharge flag on promo_wallets
   migrations.push({ name: "promo_wallets.security_balance", sql: "ALTER TABLE promo_wallets ADD COLUMN IF NOT EXISTS security_balance real NOT NULL DEFAULT 0" });
@@ -3700,6 +3703,41 @@ export async function runStartupMigrations(): Promise<void> {
     }
   } catch (err: any) {
     logger.warn({ err: err?.message }, "Migration: video username backfill failed (non-fatal)");
+  }
+
+
+  // Haiti driver apply — distinct national ID + uncertain-doc flag + residential department
+  try {
+    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_national_id text`));
+    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS docs_need_review boolean NOT NULL DEFAULT false`));
+    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS residential_department text`));
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS app_data_migrations (
+        name text PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT NOW()
+      );
+    `));
+    // Mark legacy rows where the same URL was dual-written into selfie + holding-ID.
+    // Keep photos; flag for admin verification of labels.
+    await db.execute(sql.raw(`
+      WITH claimed AS (
+        INSERT INTO app_data_migrations (name)
+        VALUES ('driver_apps_flag_uncertain_photos_v1')
+        ON CONFLICT (name) DO NOTHING
+        RETURNING name
+      )
+      UPDATE driver_applications da
+         SET docs_need_review = true
+        FROM claimed
+       WHERE da.photo_national_id IS NULL
+         AND da.photo_id_selfie IS NOT NULL
+         AND da.face_photo_holding_id IS NOT NULL
+         AND da.photo_id_selfie = da.face_photo_holding_id
+         AND da.docs_need_review = false
+    `));
+    logger.info("Migration: driver application national-id columns + uncertain photo flags");
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: driver national-id columns failed (non-fatal)");
   }
 
   logger.info({ applied, failed }, "Startup migrations complete");

@@ -22,6 +22,8 @@ export interface StorageUploadResult {
   url: string;
   /** Backend used: "wasabi" | "object-storage" */
   backend: "wasabi" | "object-storage";
+  /** Object key when available (Wasabi). */
+  key?: string;
 }
 
 /**
@@ -44,12 +46,16 @@ export async function uploadToStorage(
     // the first segment by adjusting the mime-derived path in wasabi.ts.
     // For simplicity we always call uploadMedia and let wasabi handle naming.
     const result = await uploadMedia(buffer, mimetype, keyPrefix);
-    return { url: result.url, backend: "wasabi" };
+    return { url: result.url, backend: "wasabi", key: result.key };
   }
 
   // Fallback: Replit Object Storage (dev only)
   const objectId = keyPrefix ? `${keyPrefix}/${randomUUID()}` : randomUUID();
   const storedUrl = await _objectStorage.uploadBufferById(objectId, buffer, mimetype);
   // uploadBufferById returns the public URL directly
-  return { url: storedUrl ?? `/api/storage/objects/uploads/${objectId}`, backend: "object-storage" };
+  return {
+    url: storedUrl ?? `/api/storage/objects/uploads/${objectId}`,
+    backend: "object-storage",
+    key: objectId,
+  };
 }

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
@@ -34,19 +34,32 @@ export function WholesaleShell({
   const { t } = useTranslation();
   const [location] = useLocation();
   const brand = t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" });
+  const atHome = location === "/wholesale" || location === "/wholesale/";
+  const backHref = atHome ? "/" : "/wholesale";
+  const backLabel = atHome
+    ? t("wholesale.exitToMarket", { defaultValue: "Back to Flexa Market" })
+    : t("wholesale.backHome", { defaultValue: "Back to Flexa Wholesale" });
+
+  useEffect(() => {
+    const prev = document.title;
+    document.title = title ? `${title} · ${brand}` : brand;
+    return () => {
+      document.title = prev;
+    };
+  }, [brand, title]);
 
   return (
-    <div className="min-h-[calc(100dvh-3.5rem)] bg-[hsl(152,22%,97%)] dark:bg-[hsl(152,14%,8%)]">
+    <div className="min-h-dvh bg-[hsl(152,22%,97%)] dark:bg-[hsl(152,14%,8%)]">
       <header className="sticky top-0 z-30 border-b border-[hsl(152,30%,22%)]/20 bg-[hsl(152,55%,16%)] text-white">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-3 py-3 sm:px-4">
           <Link
-            href="/wholesale"
+            href={backHref}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/15"
-            aria-label={t("wholesale.backHome", { defaultValue: "Back to Flexa Wholesale" })}
+            aria-label={backLabel}
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
-          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <Link href="/wholesale" className="flex min-w-0 flex-1 items-center gap-2.5">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[hsl(152,65%,20%)] shadow-sm">
               <Warehouse className="h-5 w-5" />
             </span>
@@ -60,7 +73,7 @@ export function WholesaleShell({
                 })}
               </p>
             </div>
-          </div>
+          </Link>
           {actions}
         </div>
 

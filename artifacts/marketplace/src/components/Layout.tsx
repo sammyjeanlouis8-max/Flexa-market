@@ -757,6 +757,25 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     );
   }
 
+  // Flexa Wholesale — immersive shell (owns Flexa Wholesale brand chrome; no Market header).
+  const isWholesaleImmersive = /^\/wholesale(?:\/|$)/.test(location);
+  if (isWholesaleImmersive) {
+    return (
+      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
+        <div
+          className="app-shell wholesale-immersive-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col h-dvh overflow-clip bg-[hsl(152,22%,97%)] dark:bg-[hsl(152,14%,8%)]"
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
+          data-testid="wholesale-immersive-shell"
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+        </div>
+      </DeliveryMenuCountryContext.Provider>
+    );
+  }
+
   return (
     <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
     <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col ${isMessages || isPromoVideosSection ? "h-dvh overflow-clip" : "min-h-dvh"} ${isPromoVideosSection ? "bg-black" : isCommissionPromoPage ? "bg-[#0B1B3A]" : "bg-background"}`}>

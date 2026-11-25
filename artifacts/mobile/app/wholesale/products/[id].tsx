@@ -14,12 +14,15 @@ import { WholesaleGate } from "@/components/wholesale/WholesaleGate";
 import { WholesaleShell } from "@/components/wholesale/WholesaleShell";
 import { useAuth } from "@/context/AuthContext";
 import {
+  addFavorite,
   fetchWholesaleProduct,
   formatMoney,
   priceForQty,
+  removeFavorite,
   startWholesaleChat,
   type WholesaleProduct,
 } from "@/lib/wholesaleApi";
+import { pushRecentProduct } from "@/lib/wholesaleDraft";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleProductScreen() {
@@ -31,6 +34,7 @@ export default function WholesaleProductScreen() {
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
   const [chatting, setChatting] = useState(false);
+  const [favorited, setFavorited] = useState(false);
 
   useEffect(() => {
     if (!token || !Number.isFinite(productId)) return;
@@ -41,6 +45,7 @@ export default function WholesaleProductScreen() {
         if (!alive) return;
         setProduct(p);
         setQty(Math.max(1, p.minOrderQty || 1));
+        void pushRecentProduct(p.id);
       })
       .catch((e) => {
         if (alive) Alert.alert("Error", e?.message || "Not found");
@@ -81,11 +86,33 @@ export default function WholesaleProductScreen() {
     }
   };
 
+  const onToggleFavorite = async () => {
+    if (!token || !product) return;
+    try {
+      if (favorited) {
+        await removeFavorite(product.id, { token });
+        setFavorited(false);
+      } else {
+        await addFavorite(product.id, { token });
+        setFavorited(true);
+      }
+    } catch (e: any) {
+      Alert.alert("Favorites", e?.message || "Could not update favorite");
+    }
+  };
+
   return (
     <WholesaleGate>
       <WholesaleShell
         title={product?.title}
         subtitle={product ? "Wholesale listing · chat seller · depot pickup" : undefined}
+        headerRight={
+          product ? (
+            <Pressable onPress={() => void onToggleFavorite()} testID="wholesale-favorite-toggle">
+              <Feather name={favorited ? "heart" : "heart"} size={20} color={favorited ? T.danger : T.forest} />
+            </Pressable>
+          ) : undefined
+        }
       >
         {loading || !product ? (
           <ActivityIndicator color={T.accent} />
@@ -145,11 +172,28 @@ export default function WholesaleProductScreen() {
               )}
             </Pressable>
 
-            {product.warehouseName ? (
+            {(product.warehouseName || product.warehouse) ? (
               <Text style={styles.depot}>
-                {product.warehouseName}
-                {product.warehouseCity ? ` · ${product.warehouseCity}` : ""}
+                Depot: {product.warehouse?.name || product.warehouseName}
+                {product.warehouse?.city || product.warehouseCity
+                  ? ` · ${product.warehouse?.city || product.warehouseCity}`
+                  : ""}
+                {product.warehouse?.country || product.country
+                  ? ` · ${product.warehouse?.country || product.country}`
+                  : ""}
               </Text>
+            ) : null}
+            {product.tiers?.length ? (
+              <View style={{ marginTop: 10 }}>
+                <Text style={styles.descLabel}>Volume pricing</Text>
+                {product.tiers.map((tier) => (
+                  <Text key={tier.id ?? `${tier.minQuantity}-${tier.unitPrice}`} style={styles.meta}>
+                    {tier.minQuantity}
+                    {tier.maxQuantity != null ? `–${tier.maxQuantity}` : "+"} →{" "}
+                    {formatMoney(tier.unitPrice, product.currency)}
+                  </Text>
+                ))}
+              </View>
             ) : null}
             {product.description ? (
               <>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   countriesMatch,
+  isWarehouseBuyerVisible,
   normalizeWholesaleCountry,
   parsePagination,
   resolveBuyerCountry,
@@ -20,14 +21,22 @@ describe("wholesale country helpers", () => {
     expect(countriesMatch("Haiti", null)).toBe(false);
   });
 
-  it("requires buyer country for browse (strict)", () => {
+  it("uses account country only for buyers (query cannot spoof)", () => {
     expect(
       resolveBuyerCountry({
         queryCountry: null,
         profileCountry: null,
         mine: false,
       }).error,
-    ).toMatch(/country/i);
+    ).toMatch(/account country/i);
+
+    expect(
+      resolveBuyerCountry({
+        queryCountry: "United States",
+        profileCountry: "Haiti",
+        mine: false,
+      }).country,
+    ).toBe("Haiti");
 
     expect(
       resolveBuyerCountry({
@@ -36,31 +45,83 @@ describe("wholesale country helpers", () => {
         mine: false,
       }).country,
     ).toBe("Haiti");
-
-    expect(
-      resolveBuyerCountry({
-        queryCountry: "United States",
-        profileCountry: "Haiti",
-        mine: false,
-      }).country,
-    ).toBe("United States");
   });
 
-  it("allows mine/admin without country", () => {
+  it("allows mine filter via query; Super Admin may browse all countries", () => {
     expect(
       resolveBuyerCountry({
-        queryCountry: null,
-        profileCountry: null,
+        queryCountry: "Dominican Republic",
+        profileCountry: "Haiti",
         mine: true,
-      }).error,
-    ).toBeUndefined();
+      }).country,
+    ).toBe("Dominican Republic");
+
+    const adminAll = resolveBuyerCountry({
+      queryCountry: null,
+      profileCountry: "Haiti",
+      admin: true,
+    });
+    expect(adminAll.allCountries).toBe(true);
+    expect(adminAll.country).toBeNull();
+
     expect(
       resolveBuyerCountry({
-        queryCountry: null,
-        profileCountry: null,
+        queryCountry: "Haiti",
+        profileCountry: "United States",
         admin: true,
-      }).error,
-    ).toBeUndefined();
+      }).country,
+    ).toBe("Haiti");
+  });
+});
+
+describe("warehouse buyer visibility", () => {
+  const verifiedHt = {
+    sellerId: 10,
+    country: "Haiti",
+    verificationStatus: "verified",
+    isActive: true,
+  };
+
+  it("requires verified + active + ownership + country match", () => {
+    expect(
+      isWarehouseBuyerVisible({
+        warehouse: verifiedHt,
+        product: { sellerId: 10, country: "Haiti" },
+        buyerCountry: "Haiti",
+      }),
+    ).toBe(true);
+
+    expect(
+      isWarehouseBuyerVisible({
+        warehouse: { ...verifiedHt, verificationStatus: "pending" },
+        product: { sellerId: 10, country: "Haiti" },
+        buyerCountry: "Haiti",
+      }),
+    ).toBe(false);
+
+    expect(
+      isWarehouseBuyerVisible({
+        warehouse: { ...verifiedHt, isActive: false },
+        product: { sellerId: 10, country: "Haiti" },
+        buyerCountry: "Haiti",
+      }),
+    ).toBe(false);
+
+    expect(
+      isWarehouseBuyerVisible({
+        warehouse: verifiedHt,
+        product: { sellerId: 99, country: "Haiti" },
+        buyerCountry: "Haiti",
+      }),
+    ).toBe(false);
+
+    expect(
+      isWarehouseBuyerVisible({
+        warehouse: verifiedHt,
+        product: { sellerId: 10, country: "Haiti" },
+        buyerCountry: "United States",
+      }),
+    ).toBe(false);
   });
 });
 
@@ -75,7 +136,7 @@ describe("wholesale pagination helpers", () => {
   });
 
   it("supports page= as offset shortcut", () => {
-    expect(parsePagination({ page: 3, limit: undefined })).toEqual({ limit: 20, offset: 40 });
+    expect(parsePagination({ page: 3, offset: undefined })).toEqual({ limit: 20, offset: 40 });
     expect(parsePagination({ limit: 10, page: 2 })).toEqual({ limit: 10, offset: 10 });
   });
 
@@ -84,39 +145,31 @@ describe("wholesale pagination helpers", () => {
   });
 });
 
-/**
- * Cross-country warehouse scenarios (logic contract):
- * A seller living in the US with a verified Haiti warehouse publishes Haiti stock.
- * Haiti buyers see it; US buyers browsing US marketplace do not.
- */
 describe("cross-country warehouse visibility contract", () => {
-  const sellerHome = "United States";
-  const haitiDepot = { country: "Haiti", verified: true };
-  const usDepot = { country: "United States", verified: true };
-
-  function visibleToBuyer(
-    productCountry: string,
-    buyerMarketplaceCountry: string,
-  ): boolean {
-    return countriesMatch(productCountry, buyerMarketplaceCountry);
-  }
-
-  it("US-resident seller: Haiti warehouse product visible only in Haiti marketplace", () => {
-    expect(sellerHome).toBe("United States");
-    expect(haitiDepot.verified).toBe(true);
-    expect(visibleToBuyer("Haiti", "Haiti")).toBe(true);
-    expect(visibleToBuyer("Haiti", "United States")).toBe(false);
+  it("US-resident seller Haiti depot product visible only to Haiti account buyers", () => {
+    const warehouse = {
+      sellerId: 1,
+      country: "Haiti",
+      verificationStatus: "verified",
+      isActive: true,
+    };
+    const product = { sellerId: 1, country: "Haiti" };
+    expect(isWarehouseBuyerVisible({ warehouse, product, buyerCountry: "Haiti" })).toBe(true);
+    expect(isWarehouseBuyerVisible({ warehouse, product, buyerCountry: "United States" })).toBe(false);
   });
 
-  it("same seller can also sell in US via separate verified US warehouse", () => {
-    expect(usDepot.verified).toBe(true);
-    expect(visibleToBuyer("United States", "United States")).toBe(true);
-    expect(visibleToBuyer("United States", "Haiti")).toBe(false);
-  });
-
-  it("favorites must stay in buyer marketplace country", () => {
-    const favoriteProductCountry = "Haiti";
-    const buyerCountry = "United States";
-    expect(countriesMatch(favoriteProductCountry, buyerCountry)).toBe(false);
+  it("suspended warehouse hides products from buyers", () => {
+    expect(
+      isWarehouseBuyerVisible({
+        warehouse: {
+          sellerId: 1,
+          country: "Haiti",
+          verificationStatus: "verified",
+          isActive: false,
+        },
+        product: { sellerId: 1, country: "Haiti" },
+        buyerCountry: "Haiti",
+      }),
+    ).toBe(false);
   });
 });

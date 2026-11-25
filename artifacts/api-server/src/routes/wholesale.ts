@@ -15,6 +15,7 @@ import {
 import { requireAuth } from "../middlewares/auth";
 import {
   countriesMatch,
+  isWarehouseBuyerVisible,
   normalizeWholesaleCountry,
   parsePagination,
   resolveBuyerCountry,
@@ -27,10 +28,35 @@ const WHOLESALE_PUBLIC_LAUNCH = false;
 
 export {
   countriesMatch,
+  isWarehouseBuyerVisible,
   normalizeWholesaleCountry,
   parsePagination,
   resolveBuyerCountry,
 } from "../lib/wholesaleCountry";
+
+/** Shared SQL predicates: buyer-visible product must sit in an owned, active, verified depot. */
+function buyerVisibleWarehouseConds(buyerCountry: string) {
+  return [
+    eq(wholesaleWarehousesTable.verificationStatus, "verified"),
+    eq(wholesaleWarehousesTable.isActive, true),
+    sql`${wholesaleWarehousesTable.sellerId} = ${wholesaleProductsTable.sellerId}`,
+    sql`lower(${wholesaleWarehousesTable.country}) = lower(${wholesaleProductsTable.country})`,
+    sql`lower(${wholesaleProductsTable.country}) = lower(${buyerCountry})`,
+  ];
+}
+
+async function loadProductWithWarehouse(productId: number) {
+  const [row] = await db
+    .select({
+      product: wholesaleProductsTable,
+      warehouse: wholesaleWarehousesTable,
+    })
+    .from(wholesaleProductsTable)
+    .leftJoin(wholesaleWarehousesTable, eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id))
+    .where(eq(wholesaleProductsTable.id, productId))
+    .limit(1);
+  return row ?? null;
+}
 
 async function requireWholesaleAccess(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1], next: Parameters<typeof requireAuth>[2]) {
   await requireAuth(req, res, async () => {
@@ -126,7 +152,7 @@ router.get("/wholesale/launch", (_req, res): void => {
 router.get("/wholesale/warehouses", requireWholesaleAccess, async (req, res): Promise<void> => {
   const mine = String(req.query.mine ?? "") === "1";
   const verifiedOnly = String(req.query.verified ?? "1") !== "0";
-  const adminAll = String(req.query.admin ?? "") === "1" && !!req.user?.isSuperAdmin;
+  const adminAll = !!req.user?.isSuperAdmin && (String(req.query.admin ?? "") === "1" || !mine);
   const userId = req.userId!;
   const { limit, offset } = parsePagination(req.query);
 
@@ -134,7 +160,7 @@ router.get("/wholesale/warehouses", requireWholesaleAccess, async (req, res): Pr
     queryCountry: String(req.query.country ?? ""),
     profileCountry: req.user?.country ?? null,
     mine,
-    admin: adminAll,
+    admin: adminAll && !mine,
   });
   if (resolved.error) {
     res.status(400).json({ error: resolved.error });
@@ -142,24 +168,28 @@ router.get("/wholesale/warehouses", requireWholesaleAccess, async (req, res): Pr
   }
   const country = resolved.country;
 
-  const conds = [eq(wholesaleWarehousesTable.isActive, true)];
-  if (mine) conds.push(eq(wholesaleWarehousesTable.sellerId, userId));
-  // Strict buyer-country filter for public browse (not mine / not admin).
-  if (!mine && !adminAll) {
-    if (!country) {
-      res.status(400).json({ error: "Marketplace country is required" });
-      return;
-    }
-    conds.push(sql`lower(${wholesaleWarehousesTable.country}) = lower(${country})`);
-  } else if (country) {
-    conds.push(sql`lower(${wholesaleWarehousesTable.country}) = lower(${country})`);
-  }
-  if (!mine && !adminAll && verifiedOnly) {
-    conds.push(eq(wholesaleWarehousesTable.verificationStatus, "verified"));
-  }
-  if (adminAll && String(req.query.status ?? "").trim()) {
-    conds.length = 0;
+  const conds = [];
+  if (mine) {
+    conds.push(eq(wholesaleWarehousesTable.sellerId, userId));
+    // Sellers see all their depots (including pending / inactive) for management.
+  } else if (adminAll && String(req.query.status ?? "").trim()) {
     conds.push(eq(wholesaleWarehousesTable.verificationStatus, String(req.query.status).trim()));
+  } else {
+    // Buyer browse: only active verified depots in the account country.
+    conds.push(eq(wholesaleWarehousesTable.isActive, true));
+    if (verifiedOnly) conds.push(eq(wholesaleWarehousesTable.verificationStatus, "verified"));
+    if (!resolved.allCountries) {
+      if (!country) {
+        res.status(400).json({ error: "Your account country is required" });
+        return;
+      }
+      conds.push(sql`lower(${wholesaleWarehousesTable.country}) = lower(${country})`);
+    } else if (country) {
+      conds.push(sql`lower(${wholesaleWarehousesTable.country}) = lower(${country})`);
+    }
+  }
+  if (mine && country) {
+    conds.push(sql`lower(${wholesaleWarehousesTable.country}) = lower(${country})`);
   }
 
   const whereClause = and(...conds);
@@ -315,6 +345,7 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
   const warehouseId = req.query.warehouseId != null ? Number(req.query.warehouseId) : null;
   const statusFilter = String(req.query.status ?? "").trim();
   const mine = String(req.query.mine ?? "") === "1";
+  const isAdmin = !!req.user?.isSuperAdmin;
   const userId = req.userId!;
   const { limit, offset } = parsePagination(req.query);
 
@@ -322,7 +353,7 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
     queryCountry: String(req.query.country ?? ""),
     profileCountry: req.user?.country ?? null,
     mine,
-    admin: false,
+    admin: isAdmin && !mine,
   });
   if (resolved.error) {
     res.status(400).json({ error: resolved.error });
@@ -336,18 +367,21 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
     if (statusFilter && ["active", "draft", "archived"].includes(statusFilter)) {
       conds.push(eq(wholesaleProductsTable.status, statusFilter));
     }
+    if (country) {
+      conds.push(sql`lower(${wholesaleProductsTable.country}) = lower(${country})`);
+    }
   } else {
     conds.push(eq(wholesaleProductsTable.status, "active"));
-    // Strict: buyers only see stock available in their marketplace country.
-    if (!country) {
-      res.status(400).json({ error: "Marketplace country is required" });
-      return;
+    if (!resolved.allCountries) {
+      if (!country) {
+        res.status(400).json({ error: "Your account country is required" });
+        return;
+      }
+      // Buyer catalog: account country + verified/active owned warehouse only.
+      conds.push(...buyerVisibleWarehouseConds(country));
+    } else if (country) {
+      conds.push(sql`lower(${wholesaleProductsTable.country}) = lower(${country})`);
     }
-    conds.push(sql`lower(${wholesaleProductsTable.country}) = lower(${country})`);
-  }
-  // Sellers may still filter their own listings by country (multi-warehouse).
-  if (mine && country) {
-    conds.push(sql`lower(${wholesaleProductsTable.country}) = lower(${country})`);
   }
   if (category) conds.push(eq(wholesaleProductsTable.category, category));
   if (warehouseId && Number.isFinite(warehouseId)) {
@@ -358,13 +392,23 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
   }
 
   const whereClause = and(...conds);
-  const [countRow] = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(wholesaleProductsTable)
-    .where(whereClause);
+  const buyerJoinRequired = !mine && !resolved.allCountries;
+
+  const countQuery = buyerJoinRequired
+    ? db
+        .select({ total: sql<number>`count(distinct ${wholesaleProductsTable.id})::int` })
+        .from(wholesaleProductsTable)
+        .innerJoin(
+          wholesaleWarehousesTable,
+          eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id),
+        )
+        .where(whereClause)
+    : db.select({ total: sql<number>`count(*)::int` }).from(wholesaleProductsTable).where(whereClause);
+
+  const [countRow] = await countQuery;
   const total = Number(countRow?.total ?? 0);
 
-  const rows = await db
+  const baseSelect = db
     .select({
       product: wholesaleProductsTable,
       sellerId: usersTable.id,
@@ -373,8 +417,18 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
       warehouse: wholesaleWarehousesTable,
     })
     .from(wholesaleProductsTable)
-    .leftJoin(usersTable, eq(wholesaleProductsTable.sellerId, usersTable.id))
-    .leftJoin(wholesaleWarehousesTable, eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id))
+    .leftJoin(usersTable, eq(wholesaleProductsTable.sellerId, usersTable.id));
+
+  const rows = await (buyerJoinRequired
+    ? baseSelect.innerJoin(
+        wholesaleWarehousesTable,
+        eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id),
+      )
+    : baseSelect.leftJoin(
+        wholesaleWarehousesTable,
+        eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id),
+      )
+  )
     .where(whereClause)
     .orderBy(desc(wholesaleProductsTable.createdAt))
     .limit(limit)
@@ -402,7 +456,7 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
       ),
     ),
     pagination: { limit, offset, total, hasMore: offset + rows.length < total },
-    countryFilter: mine ? country : country,
+    countryFilter: country,
   });
 });
 
@@ -435,12 +489,17 @@ router.get("/wholesale/products/:id", requireWholesaleAccess, async (req, res): 
   const isOwner = row.product.sellerId === req.userId;
   const isAdmin = !!req.user?.isSuperAdmin;
   if (!isOwner && !isAdmin) {
-    const buyerCountry =
-      normalizeWholesaleCountry(String(req.query.country ?? "")) ||
-      normalizeWholesaleCountry(req.user?.country ?? null);
-    if (!buyerCountry || !countriesMatch(row.product.country, buyerCountry)) {
+    const buyerCountry = normalizeWholesaleCountry(req.user?.country ?? null);
+    if (
+      !buyerCountry ||
+      !isWarehouseBuyerVisible({
+        warehouse: row.warehouse,
+        product: row.product,
+        buyerCountry,
+      })
+    ) {
       res.status(404).json({
-        error: "Product not available in your marketplace country",
+        error: "Product not available in your account country (requires an active verified warehouse)",
         countryFilter: buyerCountry,
       });
       return;
@@ -826,28 +885,31 @@ router.patch("/wholesale/inventory/:id", requireWholesaleAccess, async (req, res
 router.get("/wholesale/favorites", requireWholesaleAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const { limit, offset } = parsePagination(req.query);
+  const isAdmin = !!req.user?.isSuperAdmin;
   const resolved = resolveBuyerCountry({
     queryCountry: String(req.query.country ?? ""),
     profileCountry: req.user?.country ?? null,
     mine: false,
-    admin: false,
+    admin: isAdmin,
   });
-  if (resolved.error || !resolved.country) {
-    res.status(400).json({ error: resolved.error || "Marketplace country is required" });
+  if (resolved.error || (!resolved.country && !resolved.allCountries)) {
+    res.status(400).json({ error: resolved.error || "Your account country is required" });
     return;
   }
   const country = resolved.country;
 
-  const whereClause = and(
+  const favConds = [
     eq(wholesaleFavoritesTable.userId, userId),
-    sql`lower(${wholesaleProductsTable.country}) = lower(${country})`,
     eq(wholesaleProductsTable.status, "active"),
-  );
+    ...(!resolved.allCountries && country ? buyerVisibleWarehouseConds(country) : []),
+  ];
+  const whereClause = and(...favConds);
 
   const [countRow] = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(wholesaleFavoritesTable)
     .innerJoin(wholesaleProductsTable, eq(wholesaleFavoritesTable.productId, wholesaleProductsTable.id))
+    .innerJoin(wholesaleWarehousesTable, eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id))
     .where(whereClause);
   const total = Number(countRow?.total ?? 0);
 
@@ -862,8 +924,8 @@ router.get("/wholesale/favorites", requireWholesaleAccess, async (req, res): Pro
     })
     .from(wholesaleFavoritesTable)
     .innerJoin(wholesaleProductsTable, eq(wholesaleFavoritesTable.productId, wholesaleProductsTable.id))
+    .innerJoin(wholesaleWarehousesTable, eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id))
     .leftJoin(usersTable, eq(wholesaleProductsTable.sellerId, usersTable.id))
-    .leftJoin(wholesaleWarehousesTable, eq(wholesaleProductsTable.warehouseId, wholesaleWarehousesTable.id))
     .where(whereClause)
     .orderBy(desc(wholesaleFavoritesTable.createdAt))
     .limit(limit)
@@ -903,17 +965,20 @@ router.post("/wholesale/favorites", requireWholesaleAccess, async (req, res): Pr
     res.status(400).json({ error: "Invalid product id" });
     return;
   }
-  const [product] = await db.select().from(wholesaleProductsTable).where(eq(wholesaleProductsTable.id, productId)).limit(1);
-  if (!product) {
+  const loaded = await loadProductWithWarehouse(productId);
+  if (!loaded) {
     res.status(404).json({ error: "Product not found" });
     return;
   }
-  const buyerCountry =
-    normalizeWholesaleCountry(String(req.body?.country ?? "")) ||
-    normalizeWholesaleCountry(req.user?.country ?? null);
-  if (!buyerCountry || !countriesMatch(product.country, buyerCountry)) {
+  const { product, warehouse } = loaded;
+  const buyerCountry = normalizeWholesaleCountry(req.user?.country ?? null);
+  if (
+    !req.user?.isSuperAdmin &&
+    (!buyerCountry ||
+      !isWarehouseBuyerVisible({ warehouse, product, buyerCountry }))
+  ) {
     res.status(400).json({
-      error: "Can only favorite products available in your marketplace country",
+      error: "Can only favorite products available in your account country with a verified warehouse",
       countryFilter: buyerCountry,
       productCountry: product.country,
     });
@@ -957,18 +1022,34 @@ router.delete("/wholesale/favorites/:productId", requireWholesaleAccess, async (
 router.get("/wholesale/inquiries", requireWholesaleAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const role = String(req.query.role ?? "buyer");
-  const cond = role === "seller"
-    ? eq(wholesaleInquiriesTable.sellerId, userId)
-    : eq(wholesaleInquiriesTable.buyerId, userId);
+  const isSeller = role === "seller";
+  const buyerCountry = normalizeWholesaleCountry(req.user?.country ?? null);
+
+  const conds = [
+    isSeller
+      ? eq(wholesaleInquiriesTable.sellerId, userId)
+      : eq(wholesaleInquiriesTable.buyerId, userId),
+  ];
+  // Buyer inquiry list stays scoped to account country when product is linked.
+  if (!isSeller && !req.user?.isSuperAdmin) {
+    if (!buyerCountry) {
+      res.status(400).json({ error: "Your account country is required" });
+      return;
+    }
+    conds.push(
+      sql`(${wholesaleInquiriesTable.productId} IS NULL OR lower(${wholesaleProductsTable.country}) = lower(${buyerCountry}))`,
+    );
+  }
 
   const rows = await db
     .select({
       inquiry: wholesaleInquiriesTable,
       productTitle: wholesaleProductsTable.title,
+      productCountry: wholesaleProductsTable.country,
     })
     .from(wholesaleInquiriesTable)
     .leftJoin(wholesaleProductsTable, eq(wholesaleInquiriesTable.productId, wholesaleProductsTable.id))
-    .where(cond)
+    .where(and(...conds))
     .orderBy(desc(wholesaleInquiriesTable.createdAt))
     .limit(100);
 
@@ -979,6 +1060,7 @@ router.get("/wholesale/inquiries", requireWholesaleAccess, async (req, res): Pro
       sellerId: r.inquiry.sellerId,
       productId: r.inquiry.productId,
       productTitle: r.productTitle,
+      productCountry: r.productCountry,
       qty: r.inquiry.qty,
       message: r.inquiry.message,
       status: r.inquiry.status,
@@ -1003,13 +1085,42 @@ router.post("/wholesale/inquiries", requireWholesaleAccess, async (req, res): Pr
     res.status(400).json({ error: "Cannot inquire with yourself" });
     return;
   }
+  if (!productId || !Number.isFinite(productId)) {
+    res.status(400).json({ error: "Product id is required for wholesale inquiries" });
+    return;
+  }
+
+  const loaded = await loadProductWithWarehouse(productId);
+  if (!loaded) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+  if (loaded.product.sellerId !== sellerId) {
+    res.status(400).json({ error: "Seller does not own this product" });
+    return;
+  }
+  const buyerCountry = normalizeWholesaleCountry(req.user?.country ?? null);
+  if (
+    !req.user?.isSuperAdmin &&
+    (!buyerCountry ||
+      !isWarehouseBuyerVisible({
+        warehouse: loaded.warehouse,
+        product: loaded.product,
+        buyerCountry,
+      }))
+  ) {
+    res.status(400).json({
+      error: "Inquiry blocked: product must be in your account country with an active verified warehouse",
+    });
+    return;
+  }
 
   const [created] = await db
     .insert(wholesaleInquiriesTable)
     .values({
       buyerId,
       sellerId,
-      productId: productId && Number.isFinite(productId) ? productId : null,
+      productId,
       qty,
       message,
       status: "open",
@@ -1091,8 +1202,38 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
     res.status(400).json({ error: "Cannot chat with yourself" });
     return;
   }
+  if (!Number.isFinite(productId) || productId <= 0) {
+    res.status(400).json({ error: "Product id is required" });
+    return;
+  }
 
-  const marker = `[wholesale:${productId || 0}]`;
+  const loaded = await loadProductWithWarehouse(productId);
+  if (!loaded) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+  if (loaded.product.sellerId !== sellerId) {
+    res.status(400).json({ error: "Seller does not own this product" });
+    return;
+  }
+  const buyerCountry = normalizeWholesaleCountry(req.user?.country ?? null);
+  if (
+    !req.user?.isSuperAdmin &&
+    (!buyerCountry ||
+      !isWarehouseBuyerVisible({
+        warehouse: loaded.warehouse,
+        product: loaded.product,
+        buyerCountry,
+      }))
+  ) {
+    res.status(400).json({
+      error: "Chat blocked: product must be in your account country with an active verified warehouse",
+    });
+    return;
+  }
+
+  const title = loaded.product.title || productTitle;
+  const marker = `[wholesale:${productId}]`;
   const [existing] = await db
     .select()
     .from(conversationsTable)
@@ -1107,7 +1248,7 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
     .limit(1);
 
   if (existing) {
-    res.json({ id: existing.id, conversationType: "wholesale", productId: productId || null });
+    res.json({ id: existing.id, conversationType: "wholesale", productId });
     return;
   }
 
@@ -1124,7 +1265,7 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
     .orderBy(desc(conversationsTable.lastMessageAt))
     .limit(1);
 
-  const opener = `From Flexa Wholesale · ${productTitle} · qty ${qty} ${marker}`;
+  const opener = `From Flexa Wholesale · ${title} · qty ${qty} ${marker}`;
 
   let conversationId: number;
   if (open) {
@@ -1164,7 +1305,7 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
   await db.insert(wholesaleInquiriesTable).values({
     buyerId,
     sellerId,
-    productId: productId && Number.isFinite(productId) ? productId : null,
+    productId,
     qty,
     message: opener,
     status: "open",
@@ -1174,7 +1315,7 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
   res.status(open ? 200 : 201).json({
     id: conversationId,
     conversationType: "wholesale",
-    productId: productId || null,
+    productId,
   });
 });
 

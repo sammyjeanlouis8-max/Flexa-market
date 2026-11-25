@@ -16,28 +16,53 @@ export function countriesMatch(a: string | null | undefined, b: string | null | 
 }
 
 /**
- * Buyer browse country: explicit query wins, else profile country.
- * Sellers listing `mine=1` and Super Admin admin views may skip.
+ * Buyer visibility country comes from the authenticated account only.
+ * Query `country` cannot override buyer marketplace (prevents spoofing).
+ * Sellers (`mine`) may optionally filter their multi-country depots via query.
+ * Super Admin may browse all countries, or filter with query `country`.
  */
 export function resolveBuyerCountry(opts: {
   queryCountry?: string | null;
   profileCountry?: string | null;
   mine?: boolean;
   admin?: boolean;
-}): { country: string | null; error?: string } {
-  if (opts.mine || opts.admin) {
+}): { country: string | null; error?: string; allCountries?: boolean } {
+  if (opts.admin) {
+    const queried = normalizeWholesaleCountry(opts.queryCountry);
+    return { country: queried, allCountries: !queried };
+  }
+  if (opts.mine) {
     return { country: normalizeWholesaleCountry(opts.queryCountry) };
   }
-  const country =
-    normalizeWholesaleCountry(opts.queryCountry) ||
-    normalizeWholesaleCountry(opts.profileCountry);
+  const country = normalizeWholesaleCountry(opts.profileCountry);
   if (!country) {
     return {
       country: null,
-      error: "Marketplace country is required. Set your profile country or pass ?country=",
+      error: "Your account country is required to browse Flexa Wholesale. Update your profile country.",
     };
   }
   return { country };
+}
+
+/** Warehouse must be active + verified and match product country + seller ownership. */
+export function isWarehouseBuyerVisible(opts: {
+  warehouse: {
+    sellerId: number;
+    country: string;
+    verificationStatus: string;
+    isActive: boolean;
+  } | null | undefined;
+  product: { sellerId: number; country: string | null };
+  buyerCountry: string;
+}): boolean {
+  const wh = opts.warehouse;
+  if (!wh) return false;
+  if (!wh.isActive) return false;
+  if (wh.verificationStatus !== "verified") return false;
+  if (wh.sellerId !== opts.product.sellerId) return false;
+  if (!countriesMatch(wh.country, opts.product.country)) return false;
+  if (!countriesMatch(opts.product.country, opts.buyerCountry)) return false;
+  return true;
 }
 
 export function parsePagination(query: { limit?: unknown; offset?: unknown; page?: unknown }): {
@@ -51,7 +76,6 @@ export function parsePagination(query: { limit?: unknown; offset?: unknown; page
   let offset = Math.floor(Number(query.offset ?? 0));
   if (!Number.isFinite(offset) || offset < 0) offset = 0;
 
-  // Optional 1-based page= when offset omitted
   if (query.offset == null && query.page != null) {
     const page = Math.floor(Number(query.page));
     if (Number.isFinite(page) && page > 1) offset = (page - 1) * limit;

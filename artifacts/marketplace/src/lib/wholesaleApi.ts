@@ -105,6 +105,23 @@ export async function createWholesaleProduct(body: Record<string, unknown>): Pro
   return data.product;
 }
 
+/** Start / reuse wholesale Market chat and ensure a durable product card is present. */
+export async function startWholesaleChat(input: {
+  sellerId: number;
+  productId: number;
+  productTitle: string;
+  qty?: number;
+}): Promise<{ id: number; cardInserted?: boolean }> {
+  const res = await fetch("/api/wholesale/conversations", {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Could not start wholesale chat");
+  return { id: Number(data.id), cardInserted: data.cardInserted };
+}
+
 export async function fetchWarehouses(params?: {
   mine?: boolean;
   country?: string;

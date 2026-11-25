@@ -12,13 +12,19 @@ import {
   type WholesaleProduct,
 } from "@/lib/wholesaleApi";
 import { cn } from "@/lib/utils";
+import {
+  readWholesaleNavContext,
+  restoreWholesaleScroll,
+  saveWholesaleNavContext,
+} from "@/lib/wholesaleNavContext";
 
 function FlexaWholesaleCatalog() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const [q, setQ] = useState("");
-  const [country, setCountry] = useState(user?.country ?? "");
+  const restored = typeof window !== "undefined" ? readWholesaleNavContext() : null;
+  const [q, setQ] = useState(restored?.q ?? "");
+  const [country, setCountry] = useState(restored?.country ?? user?.country ?? "");
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +32,25 @@ function FlexaWholesaleCatalog() {
   useEffect(() => {
     if (user?.country && !country) setCountry(user.country);
   }, [user?.country, country]);
+
+  useEffect(() => {
+    const ctx = readWholesaleNavContext();
+    if (ctx && (ctx.path === "/wholesale" || ctx.path.startsWith("/wholesale?"))) {
+      restoreWholesaleScroll(ctx);
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    saveWholesaleNavContext({
+      path: `/wholesale${q || country ? `?${new URLSearchParams({
+        ...(q ? { q } : {}),
+        ...(country ? { country } : {}),
+      }).toString()}` : ""}`,
+      q,
+      country,
+      scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+    });
+  }, [q, country]);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,7 +182,16 @@ function FlexaWholesaleCatalog() {
               <button
                 key={p.id}
                 type="button"
-                onClick={() => setLocation(`/wholesale/products/${p.id}`)}
+                onClick={() => {
+                  saveWholesaleNavContext({
+                    path: `/wholesale/products/${p.id}`,
+                    productId: p.id,
+                    q,
+                    country,
+                    scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+                  });
+                  setLocation(`/wholesale/products/${p.id}`);
+                }}
                 className={cn(
                   "overflow-hidden rounded-2xl border border-border/70 bg-white text-left shadow-sm",
                   "transition-transform active:scale-[0.99] dark:bg-[hsl(152,16%,12%)]",

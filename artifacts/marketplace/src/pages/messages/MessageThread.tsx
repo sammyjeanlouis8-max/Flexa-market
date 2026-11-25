@@ -48,6 +48,15 @@ import {
   readPromoChatDraft,
   type PromoChatDraftPayload,
 } from "@/lib/promoVideoContact";
+import {
+  WHOLESALE_CARD_MESSAGE_TYPE,
+  parseWholesaleCard,
+} from "@/lib/wholesaleChatCard";
+import { formatMoney } from "@/lib/wholesaleApi";
+import {
+  consumeWholesaleChatReturn,
+  peekWholesaleChatReturn,
+} from "@/lib/wholesaleNavContext";
 
 let _animInjected = false;
 function injectChatAnimations() {
@@ -860,6 +869,92 @@ function MsgBubble({
     );
   }
 
+  const msgTypeRaw = String(msg.messageType || "");
+  const wholesaleCard =
+    msgTypeRaw === WHOLESALE_CARD_MESSAGE_TYPE || msgTypeRaw === "wholesale_card"
+      ? parseWholesaleCard(msg.content)
+      : parseWholesaleCard(
+          msgTypeRaw === "text" && msg.content?.includes("[wholesale:")
+            ? msg.content
+            : null,
+        );
+
+  if (wholesaleCard) {
+    const img = wholesaleCard.image || msg.imageUrl || msg.mediaUrl || "";
+    const priceLabel =
+      wholesaleCard.unitPrice > 0
+        ? `${formatMoney(wholesaleCard.unitPrice, wholesaleCard.currency)} / ${wholesaleCard.wholesaleUnitType}`
+        : null;
+    return (
+      <div
+        className="msg-bubble-anim"
+        style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", padding: "4px 8px", width: "100%" }}
+        data-testid="wholesale-product-card"
+      >
+        <div
+          style={{
+            width: "min(280px, 86%)",
+            borderRadius: 14,
+            overflow: "hidden",
+            background: c.isDark ? "#1e293b" : "#fff",
+            border: `1px solid ${c.isDark ? "#334155" : "#E2E8F0"}`,
+            boxShadow: !c.isDark ? "0 4px 14px rgba(15,23,42,0.06)" : undefined,
+          }}
+        >
+          <div style={{ height: 132, background: c.isDark ? "#0f172a" : "#F1F5F4" }}>
+            {img ? (
+              <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            ) : (
+              <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: c.listSub }}>
+                <ShoppingBag style={{ width: 28, height: 28 }} />
+              </div>
+            )}
+          </div>
+          <div style={{ padding: "10px 12px 12px" }}>
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: FLEXA.greenMid }}>
+              Flexa Wholesale
+            </p>
+            <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 800, color: c.isDark ? "#F8FAFC" : "#0F172A", lineHeight: 1.25 }}>
+              {wholesaleCard.title}
+            </p>
+            {priceLabel && (
+              <p style={{ margin: "6px 0 0", fontSize: 14, fontWeight: 800, color: FLEXA.orange }}>
+                {priceLabel}
+              </p>
+            )}
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: c.listSub }}>
+              MOQ {wholesaleCard.minOrderQty} {wholesaleCard.wholesaleUnitType}
+              {wholesaleCard.qty ? ` · quote qty ${wholesaleCard.qty}` : ""}
+            </p>
+            <Link
+              href={`/wholesale/products/${wholesaleCard.productId}`}
+              style={{ textDecoration: "none" }}
+            >
+              <span
+                style={{
+                  marginTop: 10,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 2,
+                  minHeight: 36,
+                  padding: "0 12px",
+                  borderRadius: 999,
+                  border: `1.5px solid ${FLEXA.orange}`,
+                  color: FLEXA.orange,
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {t("messages.viewProduct", { defaultValue: "View product" })}
+                <ChevronRight style={{ width: 14, height: 14 }} />
+              </span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const mtype = (msg.messageType as MsgType) || (msg.imageUrl ? "image" : "text");
   const mediaUrl = msg.mediaUrl || msg.imageUrl || "";
   const isAudio = mtype === "audio" && !!mediaUrl;
@@ -1215,15 +1310,10 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // ── Hardware / WebView back-button fix ─────────────────────────────────────
-  // Problem: when inside a conversation the WebView may push extra history
-  // entries (media loads, link previews, etc.).  Calling window.history.back()
-  // would traverse those entries rather than returning to /messages.
-  // Solution: push a sentinel entry on mount so the hardware back button
-  // has exactly ONE thing to pop; intercept the resulting popstate event and
-  // navigate directly to /messages via wouter (bypasses the dirty history).
-  // The in-thread ArrowLeft button also calls window.history.back() so both
-  // paths converge through the same handler.
+  // ── Hardware / WebView / browser back ──────────────────────────────────────
+  // Push a sentinel so dirty WebView history does not trap the user.
+  // When chat was opened from Flexa Wholesale, return to that wholesale page
+  // (product + filters) instead of the generic inbox.
   useEffect(() => {
     if (onBack) return;
     const sentinel = { _flexaConvBack: convId };
@@ -1233,16 +1323,15 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     const onPop = () => {
       if (handled) return;
       handled = true;
-      setLocation("/messages");
+      const wholesaleReturn = consumeWholesaleChatReturn();
+      setLocation(wholesaleReturn || "/messages");
     };
 
     window.addEventListener("popstate", onPop);
     return () => {
       window.removeEventListener("popstate", onPop);
-      // If the sentinel is still on top (e.g. user navigated away via a Link),
-      // silently pop it so we don't leave garbage in the session history.
       if (window.history.state?._flexaConvBack === convId) {
-        handled = true;            // prevent onPop from firing again
+        handled = true;
         window.history.back();
       }
     };

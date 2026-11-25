@@ -20,6 +20,15 @@ import {
   parsePagination,
   resolveBuyerCountry,
 } from "../lib/wholesaleCountry";
+import {
+  WHOLESALE_CARD_MESSAGE_TYPE,
+  buildWholesaleCardPayload,
+  serializeWholesaleCard,
+  wholesaleCardClientMessageId,
+  wholesaleCardPreview,
+} from "../lib/wholesaleChatCard";
+import { emitConvUpdate, emitNewMessage } from "../lib/socketServer";
+import { publicDisplayName } from "../lib/publicDisplayName";
 
 const router = Router();
 
@@ -1191,7 +1200,8 @@ router.get("/wholesale/seller/stats", requireWholesaleAccess, async (req, res): 
 
 /**
  * Chat-only wholesale inquiry. Creates/reuses conversationType=wholesale
- * (listingId null) and seeds a "From Flexa Wholesale" opener.
+ * and seeds a durable product card (visible to buyer + seller). Dedupes by
+ * clientMessageId so reopening Chat does not spam duplicate cards.
  */
 router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res): Promise<void> => {
   const buyerId = req.userId!;
@@ -1204,7 +1214,9 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
     res.status(400).json({ error: "Invalid seller" });
     return;
   }
-  if (buyerId === sellerId) {
+  // Super Admin may open a preview thread on their own listing while wholesale
+  // is still SA-gated (WHOLESALE_PUBLIC_LAUNCH=false). Regular users cannot.
+  if (buyerId === sellerId && !isWholesaleSuperAdmin(req.user)) {
     res.status(400).json({ error: "Cannot chat with yourself" });
     return;
   }
@@ -1238,25 +1250,21 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
     return;
   }
 
-  const title = loaded.product.title || productTitle;
-  const marker = `[wholesale:${productId}]`;
-  const [existing] = await db
-    .select()
-    .from(conversationsTable)
-    .where(
-      and(
-        eq(conversationsTable.buyerId, buyerId),
-        eq(conversationsTable.sellerId, sellerId),
-        eq(conversationsTable.conversationType, "wholesale"),
-        sql`${conversationsTable.lastMessage} ILIKE ${`%${marker}%`}`,
-      ),
-    )
-    .limit(1);
-
-  if (existing) {
-    res.json({ id: existing.id, conversationType: "wholesale", productId });
-    return;
-  }
+  const product = loaded.product;
+  const card = buildWholesaleCardPayload({
+    productId: product.id,
+    title: product.title || productTitle,
+    image: Array.isArray(product.images) ? product.images[0] ?? null : null,
+    unitPrice: Number(product.unitPrice),
+    currency: product.currency,
+    minOrderQty: product.minOrderQty,
+    wholesaleUnitType: product.wholesaleUnitType,
+    qty,
+  });
+  const cardContent = serializeWholesaleCard(card);
+  const preview = wholesaleCardPreview(card);
+  const clientMessageId = wholesaleCardClientMessageId(productId);
+  const legacyMarker = `[wholesale:${productId}]`;
 
   const [open] = await db
     .select()
@@ -1271,22 +1279,10 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
     .orderBy(desc(conversationsTable.lastMessageAt))
     .limit(1);
 
-  const opener = `From Flexa Wholesale · ${title} · qty ${qty} ${marker}`;
+  let conversationId = open?.id ?? 0;
+  let createdConversation = false;
 
-  let conversationId: number;
-  if (open) {
-    await db.insert(messagesTable).values({
-      conversationId: open.id,
-      senderId: buyerId,
-      content: opener,
-      messageType: "text",
-    });
-    await db
-      .update(conversationsTable)
-      .set({ lastMessage: opener, lastMessageAt: new Date() })
-      .where(eq(conversationsTable.id, open.id));
-    conversationId = open.id;
-  } else {
+  if (!conversationId) {
     const [conv] = await db
       .insert(conversationsTable)
       .values({
@@ -1294,34 +1290,128 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
         buyerId,
         sellerId,
         conversationType: "wholesale",
-        lastMessage: opener,
+        lastMessage: preview,
         lastMessageAt: new Date(),
       })
       .returning();
-
-    await db.insert(messagesTable).values({
-      conversationId: conv.id,
-      senderId: buyerId,
-      content: opener,
-      messageType: "text",
-    });
     conversationId = conv.id;
+    createdConversation = true;
   }
+
+  // Deduplicate: same product card already in this conversation (or legacy opener).
+  const [existingCard] = await db
+    .select({ id: messagesTable.id })
+    .from(messagesTable)
+    .where(
+      and(
+        eq(messagesTable.conversationId, conversationId),
+        eq(messagesTable.isDeleted, false),
+        sql`(
+          ${messagesTable.clientMessageId} = ${clientMessageId}
+          OR ${messagesTable.content} ILIKE ${`%${legacyMarker}%`}
+          OR (
+            ${messagesTable.messageType} = ${WHOLESALE_CARD_MESSAGE_TYPE}
+            AND ${messagesTable.content} ILIKE ${`%"productId":${productId}%`}
+          )
+        )`,
+      ),
+    )
+    .limit(1);
+
+  if (existingCard) {
+    res.json({
+      id: conversationId,
+      conversationType: "wholesale",
+      productId,
+      cardInserted: false,
+    });
+    return;
+  }
+
+  const [msg] = await db
+    .insert(messagesTable)
+    .values({
+      conversationId,
+      senderId: buyerId,
+      content: cardContent,
+      messageType: WHOLESALE_CARD_MESSAGE_TYPE,
+      imageUrl: card.image,
+      mediaUrl: card.image,
+      clientMessageId,
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  // Unique index race: another request inserted the same clientMessageId.
+  if (!msg) {
+    res.json({
+      id: conversationId,
+      conversationType: "wholesale",
+      productId,
+      cardInserted: false,
+    });
+    return;
+  }
+
+  await db
+    .update(conversationsTable)
+    .set({ lastMessage: preview, lastMessageAt: msg.createdAt })
+    .where(eq(conversationsTable.id, conversationId));
 
   await db.insert(wholesaleInquiriesTable).values({
     buyerId,
     sellerId,
     productId,
     qty,
-    message: opener,
+    message: preview,
     status: "open",
     conversationId,
   });
 
-  res.status(open ? 200 : 201).json({
+  const [sender] = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      avatar: usersTable.avatar,
+      isAdmin: usersTable.isAdmin,
+      isSuperAdmin: usersTable.isSuperAdmin,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, buyerId))
+    .limit(1);
+
+  const msgPayload = {
+    id: msg.id,
+    conversationId,
+    senderId: buyerId,
+    senderName: publicDisplayName(sender?.name),
+    senderAvatar: sender?.avatar ?? null,
+    senderIsAdmin: !!(sender?.isAdmin || sender?.isSuperAdmin),
+    content: msg.content,
+    messageType: msg.messageType,
+    mediaUrl: msg.mediaUrl ?? null,
+    imageUrl: msg.imageUrl ?? null,
+    isRead: false,
+    isListened: false,
+    isDeleted: false,
+    clientMessageId: msg.clientMessageId ?? null,
+    createdAt: msg.createdAt.toISOString(),
+  };
+  try {
+    emitNewMessage(conversationId, msgPayload);
+    emitConvUpdate(conversationId, {
+      lastMessage: preview,
+      lastMessageAt: msg.createdAt.toISOString(),
+    });
+  } catch {
+    /* socket optional */
+  }
+
+  res.status(createdConversation ? 201 : 200).json({
     id: conversationId,
     conversationType: "wholesale",
     productId,
+    cardInserted: true,
   });
 });
 

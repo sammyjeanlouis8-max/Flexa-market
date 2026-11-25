@@ -69,6 +69,14 @@ export default function WholesaleProductScreen() {
     }
     setChatting(true);
     try {
+      const { saveWholesaleNavContext } = await import("@/lib/wholesaleNavContext");
+      await saveWholesaleNavContext(
+        {
+          path: `/wholesale/products/${product.id}`,
+          productId: product.id,
+        },
+        { markChatReturn: true },
+      );
       const conv = await startWholesaleChat(
         {
           sellerId: product.sellerId,

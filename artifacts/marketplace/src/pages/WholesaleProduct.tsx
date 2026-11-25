@@ -9,8 +9,10 @@ import {
   fetchWholesaleProduct,
   formatMoney,
   priceForQty,
+  startWholesaleChat,
   type WholesaleProduct,
 } from "@/lib/wholesaleApi";
+import { captureWholesalePageForChat, restoreWholesaleScroll, readWholesaleNavContext } from "@/lib/wholesaleNavContext";
 
 export default function WholesaleProductPage() {
   const { t } = useTranslation();
@@ -23,6 +25,7 @@ export default function WholesaleProductPage() {
   const [qty, setQty] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [chatting, setChatting] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -60,6 +63,14 @@ export default function WholesaleProductPage() {
     };
   }, [allowed, id, t]);
 
+  useEffect(() => {
+    if (!allowed || loading) return;
+    const ctx = readWholesaleNavContext();
+    if (ctx?.productId === id || (ctx?.path || "").includes(`/wholesale/products/${id}`)) {
+      restoreWholesaleScroll(ctx);
+    }
+  }, [allowed, loading, id]);
+
   const unit = useMemo(() => (product ? priceForQty(product, qty) : 0), [product, qty]);
   const total = unit * qty;
   const place = product
@@ -70,6 +81,30 @@ export default function WholesaleProductPage() {
     (product?.offersWarehousePickup
       ? t("wholesale.pickup", { defaultValue: "Warehouse pickup available" })
       : null);
+
+  const onChatSeller = async () => {
+    if (!product || chatting) return;
+    if (user?.id === product.sellerId) {
+      setError(t("wholesale.ownListing", { defaultValue: "That's your listing — open Seller to edit it." }));
+      return;
+    }
+    setChatting(true);
+    setError(null);
+    try {
+      captureWholesalePageForChat({ productId: product.id });
+      const conv = await startWholesaleChat({
+        sellerId: product.sellerId,
+        productId: product.id,
+        productTitle: product.title,
+        qty,
+      });
+      setLocation(`/messages/${conv.id}`);
+    } catch (err: any) {
+      setError(err?.message || t("wholesale.chatFailed", { defaultValue: "Could not start chat" }));
+    } finally {
+      setChatting(false);
+    }
+  };
 
   if (authLoading || !allowed) {
     return (
@@ -197,14 +232,18 @@ export default function WholesaleProductPage() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <Link
-                href={`/messages?userId=${product.sellerId}`}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[hsl(152,55%,28%)] text-sm font-bold text-white"
+              <button
+                type="button"
+                onClick={() => void onChatSeller()}
+                disabled={chatting}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[hsl(152,55%,28%)] text-sm font-bold text-white disabled:opacity-70"
                 data-testid="wholesale-chat-seller"
               >
                 <MessageCircle className="h-4 w-4" />
-                {t("wholesale.contactSeller", { defaultValue: "Chat with seller" })}
-              </Link>
+                {chatting
+                  ? t("common.loading", { defaultValue: "Loading…" })
+                  : t("wholesale.contactSeller", { defaultValue: "Chat with seller" })}
+              </button>
               {(depot || place) && (
                 <div className="space-y-1 rounded-xl border border-[hsl(152,30%,80%)] bg-[hsl(152,35%,96%)] px-3 py-2.5 text-xs text-[hsl(152,40%,28%)] dark:border-[hsl(152,20%,28%)] dark:bg-[hsl(152,18%,14%)] dark:text-[hsl(152,30%,78%)]">
                   {depot && (

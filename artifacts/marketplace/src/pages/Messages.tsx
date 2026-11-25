@@ -23,6 +23,7 @@ import {
   FLEXA,
 } from "./messages/chatTheme";
 import { publicDisplayName } from "@/lib/publicDisplayName";
+import { consumeWholesaleChatReturn, peekWholesaleChatReturn } from "@/lib/wholesaleNavContext";
 
 const MessageThread = lazy(() =>
   import("./messages/MessageThread").then((m) => ({ default: m.MessageThread }))
@@ -563,7 +564,14 @@ export default function Messages({ embedded = false, onClose, initialConversatio
         >
           <button
             type="button"
-            onClick={() => embedded ? onClose?.() : setLocation("/")}
+            onClick={() => {
+              if (embedded) {
+                onClose?.();
+                return;
+              }
+              const wholesaleReturn = consumeWholesaleChatReturn();
+              setLocation(wholesaleReturn || "/");
+            }}
             aria-label={t("messages.back")}
             style={{
               width: 36, height: 36, borderRadius: 10, background: "none",
@@ -790,7 +798,16 @@ export default function Messages({ embedded = false, onClose, initialConversatio
                 convId={convId}
                 theme={theme}
                 onToggleTheme={toggleTheme}
-                onBack={embedded ? () => setEmbeddedConvId(null) : undefined}
+                onBack={
+                  embedded
+                    ? () => setEmbeddedConvId(null)
+                    : peekWholesaleChatReturn()
+                      ? () => {
+                          const wholesaleReturn = consumeWholesaleChatReturn();
+                          setLocation(wholesaleReturn || "/messages");
+                        }
+                      : undefined
+                }
               />
             </Suspense>
           </ThreadBoundary>

@@ -83,10 +83,21 @@ function formatLastSeen(lastSeenAt: string | null, t: (k: string, o?: any) => st
 
 function normalizeUploadMime(raw: string, fallback: string): string {
   const base = String(raw || "").split(";")[0].trim().toLowerCase();
+  // iOS MediaRecorder sometimes labels AAC/M4A voice as video/mp4 or audio/x-m4a.
+  if (base === "video/mp4" || base === "audio/x-m4a" || base === "audio/aac") {
+    return "audio/mp4";
+  }
+  if (base === "audio/m4a") return "audio/m4a";
   if (base.startsWith("audio/") || base.startsWith("image/") || base.startsWith("video/")) {
     return base;
   }
   return fallback;
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = (error as { name?: string }).name;
+  return name === "AbortError" || name === "TimeoutError";
 }
 
 async function uploadMedia(
@@ -98,10 +109,23 @@ async function uploadMedia(
   if (!file.size || file.size < 1) {
     throw new Error("Empty media file");
   }
+  if (!token) {
+    throw new Error("Not signed in");
+  }
   const mime = normalizeUploadMime(contentType || file.type, "application/octet-stream");
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
+  let timeoutId = 0;
+
+  // WKWebView / some Android WebViews ignore fetch AbortSignal on body uploads.
+  // Promise.race guarantees we always settle so the voice queue cannot jam.
+  const hardTimeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      try { controller.abort(); } catch { /* ignore */ }
+      reject(new Error("Upload timed out"));
+    }, timeoutMs);
+  });
+
+  const run = async (): Promise<string> => {
     const presignRes = await fetch("/api/storage/uploads/request-url", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -137,13 +161,17 @@ async function uploadMedia(
       }
     } catch { /* non-JSON response — fall back */ }
     return `/api/storage/objects${(objectPath as string).replace(/^\/objects/, "")}`;
+  };
+
+  try {
+    return await Promise.race([run(), hardTimeout]);
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (isAbortError(error) || (error instanceof Error && /timed out/i.test(error.message))) {
       throw new Error("Upload timed out");
     }
     throw error;
   } finally {
-    window.clearTimeout(timer);
+    window.clearTimeout(timeoutId);
   }
 }
 
@@ -568,10 +596,20 @@ function PendingVoiceBubble({
 }) {
   const { t, i18n } = useTranslation();
   const [src, setSrc] = useState("");
+  const [staleUpload, setStaleUpload] = useState(false);
   const offline = typeof navigator !== "undefined" && !navigator.onLine;
   const status = item.status
     || (isSending ? (item.mediaUrl ? "sending" : "uploading") : item.lastError ? "failed" : offline ? "waiting_connection" : "queued");
-  const failed = status === "failed" && !isSending;
+  // If a WebView upload never settles, surface retry instead of eternal "Uploading..."
+  useEffect(() => {
+    if (status !== "uploading" && status !== "sending") {
+      setStaleUpload(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setStaleUpload(true), 50_000);
+    return () => window.clearTimeout(timer);
+  }, [status, item.id, item.createdAt]);
+  const failed = (status === "failed" && !isSending) || staleUpload;
   const waiting = status === "waiting_connection" || (offline && !isSending && !failed);
   const statusLabel = t(
     failed ? "messages.voiceNotSent"
@@ -1121,6 +1159,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     finalize: () => Promise<void>;
   } | null>(null);
   const voiceBusyRef = useRef(false);
+  const cancelledVoiceIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!showEmojiPanel) return;
@@ -1740,9 +1779,12 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     }), [convId, queryClient, sendMsg]);
 
     const cancelPendingVoiceSend = useCallback(async (id: string) => {
+      cancelledVoiceIdsRef.current.add(id);
       await removePendingVoice(id).catch(() => {});
       setPendingVoices((current) => current.filter((voice) => voice.id !== id));
       if (sendingVoiceId === id) setSendingVoiceId(null);
+      // Unstick the queue if cancel happened while a hung WebView upload held the lock.
+      voiceQueueBusyRef.current = false;
     }, [sendingVoiceId]);
 
     const flushPendingVoices = useCallback(async () => {
@@ -1763,6 +1805,10 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           return;
         }
         for (const item of pending) {
+          if (cancelledVoiceIdsRef.current.has(item.id)) {
+            await removePendingVoice(item.id).catch(() => {});
+            continue;
+          }
           setSendingVoiceId(item.id);
           try {
             let mediaUrl = item.mediaUrl;
@@ -1775,13 +1821,21 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   voice.id === item.id ? { ...voice, status: "uploading", lastError: undefined } : voice,
                 ),
               );
-              const token = localStorage.getItem("flexamarket_token") ?? "";
+              const authToken =
+                token
+                || localStorage.getItem("flexamarket_token")
+                || sessionStorage.getItem("flexamarket_token")
+                || "";
               const mime = normalizeUploadMime(
                 item.mimeType,
                 /iPad|iPhone|iPod/.test(navigator.userAgent) ? "audio/mp4" : "audio/webm",
               );
               const blob = new Blob([item.bytes], { type: mime });
-              mediaUrl = await uploadMedia(blob, mime, token);
+              mediaUrl = await uploadMedia(blob, mime, authToken);
+              if (cancelledVoiceIdsRef.current.has(item.id)) {
+                await removePendingVoice(item.id).catch(() => {});
+                continue;
+              }
               await updatePendingVoice(item.id, { mediaUrl, status: "sending" });
             } else {
               await updatePendingVoice(item.id, { status: "sending", lastError: undefined });
@@ -1793,9 +1847,15 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               content: "",
               clientMessageId: item.id,
             });
+            cancelledVoiceIdsRef.current.delete(item.id);
             await removePendingVoice(item.id);
             setPendingVoices(current => current.filter(voice => voice.id !== item.id));
           } catch (error) {
+            if (cancelledVoiceIdsRef.current.has(item.id)) {
+              await removePendingVoice(item.id).catch(() => {});
+              setPendingVoices((current) => current.filter((voice) => voice.id !== item.id));
+              continue;
+            }
             const failure = {
               attempts: item.attempts + 1,
               lastError: error instanceof Error ? error.message : "Voice delivery failed",
@@ -1813,9 +1873,11 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       } finally {
         voiceQueueBusyRef.current = false;
       }
-    }, [convId, isRestricted, sendQueuedVoice]);
+    }, [convId, isRestricted, sendQueuedVoice, token]);
 
     useEffect(() => {
+      cancelledVoiceIdsRef.current.clear();
+      voiceQueueBusyRef.current = false;
       const wakeQueue = () => { void flushPendingVoices(); };
       void flushPendingVoices();
       window.addEventListener("online", wakeQueue);
@@ -1827,6 +1889,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         window.removeEventListener("focus", wakeQueue);
         document.removeEventListener("visibilitychange", wakeQueue);
         window.clearInterval(retryTimer);
+        voiceQueueBusyRef.current = false;
       };
     }, [flushPendingVoices]);
 

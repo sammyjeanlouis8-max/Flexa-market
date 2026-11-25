@@ -58,6 +58,10 @@ function injectChatAnimations() {
     @keyframes menuIn { from { transform: scale(0.92) translateY(4px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes recordWave { from { transform: scaleY(0.55); } to { transform: scaleY(1); } }
+    @keyframes wa-voice-spin {
+      from { transform: rotate(-90deg); }
+      to { transform: rotate(270deg); }
+    }
     .msg-bubble-anim { animation: msgIn 120ms ease-out; }
     .menu-anim { animation: menuIn 100ms ease-out; }
     /* iOS/WebView: long-press must open our menu, not native blue text handles */
@@ -163,8 +167,12 @@ async function uploadMedia(
     return `/api/storage/objects${(objectPath as string).replace(/^\/objects/, "")}`;
   };
 
+  // Keep a handle so a late AbortError after timeout cannot become unhandled.
+  const runPromise = run();
+  void runPromise.catch(() => {});
+
   try {
-    return await Promise.race([run(), hardTimeout]);
+    return await Promise.race([runPromise, hardTimeout]);
   } catch (error) {
     if (isAbortError(error) || (error instanceof Error && /timed out/i.test(error.message))) {
       throw new Error("Upload timed out");
@@ -301,12 +309,19 @@ const VOICE_BARS = [
   0.30,0.72,0.48,1.00,0.65,0.85,0.38,0.90,0.62,0.45,0.78,0.32,
 ];
 
+type VoicePendingPhase = "queued" | "uploading" | "sending" | "waiting" | "failed";
+
 const AudioBubble = React.memo(function AudioBubble({
   src, isMe, theme, timestamp, statusIcon, isListened, onListened,
+  pendingPhase, onCancelPending, onRetryPending,
 }: {
   src: string; isMe: boolean; theme: (typeof T)[ChatTheme];
   timestamp: string; statusIcon: React.ReactNode;
   isListened: boolean; onListened?: () => void;
+  /** WhatsApp-style pending send: progress+X replaces play; no status text row. */
+  pendingPhase?: VoicePendingPhase | null;
+  onCancelPending?: () => void;
+  onRetryPending?: () => void;
 }) {
   const { t } = useTranslation();
   const audioRef     = useRef<HTMLAudioElement>(null);
@@ -323,6 +338,8 @@ const AudioBubble = React.memo(function AudioBubble({
   const [fracSnap, setFracSnap] = useState(0); // low-freq React state for time display
   const [playbackError, setPlaybackError] = useState(false);
   const [playbackRate, setPlaybackRate] = useState<1 | 1.5 | 2>(1);
+  const inFlight = pendingPhase === "uploading" || pendingPhase === "sending";
+  const pendingFailed = pendingPhase === "failed";
 
   const N = VOICE_BARS.length;
 
@@ -478,30 +495,64 @@ const AudioBubble = React.memo(function AudioBubble({
 
       <div style={{ display: "flex", alignItems: "center", gap: 6, height: 32 }}>
 
-        {/* ── Play / Pause button — filled circle WhatsApp style ── */}
-        <button
-          type="button" onClick={toggle}
-          aria-label={t(playing ? "messages.voicePause" : "messages.voicePlay")}
-          style={{
-            flexShrink: 0, width: 32, height: 32, borderRadius: "50%",
-            background: isMe ? (theme.isDark ? "rgba(255,255,255,0.2)" : "#c8e6bb") : (theme.isDark ? "rgba(255,255,255,0.1)" : "#ecf0e9"),
-            border: "none", cursor: "pointer", padding: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: iconColor, transition: "background 0.15s",
-            WebkitTapHighlightColor: "transparent",
-          }}
-        >
-          {playing ? (
-            <span style={{ display: "flex", gap: 2.5, alignItems: "center" }}>
-              <span style={{ width: 3, height: 11, borderRadius: 1.5, background: "currentColor", display: "block" }} />
-              <span style={{ width: 3, height: 11, borderRadius: 1.5, background: "currentColor", display: "block" }} />
-            </span>
-          ) : (
-            <svg width="11" height="13" viewBox="0 0 13 15" fill="currentColor" style={{ marginLeft: 2 }}>
-              <path d="M0 0 L13 7.5 L0 15 Z" />
+        {/* ── Play / Pause — or WhatsApp upload cancel (progress ring + X) ── */}
+        {inFlight ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onCancelPending?.(); }}
+            aria-label={t("messages.voiceCancelSend")}
+            title={t("messages.voiceCancelSend")}
+            style={{
+              flexShrink: 0, width: 34, height: 34, borderRadius: "50%",
+              background: "transparent", border: "none", cursor: "pointer", padding: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              position: "relative", color: iconColor,
+              WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
+              <circle cx="17" cy="17" r="14" fill="none" stroke={isMe ? (theme.isDark ? "rgba(255,255,255,0.22)" : "rgba(36,58,49,0.18)") : "rgba(0,0,0,0.12)"} strokeWidth="2.5" />
+              <circle
+                cx="17" cy="17" r="14" fill="none"
+                stroke={isMe ? (theme.isDark ? "#86efac" : "#1f6b3a") : "#2a76d8"}
+                strokeWidth="2.5" strokeLinecap="round"
+                strokeDasharray="66 88" strokeDashoffset="0"
+                style={{ transformOrigin: "17px 17px", animation: "wa-voice-spin 1s linear infinite" }}
+              />
             </svg>
-          )}
-        </button>
+            <span style={{
+              width: 22, height: 22, borderRadius: "50%",
+              background: isMe ? (theme.isDark ? "rgba(255,255,255,0.2)" : "#c8e6bb") : (theme.isDark ? "rgba(255,255,255,0.12)" : "#ecf0e9"),
+              display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1,
+            }}>
+              <X style={{ width: 13, height: 13 }} strokeWidth={2.75} />
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button" onClick={toggle}
+            aria-label={t(playing ? "messages.voicePause" : "messages.voicePlay")}
+            style={{
+              flexShrink: 0, width: 32, height: 32, borderRadius: "50%",
+              background: isMe ? (theme.isDark ? "rgba(255,255,255,0.2)" : "#c8e6bb") : (theme.isDark ? "rgba(255,255,255,0.1)" : "#ecf0e9"),
+              border: "none", cursor: "pointer", padding: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: iconColor, transition: "background 0.15s",
+              WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            {playing ? (
+              <span style={{ display: "flex", gap: 2.5, alignItems: "center" }}>
+                <span style={{ width: 3, height: 11, borderRadius: 1.5, background: "currentColor", display: "block" }} />
+                <span style={{ width: 3, height: 11, borderRadius: 1.5, background: "currentColor", display: "block" }} />
+              </span>
+            ) : (
+              <svg width="11" height="13" viewBox="0 0 13 15" fill="currentColor" style={{ marginLeft: 2 }}>
+                <path d="M0 0 L13 7.5 L0 15 Z" />
+              </svg>
+            )}
+          </button>
+        )}
 
         {/* ── Waveform ── */}
         <div style={{ flex: 1, minWidth: 24, position: "relative", height: 18 }}>
@@ -533,24 +584,26 @@ const AudioBubble = React.memo(function AudioBubble({
           />
         </div>
 
-        {/* Time + speed + metadata */}
+        {/* Time + speed + metadata — WhatsApp: duration + clock/ticks, no status prose */}
         <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1));
-            }}
-            aria-label={t("messages.playbackSpeed", { defaultValue: "Playback speed" })}
-            style={{
-              border: "none", cursor: "pointer", borderRadius: 8,
-              padding: "2px 5px", fontSize: 10, fontWeight: 800,
-              background: isMe ? (theme.isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : (theme.isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)"),
-              color: timeColor, minWidth: 28, minHeight: 22,
-            }}
-          >
-            {playbackRate === 1 ? "1x" : playbackRate === 1.5 ? "1.5x" : "2x"}
-          </button>
+          {!inFlight && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1));
+              }}
+              aria-label={t("messages.playbackSpeed", { defaultValue: "Playback speed" })}
+              style={{
+                border: "none", cursor: "pointer", borderRadius: 8,
+                padding: "2px 5px", fontSize: 10, fontWeight: 800,
+                background: isMe ? (theme.isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : (theme.isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)"),
+                color: timeColor, minWidth: 28, minHeight: 22,
+              }}
+            >
+              {playbackRate === 1 ? "1x" : playbackRate === 1.5 ? "1.5x" : "2x"}
+            </button>
+          )}
           <Mic style={{
             width: 11, height: 11, flexShrink: 0,
             color: micColor,
@@ -564,9 +617,25 @@ const AudioBubble = React.memo(function AudioBubble({
             {fmtSecs(duration)}
           </span>
           <span style={{ fontSize: 10, color: timeColor, whiteSpace: "nowrap" }}>{timestamp}</span>
-          {statusIcon && (
+          {pendingFailed ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRetryPending?.(); }}
+              aria-label={t("messages.voiceRetry")}
+              title={t("messages.voiceNotSent")}
+              style={{
+                border: "none", cursor: "pointer", padding: 0,
+                width: 16, height: 16, borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: theme.isDark ? "#F87171" : "#DC2626",
+                color: "#fff", fontSize: 11, fontWeight: 800, lineHeight: 1,
+              }}
+            >
+              !
+            </button>
+          ) : statusIcon ? (
             <span style={{ display: "flex", alignItems: "center" }}>{statusIcon}</span>
-          )}
+          ) : null}
         </div>
       </div>
       {playbackError && (
@@ -600,7 +669,7 @@ function PendingVoiceBubble({
   const offline = typeof navigator !== "undefined" && !navigator.onLine;
   const status = item.status
     || (isSending ? (item.mediaUrl ? "sending" : "uploading") : item.lastError ? "failed" : offline ? "waiting_connection" : "queued");
-  // If a WebView upload never settles, surface retry instead of eternal "Uploading..."
+  // If a WebView upload never settles, surface retry instead of eternal in-flight UI.
   useEffect(() => {
     if (status !== "uploading" && status !== "sending") {
       setStaleUpload(false);
@@ -611,12 +680,20 @@ function PendingVoiceBubble({
   }, [status, item.id, item.createdAt]);
   const failed = (status === "failed" && !isSending) || staleUpload;
   const waiting = status === "waiting_connection" || (offline && !isSending && !failed);
+  const phase: VoicePendingPhase = failed
+    ? "failed"
+    : status === "uploading"
+      ? "uploading"
+      : status === "sending" || isSending
+        ? "sending"
+        : waiting
+          ? "waiting"
+          : "queued";
   const statusLabel = t(
     failed ? "messages.voiceNotSent"
-      : status === "uploading" ? "messages.voiceUploading"
-        : status === "sending" || isSending ? "messages.voiceSending"
-          : waiting ? "messages.voiceWaitingConnection"
-            : "messages.voiceWaiting",
+      : phase === "uploading" || phase === "sending" ? "messages.voiceSending"
+        : waiting ? "messages.voiceWaitingConnection"
+          : "messages.voiceWaiting",
   );
 
   useEffect(() => {
@@ -624,6 +701,30 @@ function PendingVoiceBubble({
     setSrc(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [item.bytes, item.mimeType]);
+
+  // WhatsApp clock while pending — never "Sending…" / "Cancel send" text under the bubble.
+  const clockIcon = (
+    <span
+      title={statusLabel}
+      aria-label={statusLabel}
+      role="status"
+      style={{
+        width: 14, height: 14, borderRadius: "50%",
+        border: `1.5px solid ${theme.timeOut}`,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        position: "relative", boxSizing: "border-box",
+      }}
+    >
+      <span style={{
+        position: "absolute", width: 1.5, height: 4, background: theme.timeOut,
+        top: 2.5, left: "50%", marginLeft: -0.75, borderRadius: 1, transformOrigin: "50% 100%",
+      }} />
+      <span style={{
+        position: "absolute", width: 3.5, height: 1.5, background: theme.timeOut,
+        top: 5.5, left: "50%", marginLeft: -0.5, borderRadius: 1,
+      }} />
+    </span>
+  );
 
   return (
     <div
@@ -641,7 +742,6 @@ function PendingVoiceBubble({
         border: (theme as any).bubbleOutBorder ? `1px solid ${(theme as any).bubbleOutBorder}` : undefined,
         boxShadow: !theme.isDark ? "0 3px 10px rgba(34,55,41,0.055)" : undefined,
         overflow: "hidden",
-        opacity: 0.92,
         WebkitUserSelect: "none",
         userSelect: "none",
       }}>
@@ -651,41 +751,13 @@ function PendingVoiceBubble({
             isMe
             theme={theme}
             timestamp={formatChatTime(item.createdAt, i18n.language)}
-            statusIcon={(
-              <span
-                title={statusLabel}
-                aria-label={statusLabel}
-                role="status"
-                style={{ fontSize: 11, lineHeight: 1, color: theme.timeOut, fontWeight: 700 }}
-              >
-                {isSending || status === "uploading" || status === "sending"
-                  ? <Loader2 aria-hidden="true" className="animate-spin" style={{ width: 11, height: 11 }} />
-                  : failed ? "!" : "◷"}
-              </span>
-            )}
+            statusIcon={failed ? null : clockIcon}
             isListened={false}
+            pendingPhase={phase}
+            onCancelPending={onCancel}
+            onRetryPending={onRetry}
           />
         )}
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10,
-          width: "100%", minHeight: 32, padding: "0 10px 8px",
-          color: failed ? (theme.isDark ? "#FCA5A5" : "#991B1B") : theme.timeOut,
-          fontSize: 11, fontWeight: 600,
-        }}>
-          <span>{statusLabel}</span>
-          {failed ? (
-            <button type="button" onClick={onRetry}
-              aria-label={t("messages.voiceRetry")}
-              style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", fontWeight: 700, textDecoration: "underline", padding: 0 }}>
-              {t("messages.voiceRetry")}
-            </button>
-          ) : null}
-          <button type="button" onClick={onCancel}
-            aria-label={t("messages.voiceCancelSend")}
-            style={{ border: "none", background: "transparent", cursor: "pointer", color: "inherit", fontWeight: 700, textDecoration: "underline", padding: 0 }}>
-            {t("messages.voiceCancelSend")}
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -1876,7 +1948,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     }, [convId, isRestricted, sendQueuedVoice, token]);
 
     useEffect(() => {
-      cancelledVoiceIdsRef.current.clear();
+      // Do not clear cancelledVoiceIdsRef here — token/callback churn would
+      // re-queue a voice the user just cancelled mid-upload.
       voiceQueueBusyRef.current = false;
       const wakeQueue = () => { void flushPendingVoices(); };
       void flushPendingVoices();
@@ -1890,6 +1963,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         document.removeEventListener("visibilitychange", wakeQueue);
         window.clearInterval(retryTimer);
         voiceQueueBusyRef.current = false;
+        cancelledVoiceIdsRef.current.clear();
       };
     }, [flushPendingVoices]);
 

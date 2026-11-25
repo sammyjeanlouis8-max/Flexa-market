@@ -529,6 +529,9 @@ export default function ChatThreadScreen() {
     cancelledVoiceIds.current.add(id);
     await removeVoiceOutbox(id);
     setPendingVoices((prev) => prev.filter((row) => row.id !== id));
+    if (flushingVoiceId === id) setFlushingVoiceId(null);
+    // Unstick the outbox if cancel happened while a hung upload held the lock.
+    voiceFlushBusy.current = false;
   };
 
   const onLongPressMessage = (item: ChatMessage) => {
@@ -665,30 +668,59 @@ export default function ChatThreadScreen() {
           renderItem={({ item }) => {
             if (item.kind === "voice") {
               const pending = item.item;
-              const busy = flushingVoiceId === pending.id;
-              const failed = pending.status === "failed" && !busy;
+              const busy =
+                flushingVoiceId === pending.id
+                || pending.status === "uploading"
+                || pending.status === "sending";
+              const failed = pending.status === "failed" && flushingVoiceId !== pending.id;
+              const statusHint = voiceStatusLabel(pending);
               return (
                 <View style={[styles.bubbleWrap, styles.mine]}>
                   <View style={[styles.bubble, styles.bubbleMine, styles.voiceBubble]}>
+                    {/* WhatsApp-style: progress+X while sending; no "Sending…" / "Cancel send" text */}
                     <View style={styles.audioBtn}>
-                      <Feather name="mic" size={16} color="#fff" />
-                      <Text style={[styles.msgText, styles.msgTextMine]} selectable={false}>
-                        {copy.voice}
-                      </Text>
-                    </View>
-                    <Text style={[styles.msgTime, styles.msgTimeMine]} selectable={false}>
-                      {formatBubbleClock(new Date(pending.createdAt).toISOString())} ·{" "}
-                      {voiceStatusLabel(pending)}
-                    </Text>
-                    <View style={styles.pendingActions}>
-                      {failed ? (
-                        <Pressable onPress={() => void flushVoiceOutbox()} hitSlop={8}>
-                          <Text style={styles.pendingAction}>{copy.tryAgain}</Text>
+                      {busy ? (
+                        <Pressable
+                          onPress={() => void cancelVoice(pending.id)}
+                          hitSlop={8}
+                          accessibilityLabel={copy.cancelSend}
+                          style={styles.waCancelBtn}
+                        >
+                          <ActivityIndicator size="small" color="#ECFDF5" style={styles.waSpin} />
+                          <View style={styles.waCancelInner}>
+                            <Feather name="x" size={14} color="#14532D" />
+                          </View>
                         </Pressable>
-                      ) : null}
-                      <Pressable onPress={() => void cancelVoice(pending.id)} hitSlop={8}>
-                        <Text style={styles.pendingAction}>{copy.cancelSend}</Text>
-                      </Pressable>
+                      ) : failed ? (
+                        <Pressable
+                          onPress={() => void flushVoiceOutbox()}
+                          hitSlop={8}
+                          accessibilityLabel={copy.tryAgain}
+                          style={styles.waFailBtn}
+                        >
+                          <Text style={styles.waFailMark}>!</Text>
+                        </Pressable>
+                      ) : (
+                        <View style={styles.waPlayIdle}>
+                          <Feather name="play" size={14} color="#14532D" />
+                        </View>
+                      )}
+                      <View style={styles.waWave}>
+                        {[0.35, 0.7, 0.45, 1, 0.55, 0.85, 0.4, 0.75].map((h, i) => (
+                          <View key={i} style={[styles.waBar, { height: 8 + h * 14 }]} />
+                        ))}
+                      </View>
+                      <Text style={[styles.msgTime, styles.msgTimeMine]} selectable={false}>
+                        {formatBubbleClock(new Date(pending.createdAt).toISOString())}
+                      </Text>
+                      {failed ? null : (
+                        <Feather
+                          name="clock"
+                          size={12}
+                          color="rgba(255,255,255,0.9)"
+                          accessibilityLabel={statusHint}
+                        />
+                      )}
                     </View>
                   </View>
                 </View>
@@ -871,7 +903,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
-  voiceBubble: { minWidth: 168 },
+  voiceBubble: { minWidth: 200, paddingTop: 8, paddingBottom: 8 },
   msgText: { color: "#0F172A", fontSize: 15, lineHeight: 21 },
   msgTextMine: { color: "#FFFFFF" },
   deleted: { color: "#94A3B8", fontStyle: "italic", fontSize: 13 },
@@ -886,26 +918,62 @@ const styles = StyleSheet.create({
   },
   msgImage: { width: 220, height: 220, borderRadius: 12 },
   msgVideo: { width: 220, height: 160, borderRadius: 12, backgroundColor: "#0F172A" },
-  audioBtn: { flexDirection: "row", alignItems: "center", gap: 8 },
+  audioBtn: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 34 },
+  waCancelBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  waSpin: { position: "absolute" },
+  waCancelInner: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#BBF7D0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  waFailBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  waFailMark: { color: "#fff", fontWeight: "900", fontSize: 14, lineHeight: 16 },
+  waPlayIdle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#BBF7D0",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingLeft: 2,
+  },
+  waWave: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    height: 24,
+    minWidth: 72,
+  },
+  waBar: {
+    flex: 1,
+    minWidth: 2,
+    borderRadius: 99,
+    backgroundColor: "rgba(255,255,255,0.55)",
+  },
   msgTime: {
     alignSelf: "flex-end",
     fontSize: 10,
     color: "#94A3B8",
     marginTop: 4,
   },
-  msgTimeMine: { color: "rgba(255,255,255,0.85)" },
-  pendingActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 12,
-    marginTop: 6,
-  },
-  pendingAction: {
-    color: "rgba(255,255,255,0.95)",
-    fontSize: 11,
-    fontWeight: "700",
-    textDecorationLine: "underline",
-  },
+  msgTimeMine: { color: "rgba(255,255,255,0.85)", marginTop: 0 },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",

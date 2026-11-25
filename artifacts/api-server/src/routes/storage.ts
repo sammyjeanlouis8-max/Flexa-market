@@ -204,17 +204,31 @@ router.put("/storage/uploads/put-proxy/:token", optionalAuth, async (req: Reques
     res.status(404).json({ error: "Upload link is invalid, expired, or already used." });
     return;
   }
-  if (uploadToken.ownerId && req.user?.id !== uploadToken.ownerId) {
+  if (
+    uploadToken.ownerId != null &&
+    Number(req.user?.id) !== Number(uploadToken.ownerId)
+  ) {
     req.resume();
-    res.status(403).json({ error: "This upload link belongs to another account." });
+    res.status(403).json({
+      error: req.user
+        ? "This upload link belongs to another account."
+        : "Sign in required to complete this upload.",
+    });
     return;
   }
 
   try {
-    validateMimeType(contentType);
+    // Treat iOS voice labelled as video/mp4 the same as audio/mp4 (token may be either).
+    const normalizeVoiceMime = (value: string) =>
+      value === "video/mp4" || value === "audio/x-m4a" || value === "audio/aac"
+        ? "audio/mp4"
+        : value;
+    const normalizedIncoming = normalizeVoiceMime(contentType);
+    const normalizedToken = normalizeVoiceMime(uploadToken.contentType);
+    validateMimeType(normalizedIncoming);
     if (
-      uploadToken.contentType !== "application/octet-stream" &&
-      contentType !== uploadToken.contentType
+      normalizedToken !== "application/octet-stream" &&
+      normalizedIncoming !== normalizedToken
     ) {
       req.resume();
       res.status(400).json({ error: "File type does not match the upload request." });
@@ -222,14 +236,26 @@ router.put("/storage/uploads/put-proxy/:token", optionalAuth, async (req: Reques
     }
 
     const clHeader = req.headers["content-length"];
-    const contentLength = clHeader ? parseInt(clHeader, 10) : 0;
+    const parsedLength = clHeader ? parseInt(clHeader, 10) : NaN;
+    // WKWebView / some proxies omit Content-Length on PUT. The signed token
+    // already carries expectedBytes — use that so short voice notes can upload.
+    const contentLength =
+      Number.isFinite(parsedLength) && parsedLength > 0
+        ? parsedLength
+        : uploadToken.expectedBytes;
     if (!contentLength || contentLength <= 0) {
       res.status(411).json({ error: "Content-Length header is required for uploads." });
       return;
     }
+    if (contentLength > uploadToken.maxBytes) {
+      req.resume();
+      res.status(400).json({ error: "File size does not match the upload request." });
+      return;
+    }
     if (
-      contentLength > uploadToken.maxBytes ||
-      contentLength !== uploadToken.expectedBytes
+      Number.isFinite(parsedLength) &&
+      parsedLength > 0 &&
+      parsedLength !== uploadToken.expectedBytes
     ) {
       req.resume();
       res.status(400).json({ error: "File size does not match the upload request." });
@@ -239,7 +265,7 @@ router.put("/storage/uploads/put-proxy/:token", optionalAuth, async (req: Reques
     // For Wasabi: stream request body directly (no memory buffering).
     // This fixes long-video upload timeouts on DO App Platform.
     if (USE_WASABI) {
-      const key = await streamToWasabi(req, uploadToken.contentType, contentLength);
+      const key = await streamToWasabi(req, normalizedToken === "application/octet-stream" ? normalizedIncoming : normalizedToken, contentLength);
       if (uploadToken.purpose === "music") {
         if (!uploadToken.ownerId || !uploadToken.musicKind) {
           throw new Error("Music upload token metadata is incomplete.");

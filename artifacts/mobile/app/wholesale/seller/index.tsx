@@ -46,10 +46,22 @@ export default function SellerHomeScreen() {
       href: "/wholesale/seller/inquiries",
       badge: "Chat",
     },
+    { title: "Onboarding", meta: "Business profile + depot", href: "/wholesale/seller/onboarding" },
     { title: "Analytics", meta: "Depot performance", href: "/wholesale/seller/analytics" },
+    { title: "Stock availability", meta: "Per-warehouse quantities", href: "/wholesale/seller/availability" },
+    { title: "Customers", meta: "Buyers who inquired", href: "/wholesale/seller/customers" },
     { title: "Documents", meta: "Business verification docs", href: "/wholesale/seller/documents" },
+    { title: "Earnings", meta: "Closed quote estimates", href: "/wholesale/seller/earnings" },
+    { title: "Warehouse hours", meta: "Pickup windows", href: "/wholesale/seller/hours" },
+    { title: "Media library", meta: "Photos · videos separate", href: "/wholesale/seller/media" },
+    { title: "Volume pricing", meta: "MOQ tiers", href: "/wholesale/seller/tiers" },
+    { title: "Reviews", meta: "Closed-deal reputation", href: "/wholesale/seller/reviews" },
+    { title: "Boost", meta: "Feature active listings", href: "/wholesale/seller/boost" },
+    { title: "Plans", meta: "Free · Growth · Pro", href: "/wholesale/seller/plans" },
+    { title: "Team", meta: "Invite staff", href: "/wholesale/seller/team" },
     { title: "Profile", meta: "Seller profile", href: "/wholesale/seller/profile" },
     { title: "Settings", meta: "Seller preferences", href: "/wholesale/seller/settings" },
+    { title: "Verification", meta: "Warehouse + documents", href: "/wholesale/verification" },
   ];
 
   return (

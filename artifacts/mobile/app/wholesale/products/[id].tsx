@@ -14,6 +14,7 @@ import { WholesaleGate } from "@/components/wholesale/WholesaleGate";
 import { WholesaleShell } from "@/components/wholesale/WholesaleShell";
 import { useAuth } from "@/context/AuthContext";
 import {
+  addCompare,
   addFavorite,
   fetchWholesaleProduct,
   formatMoney,
@@ -101,6 +102,16 @@ export default function WholesaleProductScreen() {
     }
   };
 
+  const onCompare = async () => {
+    if (!token || !product) return;
+    try {
+      await addCompare(product.id, { token });
+      router.push("/wholesale/compare");
+    } catch (e: any) {
+      Alert.alert("Compare", e?.message || "Could not add to compare");
+    }
+  };
+
   return (
     <WholesaleGate>
       <WholesaleShell
@@ -172,6 +183,22 @@ export default function WholesaleProductScreen() {
               )}
             </Pressable>
 
+            <View style={styles.secondaryRow}>
+              <Pressable style={styles.secondaryBtn} onPress={() => void onCompare()}>
+                <Text style={styles.secondaryText}>Compare</Text>
+              </Pressable>
+              <Pressable
+                style={styles.secondaryBtn}
+                onPress={() => router.push(`/wholesale/stores/${product.sellerId}`)}
+              >
+                <Text style={styles.secondaryText}>Wholesale store</Text>
+              </Pressable>
+            </View>
+
+            {(product.videos?.length || 0) > 0 ? (
+              <Text style={styles.meta}>{product.videos.length} product video(s) on file</Text>
+            ) : null}
+
             {(product.warehouseName || product.warehouse) ? (
               <Text style={styles.depot}>
                 Depot: {product.warehouse?.name || product.warehouseName}
@@ -222,6 +249,17 @@ const styles = StyleSheet.create({
     color: T.muted,
     letterSpacing: 0.5,
   },
+  secondaryRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+  secondaryBtn: {
+    flex: 1,
+    backgroundColor: T.white,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: T.line,
+  },
+  secondaryText: { color: T.accent, fontWeight: "800" },
   qtyRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 8 },
   qtyBtn: {
     width: 40,

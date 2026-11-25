@@ -1,5 +1,5 @@
 /**
- * Flexa Wholesale immersive shell — brand chrome + 5 tabs + Flexa Market exit.
+ * Flexa Wholesale immersive shell — brand chrome + shared bottom nav + Flexa Market exit.
  * Zero WebView. Safe-area aware for Android/iOS.
  */
 import { Feather } from "@expo/vector-icons";
@@ -160,29 +160,29 @@ export function WholesaleShell({
           </Pressable>
           {headerRight}
         </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabs}
-        >
-          {TABS.map((tab) => {
-            const on = tab.match(pathname);
-            return (
-              <Pressable
-                key={tab.key}
-                onPress={() => router.push(tab.href as any)}
-                style={[styles.tab, on && styles.tabOn]}
-                testID={`wholesale-tab-${tab.key}`}
-              >
-                <Feather name={tab.icon} size={14} color={on ? T.forest : "rgba(255,255,255,0.85)"} />
-                <Text style={[styles.tabLabel, on && styles.tabLabelOn]}>{tab.label}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
       </View>
       {body}
-      <View style={{ height: insets.bottom }} />
+      <View
+        style={[styles.bottomNav, { paddingBottom: Math.max(insets.bottom, 8) }]}
+        testID="wholesale-bottom-nav"
+      >
+        {TABS.map((tab) => {
+          const on = tab.match(pathname);
+          return (
+            <Pressable
+              key={tab.key}
+              onPress={() => router.push(tab.href as any)}
+              style={[styles.tab, on && styles.tabOn]}
+              testID={`wholesale-tab-${tab.key}`}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+            >
+              <Feather name={tab.icon} size={18} color={on ? T.accent : T.muted} />
+              <Text style={[styles.tabLabel, on && styles.tabLabelOn]}>{tab.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -230,21 +230,28 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   marketBtnText: { color: T.forest, fontSize: 11, fontWeight: "800" },
-  tabs: { paddingHorizontal: 12, paddingBottom: 10, gap: 6 },
-  tab: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-  },
-  tabOn: { backgroundColor: T.white },
-  tabLabel: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "700" },
-  tabLabelOn: { color: T.forest },
   body: { flex: 1 },
-  bodyContent: { padding: 16, paddingBottom: 40 },
+  bodyContent: { padding: 16, paddingBottom: 24 },
   pageHead: { marginBottom: 14 },
   pageTitle: { fontSize: 22, fontWeight: "800", color: T.ink, letterSpacing: -0.3 },
   pageSub: { marginTop: 4, fontSize: 13, color: T.muted, fontWeight: "500" },
+  bottomNav: {
+    flexDirection: "row",
+    backgroundColor: T.white,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: T.line,
+    paddingTop: 8,
+    paddingHorizontal: 4,
+  },
+  tab: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  tabOn: { backgroundColor: T.accentSoft },
+  tabLabel: { color: T.muted, fontSize: 10, fontWeight: "700" },
+  tabLabelOn: { color: T.accent },
 });

@@ -34,10 +34,13 @@ export async function uploadLocalFile(
     contentType?: string;
     fileName?: string;
     onProgress?: (p: UploadProgress) => void;
+    /** Hard ceiling so a hung XHR cannot leave chat voice on Uploading forever. */
+    timeoutMs?: number;
   },
 ): Promise<UploadResult> {
   const contentType = opts.contentType || "image/jpeg";
   const fileName = opts.fileName || "upload.bin";
+  const timeoutMs = opts.timeoutMs ?? 45_000;
 
   const fileRes = await fetch(localUri);
   const blob = await fileRes.blob();
@@ -65,14 +68,30 @@ export async function uploadLocalFile(
 
   const putData = await new Promise<any>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn();
+    };
+    const timer = setTimeout(() => {
+      finish(() => {
+        try { xhr.abort(); } catch { /* ignore */ }
+        reject(new Error("Upload timed out"));
+      });
+    }, timeoutMs);
+
     xhr.open("PUT", absolutePut);
     xhr.setRequestHeader("Content-Type", contentType);
     xhr.setRequestHeader("Authorization", `Bearer ${opts.token}`);
     xhr.responseType = "json";
     if (opts.signal) {
       const onAbort = () => {
-        xhr.abort();
-        reject(new Error("Upload cancelled"));
+        finish(() => {
+          xhr.abort();
+          reject(new Error("Upload cancelled"));
+        });
       };
       if (opts.signal.aborted) {
         onAbort();
@@ -89,16 +108,18 @@ export async function uploadLocalFile(
       });
     };
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(xhr.response ?? {});
-      } else {
-        const err =
-          (xhr.response && (xhr.response.error || xhr.response.message)) ||
-          `Upload failed (${xhr.status})`;
-        reject(new Error(String(err)));
-      }
+      finish(() => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(xhr.response ?? {});
+        } else {
+          const err =
+            (xhr.response && (xhr.response.error || xhr.response.message)) ||
+            `Upload failed (${xhr.status})`;
+          reject(new Error(String(err)));
+        }
+      });
     };
-    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.onerror = () => finish(() => reject(new Error("Network error during upload")));
     xhr.send(blob);
   });
 

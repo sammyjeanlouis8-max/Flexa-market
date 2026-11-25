@@ -41,6 +41,7 @@ import { prefetchRoute } from "@/lib/prefetchRoutes";
 import { CommandPalette } from "@/components/CommandPalette";
 import AdminShell from "@/components/admin/AdminShell";
 import { cn } from "@/lib/utils";
+import { canAccessWholesale } from "@/lib/wholesaleAccess";
 import { useGetCategories } from "@workspace/api-client-react";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
@@ -505,6 +506,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const driverStatusDesktop = useDriverStatus(user);
   const showDelivery = !!user && canShowFMDeliveryLinks(deliveryMenuCountry === undefined ? user.country : deliveryMenuCountry);
   const canSeeLoan = !isNativeMobileApp() && !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
+  const canSeeWholesale = canAccessWholesale(user);
 
   type SidebarItem = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; key: string; highlight?: boolean; adminHighlight?: boolean; badge?: number };
   type SidebarSection = { heading?: string; highlight?: boolean; items: SidebarItem[] };
@@ -572,7 +574,9 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     {
       heading: t("nav.flexaServicesSection", { defaultValue: "Flexa Services" }),
       items: [
-        { href: "/wholesale", icon: Warehouse, label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), key: "flexa-wholesale" },
+        ...(canSeeWholesale
+          ? [{ href: "/wholesale", icon: Warehouse, label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), key: "flexa-wholesale" }]
+          : []),
         { href: "/tv", icon: Tv, label: "Flexa TV", key: "flexa-tv" },
         { href: "/music", icon: Music2, label: "Flexa Music", key: "flexa-music" },
         ...(user ? [

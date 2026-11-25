@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowLeft, ArrowUpRight, Package, Wallet, Warehouse } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
+import { canAccessWholesale } from "@/lib/wholesaleAccess";
 
 type LaunchPayload = {
   configured: boolean;
@@ -23,12 +24,22 @@ function openWholesale(url: string) {
 
 export default function FlexaWholesale() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const [launch, setLaunch] = useState<LaunchPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const allowed = canAccessWholesale(user);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!allowed) {
+      setLocation("/");
+      return;
+    }
+  }, [authLoading, allowed, setLocation]);
+
+  useEffect(() => {
+    if (!allowed) return;
     let cancelled = false;
     const envUrl = clientWholesaleUrl();
     if (envUrl) {
@@ -54,15 +65,23 @@ export default function FlexaWholesale() {
     return () => {
       cancelled = true;
     };
-  }, [t]);
+  }, [allowed, t]);
 
   useEffect(() => {
-    if (!launch?.configured || !launch.url) return;
+    if (!allowed || !launch?.configured || !launch.url) return;
     const timer = window.setTimeout(() => openWholesale(launch.url!), 450);
     return () => window.clearTimeout(timer);
-  }, [launch?.configured, launch?.url]);
+  }, [allowed, launch?.configured, launch?.url]);
 
   const ready = !!launch?.configured && !!launch.url;
+
+  if (authLoading || !allowed) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-10 text-sm text-muted-foreground">
+        {t("common.loading", { defaultValue: "Loading…" })}
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-[calc(100dvh-4rem)] overflow-hidden bg-[hsl(152,28%,97%)] dark:bg-[hsl(152,18%,8%)]">

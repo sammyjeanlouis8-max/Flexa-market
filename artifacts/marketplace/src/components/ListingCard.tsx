@@ -1,5 +1,6 @@
+import { isContactOnlyListing } from "../../../../lib/marketplace-policy/contact-only.mjs";
 import { Link, useLocation } from "wouter";
-import { Heart, MapPin, Zap, BadgeCheck, Crown, Play, Eye, ImageIcon, ShoppingCart, Star } from "lucide-react";
+import { Heart, MapPin, Zap, BadgeCheck, Crown, Play, Eye, ImageIcon, ShoppingCart, MessageCircle, Star } from "lucide-react";
 import { formatViewCount } from "@/hooks/useViewTracker";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,9 @@ type Listing = {
   isFavorited?: boolean;
   createdAt: string;
   categoryIcon?: string | null;
+  subcategorySlug?: string | null;
+  categorySlug?: string | null;
+  category?: string | null;
   subcategory?: string | null;
   sellerId?: number;
   distanceKm?: number | null;
@@ -535,7 +539,21 @@ export default function ListingCard({
           )}
 
           {/* Marketplace Add to Cart — uses real cart; disabled when sold/owner */}
-          {showAddToCart && !preview && !isOwner && listing.status !== "sold" && (
+          {showAddToCart && !preview && !isOwner && listing.status !== "sold" && isContactOnlyListing(listing) && (
+            <Button size="sm" className="w-full mt-2.5" onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!user) {
+                requireAuth({ action: "contactSeller", listingId: listing.id, next: `/listings/${listing.id}?contact=1` });
+                return;
+              }
+              setLocation(`/listings/${listing.id}?contact=1`);
+            }}>
+              <MessageCircle className="mr-1 h-4 w-4" />
+              {t("buttons.messageSeller")}
+            </Button>
+          )}
+          {showAddToCart && !isContactOnlyListing(listing) && !preview && !isOwner && listing.status !== "sold" && (
             <Button
               size="sm"
               className="w-full mt-2.5 h-9 text-xs font-bold rounded-lg bg-[#F5A623] hover:bg-[#e09410] text-slate-900 gap-1.5 shadow-sm"

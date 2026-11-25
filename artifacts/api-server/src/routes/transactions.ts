@@ -1,3 +1,4 @@
+import { contactOnlyError, hasContactOnlyListing } from "../lib/contactOnlyCheckout";
 import { Router } from "express";
 import { db, transactionsTable, usersTable, listingsTable, offersTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable, stripeRefundLedgerTable, shipmentsTable } from "@workspace/db";
 import { eq, desc, and, or, sql, notInArray, inArray, aliasedTable } from "drizzle-orm";
@@ -2767,6 +2768,10 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
 
   // Load all listings at once
   const listings = await db.select().from(listingsTable).where(inArray(listingsTable.id, listingIds));
+  if (await hasContactOnlyListing(listings)) {
+    res.status(409).json(contactOnlyError);
+    return;
+  }
   if (listings.some(listing => listing.country === "Dominican Republic")) {
     res.status(400).json({
       code: "DOMINICAN_ITEM_CHECKOUT_REQUIRED",

@@ -1,3 +1,4 @@
+import { contactOnlyError, hasContactOnlyListing } from "../lib/contactOnlyCheckout";
 import { createHash } from "node:crypto";
 import { Router } from "express";
 import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable, searchHistoryTable, boostDailyImpressionsTable, notificationsTable, walletTransactionsTable, commentsTable, commentLikesTable, conversationsTable, reviewsTable, deliveriesTable, followsTable } from "@workspace/db";
@@ -2060,6 +2061,10 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   const id = parseInt(rawId, 10);
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
+  if (await hasContactOnlyListing([listing])) {
+    res.status(409).json(contactOnlyError);
+    return;
+  }
   if (listing.sellerId === req.userId) { res.status(400).json({ error: "Cannot buy your own listing" }); return; }
   if (listing.status === "sold") { res.status(409).json({ error: "Listing already sold" }); return; }
   if ((listing as any).moderationStatus && (listing as any).moderationStatus !== "approved") {

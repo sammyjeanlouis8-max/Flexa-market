@@ -1044,6 +1044,9 @@ export default {
     myStore: "My store",
 },
   categories: {
+    "houses-for-rent": "Houses for Rent",
+    "houses-for-sale": "Houses for Sale",
+    "cars": "Cars",
     all: "All",
     "baby-kids": "Baby & Kids",
     electronics: "Electronics",

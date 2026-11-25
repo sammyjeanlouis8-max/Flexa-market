@@ -1,3 +1,4 @@
+import { isContactOnlyListing } from "../../../../lib/marketplace-policy/contact-only.mjs";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSEO } from "@/hooks/useSEO";
@@ -361,6 +362,7 @@ export default function ListingDetail() {
     return () => { cancelled = true; };
   }, [buyNowOpen, listing, token, user?.country]);
 
+  const contactOnly = isContactOnlyListing(listing);
   const relatedCategory = listing?.categorySlug || listing?.category;
   const relatedCountry = user?.country ?? shoppingCountry;
   const { data: relatedData } = useGetListings(
@@ -496,7 +498,7 @@ export default function ListingDetail() {
   useEffect(() => {
     if (!listing?.id) return;
     const sp = new URLSearchParams(window.location.search);
-    if (sp.get("buy") !== "1") return;
+    if (contactOnly || sp.get("buy") !== "1") return;
     // Remove the flag from the URL without a full reload
     window.history.replaceState(null, "", `/listings/${id}`);
     if (!user) {
@@ -527,7 +529,7 @@ export default function ListingDetail() {
     const sp = new URLSearchParams(window.location.search);
     const opid = sp.get("offerPay");
     const oa   = sp.get("offerAmount");
-    if (!opid || !oa) return;
+    if (contactOnly || !opid || !oa) return;
     const parsedId  = parseInt(opid, 10);
     const parsedAmt = parseFloat(oa);
     if (isNaN(parsedId) || isNaN(parsedAmt) || parsedAmt <= 0) return;
@@ -2175,7 +2177,7 @@ export default function ListingDetail() {
           </div>
 
           {/* BNPL teaser */}
-          {bnplSettings && (bnplSettings.affirmEnabled || bnplSettings.klarnaEnabled) && (
+          {!contactOnly && bnplSettings && (bnplSettings.affirmEnabled || bnplSettings.klarnaEnabled) && (
             <button
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               onClick={handleBuyNowClick}
@@ -2275,7 +2277,7 @@ export default function ListingDetail() {
             <p className="text-[14px] font-bold text-red-600">{t("checkout.soldBadge")}</p>
           )}
 
-          {!isOwner && listing.status === "available" && (
+          {!contactOnly && !isOwner && listing.status === "available" && (
             <>
               <div
                 className="flex items-center justify-between h-11 rounded-full border border-border bg-muted/40 px-1.5"
@@ -2549,14 +2551,14 @@ export default function ListingDetail() {
               <MessageCircle className="h-3.5 w-3.5 mr-1.5" />
               {createConv.isPending ? t("buttons.openingChat") : t("buttons.messageSeller")}
             </Button>
-            {isHaitiListingCountry && (
+            {!contactOnly && isHaitiListingCountry && (
               <Button variant="outline" size="sm" className="flex-1" onClick={handleCallSeller} data-testid="button-call-seller">
                 <Phone className="h-3.5 w-3.5 mr-1.5" /> {t("buttons.callSeller")}
               </Button>
             )}
           </div>}
 
-          {!isOwner && listing.isBoosted && sellerPhone && (
+          {!contactOnly && !isOwner && listing.isBoosted && sellerPhone && (
             <Button
               variant="outline"
               size="sm"
@@ -2841,7 +2843,7 @@ export default function ListingDetail() {
           </div>
         )}
 
-        {!isOwner && listing.status === "available" && (
+        {!contactOnly && !isOwner && listing.status === "available" && (
           <div className="px-4 py-2.5">
             <Button variant="ghost" className="w-full h-10" onClick={() => setOfferOpen(true)} data-testid="button-make-offer">
               <Tag className="h-4 w-4 mr-2" /> {t("buttons.makeOffer")}
@@ -2880,6 +2882,12 @@ export default function ListingDetail() {
           data-testid="listing-purchase-bar"
           className="fm-pdp-purchase-bar fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_16px_rgba(0,0,0,0.07)] flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] lg:hidden"
         >
+          {contactOnly ? (
+            <Button className="w-full" onClick={handleChat} disabled={createConv.isPending} data-testid="button-contact-only-chat">
+              <MessageCircle className="mr-2 h-4 w-4" />
+              {createConv.isPending ? t("buttons.openingChat") : t("buttons.messageSeller")}
+            </Button>
+          ) : <>
           {/* Quantity stepper */}
           <div
             className="flex items-center h-11 min-h-[44px] max-h-[46px] rounded-full border border-border bg-muted/50 shrink-0"
@@ -2949,6 +2957,7 @@ export default function ListingDetail() {
               {buyQty > 1 ? ` ×${buyQty}` : ""}
             </span>
           </button>
+          </>}
         </div>,
         document.body
       )}
@@ -3297,7 +3306,7 @@ export default function ListingDetail() {
       )}
 
       {/* Buy Now Dialog — dark glass checkout redesign */}
-      <Dialog open={buyNowOpen} onOpenChange={v => { setBuyNowOpen(v); if (!v) { setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); setTipUsd(0); setDeliverySpeedTier("rapid"); setSelectedPayMethod(null); setAddressEditMode(false); setStripeEmbed(null); setStripeCaps(null); } }}>
+      <Dialog open={!contactOnly && buyNowOpen} onOpenChange={v => { setBuyNowOpen(v); if (!v) { setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); setTipUsd(0); setDeliverySpeedTier("rapid"); setSelectedPayMethod(null); setAddressEditMode(false); setStripeEmbed(null); setStripeCaps(null); } }}>
         <DialogContent
           overlayClassName="bg-black/35 overflow-hidden"
           overlayContent={<CheckoutProductBackdrop items={checkoutBackdropItems} />}

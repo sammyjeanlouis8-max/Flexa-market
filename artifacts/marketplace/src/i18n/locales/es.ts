@@ -659,6 +659,9 @@ export default {
     limitBtn: "Actualizar mi plan",
   },
   categories: {
+    "houses-for-rent": "Casas en alquiler",
+    "houses-for-sale": "Casas en venta",
+    "cars": "Autos en venta",
     all: "Todo",
     "baby-kids": "Bebé y Niños",
     electronics: "Electrónica",

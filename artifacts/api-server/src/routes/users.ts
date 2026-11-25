@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, followsTable, listingsTable, categoriesTable, reviewsTable, transactionsTable } from "@workspace/db";
+import { db, usersTable, followsTable, listingsTable, categoriesTable, reviewsTable, transactionsTable, notificationsTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
 import { UpdateUserBody } from "@workspace/api-zod";
@@ -449,6 +449,12 @@ router.post("/users/:id/follow", requireAuth, async (req, res): Promise<void> =>
   if (inserted) {
     await db.update(usersTable).set({ followerCount: sql`${usersTable.followerCount} + 1` }).where(eq(usersTable.id, followingId));
     await db.update(usersTable).set({ followingCount: sql`${usersTable.followingCount} + 1` }).where(eq(usersTable.id, req.userId!));
+    await db.insert(notificationsTable).values({
+      userId: followingId,
+      actorId: req.userId!,
+      type: "follow",
+      isRead: false,
+    }).catch(() => {});
   }
   res.json({ message: "Following" });
 });

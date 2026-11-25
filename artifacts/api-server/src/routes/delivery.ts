@@ -1354,8 +1354,10 @@ router.post("/delivery/:id/accept", requireAuth, async (req, res): Promise<void>
   // The buyer must show this code to the driver upon delivery — it is secret.
   await db.insert(notificationsTable).values({
     userId: delivery.buyerId,
+    actorId: userId,
     type: "driver_assigned",
     isRead: false,
+    referenceId: deliveryId,
     message: `Yon chofè aksepte kòmand ou. Kòd sekrè ou: ${code}. Kenbe kòd sa — ba li chofè a SÈLMAN lè li rive ba ou kòmand lan. Pa pataje li ak pèsonn.`,
   } as any).catch(() => {});
 
@@ -1613,8 +1615,10 @@ router.patch("/delivery/:id/seller-status", requireAuth, async (req, res): Promi
   for (const uid of [delivery.buyerId, delivery.sellerId]) {
     await db.insert(notificationsTable).values({
       userId: uid,
+      actorId: req.userId!,
       type: "delivery_status_update",
       isRead: false,
+      referenceId: deliveryId,
       message: status === "seller_arrived"
         ? `Machann nan rive nan adrès ou — montre li kòd konfirmasyon an pou finalise livrezon an.`
         : `Estati livrezon #FL-${deliveryId} mete ajou: ${status}`,
@@ -1835,7 +1839,8 @@ router.patch("/delivery/:id/status", requireAuth, async (req, res): Promise<void
       userId: uid,
       type: `delivery_${status}`,
       isRead: false,
-      actorId: uid,
+      actorId: userId,
+      referenceId: deliveryId,
       ...(msg ? { message: msg } : {}),
     } as any).catch(() => {});
   }

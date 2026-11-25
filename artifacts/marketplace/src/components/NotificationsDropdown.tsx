@@ -6,7 +6,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
-import { orderNotificationDestination } from "@/lib/order-notification-destination";
+import {
+  formatNotificationMessage,
+  getNotificationHref,
+} from "@/lib/notificationNavigation";
 import { publicDisplayName } from "@/lib/publicDisplayName";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +20,7 @@ interface Notification {
   listingId: number | null;
   commentId: number | null;
   referenceId?: number | null;
+  actorId?: number | null;
   message: string | null;
   createdAt: string;
   actorName: string;
@@ -53,7 +57,6 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
   useEffect(() => {
     const controller = new AbortController();
     void fetchCount(controller.signal);
-    // Desktop UX: slower background poll; refresh on focus/visibility instead.
     const interval = setInterval(() => { void fetchCount(controller.signal); }, 60_000);
     const onVisible = () => {
       if (document.visibilityState === "visible") void fetchCount();
@@ -94,145 +97,26 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
     setUnreadCount(0);
   };
 
+  const markOneRead = async (id: number) => {
+    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, isRead: true } : n)));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+    try {
+      await fetch(`/api/notifications/${id}/read`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch { /* local state already optimistic */ }
+  };
+
   const handleOpen = (v: boolean) => {
     setOpen(v);
-    if (v) {
-      if (unreadCount > 0) markAllRead();
-    }
   };
 
-  const notifMessage = (n: Notification): string => {
-    switch (n.type) {
-      case "like": return t("notifications.liked");
-      case "comment": return t("notifications.commented");
-      case "share": return t("notifications.shared");
-      case "comment_like": return t("notifications.commentLiked");
-      case "message": return t("notifications.messageSent");
-      case "offer_received": return t("notifications.offerReceived");
-      case "offer_accepted": return t("notifications.offerAccepted");
-      case "offer_rejected": return t("notifications.offerRejected");
-      case "purchase":
-      case "new_order": return t("notifications.purchased");
-      case "order_confirmed": return t("notifications.orderConfirmed");
-      case "order_shipped": return t("notifications.orderShipped");
-      case "shipment_created":
-      case "shipment_shipped":
-      case "shipment_in_transit":
-      case "shipment_out_for_delivery":
-      case "shipment_delivered":
-      case "shipment_exception":
-      case "shipment_returned": return n.message || t("notifications.orderShipped");
-      case "order_delivered": return t("notifications.orderDelivered");
-      case "card_refund": return n.message || t("notifications.defaultNotif");
-      case "delivery_picked_up": return t("notifications.deliveryPickedUp");
-      case "delivery_pin": return n.message || t("notifications.confirmCode", { defaultValue: "Delivery PIN" });
-      case "delivery_on_the_way": return t("notifications.deliveryOnTheWay");
-      case "delivery_arrived": return t("notifications.deliveryArrived");
-      case "delivery_delivered": return t("notifications.deliveryDelivered");
-      case "delivery_paid": return t("notifications.deliveryPaid");
-      case "driver_assigned": return n.message || t("notifications.driverAssigned");
-      case "boost_approved":
-      case "boost_activated": return t("notifications.boostActivated");
-      case "boost_expired": return n.message || t("myDrafts.boostExpired", { defaultValue: "Boost Expired" });
-      case "video_ready": return n.message || t("myDrafts.videoReadyMessage", { defaultValue: "Your video has finished uploading and is ready to use." });
-      case "transfer_received": return n.message
-        ? t("notifications.transferReceivedDetail", { amount: n.message })
-        : t("notifications.transferReceived");
-      case "transfer_sent": return n.message
-        ? t("notifications.transferSentDetail", { detail: n.message })
-        : t("notifications.transferSent");
-      case "wallet_recharged": return t("notifications.walletRecharged");
-      case "payment_refunded": return t("notifications.paymentRefunded");
-      case "identity_verified": return t("notifications.identityVerified");
-      case "password_reset": return t("notifications.passwordReset");
-      case "subscription_payment_failed": return t("notifications.subscriptionPaymentFailed");
-      case "subscription_billing_reminder": return t("notifications.subscriptionBillingReminder");
-      case "subscription_grace_expired": return t("notifications.subscriptionGraceExpired");
-      case "subscription_welcome": return t("notifications.subscriptionWelcome", { plan: n.message ?? "Premium" });
-      case "exchange_rate_changed": return n.message ?? t("notifications.defaultNotif");
-      case "new_listing": return n.message ?? `${publicDisplayName(n.actorName, "Someone")} ajoute yon nouvo pwodwi.`;
-      case "listing_approved":
-      case "moderation_approved": return t("notifications.listingApproved");
-      case "listing_rejected":
-      case "moderation_rejected": return t("notifications.listingRejected");
-      case "moderation_pending": return t("notifications.moderationPending");
-      default: return t("notifications.defaultNotif");
-    }
-  };
-
-  const getNotifHref = (n: Notification): string => {
-    const orderDestination = orderNotificationDestination(n);
-    if (orderDestination) return orderDestination;
-    switch (n.type) {
-      // Listing-specific
-      case "like":
-      case "comment":
-      case "comment_like":
-      case "offer_received":
-      case "offer_accepted":
-      case "offer_rejected":
-      case "listing_approved":
-      case "listing_rejected":
-      case "moderation_approved":
-      case "moderation_rejected":
-      case "moderation_pending":
-      case "new_listing":
-        return n.listingId ? `/listings/${n.listingId}` : "/sell";
-
-      // Video/boost
-      case "share":
-      case "boost_approved":
-      case "boost_activated":
-        return n.listingId ? `/listings/${n.listingId}/video` : "/sell";
-      case "boost_expired":
-        return n.listingId ? `/boost/${n.listingId}` : "/my-drafts";
-      case "video_ready":
-        return "/my-drafts";
-
-      // Delivery tracking
-      case "card_refund":
-        return n.referenceId ? `/orders/${n.referenceId}` : "/orders";
-      case "delivery_picked_up":
-      case "delivery_pin":
-      case "delivery_on_the_way":
-      case "delivery_arrived":
-      case "delivery_delivered":
-      case "driver_assigned":
-        return "/orders";
-
-      // Driver payment credited
-      case "delivery_paid":
-        return "/wallet";
-
-      // Messages
-      case "message":
-        return "/messages";
-
-      // Wallet & transfers
-      case "transfer_received":
-      case "transfer_sent":
-      case "wallet_recharged":
-      case "payment_refunded":
-        return "/wallet";
-
-      // Subscription
-      case "subscription_payment_failed":
-      case "subscription_billing_reminder":
-      case "subscription_grace_expired":
-      case "subscription_welcome":
-        return "/subscription";
-
-      // Account/security
-      case "identity_verified":
-      case "password_reset":
-        return "/settings";
-
-      case "exchange_rate_changed":
-        return "/admin";
-
-      default:
-        return n.listingId ? `/listings/${n.listingId}` : "/";
-    }
+  const onSelect = async (n: Notification) => {
+    setOpen(false);
+    if (!n.isRead) void markOneRead(n.id);
+    const href = getNotificationHref(n);
+    navigate(href);
   };
 
   const notifEmoji = (type: string): string => {
@@ -242,19 +126,25 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
       case "comment_like": return "❤️";
       case "share": return "🔗";
       case "message": return "✉️";
+      case "follow":
+      case "new_follower": return "👤";
       case "offer_received":
       case "offer_accepted":
-      case "offer_rejected": return "🏷️";
+      case "offer_rejected":
+      case "offer_counter": return "🏷️";
       case "purchase":
       case "new_order": return "🛒";
       case "order_confirmed": return "🧾";
       case "order_shipped": return "🚚";
       case "order_delivered": return "📦";
+      case "order_cancelled": return "⛔";
       case "delivery_picked_up": return "🔐";
       case "delivery_pin": return "🔐";
       case "delivery_on_the_way": return "🛵";
-      case "delivery_arrived": return "📍";
-      case "delivery_delivered": return "✅";
+      case "delivery_arrived":
+      case "delivery_arrived_pickup": return "📍";
+      case "delivery_delivered":
+      case "delivery_completed": return "✅";
       case "delivery_paid": return "💰";
       case "driver_assigned": return "🚗";
       case "exchange_rate_changed": return "💱";
@@ -276,7 +166,11 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
       case "moderation_rejected": return "⛔";
       case "moderation_pending": return "⏳";
       case "new_listing": return "📦";
-      default: return "🔔";
+      default:
+        if (type.startsWith("delivery_")) return "🛵";
+        if (type.startsWith("driver_")) return "🚗";
+        if (type.startsWith("support_")) return "🎧";
+        return "🔔";
     }
   };
 
@@ -320,9 +214,10 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
             notifications.map(n => (
               <div
                 key={n.id}
-                onClick={() => { setOpen(false); navigate(getNotifHref(n)); }}
+                onClick={() => { void onSelect(n); }}
                 className={`flex items-start gap-2.5 px-3 py-2.5 hover:bg-accent transition-colors cursor-pointer ${!n.isRead ? "bg-primary/5" : ""}`}
                 data-testid={`notification-${n.id}`}
+                role="link"
               >
                   <div className="relative flex-shrink-0">
                     <Avatar className="h-8 w-8">
@@ -337,7 +232,7 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-foreground leading-snug">
-                      {notifMessage(n)}
+                      {formatNotificationMessage(n, t)}
                     </p>
                     {(n.type === "delivery_picked_up" || n.type === "delivery_pin" || n.type === "driver_assigned") && n.message && (() => {
                       const m =

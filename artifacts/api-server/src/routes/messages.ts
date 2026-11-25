@@ -369,7 +369,12 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
 
   const recipientId = conv.buyerId === req.userId ? conv.sellerId : conv.buyerId;
   await db.insert(notificationsTable).values({
-    userId: recipientId, actorId: req.userId!, type: "message", listingId: conv.listingId ?? null,
+    userId: recipientId,
+    actorId: req.userId!,
+    type: "message",
+    listingId: conv.listingId ?? null,
+    // Conversation id so inbox / WebView can open the thread directly.
+    referenceId: id,
   }).catch(() => {});
 
   const [sender] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));

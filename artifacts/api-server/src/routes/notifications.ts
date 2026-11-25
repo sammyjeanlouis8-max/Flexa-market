@@ -16,6 +16,7 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
       listingId: notificationsTable.listingId,
       referenceId: notificationsTable.referenceId,
       commentId: notificationsTable.commentId,
+      actorId: notificationsTable.actorId,
       message: notificationsTable.message,
       createdAt: notificationsTable.createdAt,
       actorName: usersTable.name,
@@ -37,6 +38,7 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
     listingId: r.listingId,
     referenceId: r.referenceId,
     commentId: r.commentId,
+    actorId: r.actorId ?? null,
     message: r.message ?? null,
     createdAt: r.createdAt.toISOString(),
     actorName: publicDisplayName(r.actorName, "Someone"),
@@ -66,6 +68,55 @@ router.post("/notifications/:id/read", requireAuth, async (req, res): Promise<vo
   await db.update(notificationsTable).set({ isRead: true })
     .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, req.userId!)));
   res.json({ message: "Marked as read" });
+});
+
+// GET /api/notifications/:id — single notification for details page (after static paths)
+router.get("/notifications/:id", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid notification id" });
+    return;
+  }
+  const [r] = await db
+    .select({
+      id: notificationsTable.id,
+      type: notificationsTable.type,
+      isRead: notificationsTable.isRead,
+      listingId: notificationsTable.listingId,
+      referenceId: notificationsTable.referenceId,
+      commentId: notificationsTable.commentId,
+      actorId: notificationsTable.actorId,
+      message: notificationsTable.message,
+      createdAt: notificationsTable.createdAt,
+      actorName: usersTable.name,
+      actorAvatar: usersTable.avatar,
+      listingTitle: listingsTable.title,
+      listingImage: listingsTable.images,
+    })
+    .from(notificationsTable)
+    .leftJoin(usersTable, eq(notificationsTable.actorId, usersTable.id))
+    .leftJoin(listingsTable, eq(notificationsTable.listingId, listingsTable.id))
+    .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, req.userId!)))
+    .limit(1);
+  if (!r) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.json({
+    id: r.id,
+    type: r.type,
+    isRead: r.isRead,
+    listingId: r.listingId,
+    referenceId: r.referenceId,
+    commentId: r.commentId,
+    actorId: r.actorId ?? null,
+    message: r.message ?? null,
+    createdAt: r.createdAt.toISOString(),
+    actorName: publicDisplayName(r.actorName, "Someone"),
+    actorAvatar: r.actorAvatar,
+    listingTitle: r.listingTitle,
+    listingImage: (r.listingImage as string[] | null)?.[0] ?? null,
+  });
 });
 
 /**

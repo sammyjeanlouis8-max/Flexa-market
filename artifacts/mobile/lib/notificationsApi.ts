@@ -10,6 +10,7 @@ export type AppNotification = {
   isRead: boolean;
   listingId: number | null;
   referenceId?: number | null;
+  actorId?: number | null;
   commentId: number | null;
   message: string | null;
   createdAt: string;
@@ -72,18 +73,24 @@ export async function markAllNotificationsRead(opts: AuthOpts): Promise<void> {
 
 export function notificationTitle(n: AppNotification): string {
   if (n.message?.trim()) return n.message.trim();
+  const actor = (n.actorName || "").trim() || "Someone";
   switch (n.type) {
     case "like":
-      return `${n.actorName} liked your listing`;
+      return `${actor} liked your listing`;
     case "comment":
-      return `${n.actorName} commented`;
+      return `${actor} commented`;
     case "message":
-      return `${n.actorName} sent a message`;
+      return `${actor} sent a message`;
+    case "follow":
+    case "new_follower":
+      return `${actor} started following you`;
     case "purchase":
     case "new_order":
       return "New order received";
     case "order_confirmed":
       return "Order confirmed";
+    case "order_cancelled":
+      return "Order cancelled";
     case "order_shipped":
     case "shipment_shipped":
     case "shipment_in_transit":
@@ -91,21 +98,31 @@ export function notificationTitle(n: AppNotification): string {
     case "order_delivered":
     case "shipment_delivered":
     case "delivery_delivered":
+    case "delivery_completed":
       return "Order delivered";
     case "delivery_pin":
       return "Delivery PIN";
+    case "delivery_status_update":
+      return "Delivery update";
     case "driver_assigned":
       return "Driver assigned";
     case "offer_received":
       return "New offer";
+    case "offer_counter":
+      return `${actor} sent a counter-offer`;
+    case "new_listing":
+      return `${actor} added a new product`;
     case "video_ready":
       return "Video ready";
+    case "share":
+      return `${actor} shared your video`;
     case "transfer_received":
       return "Transfer received";
     case "wallet_recharged":
       return "Wallet recharged";
     default:
-      return n.listingTitle ? `Update · ${n.listingTitle}` : "Notification";
+      if (n.type.startsWith("delivery_")) return "Delivery update";
+      return n.listingTitle ? `Update · ${n.listingTitle}` : `${actor} sent you a notification`;
   }
 }
 
@@ -134,22 +151,33 @@ export function notificationNativeHref(n: AppNotification): string {
     return orderSeller ? "/sales" : "/orders";
   }
 
+  if (n.type === "follow" || n.type === "new_follower") {
+    // Native shell has no public profile route; keep the inbox open with the row marked read.
+    return "/notifications";
+  }
+
   switch (n.type) {
     case "card_refund":
+    case "order_cancelled":
       return n.referenceId ? `/orders/${n.referenceId}` : "/orders";
     case "delivery_picked_up":
     case "delivery_pin":
     case "delivery_on_the_way":
     case "delivery_arrived":
+    case "delivery_arrived_pickup":
     case "delivery_delivered":
+    case "delivery_completed":
+    case "delivery_status_update":
+    case "delivery_buyer_absent":
+    case "delivery_rescheduled":
+    case "delivery_returned":
     case "driver_assigned":
-    case "delivery_paid":
-      if (n.referenceId) {
-        // referenceId may be delivery id or order id depending on emitter;
-        // prefer order detail when present, else delivery tracking.
-        return `/orders/${n.referenceId}`;
-      }
+    case "driver_timeout":
       return "/delivery-tracking";
+    case "delivery_paid":
+    case "delivery_earnings":
+    case "delivery_hold_release":
+      return "/wallet";
     case "message":
       // Kominike: conversation thread when referenceId is conversation id
       return n.referenceId ? `/chat/${n.referenceId}` : "/inbox";
@@ -159,6 +187,7 @@ export function notificationNativeHref(n: AppNotification): string {
     case "offer_received":
     case "offer_accepted":
     case "offer_rejected":
+    case "offer_counter":
     case "listing_approved":
     case "listing_rejected":
     case "moderation_approved":
@@ -166,6 +195,7 @@ export function notificationNativeHref(n: AppNotification): string {
     case "moderation_pending":
     case "new_listing":
       return n.listingId ? `/listing/${n.listingId}` : "/";
+    case "share":
     case "boost_approved":
     case "boost_activated":
     case "boost_expired":
@@ -185,6 +215,9 @@ export function notificationNativeHref(n: AppNotification): string {
     case "subscription_welcome":
       return "/subscription";
     default:
+      if (n.type.startsWith("delivery_") || n.type.startsWith("driver_")) {
+        return "/delivery-tracking";
+      }
       if (n.listingId) return `/listing/${n.listingId}`;
       if (n.referenceId) return `/orders/${n.referenceId}`;
       return "/notifications";

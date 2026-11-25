@@ -40,6 +40,12 @@ export function pathFromNotificationData(
     const listingId = pick("listingId", "id");
     return listingId ? `/listing/${listingId}` : "/";
   }
+  if (screen === "delivery" || screen === "tracking" || screen === "delivery_tracking") {
+    return "/delivery-tracking";
+  }
+  if (screen === "profile" || screen === "follower" || screen === "follow") {
+    return "/notifications";
+  }
   if (screen === "wallet" || screen === "transaction") return "/wallet";
   if (screen === "sales" || screen === "seller") return "/sales";
   if (screen === "notifications") return "/notifications";
@@ -72,6 +78,12 @@ export function pathFromNotificationData(
   }
   if (type.includes("wallet") || type.includes("transfer") || type.includes("payment")) {
     return "/wallet";
+  }
+  if (type.includes("delivery") || type.includes("driver")) {
+    return "/delivery-tracking";
+  }
+  if (type === "follow" || type === "new_follower") {
+    return "/notifications";
   }
 
   const url = typeof data.url === "string" ? data.url : null;

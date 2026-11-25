@@ -71,6 +71,7 @@ const Settings           = lazy(() => import("@/pages/Settings"));
 const SettingsSecurity   = lazy(() => import("@/pages/SettingsSecurity"));
 const SettingsAddresses  = lazy(() => import("@/pages/SettingsAddresses"));
 const SettingsNotifications = lazy(() => import("@/pages/SettingsNotifications"));
+const NotificationDetail = lazy(() => import("@/pages/NotificationDetail"));
 const SettingsPreferences   = lazy(() => import("@/pages/SettingsPreferences"));
 const SettingsHelp       = lazy(() => import("@/pages/SettingsHelp"));
 const SettingsPayments   = lazy(() => import("@/pages/SettingsPayments"));
@@ -314,6 +315,7 @@ function LayoutRoutes() {
           <Route path="/settings/security" component={SettingsSecurity} />
           <Route path="/settings/addresses" component={SettingsAddresses} />
           <Route path="/settings/notifications" component={SettingsNotifications} />
+          <Route path="/notifications/:id" component={NotificationDetail} />
           <Route path="/settings/preferences" component={SettingsPreferences} />
           <Route path="/settings/help" component={SettingsHelp} />
           <Route path="/settings/payments" component={SettingsPayments} />

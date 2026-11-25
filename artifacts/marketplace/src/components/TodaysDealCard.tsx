@@ -32,7 +32,7 @@ export type TodaysDealListing = {
 };
 
 /**
- * Vertical product card for the Today's Deals / Today's Picks two-column grid.
+ * Vertical product card for the responsive Today's Deals / Today's Picks grid.
  * Badge rules: Boosted only when actively boosted; Featured only when isFeatured
  * and not boosted. Never invents views, likes, or promotional statuses.
  */

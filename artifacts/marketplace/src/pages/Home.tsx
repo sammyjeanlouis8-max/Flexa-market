@@ -17,7 +17,7 @@ import {
   HOME_PROMO_VIDEO_PREVIEW_QUERY_LIMIT,
   selectHomePromoVideos,
 } from "@/lib/boostAdControls";
-import { selectTodaysDealSlots } from "@/lib/todaysDeals";
+import { getTodaysDealSlotCount, selectTodaysDealSlots } from "@/lib/todaysDeals";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -440,17 +440,27 @@ export default function Home() {
     [allListings, activeCategory, activeCountry, isAdmin],
   );
 
-  // Today's Deals / Today's Picks — always fill 2 slots: boosted first, then
-  // eligible regular products. Never leave an empty half of the grid.
+  // Keep one row of Picks on each viewport, using the same breakpoints as the grid.
+  const [todaysDealSlotCount, setTodaysDealSlotCount] = useState(() =>
+    getTodaysDealSlotCount(typeof window === "undefined" ? 0 : window.innerWidth),
+  );
+  useEffect(() => {
+    const updateSlotCount = () => setTodaysDealSlotCount(getTodaysDealSlotCount(window.innerWidth));
+    window.addEventListener("resize", updateSlotCount);
+    updateSlotCount();
+    return () => window.removeEventListener("resize", updateSlotCount);
+  }, []);
+
+  // Fill the visible slots with boosted listings first, then eligible regular products.
   const todaysDeals = useMemo(
     () =>
       selectTodaysDealSlots(allListings, {
-        slotCount: 2,
+        slotCount: todaysDealSlotCount,
         activeCategory,
         activeCountry: isAdmin ? null : activeCountry,
         skipCountryFilter: isAdmin,
       }),
-    [allListings, activeCategory, activeCountry, isAdmin],
+    [allListings, activeCategory, activeCountry, isAdmin, todaysDealSlotCount],
   );
   // Prefer a For You match for the hero when this account has search history,
   // so two people in the same house see different top products.
@@ -1152,7 +1162,7 @@ export default function Home() {
           </section>
         )}
 
-        {/* === TODAY'S DEALS / PICKS — professional two-column product grid === */}
+        {/* === TODAY'S DEALS / PICKS — 2 mobile, 3 tablet, 4 desktop === */}
         {todaysDeals.slots.length > 0 && (
           <section
             className="rounded-2xl border border-orange-300/70 bg-[#FBF6EC] dark:bg-orange-950/15 dark:border-orange-900/40 p-3"
@@ -1173,7 +1183,7 @@ export default function Home() {
               )}
             </div>
             <div
-              className="grid grid-cols-2 gap-2.5 sm:gap-3"
+              className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3"
               data-testid="todays-deals-grid"
             >
               {todaysDeals.slots.map((listing) => (

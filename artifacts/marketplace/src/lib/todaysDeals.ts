@@ -1,6 +1,6 @@
 /**
  * Today's Deals slot selection: boosted listings first, then high-quality
- * regular listings so the two-column grid never shows empty product slots.
+ * regular listings to fill the responsive product grid.
  */
 
 export type TodaysDealCandidate = {
@@ -29,6 +29,13 @@ export type TodaysDealSlotResult<T extends TodaysDealCandidate> = {
   /** Use a neutral heading ("Today's Picks") when fallbacks are mixed in. */
   useNeutralHeading: boolean;
 };
+
+/** Number of cards in one row, matching Tailwind's md and lg breakpoints. */
+export function getTodaysDealSlotCount(viewportWidth: number): 2 | 3 | 4 {
+  if (viewportWidth >= 1024) return 4;
+  if (viewportWidth >= 768) return 3;
+  return 2;
+}
 
 const BLOCKED_LIFECYCLES = new Set(["suspended", "archived", "deleted", "sold", "rejected", "draft"]);
 

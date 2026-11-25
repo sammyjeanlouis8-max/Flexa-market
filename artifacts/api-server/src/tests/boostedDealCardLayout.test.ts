@@ -1,5 +1,5 @@
 /**
- * Guards Today's Deals: two-column product grid, boosted-first fallback
+ * Guards Today's Deals: responsive product grid, boosted-first fallback
  * selection, and BoostedDealCard video helpers used by the preview page.
  */
 import { readFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import {
   isValidProductVideoUrl,
   resolveValidProductVideoUrl,
 } from "../../../marketplace/src/lib/boostedDealVideo";
-import { selectTodaysDealSlots } from "../../../marketplace/src/lib/todaysDeals";
+import { getTodaysDealSlotCount, selectTodaysDealSlots } from "../../../marketplace/src/lib/todaysDeals";
 
 const card = readFileSync(
   resolve(__dirname, "../../../marketplace/src/components/BoostedDealCard.tsx"),
@@ -72,10 +72,11 @@ describe("BoostedDealCard layout contract", () => {
 });
 
 describe("Today's Deals Home section contract", () => {
-  it("renders a two-column product grid with View All Boosted link", () => {
+  it("renders 2 mobile, 3 tablet and 4 desktop columns with View All Boosted link", () => {
     expect(home).toMatch(/todays-deals-section/);
     expect(home).toMatch(/todays-deals-grid/);
-    expect(home).toMatch(/grid-cols-2/);
+    expect(home).toMatch(/grid-cols-2 md:grid-cols-3 lg:grid-cols-4[^"]*"\s+data-testid="todays-deals-grid"/);
+    expect(home).toMatch(/slotCount: todaysDealSlotCount/);
     expect(home).toMatch(/TodaysDealCard/);
     expect(home).toMatch(/selectTodaysDealSlots/);
     expect(home).toMatch(/view-all-boosted-listings/);
@@ -83,6 +84,25 @@ describe("Today's Deals Home section contract", () => {
     expect(home).toMatch(/bg-\[#FBF6EC\]/);
     expect(home).toMatch(/home\.featuredProducts/);
     expect(home).toMatch(/home\.todaysPicks/);
+  });
+
+  it("selects one responsive row using eligible, distinct products", () => {
+    expect([375, 767, 768, 1023, 1024, 1440].map(getTodaysDealSlotCount)).toEqual([2, 2, 3, 3, 4, 4]);
+
+    const nowMs = Date.parse("2026-11-05T12:00:00.000Z");
+    const candidates = [
+      { id: 1, isBoosted: true, country: "Haiti" },
+      { id: 2, isBoosted: false, country: "Haiti", viewCount: 30 },
+      { id: 3, isBoosted: false, country: "Haiti", viewCount: 20 },
+      { id: 4, isBoosted: false, country: "Haiti", viewCount: 10 },
+      { id: 5, isBoosted: true, country: "USA" },
+      { id: 1, isBoosted: true, country: "Haiti" },
+    ];
+    for (const width of [375, 768, 1440]) {
+      const slotCount = getTodaysDealSlotCount(width);
+      const result = selectTodaysDealSlots(candidates, { slotCount, nowMs, activeCountry: "Haiti" });
+      expect(result.slots.map((listing) => listing.id)).toEqual([1, 2, 3, 4].slice(0, slotCount));
+    }
   });
 
   it("only shows Boosted badges for actively boosted products", () => {

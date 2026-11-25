@@ -13,6 +13,10 @@ export type PendingVoiceMessage = {
   bytes: ArrayBuffer;
   mediaUrl?: string;
   createdAt: number;
+  /** Wall-clock of last status change — used to unstick hung uploading/sending. */
+  updatedAt?: number;
+  /** Recorded duration in seconds (UI); avoids 0:00 when metadata is slow on iOS. */
+  durationSec?: number;
   attempts: number;
   lastError?: string;
   status?: PendingVoiceStatus;
@@ -61,13 +65,17 @@ export async function savePendingVoice(input: {
   blob: Blob;
   mimeType: string;
   id?: string;
+  durationSec?: number;
 }): Promise<PendingVoiceMessage> {
+  const now = Date.now();
   const item: PendingVoiceMessage = {
     id: input.id || "voice-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10),
     conversationId: input.conversationId,
     mimeType: input.mimeType,
     bytes: await input.blob.arrayBuffer(),
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
+    durationSec: input.durationSec,
     attempts: 0,
     status: typeof navigator !== "undefined" && !navigator.onLine ? "waiting_connection" : "queued",
   };
@@ -99,7 +107,10 @@ export async function listPendingVoices(conversationId: number): Promise<Pending
 export async function updatePendingVoice(
   id: string,
   patch: Partial<
-    Pick<PendingVoiceMessage, "mediaUrl" | "attempts" | "lastError" | "status" | "mimeType">
+    Pick<
+      PendingVoiceMessage,
+      "mediaUrl" | "attempts" | "lastError" | "status" | "mimeType" | "durationSec" | "updatedAt"
+    >
   >,
 ): Promise<void> {
   const db = await openVoiceOutbox();
@@ -109,13 +120,37 @@ export async function updatePendingVoice(
     const done = transactionDone(tx);
     const getRequest = store.get(id);
     getRequest.onsuccess = () => {
-      if (getRequest.result) store.put({ ...getRequest.result, ...patch });
+      if (getRequest.result) {
+        store.put({ ...getRequest.result, ...patch, updatedAt: patch.updatedAt ?? Date.now() });
+      }
     };
     getRequest.onerror = () => tx.abort();
     await done;
   } finally {
     db.close();
   }
+}
+
+/** Mark uploading/sending rows that never settled as failed so the queue can retry. */
+export async function recoverStalePendingVoices(
+  conversationId: number,
+  maxAgeMs = 55_000,
+): Promise<number> {
+  const pending = await listPendingVoices(conversationId);
+  const now = Date.now();
+  let recovered = 0;
+  for (const item of pending) {
+    if (item.status !== "uploading" && item.status !== "sending") continue;
+    const anchor = item.updatedAt ?? item.createdAt;
+    if (now - anchor < maxAgeMs) continue;
+    await updatePendingVoice(item.id, {
+      status: "failed",
+      lastError: "Upload timed out",
+      attempts: item.attempts + 1,
+    });
+    recovered += 1;
+  }
+  return recovered;
 }
 
 export async function removePendingVoice(id: string): Promise<void> {

@@ -1238,6 +1238,7 @@ export default {
     userBlocked: "Itilizatè bloke",
     blockFailed: "Pa t kapab bloke itilizatè a",
     voiceUploadFailed: "Upload mesaj vwa echwe. Eseye ankò.",
+    voiceTooShort: "Kenbe yon ti moman ankò pou anrejistre",
     voiceSending: "Ap voye…",
     voiceUploading: "Ap upload…",
     voicePlay: "Jwe mesaj vwa a",

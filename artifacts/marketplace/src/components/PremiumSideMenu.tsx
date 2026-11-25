@@ -258,28 +258,22 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
       heading: t("nav.homeDiscoverSection", { defaultValue: "Home & Discover" }),
       items: [
         { icon: Home, label: t("nav.home"), href: "/", testId: "drawer-home" },
+        // Staff: put Wholesale in Home so Admins/Mods see it immediately (not only in a later section).
+        ...(canSeeWholesale
+          ? [{
+              icon: Warehouse,
+              label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),
+              href: "/wholesale",
+              testId: "drawer-flexa-wholesale",
+              accent: "emerald" as const,
+            } as NavItem]
+          : []),
         { icon: LayoutGrid, label: t("nav.categories", { defaultValue: "Categories" }), href: "/search", testId: "drawer-categories" },
         { icon: Tag, label: t("nav.offersPromos", { defaultValue: "Offers & Promotions" }), href: "/offers", testId: "drawer-offers" },
         { icon: Sparkles, label: t("nav.flexaPicks", { defaultValue: "Flexa Picks" }), href: "/search?boosted=true", testId: "drawer-flexa-picks" },
         { icon: Film, label: t("nav.videos"), href: "/videos", testId: "drawer-promo-videos" },
       ],
     },
-    // Staff preview — Super Admin / Admin / Moderator (WHOLESALE_PUBLIC_LAUNCH=false).
-    ...(canSeeWholesale
-      ? [{
-          id: "wholesale",
-          heading: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),
-          items: [
-            {
-              icon: Warehouse,
-              label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),
-              href: "/wholesale",
-              testId: "drawer-flexa-wholesale",
-              accent: "emerald" as const,
-            },
-          ] as NavItem[],
-        }]
-      : []),
     ...(canSeeSellerTools ? [{
       id: "boutique",
       heading: t("nav.boutiqueSection", { defaultValue: "Shop & Products" }),

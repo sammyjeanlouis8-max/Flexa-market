@@ -79,6 +79,16 @@ export function AppDrawer() {
 
     const out: DrawerSection[] = [discover];
 
+    if (canAccessWholesale(user)) {
+      out.push({
+        id: "wholesale",
+        heading: "FLEXA WHOLESALE",
+        items: [
+          { icon: "home", label: "Flexa Wholesale", href: "/wholesale", testID: "drawer-flexa-wholesale" },
+        ],
+      });
+    }
+
     if (user) {
       out.push({
         id: "boutique",
@@ -125,16 +135,6 @@ export function AppDrawer() {
         id: "account",
         heading: "MY ACCOUNT",
         items: [{ icon: "log-in", label: "Login", href: "/auth/login", testID: "drawer-login" }],
-      });
-    }
-
-    if (canAccessWholesale(user)) {
-      out.push({
-        id: "wholesale",
-        heading: "FLEXA WHOLESALE",
-        items: [
-          { icon: "home", label: "Flexa Wholesale", href: "/wholesale", testID: "drawer-flexa-wholesale" },
-        ],
       });
     }
 

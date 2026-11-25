@@ -523,6 +523,15 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       heading: t("nav.homeDiscoverSection", { defaultValue: "Home & Discover" }),
       items: [
         { href: "/", icon: Home, label: t("nav.home"), key: "home" },
+        ...(canSeeWholesale
+          ? [{
+              href: "/wholesale",
+              icon: Warehouse,
+              label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),
+              key: "flexa-wholesale",
+              highlight: true,
+            }]
+          : []),
         { href: "/search", icon: Search, label: t("nav.categories", { defaultValue: "Categories" }), key: "search" },
         { href: "/sell", icon: Plus, label: t("nav.sell"), key: "sell", highlight: true },
         { href: "/messages", icon: MessageCircle, label: t("nav.messages"), key: "messages", badge: unread },
@@ -531,21 +540,6 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
         { href: "/videos", icon: Film, label: t("nav.videos"), key: "videos" },
       ],
     },
-    // Staff preview — Super Admin / Admin / Moderator (WHOLESALE_PUBLIC_LAUNCH=false).
-    ...(canSeeWholesale
-      ? [{
-          heading: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),
-          items: [
-            {
-              href: "/wholesale",
-              icon: Warehouse,
-              label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),
-              key: "flexa-wholesale",
-              highlight: true,
-            },
-          ],
-        }]
-      : []),
     ...(user ? [{
       heading: t("nav.boutiqueSection", { defaultValue: "Shop & Products" }),
       items: [

@@ -531,7 +531,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
         { href: "/videos", icon: Film, label: t("nav.videos"), key: "videos" },
       ],
     },
-    // Super Admin only — immediately visible under Home & Discover (WHOLESALE_PUBLIC_LAUNCH=false).
+    // Staff preview — Super Admin / Admin / Moderator (WHOLESALE_PUBLIC_LAUNCH=false).
     ...(canSeeWholesale
       ? [{
           heading: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }),

@@ -35,10 +35,20 @@ const router = Router();
 /** Keep in sync with marketplace `WHOLESALE_PUBLIC_LAUNCH` until public launch. */
 const WHOLESALE_PUBLIC_LAUNCH = false;
 
-/** Super Admin only while public launch is false — excludes regular admin/moderator/seller. */
+/** Super Admin — used for elevated wholesale ops (verify depot, SA self-chat, etc.). */
 function isWholesaleSuperAdmin(user: { isSuperAdmin?: boolean; role?: string | null } | null | undefined): boolean {
   if (!user) return false;
   return !!user.isSuperAdmin || getRole(user as any) === "superadmin";
+}
+
+/** Menu / API browse while public launch is false: Super Admin, Admin, Moderator. */
+function canAccessWholesaleStaff(
+  user: { isSuperAdmin?: boolean; isAdmin?: boolean; role?: string | null } | null | undefined,
+): boolean {
+  if (!user) return false;
+  if (isWholesaleSuperAdmin(user)) return true;
+  const role = getRole(user as any);
+  return role === "admin" || role === "moderator" || !!user.isAdmin;
 }
 
 export {
@@ -75,11 +85,11 @@ async function loadProductWithWarehouse(productId: number) {
 
 async function requireWholesaleAccess(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1], next: Parameters<typeof requireAuth>[2]) {
   await requireAuth(req, res, async () => {
-    if (WHOLESALE_PUBLIC_LAUNCH || isWholesaleSuperAdmin(req.user)) {
+    if (WHOLESALE_PUBLIC_LAUNCH || canAccessWholesaleStaff(req.user)) {
       next();
       return;
     }
-    res.status(403).json({ error: "Wholesale preview is Super Admin only" });
+    res.status(403).json({ error: "Wholesale preview is Admin / Moderator only" });
   });
 }
 

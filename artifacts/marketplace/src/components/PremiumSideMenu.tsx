@@ -264,7 +264,7 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
         { icon: Film, label: t("nav.videos"), href: "/videos", testId: "drawer-promo-videos" },
       ],
     },
-    // Super Admin only — immediately visible under Home & Discover (WHOLESALE_PUBLIC_LAUNCH=false).
+    // Staff preview — Super Admin / Admin / Moderator (WHOLESALE_PUBLIC_LAUNCH=false).
     ...(canSeeWholesale
       ? [{
           id: "wholesale",

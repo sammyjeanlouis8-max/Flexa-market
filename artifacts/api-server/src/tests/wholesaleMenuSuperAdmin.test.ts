@@ -4,7 +4,7 @@ import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 
-describe("Flexa Wholesale Super Admin menu gate", () => {
+describe("Flexa Wholesale staff menu gate", () => {
   it("keeps WHOLESALE_PUBLIC_LAUNCH false across marketplace, mobile, and API", () => {
     const market = fs.readFileSync(
       path.join(repoRoot, "artifacts/marketplace/src/lib/wholesaleAccess.ts"),
@@ -23,7 +23,7 @@ describe("Flexa Wholesale Super Admin menu gate", () => {
     expect(api).toMatch(/const WHOLESALE_PUBLIC_LAUNCH = false/);
   });
 
-  it("shows Flexa Wholesale immediately in desktop sidebar and drawer for Super Admins only", () => {
+  it("shows Flexa Wholesale in desktop sidebar and drawer for staff via canAccessWholesale", () => {
     const layout = fs.readFileSync(
       path.join(repoRoot, "artifacts/marketplace/src/components/Layout.tsx"),
       "utf8",
@@ -33,10 +33,9 @@ describe("Flexa Wholesale Super Admin menu gate", () => {
       "utf8",
     );
 
-    expect(layout).toContain('canAccessWholesale(user)');
+    expect(layout).toContain("canAccessWholesale(user)");
     expect(layout).toContain('href: "/wholesale"');
     expect(layout).toContain('key: "flexa-wholesale"');
-    // Immediate placement: dedicated Super Admin section before boutique/services.
     expect(layout.indexOf("flexa-wholesale")).toBeLessThan(layout.indexOf("flexaServicesSection"));
     expect(layout).toContain("canSeeWholesale");
 
@@ -46,14 +45,15 @@ describe("Flexa Wholesale Super Admin menu gate", () => {
     expect(drawer.indexOf("drawer-flexa-wholesale")).toBeLessThan(drawer.indexOf("flexaServicesSection"));
   });
 
-  it("enforces Super Admin on API wholesale access middleware", () => {
+  it("enforces Admin / Moderator / Super Admin on API wholesale access middleware", () => {
     const api = fs.readFileSync(
       path.join(repoRoot, "artifacts/api-server/src/routes/wholesale.ts"),
       "utf8",
     );
-    expect(api).toContain("isWholesaleSuperAdmin");
-    expect(api).toContain("Wholesale preview is Super Admin only");
-    expect(api).toMatch(/WHOLESALE_PUBLIC_LAUNCH \|\| isWholesaleSuperAdmin/);
+    expect(api).toContain("canAccessWholesaleStaff");
+    expect(api).toContain("Wholesale preview is Admin / Moderator only");
+    expect(api).toMatch(/WHOLESALE_PUBLIC_LAUNCH \|\| canAccessWholesaleStaff/);
+    expect(api).toMatch(/role === "admin" \|\| role === "moderator"/);
   });
 
   it("gates marketplace pages with canAccessWholesale / WholesalePageGate", () => {
@@ -69,4 +69,3 @@ describe("Flexa Wholesale Super Admin menu gate", () => {
     expect(home).toContain("WholesalePageGate");
   });
 });
-

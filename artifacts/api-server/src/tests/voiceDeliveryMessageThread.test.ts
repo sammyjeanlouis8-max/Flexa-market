@@ -52,4 +52,10 @@ describe("MessageThread voice delivery contract", () => {
     expect(thread).toMatch(/Voice send timed out/);
     expect(thread).toMatch(/30_000/);
   });
+
+  it("uploads voice bytes with XHR so iOS sets Content-Length", () => {
+    expect(thread).toMatch(/function putViaXhr/);
+    expect(thread).toMatch(/xhr\.send\(file\)/);
+    expect(thread).toMatch(/XMLHttpRequest/);
+  });
 });

@@ -105,6 +105,67 @@ function isAbortError(error: unknown): boolean {
   return name === "AbortError" || name === "TimeoutError";
 }
 
+function putViaXhr(
+  uploadURL: string,
+  file: Blob,
+  mime: string,
+  token: string,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<{ url?: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      fn();
+    };
+    const timer = window.setTimeout(() => {
+      finish(() => {
+        try { xhr.abort(); } catch { /* ignore */ }
+        reject(new Error("Upload timed out"));
+      });
+    }, timeoutMs);
+
+    const onAbort = () => {
+      finish(() => {
+        try { xhr.abort(); } catch { /* ignore */ }
+        reject(new Error("Upload timed out"));
+      });
+    };
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+
+    xhr.open("PUT", uploadURL);
+    xhr.setRequestHeader("Content-Type", mime);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.responseType = "json";
+    xhr.onload = () => {
+      finish(() => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve((xhr.response ?? {}) as { url?: string });
+          return;
+        }
+        const err =
+          (xhr.response && (xhr.response.error || xhr.response.message)) ||
+          `Upload failed (${xhr.status})`;
+        reject(new Error(String(err)));
+      });
+    };
+    xhr.onerror = () => finish(() => reject(new Error("Upload failed")));
+    xhr.onabort = () => finish(() => reject(new Error("Upload timed out")));
+    // XHR sets Content-Length for Blob bodies — fetch often omits it on iOS WKWebView.
+    xhr.send(file);
+  });
+}
+
 async function uploadMedia(
   file: Blob,
   contentType: string,
@@ -142,29 +203,17 @@ async function uploadMedia(
       throw new Error((err as any).error || "Presign failed");
     }
     const { uploadURL, objectPath } = await presignRes.json();
-    const putRes = await fetch(uploadURL, {
-      method: "PUT",
-      headers: { "Content-Type": mime, Authorization: `Bearer ${token}` },
-      body: file,
-      signal: controller.signal,
-    });
-    if (!putRes.ok) {
-      const err = await putRes.json().catch(() => ({}));
-      throw new Error((err as any).error || "Upload failed");
-    }
+    const data = await putViaXhr(uploadURL, file, mime, token, timeoutMs, controller.signal);
     // The upload proxy returns the real persisted-media URL. Wasabi URLs are
     // same-origin `/api/storage/...` paths, while legacy Cloudinary responses
     // may be absolute HTTPS URLs. Do not discard the Wasabi path and fall back
     // to `objectPath`: that value is only a pre-upload placeholder.
-    try {
-      const data = await putRes.json();
-      if (
-        typeof data?.url === "string" &&
-        (/^https:\/\//i.test(data.url) || data.url.startsWith("/api/storage/"))
-      ) {
-        return data.url;
-      }
-    } catch { /* non-JSON response — fall back */ }
+    if (
+      typeof data?.url === "string" &&
+      (/^https:\/\//i.test(data.url) || data.url.startsWith("/api/storage/"))
+    ) {
+      return data.url;
+    }
     return `/api/storage/objects${(objectPath as string).replace(/^\/objects/, "")}`;
   };
 
@@ -1956,7 +2005,18 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 item.mimeType,
                 /iPad|iPhone|iPod/.test(navigator.userAgent) ? "audio/mp4" : "audio/webm",
               );
-              const blob = new Blob([item.bytes], { type: mime });
+              // Safari IDB can return a detached/odd buffer view — copy into a fresh Uint8Array.
+              const raw = item.bytes;
+              const bytes =
+                raw instanceof ArrayBuffer
+                  ? new Uint8Array(raw)
+                  : raw instanceof Uint8Array
+                    ? raw
+                    : new Uint8Array(raw as ArrayBuffer);
+              const blob = new Blob([bytes], { type: mime });
+              if (blob.size < 800) {
+                throw new Error("Recording too short");
+              }
               mediaUrl = await uploadMedia(blob, mime, authToken);
               if (gen !== voiceFlushGenRef.current) return;
               if (cancelledVoiceIdsRef.current.has(item.id)) {
@@ -1992,6 +2052,11 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             };
             await updatePendingVoice(item.id, failure).catch(() => {});
             setPendingVoices(current => current.map(voice => voice.id === item.id ? { ...voice, ...failure } : voice));
+            toast({
+              title: t("messages.voiceUploadFailed"),
+              description: failure.lastError,
+              variant: "destructive",
+            });
             break;
           } finally {
             if (gen === voiceFlushGenRef.current) setSendingVoiceId(null);
@@ -2004,7 +2069,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           voiceQueueBusyRef.current = false;
         }
       }
-    }, [convId, isRestricted, sendQueuedVoice, token]);
+    }, [convId, isRestricted, sendQueuedVoice, t, toast, token]);
 
     useEffect(() => {
       // Do not clear cancelledVoiceIdsRef on every callback identity change —

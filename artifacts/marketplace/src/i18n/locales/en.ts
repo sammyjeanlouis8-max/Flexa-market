@@ -198,6 +198,7 @@ export default {
     brandLine: "Wholesale · chat only · country depots",
     backHome: "Back to Flexa Wholesale",
     exitToMarket: "Back to Flexa Market",
+    toFlexaMarket: "Flexa Market",
     searchPlaceholder: "Search wholesale products…",
     emptyTitle: "No wholesale products yet",
     emptyBody: "List bulk stock from your warehouse. Buyers contact you in chat — no checkout.",

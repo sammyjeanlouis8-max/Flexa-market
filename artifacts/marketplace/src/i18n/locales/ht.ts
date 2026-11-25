@@ -158,6 +158,7 @@ export default {
     brandLine: "Angro · chat sèlman · depo pa peyi",
     backHome: "Retounen nan Flexa Wholesale",
     exitToMarket: "Retounen nan Flexa Market",
+    toFlexaMarket: "Flexa Market",
     searchPlaceholder: "Chèche pwodwi wholesale…",
     emptyTitle: "Pokò pwodwi wholesale",
     emptyBody: "Mete stock an gwo soti nan depo ou. Achtè kontakte ou nan chat — pa gen checkout.",

@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
+  Home,
   LayoutGrid,
   MessageCircle,
   PackagePlus,
@@ -34,11 +35,8 @@ export function WholesaleShell({
   const { t } = useTranslation();
   const [location] = useLocation();
   const brand = t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" });
+  const marketLabel = t("wholesale.toFlexaMarket", { defaultValue: "Flexa Market" });
   const atHome = location === "/wholesale" || location === "/wholesale/";
-  const backHref = atHome ? "/" : "/wholesale";
-  const backLabel = atHome
-    ? t("wholesale.exitToMarket", { defaultValue: "Back to Flexa Market" })
-    : t("wholesale.backHome", { defaultValue: "Back to Flexa Wholesale" });
 
   useEffect(() => {
     const prev = document.title;
@@ -51,14 +49,16 @@ export function WholesaleShell({
   return (
     <div className="min-h-dvh bg-[hsl(152,22%,97%)] dark:bg-[hsl(152,14%,8%)]">
       <header className="sticky top-0 z-30 border-b border-[hsl(152,30%,22%)]/20 bg-[hsl(152,55%,16%)] text-white">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-3 py-3 sm:px-4">
-          <Link
-            href={backHref}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 hover:bg-white/15"
-            aria-label={backLabel}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+        <div className="mx-auto flex max-w-5xl items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4">
+          {!atHome && (
+            <Link
+              href="/wholesale"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 hover:bg-white/15"
+              aria-label={t("wholesale.backHome", { defaultValue: "Back to Flexa Wholesale" })}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          )}
           <Link href="/wholesale" className="flex min-w-0 flex-1 items-center gap-2.5">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[hsl(152,65%,20%)] shadow-sm">
               <Warehouse className="h-5 w-5" />
@@ -73,6 +73,15 @@ export function WholesaleShell({
                 })}
               </p>
             </div>
+          </Link>
+          <Link
+            href="/"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white px-2.5 py-2 text-[11px] font-bold text-[hsl(152,65%,18%)] shadow-sm hover:bg-white/95 sm:px-3 sm:text-[12px]"
+            data-testid="wholesale-exit-to-market"
+            aria-label={t("wholesale.exitToMarket", { defaultValue: "Back to Flexa Market" })}
+          >
+            <Home className="h-3.5 w-3.5 shrink-0" />
+            <span className="max-w-[7.5rem] truncate sm:max-w-none">{marketLabel}</span>
           </Link>
           {actions}
         </div>

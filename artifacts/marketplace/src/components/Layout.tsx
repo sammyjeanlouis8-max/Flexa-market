@@ -4,7 +4,7 @@ import { useBroadcast } from "@/contexts/broadcast";
 import {
   Home, Search, Plus, MessageCircle, User,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase, Menu, LayoutGrid,
-  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award,
+  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award, Warehouse,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import LanguagePickerModal from "@/components/LanguagePickerModal";
@@ -41,6 +41,7 @@ import { prefetchRoute } from "@/lib/prefetchRoutes";
 import { CommandPalette } from "@/components/CommandPalette";
 import AdminShell from "@/components/admin/AdminShell";
 import { cn } from "@/lib/utils";
+import { canAccessWholesale } from "@/lib/wholesaleAccess";
 import { useGetCategories } from "@workspace/api-client-react";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
@@ -505,6 +506,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const driverStatusDesktop = useDriverStatus(user);
   const showDelivery = !!user && canShowFMDeliveryLinks(deliveryMenuCountry === undefined ? user.country : deliveryMenuCountry);
   const canSeeLoan = !isNativeMobileApp() && !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
+  const canSeeWholesale = canAccessWholesale(user);
 
   type SidebarItem = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; key: string; highlight?: boolean; adminHighlight?: boolean; badge?: number };
   type SidebarSection = { heading?: string; highlight?: boolean; items: SidebarItem[] };
@@ -572,6 +574,9 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     {
       heading: t("nav.flexaServicesSection", { defaultValue: "Flexa Services" }),
       items: [
+        ...(canSeeWholesale
+          ? [{ href: "/wholesale", icon: Warehouse, label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), key: "flexa-wholesale" }]
+          : []),
         { href: "/tv", icon: Tv, label: "Flexa TV", key: "flexa-tv" },
         { href: "/music", icon: Music2, label: "Flexa Music", key: "flexa-music" },
         ...(user ? [
@@ -612,7 +617,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     return location === path || location.startsWith(`${path}/`) || location.startsWith(`${path}?`);
   };
 
-  const moreActive = ["/settings", "/saved", "/my-drafts", "/bouillon", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos"].some(p =>
+  const moreActive = ["/settings", "/saved", "/my-drafts", "/bouillon", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos", "/wholesale", "/tv", "/music"].some(p =>
     location.startsWith(p)
   );
   const isHomePage = location === "/";
@@ -745,6 +750,25 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
             background: "#121212",
           }}
           data-testid="music-immersive-shell"
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+        </div>
+      </DeliveryMenuCountryContext.Provider>
+    );
+  }
+
+  // Flexa Wholesale — immersive shell (owns Flexa Wholesale brand chrome; no Market header).
+  const isWholesaleImmersive = /^\/wholesale(?:\/|$)/.test(location);
+  if (isWholesaleImmersive) {
+    return (
+      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
+        <div
+          className="app-shell wholesale-immersive-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col h-dvh overflow-clip bg-[hsl(152,22%,97%)] dark:bg-[hsl(152,14%,8%)]"
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
+          data-testid="wholesale-immersive-shell"
         >
           <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
         </div>

@@ -18,6 +18,7 @@ import {
   HelpCircle,
   Sparkles,
   Calculator,
+  Warehouse,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -32,12 +33,14 @@ import {
 } from "@/components/ui/command";
 import { useAuth } from "@/contexts/auth";
 import { prefetchRoute } from "@/lib/prefetchRoutes";
+import { canAccessWholesale } from "@/lib/wholesaleAccess";
 
 type CommandEntry = {
   href: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
   keywords?: string;
+  superAdminOnly?: boolean;
   auth?: boolean;
 };
 
@@ -75,6 +78,7 @@ export function CommandPalette() {
       { href: "/offers", label: t("nav.offers", { defaultValue: "Offers" }), icon: Tag, auth: true },
       { href: "/subscription", label: t("nav.subscription", { defaultValue: "Subscription" }), icon: Crown, auth: true },
       { href: "/videos", label: t("nav.videos", { defaultValue: "Videos" }), icon: Film },
+      { href: "/wholesale", label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), icon: Warehouse, keywords: "wholesale bulk b2b", superAdminOnly: true },
       { href: "/tv", label: "Flexa TV", icon: Tv },
       { href: "/music", label: "Flexa Music", icon: Music2 },
       { href: "/chatbot", label: "FlexaBot AI", icon: Sparkles },
@@ -82,7 +86,11 @@ export function CommandPalette() {
       { href: "/support", label: t("nav.support", { defaultValue: "Support" }), icon: HelpCircle },
       { href: "/settings", label: t("nav.settings", { defaultValue: "Settings" }), icon: Settings, auth: true },
     ];
-    return base.filter((e) => !e.auth || !!user);
+    return base.filter((e) => {
+      if (e.auth && !user) return false;
+      if (e.superAdminOnly && !canAccessWholesale(user)) return false;
+      return true;
+    });
   }, [t, user]);
 
   const go = (href: string) => {

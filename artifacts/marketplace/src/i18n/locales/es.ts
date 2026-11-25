@@ -89,6 +89,7 @@ export default {
     deliveryServicesSection: "Entrega y Servicios",
     myAccountSection: "Mi Cuenta",
     flexaServicesSection: "Servicios Flexa",
+    flexaWholesale: "Flexa Wholesale",
     preferencesSection: "Preferencias",
     offersPromos: "Ofertas y Promociones",
     flexaPicks: "Flexa Picks",

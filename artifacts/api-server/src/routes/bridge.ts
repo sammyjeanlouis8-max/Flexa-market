@@ -10,6 +10,7 @@ import {
 import { decodeBridgeUserId, encodeBridgeUserId, isWholesaleCreditSource, requireBridgeHmac } from "../lib/bridge";
 
 const router = Router();
+
 router.use("/bridge/v1", requireBridgeHmac);
 
 router.post("/bridge/v1/users/search", async (req, res): Promise<void> => {

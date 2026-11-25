@@ -159,6 +159,62 @@ const BNPLPage                       = lazy(() => import("@/pages/BNPLPage"));
 const Leaderboard                    = lazy(() => import("@/pages/Leaderboard"));
 const FlexaTV                        = lazy(() => import("@/pages/FlexaTV"));
 const FlexaMusic                     = lazy(() => import("@/pages/FlexaMusic"));
+const FlexaWholesale                 = lazy(() => import("@/pages/FlexaWholesale"));
+const WholesaleProduct               = lazy(() => import("@/pages/WholesaleProduct"));
+const WholesaleSeller                = lazy(() => import("@/pages/WholesaleSeller"));
+const WholesaleCategories            = lazy(() => import("@/pages/wholesale/WholesaleCategories"));
+const WholesaleCategory              = lazy(() => import("@/pages/wholesale/WholesaleCategory"));
+const WholesaleStore                 = lazy(() => import("@/pages/wholesale/WholesaleStore"));
+const WholesaleWarehouses            = lazy(() => import("@/pages/wholesale/WholesaleWarehouses"));
+const WholesaleCountry               = lazy(() => import("@/pages/wholesale/WholesaleCountry"));
+const WholesaleFavorites             = lazy(() => import("@/pages/wholesale/WholesaleFavorites"));
+const WholesaleInquiries             = lazy(() => import("@/pages/wholesale/WholesaleInquiries"));
+const WholesaleNotifications         = lazy(() => import("@/pages/wholesale/WholesaleNotifications"));
+const WholesaleSearch                = lazy(() => import("@/pages/wholesale/WholesaleSearch"));
+const WholesaleHelp                  = lazy(() => import("@/pages/wholesale/WholesaleHelp"));
+const WholesaleSellerDashboard       = lazy(() => import("@/pages/wholesale/WholesaleSellerDashboard"));
+const WholesaleSellerWarehouse       = lazy(() => import("@/pages/wholesale/WholesaleSellerWarehouse"));
+const WholesaleSellerCustomers       = lazy(() => import("@/pages/wholesale/WholesaleSellerCustomers"));
+const WholesaleSellerInquiries       = lazy(() => import("@/pages/wholesale/WholesaleSellerInquiries"));
+const WholesaleSellerEarnings        = lazy(() => import("@/pages/wholesale/WholesaleSellerEarnings"));
+const WholesaleSellerSettings        = lazy(() => import("@/pages/wholesale/WholesaleSellerSettings"));
+const WholesaleSellerPlans           = lazy(() => import("@/pages/wholesale/WholesaleSellerPlans"));
+const WholesaleSellerEdit            = lazy(() => import("@/pages/wholesale/WholesaleSellerEdit"));
+const WholesaleOnboarding            = lazy(() => import("@/pages/wholesale/WholesaleOnboarding"));
+const WholesaleAdmin                 = lazy(() => import("@/pages/wholesale/WholesaleAdmin"));
+const WholesaleAdminProducts         = lazy(() => import("@/pages/wholesale/WholesaleAdminProducts"));
+const WholesaleAdminSellers          = lazy(() => import("@/pages/wholesale/WholesaleAdminSellers"));
+const WholesaleAdminWarehouses       = lazy(() => import("@/pages/wholesale/WholesaleAdminWarehouses"));
+const WholesaleDeals                 = lazy(() => import("@/pages/wholesale/WholesaleDeals"));
+const WholesaleQuoteDetail           = lazy(() => import("@/pages/wholesale/WholesaleQuoteDetail"));
+const WholesaleRecent                = lazy(() => import("@/pages/wholesale/WholesaleRecent"));
+const WholesaleCompare               = lazy(() => import("@/pages/wholesale/WholesaleCompare"));
+const WholesaleMap                   = lazy(() => import("@/pages/wholesale/WholesaleMap"));
+const WholesaleCity                  = lazy(() => import("@/pages/wholesale/WholesaleCity"));
+const WholesaleFeatured              = lazy(() => import("@/pages/wholesale/WholesaleFeatured"));
+const WholesaleInquiryDetail         = lazy(() => import("@/pages/wholesale/WholesaleInquiryDetail"));
+const WholesalePickup                = lazy(() => import("@/pages/wholesale/WholesalePickup"));
+const WholesaleVerification          = lazy(() => import("@/pages/wholesale/WholesaleVerification"));
+const WholesaleSellerInventory       = lazy(() => import("@/pages/wholesale/WholesaleSellerInventory"));
+const WholesaleSellerDrafts          = lazy(() => import("@/pages/wholesale/WholesaleSellerDrafts"));
+const WholesaleSellerArchived        = lazy(() => import("@/pages/wholesale/WholesaleSellerArchived"));
+const WholesaleSellerMedia           = lazy(() => import("@/pages/wholesale/WholesaleSellerMedia"));
+const WholesaleSellerTiers           = lazy(() => import("@/pages/wholesale/WholesaleSellerTiers"));
+const WholesaleSellerHours           = lazy(() => import("@/pages/wholesale/WholesaleSellerHours"));
+const WholesaleSellerTeam            = lazy(() => import("@/pages/wholesale/WholesaleSellerTeam"));
+const WholesaleSellerAnalytics       = lazy(() => import("@/pages/wholesale/WholesaleSellerAnalytics"));
+const WholesaleSellerBoost           = lazy(() => import("@/pages/wholesale/WholesaleSellerBoost"));
+const WholesaleSellerReviews         = lazy(() => import("@/pages/wholesale/WholesaleSellerReviews"));
+const WholesaleSellerDocuments       = lazy(() => import("@/pages/wholesale/WholesaleSellerDocuments"));
+const WholesaleSellerAvailability    = lazy(() => import("@/pages/wholesale/WholesaleSellerAvailability"));
+const WholesaleSellerProfile         = lazy(() => import("@/pages/wholesale/WholesaleSellerProfile"));
+const WholesaleDisputes              = lazy(() => import("@/pages/wholesale/WholesaleDisputes"));
+const WholesaleBlocked               = lazy(() => import("@/pages/wholesale/WholesaleBlocked"));
+const WholesaleAdminCategories       = lazy(() => import("@/pages/wholesale/WholesaleAdminCategories"));
+const WholesaleAdminCountries        = lazy(() => import("@/pages/wholesale/WholesaleAdminCountries"));
+const WholesaleAdminChats            = lazy(() => import("@/pages/wholesale/WholesaleAdminChats"));
+const WholesaleAdminReports          = lazy(() => import("@/pages/wholesale/WholesaleAdminReports"));
+const WholesaleAdminFlags            = lazy(() => import("@/pages/wholesale/WholesaleAdminFlags"));
 const MusicSponsoredAds              = lazy(() => import("@/pages/MusicSponsoredAds"));
 const MusicSponsoredBreakHost        = lazy(() => import("@/components/music/MusicSponsoredBreak"));
 const MusicPublicPlayer              = lazy(() => import("@/pages/MusicPublicPlayer"));
@@ -389,6 +445,62 @@ function LayoutRoutes() {
           <Route path="/admin/vehicles" component={AdminVehiclePanel} />
           <Route path="/admin/drivers/live" component={AdminDriversLiveMap} />
           <Route path="/leaderboard" component={Leaderboard} />
+          <Route path="/wholesale/admin/warehouses" component={WholesaleAdminWarehouses} />
+          <Route path="/wholesale/admin/categories" component={WholesaleAdminCategories} />
+          <Route path="/wholesale/admin/countries" component={WholesaleAdminCountries} />
+          <Route path="/wholesale/admin/chats" component={WholesaleAdminChats} />
+          <Route path="/wholesale/admin/reports" component={WholesaleAdminReports} />
+          <Route path="/wholesale/admin/flags" component={WholesaleAdminFlags} />
+          <Route path="/wholesale/seller/inventory" component={WholesaleSellerInventory} />
+          <Route path="/wholesale/seller/drafts" component={WholesaleSellerDrafts} />
+          <Route path="/wholesale/seller/archived" component={WholesaleSellerArchived} />
+          <Route path="/wholesale/seller/media" component={WholesaleSellerMedia} />
+          <Route path="/wholesale/seller/tiers" component={WholesaleSellerTiers} />
+          <Route path="/wholesale/seller/hours" component={WholesaleSellerHours} />
+          <Route path="/wholesale/seller/team" component={WholesaleSellerTeam} />
+          <Route path="/wholesale/seller/analytics" component={WholesaleSellerAnalytics} />
+          <Route path="/wholesale/seller/boost" component={WholesaleSellerBoost} />
+          <Route path="/wholesale/seller/reviews" component={WholesaleSellerReviews} />
+          <Route path="/wholesale/seller/documents" component={WholesaleSellerDocuments} />
+          <Route path="/wholesale/seller/availability" component={WholesaleSellerAvailability} />
+          <Route path="/wholesale/seller/profile" component={WholesaleSellerProfile} />
+          <Route path="/wholesale/quotes/:id" component={WholesaleQuoteDetail} />
+          <Route path="/wholesale/inquiries/:id" component={WholesaleInquiryDetail} />
+          <Route path="/wholesale/deals" component={WholesaleDeals} />
+          <Route path="/wholesale/recent" component={WholesaleRecent} />
+          <Route path="/wholesale/compare" component={WholesaleCompare} />
+          <Route path="/wholesale/map" component={WholesaleMap} />
+          <Route path="/wholesale/city/:city" component={WholesaleCity} />
+          <Route path="/wholesale/featured" component={WholesaleFeatured} />
+          <Route path="/wholesale/pickup" component={WholesalePickup} />
+          <Route path="/wholesale/verification" component={WholesaleVerification} />
+          <Route path="/wholesale/disputes" component={WholesaleDisputes} />
+          <Route path="/wholesale/blocked" component={WholesaleBlocked} />
+          <Route path="/wholesale/admin/sellers" component={WholesaleAdminSellers} />
+          <Route path="/wholesale/admin/products" component={WholesaleAdminProducts} />
+          <Route path="/wholesale/admin" component={WholesaleAdmin} />
+          <Route path="/wholesale/seller/products/:id/edit" component={WholesaleSellerEdit} />
+          <Route path="/wholesale/seller/onboarding" component={WholesaleOnboarding} />
+          <Route path="/wholesale/seller/dashboard" component={WholesaleSellerDashboard} />
+          <Route path="/wholesale/seller/warehouse" component={WholesaleSellerWarehouse} />
+          <Route path="/wholesale/seller/customers" component={WholesaleSellerCustomers} />
+          <Route path="/wholesale/seller/inquiries" component={WholesaleSellerInquiries} />
+          <Route path="/wholesale/seller/earnings" component={WholesaleSellerEarnings} />
+          <Route path="/wholesale/seller/settings" component={WholesaleSellerSettings} />
+          <Route path="/wholesale/seller/plans" component={WholesaleSellerPlans} />
+          <Route path="/wholesale/seller" component={WholesaleSeller} />
+          <Route path="/wholesale/stores/:id" component={WholesaleStore} />
+          <Route path="/wholesale/warehouses" component={WholesaleWarehouses} />
+          <Route path="/wholesale/country/:code" component={WholesaleCountry} />
+          <Route path="/wholesale/categories/:slug" component={WholesaleCategory} />
+          <Route path="/wholesale/categories" component={WholesaleCategories} />
+          <Route path="/wholesale/favorites" component={WholesaleFavorites} />
+          <Route path="/wholesale/inquiries" component={WholesaleInquiries} />
+          <Route path="/wholesale/notifications" component={WholesaleNotifications} />
+          <Route path="/wholesale/search" component={WholesaleSearch} />
+          <Route path="/wholesale/help" component={WholesaleHelp} />
+          <Route path="/wholesale/products/:id" component={WholesaleProduct} />
+          <Route path="/wholesale" component={FlexaWholesale} />
           <Route path="/tv" component={FlexaTV} />
           <Route path="/music" component={FlexaMusic} />
           <Route path="/music/sponsored-ads" component={MusicSponsoredAds} />

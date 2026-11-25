@@ -49,3 +49,4 @@ export * from "./settlementRecovery";
 export * from "./promax_rotation";
 export * from "./promo_video_saves";
 export * from "./user_addresses";
+export * from "./wholesale";

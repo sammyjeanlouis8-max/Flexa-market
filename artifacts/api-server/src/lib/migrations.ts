@@ -3406,6 +3406,61 @@ export async function runStartupMigrations(): Promise<void> {
     sql: `CREATE INDEX IF NOT EXISTS media_reviews_appeal_status_idx ON media_reviews(appeal_status)`,
   });
 
+  migrations.push({
+    name: "wholesale_products.create",
+    sql: `CREATE TABLE IF NOT EXISTS wholesale_products (
+      id SERIAL PRIMARY KEY,
+      seller_id INTEGER NOT NULL REFERENCES users(id),
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      unit_price REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      images TEXT[] NOT NULL DEFAULT '{}',
+      category TEXT,
+      country TEXT,
+      city TEXT,
+      warehouse_name TEXT,
+      warehouse_city TEXT,
+      min_order_qty INTEGER NOT NULL DEFAULT 1,
+      wholesale_unit_type TEXT NOT NULL DEFAULT 'unit',
+      stock_quantity INTEGER NOT NULL DEFAULT 0,
+      sku TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      contact_only BOOLEAN NOT NULL DEFAULT TRUE,
+      offers_local_delivery BOOLEAN NOT NULL DEFAULT FALSE,
+      offers_warehouse_pickup BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "wholesale_products.seller_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_products_seller_idx ON wholesale_products(seller_id)`,
+  });
+  migrations.push({
+    name: "wholesale_products.status_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_products_status_idx ON wholesale_products(status)`,
+  });
+  migrations.push({
+    name: "wholesale_products.country_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_products_country_idx ON wholesale_products(country)`,
+  });
+  migrations.push({
+    name: "wholesale_price_tiers.create",
+    sql: `CREATE TABLE IF NOT EXISTS wholesale_price_tiers (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER NOT NULL REFERENCES wholesale_products(id) ON DELETE CASCADE,
+      min_quantity INTEGER NOT NULL,
+      max_quantity INTEGER,
+      unit_price REAL NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "wholesale_price_tiers.product_idx",
+    sql: `CREATE INDEX IF NOT EXISTS wholesale_price_tiers_product_idx ON wholesale_price_tiers(product_id)`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

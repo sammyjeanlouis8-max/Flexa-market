@@ -6,6 +6,7 @@ import {
   Truck, ShieldCheck, User, Heart, Wallet, Crown, Settings, HelpCircle,
   Briefcase, Globe, LogOut, X, ChevronRight, Moon, Sun, Plus, Package,
   Store, Bell, Lock, MapPinned, Sparkles, Landmark, Tag, Award, LayoutGrid, BarChart3,
+  Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
@@ -15,6 +16,7 @@ import { persistLanguage } from "@/lib/persistLanguage";
 import { apiPatch } from "@/lib/api";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { cn } from "@/lib/utils";
+import { canAccessWholesale } from "@/lib/wholesaleAccess";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function DarkModeToggle({ className }: { className?: string }) {
@@ -241,6 +243,7 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
   const canSeeLoan = !isNativeMobileApp() && !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
   const isApprovedDriver = driverStatus === "approved";
   const canSeeSellerTools = !!user;
+  const canSeeWholesale = canAccessWholesale(user);
 
   const applyLabel =
     driverStatus === "approved" ? t("nav.driverApproved") :
@@ -321,6 +324,9 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
       id: "services",
       heading: t("nav.flexaServicesSection", { defaultValue: "Flexa Services" }),
       items: [
+        ...(canSeeWholesale
+          ? [{ icon: Warehouse, label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), href: "/wholesale", testId: "drawer-flexa-wholesale" } as NavItem]
+          : []),
         { icon: Tv, label: "Flexa TV", href: "/tv", testId: "drawer-flexa-tv" },
         { icon: Music2, label: "Flexa Music", href: "/music", testId: "drawer-flexa-music" },
         ...(user ? [

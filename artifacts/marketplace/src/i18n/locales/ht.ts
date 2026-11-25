@@ -505,6 +505,7 @@ export default {
       removed: "Retire",
     },
     location: "Kote",
+    productLocation: "Kote pwodwi a ye",
     price: "Pri",
     description: "Deskripsyon",
     category: "Kategori",
@@ -527,6 +528,7 @@ export default {
     inCart: "Nan Panye ✓",
     removeFromCart: "Retire nan panye",
     addedToCart: "Ajoute nan panye!",
+    contactOnlyNoCart: "Anons sa a se mesaj sèlman — itilize Mesaj olye de panyen an.",
     noImportFees: "Pa gen frè enpòtasyon",
     localWarehouse: "🚚 Depo lokal — Livrezon 2 JOU OUVRAB",
     lateCredit: "✓ $5.00 kredi retad",
@@ -748,6 +750,9 @@ export default {
   home: {
 
     deliverTo: "Livre bay",
+    chooseDeliveryDestination: "Chwazi destinasyon livrezon",
+    browsingIn: "Ap chèche nan",
+    deliveryNeedsAddress: "Chwazi yon destinasyon livrezon pou wè frè ak delè yo.",
     shopByCategory: "Achte pa kategori",
     todaysDeals: "Ofri jodi a",
     todaysPicks: "Chwa jodi a",

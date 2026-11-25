@@ -561,25 +561,7 @@ export default function ListingCard({
                 e.preventDefault();
                 e.stopPropagation();
                 if (!listing.sellerId) return;
-                if (!user) {
-                  requireAuth({
-                    action: "addToCart",
-                    next: `/listings/${listing.id}`,
-                    listingId: listing.id,
-                    sellerId: listing.sellerId,
-                    title: listing.title,
-                    price: listing.price,
-                    currency: listing.currency ?? null,
-                    image: listing.images?.[0] ?? null,
-                    country: listing.country ?? null,
-                    quantity: 1,
-                  });
-                  return;
-                }
-                if (isInCart(listing.id)) {
-                  toast({ title: t("cart.alreadyInCart", { defaultValue: "Already in cart" }) });
-                  return;
-                }
+                // Guests may add eligible items; login is required only at checkout.
                 addItem({
                   listingId: listing.id,
                   title: listing.title,

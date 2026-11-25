@@ -662,13 +662,36 @@ export default function Home() {
 
   const userCountry = activeCountry;
   const countryFlag = userCountry ? COUNTRY_FLAGS[userCountry] : null;
-  // Display city: prefer freshly detected > profile/guest shopping city > country fallback
+  // Browse zone (search/filter) vs delivery destination (where packages go) vs product city on cards.
   const displayCity = detectedCity ?? user?.location ?? shoppingCity ?? null;
+  const deliveryDestination =
+    (user?.location && user.location.trim()) ||
+    (guestLocation?.manual && guestLocation.city?.trim()) ||
+    null;
   const needsGuestCountry = !user && !isAdmin && !activeCountry;
+
+  useEffect(() => {
+    const openPicker = () => {
+      if (!isAdmin) setShowCityPicker(true);
+    };
+    window.addEventListener("flexa:open-delivery-picker", openPicker);
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("setDelivery") === "1") {
+        openPicker();
+        sp.delete("setDelivery");
+        const next = sp.toString();
+        window.history.replaceState(null, "", next ? `/?${next}` : "/");
+      }
+    } catch {
+      /* ignore */
+    }
+    return () => window.removeEventListener("flexa:open-delivery-picker", openPicker);
+  }, [isAdmin]);
 
   return (
     <div className="w-full fm-home-amazon">
-      {/* === MOBILE: Amazon-style green search + deliver strip === */}
+      {/* === MOBILE: single search + delivery destination (desktop uses Layout HeaderSearch) === */}
       <div className="md:hidden bg-[hsl(152,65%,18%)] text-white px-3 pb-2.5 pt-1 space-y-2">
         <form onSubmit={handleSearch} className="flex gap-2 items-stretch">
           <div className="relative flex-1">
@@ -691,40 +714,53 @@ export default function Home() {
             <Search className="h-5 w-5" />
           </Button>
         </form>
-        {(displayCity || userCountry) && (
-          <button
-            type="button"
-            onClick={() => !isAdmin && setShowCityPicker(true)}
-            className="flex items-center gap-1.5 text-[12px] text-white/95 w-full text-left"
-            data-testid="button-deliver-to"
-          >
-            <MapPin className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">
-              {t("home.deliverTo", { defaultValue: "Deliver to" })}{" "}
-              <strong>{displayCity ?? userCountry}</strong>
-            </span>
-            <ChevronRight className="h-3.5 w-3.5 ml-auto shrink-0 opacity-80" />
-          </button>
+        <button
+          type="button"
+          onClick={() => !isAdmin && setShowCityPicker(true)}
+          className="flex items-center gap-1.5 text-[12px] text-white/95 w-full text-left"
+          data-testid="button-deliver-to"
+        >
+          <MapPin className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">
+            {t("home.deliverTo", { defaultValue: "Deliver to" })}{" "}
+            <strong>
+              {deliveryDestination
+                || t("home.chooseDeliveryDestination", { defaultValue: "Choose delivery destination" })}
+            </strong>
+          </span>
+          <ChevronRight className="h-3.5 w-3.5 ml-auto shrink-0 opacity-80" />
+        </button>
+        {(userCountry || displayCity) && (
+          <p className="text-[11px] text-white/70 truncate" data-testid="home-browse-zone">
+            {t("home.browsingIn", { defaultValue: "Browsing in" })}{" "}
+            <span className="font-semibold text-white/90">{displayCity ?? userCountry}</span>
+          </p>
         )}
       </div>
 
-      {/* === DESKTOP SEARCH BAR === */}
-      <div className="hidden md:block sticky top-0 z-10 bg-background border-b border-border px-4 py-3">
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              placeholder={userCountry ? `${t("home.searchPlaceholder")} ${userCountry}...` : t("home.searchPlaceholder")}
-              className="pl-9 pr-3 h-10 rounded-full bg-muted border-0 text-sm focus-visible:ring-1"
-              data-testid="input-search-hero"
-            />
-          </div>
-          <Button type="submit" size="sm" className="rounded-full px-4 shrink-0" data-testid="button-search-hero">
-            {t("buttons.search")}
-          </Button>
-        </form>
+      {/* Desktop: delivery + browse zone under Layout search (no second search bar) */}
+      <div className="hidden md:flex items-center gap-4 px-4 py-2 border-b border-border bg-muted/30">
+        <button
+          type="button"
+          onClick={() => !isAdmin && setShowCityPicker(true)}
+          className="flex items-center gap-1.5 text-[13px] text-foreground hover:text-primary"
+          data-testid="button-deliver-to-desktop"
+        >
+          <MapPin className="h-3.5 w-3.5 shrink-0 text-[hsl(152,65%,28%)]" />
+          <span>
+            {t("home.deliverTo", { defaultValue: "Deliver to" })}{" "}
+            <strong>
+              {deliveryDestination
+                || t("home.chooseDeliveryDestination", { defaultValue: "Choose delivery destination" })}
+            </strong>
+          </span>
+        </button>
+        {(userCountry || displayCity) && (
+          <span className="text-[12px] text-muted-foreground truncate" data-testid="home-browse-zone-desktop">
+            {t("home.browsingIn", { defaultValue: "Browsing in" })}{" "}
+            <span className="font-medium text-foreground">{displayCity ?? userCountry}</span>
+          </span>
+        )}
       </div>
 
       <div className="px-3 py-2 space-y-4 md:px-4 md:py-4 md:space-y-6">
@@ -988,44 +1024,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* === HORIZONTAL CATEGORY NAV (Amazon-style underline) === */}
-        {categories && categories.length > 0 && (
-          <div className="-mx-3 md:-mx-4 border-b border-border bg-background">
-            <div
-              className="flex gap-1 overflow-x-auto px-3 md:px-4 scrollbar-none"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
-              <button
-                onClick={() => setActiveCategory(null)}
-                className={cn(
-                  "flex-shrink-0 px-3 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors",
-                  activeCategory === null
-                    ? "border-[#F97316] text-[hsl(152,65%,22%)]"
-                    : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-                data-testid="button-category-all"
-              >
-                {t("home.allCategories")}
-              </button>
-              {categories.map((cat: Category) => (
-                <button
-                  key={cat.id}
-                  onClick={() => handleCategoryClick(cat.slug)}
-                  className={cn(
-                    "flex-shrink-0 px-3 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors",
-                    activeCategory === cat.slug
-                      ? "border-[#F97316] text-[hsl(152,65%,22%)]"
-                      : "border-transparent text-muted-foreground hover:text-foreground",
-                  )}
-                  data-testid={`button-category-${cat.slug}`}
-                >
-                  <span className="mr-1">{cat.icon}</span>
-                  {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Category explore: Shop by Category below is the single primary zone (no duplicate chip row). */}
 
         {/* === HERO — For You match preferred, else boosted / deal === */}
         {heroListing && (
@@ -1083,11 +1082,12 @@ export default function Home() {
                 {t("buttons.seeAll")} <ChevronRight className="h-3.5 w-3.5" />
               </Link>
             </div>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-2" data-testid="shop-by-category">
               {categories.slice(0, 8).map((cat: Category) => (
-                <Link
+                <button
+                  type="button"
                   key={cat.id}
-                  href={`/categories/${encodeURIComponent(cat.slug)}`}
+                  onClick={() => handleCategoryClick(cat.slug)}
                   className={cn(
                     "flex flex-col items-center gap-1.5 rounded-xl bg-muted/60 border border-border p-2.5 active:scale-[0.98] transition",
                     activeCategory === cat.slug && "border-[#F97316] bg-orange-50 dark:bg-orange-950/20",
@@ -1098,7 +1098,7 @@ export default function Home() {
                   <span className="text-[10px] font-semibold text-foreground text-center line-clamp-2 leading-tight">
                     {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
                   </span>
-                </Link>
+                </button>
               ))}
             </div>
           </section>

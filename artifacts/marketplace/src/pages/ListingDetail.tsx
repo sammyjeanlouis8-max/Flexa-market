@@ -103,7 +103,11 @@ export default function ListingDetail() {
   const [, setLocation] = useLocation();
   const { user, token } = useAuth();
   const { requireAuth } = useAuthRequired();
-  const { country: shoppingCountry, city: shoppingCity } = useShoppingLocation();
+  const { country: shoppingCountry, guestLocation } = useShoppingLocation();
+  const deliveryDestination =
+    (user?.location && user.location.trim()) ||
+    (guestLocation?.manual && guestLocation.city?.trim()) ||
+    null;
   const { addItem, removeItem, isInCart, updateQuantity, items: cartItems } = useCart();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -363,6 +367,11 @@ export default function ListingDetail() {
   }, [buyNowOpen, listing, token, user?.country]);
 
   const contactOnly = isContactOnlyListing(listing);
+  const productLocation = listing
+    ? [(listing as any).city || listing.location, (listing as any).country]
+        .filter(Boolean)
+        .join(", ") || null
+    : null;
   const relatedCategory = listing?.categorySlug || listing?.category;
   const relatedCountry = user?.country ?? shoppingCountry;
   const { data: relatedData } = useGetListings(
@@ -1621,28 +1630,21 @@ export default function ListingDetail() {
   };
 
   const handleAddToCartClick = () => {
+    if (contactOnly) {
+      toast({
+        title: t("buttons.messageSeller", { defaultValue: "Message seller" }),
+        description: t("listing.contactOnlyNoCart", {
+          defaultValue: "This listing is contact-only — use Message instead of cart.",
+        }),
+      });
+      return;
+    }
     if (!canPurchaseQty) {
       toast({ title: t("checkout.soldBadge"), variant: "destructive" });
       return;
     }
     const qty = Math.min(Math.max(1, buyQty), Math.max(1, maxBuyQty));
-    if (!user) {
-      if (!isLoading) {
-        requireAuth({
-          action: "addToCart",
-          next: `/listings/${id}`,
-          listingId: id,
-          sellerId: listing.sellerId,
-          title: listing.title,
-          price: listing.price,
-          currency: (listing as any).currency ?? "USD",
-          image: (listing as any).images?.[0] ?? null,
-          country: (listing as any).country ?? null,
-          quantity: qty,
-        });
-      }
-      return;
-    }
+    // Guests may add eligible items; login is required only at checkout.
     const inCart = isInCart(id);
     if (inCart) {
       const existingQty = cartItems.find((i) => i.listingId === id)?.quantity ?? 1;
@@ -1783,15 +1785,27 @@ export default function ListingDetail() {
             <Search className="h-4 w-4" />
           </Button>
         </form>
-        {(shoppingCity || user?.location || (listing as any).city || listing.location || shoppingCountry || country) && (
-          <div className="flex items-center gap-1.5 text-[12px] text-white/95" data-testid="pdp-deliver-to">
-            <MapPin className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">
-              {t("home.deliverTo", { defaultValue: "Deliver to" })}{" "}
-              <strong>{shoppingCity || user?.location || (listing as any).city || listing.location || shoppingCountry || country}</strong>
-            </span>
-            <ChevronRight className="h-3.5 w-3.5 ml-auto shrink-0 opacity-80" />
-          </div>
+        <button
+          type="button"
+          onClick={() => setLocation("/?setDelivery=1")}
+          className="flex items-center gap-1.5 text-[12px] text-white/95 w-full text-left"
+          data-testid="pdp-deliver-to"
+        >
+          <MapPin className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">
+            {t("home.deliverTo", { defaultValue: "Deliver to" })}{" "}
+            <strong>
+              {deliveryDestination
+                || t("home.chooseDeliveryDestination", { defaultValue: "Choose delivery destination" })}
+            </strong>
+          </span>
+          <ChevronRight className="h-3.5 w-3.5 ml-auto shrink-0 opacity-80" />
+        </button>
+        {productLocation && (
+          <p className="text-[11px] text-white/70 truncate" data-testid="pdp-product-location">
+            {t("listing.productLocation", { defaultValue: "Product location" })}:{" "}
+            <span className="font-semibold text-white/90">{productLocation}</span>
+          </p>
         )}
       </div>
 
@@ -2260,10 +2274,22 @@ export default function ListingDetail() {
                     .replace("GRATIS", `<strong class="text-[hsl(152,65%,28%)]">GRATIS</strong>`),
                 }}
               />
-              {(user?.location || user?.country) && (
-                <p className="text-[12px] text-[#0066c0] mt-1 flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
-                  {t("home.deliverTo", { defaultValue: "Deliver to" })} {user?.location || user?.country}
+              <p className="text-[12px] text-[#0066c0] mt-1 flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                {t("home.deliverTo", { defaultValue: "Deliver to" })}{" "}
+                {deliveryDestination
+                  || t("home.chooseDeliveryDestination", { defaultValue: "Choose delivery destination" })}
+              </p>
+              {productLocation && (
+                <p className="text-[12px] text-muted-foreground mt-1" data-testid="pdp-product-location-desktop">
+                  {t("listing.productLocation", { defaultValue: "Product location" })}: {productLocation}
+                </p>
+              )}
+              {!deliveryDestination && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {t("home.deliveryNeedsAddress", {
+                    defaultValue: "Choose a delivery destination to see fees and delivery times.",
+                  })}
                 </p>
               )}
             </div>

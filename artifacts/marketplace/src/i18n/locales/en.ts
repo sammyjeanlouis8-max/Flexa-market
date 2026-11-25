@@ -505,6 +505,7 @@ export default {
       removed: "Removed",
     },
     location: "Location",
+    productLocation: "Product location",
     price: "Price",
     description: "Description",
     category: "Category",
@@ -527,6 +528,7 @@ export default {
     inCart: "In Cart ✓",
     removeFromCart: "Removed from cart",
     addedToCart: "Added to cart!",
+    contactOnlyNoCart: "This listing is contact-only — use Message instead of cart.",
     noImportFees: "No import fees",
     localWarehouse: "🚚 Local warehouse — 2 BUSINESS DAY delivery",
     lateCredit: "✓ $5.00 late credit",
@@ -748,6 +750,9 @@ export default {
   home: {
 
     deliverTo: "Deliver to",
+    chooseDeliveryDestination: "Choose delivery destination",
+    browsingIn: "Browsing in",
+    deliveryNeedsAddress: "Choose a delivery destination to see fees and delivery times.",
     shopByCategory: "Shop by Category",
     todaysDeals: "Today's Deals",
     todaysPicks: "Today's Picks",

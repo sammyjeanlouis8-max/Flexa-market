@@ -1,11 +1,13 @@
+import { useLanguage } from "@/context/LanguageContext";
 import React from "react";
 import { WholesaleSimplePage } from "@/components/wholesale/WholesaleSimplePage";
 
 export default function Screen() {
+  const { t } = useLanguage();
   return (
     <WholesaleSimplePage
-      title="Featured wholesale"
-      subtitle="Highlighted depot stock — chat to buy."
+      title={t("wholesale_featuredTitle")}
+      subtitle={t("wholesale_featuredSubtitle")}
       empty="Nothing here yet — chat-only wholesale."
     />
   );

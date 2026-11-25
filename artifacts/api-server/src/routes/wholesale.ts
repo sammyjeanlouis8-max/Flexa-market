@@ -150,15 +150,22 @@ function shapeProduct(
 }
 
 /** Keep public launch metadata for menu / hub. */
-router.get("/wholesale/launch", (_req, res): void => {
+router.get("/wholesale/launch", (req, res): void => {
   const raw = process.env.FLEXA_WHOLESALE_PUBLIC_URL || process.env.FLEXA_WHOLESALE_BASE_URL || "";
-  const url = raw.trim().replace(/\/$/, "") || null;
+  const base = raw.trim().replace(/\/$/, "") || null;
+  const langRaw = String(req.query.lang ?? "").trim().toLowerCase();
+  const lang = /^[a-z]{2}(-[a-z0-9]+)?$/.test(langRaw) ? langRaw.split("-")[0] : null;
+  const url =
+    base && lang
+      ? `${base}${base.includes("?") ? "&" : "?"}lang=${encodeURIComponent(lang)}`
+      : base;
   res.json({
-    configured: !!url,
+    configured: !!base,
     url,
     label: "Flexa Wholesale",
     native: true,
     publicLaunch: WHOLESALE_PUBLIC_LAUNCH,
+    lang: lang || null,
   });
 });
 

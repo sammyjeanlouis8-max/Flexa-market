@@ -8,17 +8,17 @@ export default function WholesaleSellerEarnings() {
     <WholesalePageGate>
       <WholesaleShell
         title={t("wholesale.earningsTitle", { defaultValue: "Earnings" })}
-        subtitle="Recorded from closed chat deals (no cart checkout)."
+        subtitle={t("wholesale.earningsSubtitle")}
       >
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <WholesaleStat label="This month" value="$4,280" />
-          <WholesaleStat label="Closed chats" value={18} />
-          <WholesaleStat label="Pending" value="$640" />
+          <WholesaleStat label={t("wholesale.thisMonth")} value="$4,280" />
+          <WholesaleStat label={t("wholesale.closedChats")} value={18} />
+          <WholesaleStat label={t("wholesale.pending")} value="$640" />
         </div>
         <div className="space-y-2">
-          <WholesaleListCard href="/wholesale/seller/inquiries" title="Rice deal · Hotel Karibe" meta="$1,040 · closed chat" badge="Paid" />
-          <WholesaleListCard href="/wholesale/seller/inquiries" title="Oil cartons · SuperMax" meta="$762 · closed chat" badge="Paid" />
-          <WholesaleListCard href="/wholesale/seller/inquiries" title="Water pallets · Event Pro" meta="$640 · pending confirm" badge="Pending" />
+          <WholesaleListCard href="/wholesale/seller/inquiries" title="Rice deal · Hotel Karibe" meta="$1,040 · closed chat" badge={t("wholesale.paid")} />
+          <WholesaleListCard href="/wholesale/seller/inquiries" title="Oil cartons · SuperMax" meta="$762 · closed chat" badge={t("wholesale.paid")} />
+          <WholesaleListCard href="/wholesale/seller/inquiries" title="Water pallets · Event Pro" meta="$640 · pending confirm" badge={t("wholesale.pending")} />
         </div>
       </WholesaleShell>
     </WholesalePageGate>

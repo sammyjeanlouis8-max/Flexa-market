@@ -3,11 +3,11 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleQuoteDetail() {
   return (
     <WholesaleSimplePage
-      title="Quote detail"
-      subtitle="Negotiate in chat — no checkout."
+      titleKey="wholesale.quoteTitle"
+      subtitleKey="wholesale.quoteSubtitle"
       stats={[
-        { label: "Qty", value: "40" },
-        { label: "Quote", value: "$1,040" },
+        { label: "Qty", labelKey: "wholesale.qty", value: "40" },
+        { label: "Quote", labelKey: "wholesale.quote", value: "$1,040" },
       ]}
       items={[
         { title: "Buyer", meta: "Hotel Karibe · Haiti", href: "/messages", badge: "Open" },

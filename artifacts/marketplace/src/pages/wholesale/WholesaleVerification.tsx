@@ -3,10 +3,10 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleVerification() {
   return (
     <WholesaleSimplePage
-      title="Seller verification"
-      subtitle="Verify company + depot to sell wholesale."
+      titleKey="wholesale.verificationTitle"
+      subtitleKey="wholesale.verificationSubtitle"
       stats={[
-        { label: "Status", value: "Pending" },
+        { label: "Status", labelKey: "wholesale.status", value: "Pending" },
       ]}
       items={[
         { title: "Business docs", meta: "Upload registration", href: "/wholesale/seller/documents", badge: "Needed" },

@@ -4,9 +4,10 @@
  */
 import { Feather } from "@expo/vector-icons";
 import { usePathname, useRouter } from "expo-router";
-import React, { type ReactNode } from "react";
+import React, { useMemo, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLanguage } from "@/context/LanguageContext";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 type Tab = {
@@ -16,63 +17,6 @@ type Tab = {
   href: string;
   match: (p: string) => boolean;
 };
-
-const TABS: Tab[] = [
-  {
-    key: "catalog",
-    label: "Catalog",
-    icon: "grid",
-    href: "/wholesale",
-    match: (p) =>
-      p === "/wholesale" ||
-      p.startsWith("/wholesale/search") ||
-      p.startsWith("/wholesale/categories") ||
-      p.startsWith("/wholesale/products") ||
-      p.startsWith("/wholesale/country") ||
-      p.startsWith("/wholesale/city") ||
-      p.startsWith("/wholesale/featured") ||
-      p.startsWith("/wholesale/compare") ||
-      p.startsWith("/wholesale/recent") ||
-      p.startsWith("/wholesale/help") ||
-      p.startsWith("/wholesale/pickup") ||
-      p.startsWith("/wholesale/map"),
-  },
-  {
-    key: "depots",
-    label: "Depots",
-    icon: "home",
-    href: "/wholesale/warehouses",
-    match: (p) => p.startsWith("/wholesale/warehouses") || p.startsWith("/wholesale/stores"),
-  },
-  {
-    key: "chat",
-    label: "Chat",
-    icon: "message-circle",
-    href: "/wholesale/inquiries",
-    match: (p) =>
-      p.startsWith("/wholesale/inquiries") ||
-      p.startsWith("/wholesale/favorites") ||
-      p.startsWith("/wholesale/notifications") ||
-      p.startsWith("/wholesale/deals") ||
-      p.startsWith("/wholesale/quotes") ||
-      p.startsWith("/wholesale/disputes") ||
-      p.startsWith("/wholesale/blocked"),
-  },
-  {
-    key: "seller",
-    label: "Seller",
-    icon: "package",
-    href: "/wholesale/seller",
-    match: (p) => p.startsWith("/wholesale/seller") || p.startsWith("/wholesale/verification"),
-  },
-  {
-    key: "admin",
-    label: "Admin",
-    icon: "shield",
-    href: "/wholesale/admin",
-    match: (p) => p.startsWith("/wholesale/admin"),
-  },
-];
 
 export function WholesaleShell({
   children,
@@ -90,7 +34,67 @@ export function WholesaleShell({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useLanguage();
   const atHome = pathname === "/wholesale" || pathname === "/wholesale/";
+  const tabs: Tab[] = useMemo(
+    () => [
+      {
+        key: "catalog",
+        label: t("wholesale_tabCatalog"),
+        icon: "grid",
+        href: "/wholesale",
+        match: (p) =>
+          p === "/wholesale" ||
+          p.startsWith("/wholesale/search") ||
+          p.startsWith("/wholesale/categories") ||
+          p.startsWith("/wholesale/products") ||
+          p.startsWith("/wholesale/country") ||
+          p.startsWith("/wholesale/city") ||
+          p.startsWith("/wholesale/featured") ||
+          p.startsWith("/wholesale/compare") ||
+          p.startsWith("/wholesale/recent") ||
+          p.startsWith("/wholesale/help") ||
+          p.startsWith("/wholesale/pickup") ||
+          p.startsWith("/wholesale/map"),
+      },
+      {
+        key: "depots",
+        label: t("wholesale_tabDepots"),
+        icon: "home",
+        href: "/wholesale/warehouses",
+        match: (p) => p.startsWith("/wholesale/warehouses") || p.startsWith("/wholesale/stores"),
+      },
+      {
+        key: "chat",
+        label: t("wholesale_tabInquiries"),
+        icon: "message-circle",
+        href: "/wholesale/inquiries",
+        match: (p) =>
+          p.startsWith("/wholesale/inquiries") ||
+          p.startsWith("/wholesale/favorites") ||
+          p.startsWith("/wholesale/notifications") ||
+          p.startsWith("/wholesale/deals") ||
+          p.startsWith("/wholesale/quotes") ||
+          p.startsWith("/wholesale/disputes") ||
+          p.startsWith("/wholesale/blocked"),
+      },
+      {
+        key: "seller",
+        label: t("wholesale_tabSeller"),
+        icon: "package",
+        href: "/wholesale/seller",
+        match: (p) => p.startsWith("/wholesale/seller") || p.startsWith("/wholesale/verification"),
+      },
+      {
+        key: "admin",
+        label: t("wholesale_tabAdmin"),
+        icon: "shield",
+        href: "/wholesale/admin",
+        match: (p) => p.startsWith("/wholesale/admin"),
+      },
+    ],
+    [t],
+  );
 
   const body = scroll ? (
     <ScrollView
@@ -126,7 +130,7 @@ export function WholesaleShell({
             <Pressable
               onPress={() => router.push("/wholesale")}
               style={styles.iconBtn}
-              accessibilityLabel="Back to Flexa Wholesale"
+              accessibilityLabel={t("wholesale_backHome")}
               testID="wholesale-back"
             >
               <Feather name="arrow-left" size={18} color={T.white} />
@@ -142,21 +146,21 @@ export function WholesaleShell({
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.brand} numberOfLines={1}>
-                Flexa Wholesale
+                {t("wholesale_cardEyebrow")}
               </Text>
               <Text style={styles.brandLine} numberOfLines={1}>
-                Wholesale · chat only · country depots
+                {t("wholesale_brandLine")}
               </Text>
             </View>
           </Pressable>
           <Pressable
             onPress={() => router.replace("/(tabs)")}
             style={styles.marketBtn}
-            accessibilityLabel="Back to Flexa Market"
+            accessibilityLabel={t("wholesale_exitToMarket")}
             testID="wholesale-exit-to-market"
           >
             <Feather name="home" size={14} color={T.forest} />
-            <Text style={styles.marketBtnText}>Flexa Market</Text>
+            <Text style={styles.marketBtnText}>{t("wholesale_toFlexaMarket")}</Text>
           </Pressable>
           {headerRight}
         </View>
@@ -165,7 +169,7 @@ export function WholesaleShell({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tabs}
         >
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const on = tab.match(pathname);
             return (
               <Pressable

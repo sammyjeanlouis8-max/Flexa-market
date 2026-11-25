@@ -12,10 +12,13 @@ export default function WholesaleSellerCustomers() {
   const { t } = useTranslation();
   return (
     <WholesalePageGate>
-      <WholesaleShell title={t("wholesale.customersTitle", { defaultValue: "Customers" })} subtitle="People who opened chat on your depot listings.">
+      <WholesaleShell
+        title={t("wholesale.customersTitle", { defaultValue: "Customers" })}
+        subtitle={t("wholesale.customersSubtitle")}
+      >
         <div className="space-y-2">
           {CUSTOMERS.map((c) => (
-            <WholesaleListCard key={c.id} href={c.href} title={c.name} meta={c.meta} badge="Chat" />
+            <WholesaleListCard key={c.id} href={c.href} title={c.name} meta={c.meta} badge={t("wholesale.tabInquiries")} />
           ))}
         </div>
       </WholesaleShell>

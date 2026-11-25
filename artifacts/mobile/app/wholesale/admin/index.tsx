@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -8,6 +9,7 @@ import { fetchAdminOverview } from "@/lib/wholesaleApi";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function AdminWholesaleHome() {
+  const { t } = useLanguage();
   const { token } = useAuth();
   const router = useRouter();
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchAdminOverview>> | null>(null);
@@ -35,7 +37,7 @@ export default function AdminWholesaleHome() {
 
   return (
     <WholesaleGate>
-      <WholesaleShell title="Wholesale admin" subtitle="Super Admin · public launch gated">
+      <WholesaleShell title={t("wholesale_adminTitle")} subtitle={t("wholesale_adminSubtitle")}>
         {loading ? (
           <ActivityIndicator color={T.accent} />
         ) : error ? (

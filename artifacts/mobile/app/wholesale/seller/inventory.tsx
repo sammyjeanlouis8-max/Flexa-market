@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
@@ -21,6 +22,7 @@ import {
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleInventoryScreen() {
+  const { t } = useLanguage();
   const { token } = useAuth();
   const [rows, setRows] = useState<WholesaleInventoryRow[]>([]);
   const [warehouses, setWarehouses] = useState<WholesaleWarehouse[]>([]);
@@ -70,7 +72,7 @@ export default function WholesaleInventoryScreen() {
 
   return (
     <WholesaleGate>
-      <WholesaleShell title="Depot inventory" subtitle="Stock tracked per verified warehouse">
+      <WholesaleShell title={t("wholesale_inventoryTitle")} subtitle="Stock tracked per verified warehouse">
         {warehouses.length ? (
           <View style={styles.filters}>
             <Pressable

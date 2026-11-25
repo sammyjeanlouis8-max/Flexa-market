@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -21,6 +22,7 @@ import {
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleSearchScreen() {
+  const { t } = useLanguage();
   const { token, user } = useAuth();
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -53,7 +55,7 @@ export default function WholesaleSearchScreen() {
 
   return (
     <WholesaleGate>
-      <WholesaleShell title="Search wholesale" subtitle={`Depot stock in ${country || "your account country"}`}>
+      <WholesaleShell title={t("wholesale_searchTitle")} subtitle={`Depot stock in ${country || "your account country"}`}>
         <View style={styles.searchRow}>
           <TextInput
             value={q}

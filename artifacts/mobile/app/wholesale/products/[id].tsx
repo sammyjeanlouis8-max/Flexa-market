@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { WholesaleGate } from "@/components/wholesale/WholesaleGate";
 import { WholesaleShell } from "@/components/wholesale/WholesaleShell";
+import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/context/AuthContext";
 import {
   addFavorite,
@@ -26,6 +27,7 @@ import { pushRecentProduct } from "@/lib/wholesaleDraft";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleProductScreen() {
+  const { t } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const productId = Number(id);
   const { token, user } = useAuth();
@@ -89,7 +91,7 @@ export default function WholesaleProductScreen() {
       );
       router.push(`/chat/${conv.id}`);
     } catch (e: any) {
-      Alert.alert("Chat", e?.message || "Could not start chat");
+      Alert.alert("Chat", e?.message || t("wholesale_chatFailed"));
     } finally {
       setChatting(false);
     }
@@ -114,7 +116,7 @@ export default function WholesaleProductScreen() {
     <WholesaleGate>
       <WholesaleShell
         title={product?.title}
-        subtitle={product ? "Wholesale listing · chat seller · depot pickup" : undefined}
+        subtitle={product ? t("wholesale_productSubtitle") : undefined}
         headerRight={
           product ? (
             <Pressable onPress={() => void onToggleFavorite()} testID="wholesale-favorite-toggle">
@@ -146,7 +148,7 @@ export default function WholesaleProductScreen() {
               {formatMoney(unit, product.currency)} / {product.wholesaleUnitType}
             </Text>
 
-            <Text style={styles.label}>QUANTITY</Text>
+            <Text style={styles.label}>{t("wholesale_quantity").toUpperCase()}</Text>
             <View style={styles.qtyRow}>
               <Pressable
                 style={styles.qtyBtn}
@@ -162,7 +164,7 @@ export default function WholesaleProductScreen() {
             <Text style={styles.meta}>
               Min {product.minOrderQty} · Stock {product.stockQuantity}
             </Text>
-            <Text style={styles.total}>Quote total: {formatMoney(total, product.currency)}</Text>
+            <Text style={styles.total}>{t("wholesale_quoteTotal")}: {formatMoney(total, product.currency)}</Text>
             <Text style={styles.hint}>No online checkout — negotiate and confirm in chat.</Text>
 
             <Pressable

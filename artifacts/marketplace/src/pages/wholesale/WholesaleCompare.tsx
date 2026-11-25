@@ -3,11 +3,11 @@ import { WholesaleLiveProductsPage } from "@/pages/wholesale/WholesaleLiveProduc
 export default function WholesaleCompare() {
   return (
     <WholesaleLiveProductsPage
-      title="Compare listings"
-      subtitle="Side-by-side wholesale quotes before you chat."
+      titleKey="wholesale.compareTitle"
+      subtitleKey="wholesale.compareSubtitle"
       stats={[
-        { label: "Mode", value: "Chat" },
-        { label: "Checkout", value: "None" },
+        { label: "Mode", labelKey: "wholesale.mode", value: "Chat" },
+        { label: "Checkout", labelKey: "wholesale.checkoutNone", value: "—" },
       ]}
       badge={(p) => p.category || "Quote"}
     />

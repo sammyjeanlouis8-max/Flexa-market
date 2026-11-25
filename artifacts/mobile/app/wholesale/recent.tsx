@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -13,6 +14,7 @@ import { loadRecentProductIds } from "@/lib/wholesaleDraft";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleRecentScreen() {
+  const { t } = useLanguage();
   const { token } = useAuth();
   const router = useRouter();
   const [rows, setRows] = useState<WholesaleProduct[]>([]);
@@ -45,7 +47,7 @@ export default function WholesaleRecentScreen() {
 
   return (
     <WholesaleGate>
-      <WholesaleShell title="Recently viewed" subtitle="Products you opened on this device">
+      <WholesaleShell title={t("wholesale_recentTitle")} subtitle="Products you opened on this device">
         {loading ? (
           <ActivityIndicator color={T.accent} />
         ) : rows.length === 0 ? (

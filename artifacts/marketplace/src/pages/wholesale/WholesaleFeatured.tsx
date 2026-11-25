@@ -1,11 +1,13 @@
+import { useTranslation } from "react-i18next";
 import { WholesaleLiveProductsPage } from "@/pages/wholesale/WholesaleLiveProducts";
 
 export default function WholesaleFeatured() {
+  const { t } = useTranslation();
   return (
     <WholesaleLiveProductsPage
-      title="Featured wholesale"
-      subtitle="Highlighted depot stock — chat to buy."
-      badge="Hot"
+      titleKey="wholesale.featuredTitle"
+      subtitleKey="wholesale.featuredSubtitle"
+      badge={t("wholesale.badgeHot", { defaultValue: "Hot" })}
     />
   );
 }

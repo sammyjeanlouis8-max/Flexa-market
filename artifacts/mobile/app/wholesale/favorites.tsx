@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
@@ -13,6 +14,7 @@ import {
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleFavoritesScreen() {
+  const { t } = useLanguage();
   const { token, user } = useAuth();
   const router = useRouter();
   const [rows, setRows] = useState<WholesaleProduct[]>([]);
@@ -48,7 +50,7 @@ export default function WholesaleFavoritesScreen() {
   return (
     <WholesaleGate>
       <WholesaleShell
-        title="Favorites"
+        title={t("wholesale_favoritesTitle")}
         subtitle={country ? `Saved in ${country} only` : "Saved wholesale products"}
       >
         {loading ? (

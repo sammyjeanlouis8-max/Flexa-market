@@ -3,10 +3,10 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleSellerDrafts() {
   return (
     <WholesaleSimplePage
-      title="Draft listings"
-      subtitle="Unpublished wholesale drafts."
+      titleKey="wholesale.draftsTitle"
+      subtitleKey="wholesale.draftsSubtitle"
       stats={[
-        { label: "Drafts", value: "2" },
+        { label: "Drafts", labelKey: "wholesale.drafts", value: "2" },
       ]}
       items={[
         { title: "Draft: Soap cases", meta: "Missing depot city", href: "/wholesale/seller/products/101/edit", badge: "Draft" },

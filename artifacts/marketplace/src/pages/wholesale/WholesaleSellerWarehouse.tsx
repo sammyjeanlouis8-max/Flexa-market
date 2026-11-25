@@ -36,7 +36,7 @@ export default function WholesaleSellerWarehouse() {
         setRows(list);
         setError(null);
       })
-      .catch((err: Error) => setError(err.message || "Failed to load warehouses"))
+      .catch((err: Error) => setError(err.message || t("wholesale.failedLoadWarehouses")))
       .finally(() => setLoading(false));
   }, []);
 
@@ -70,7 +70,7 @@ export default function WholesaleSellerWarehouse() {
       setShowForm(false);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save warehouse");
+      setError(err instanceof Error ? err.message : t("wholesale.couldNotSaveWarehouse"));
     } finally {
       setSaving(false);
     }
@@ -98,15 +98,14 @@ export default function WholesaleSellerWarehouse() {
             data-testid="wholesale-add-warehouse"
           >
             <Plus className="h-3.5 w-3.5" />
-            {showForm ? "Close" : "Add"}
+            {showForm ? t("wholesale.close") : t("wholesale.add")}
           </button>
         }
       >
         <div className="mb-4 flex gap-2 rounded-xl bg-[hsl(152,40%,94%)] p-3 text-xs font-semibold text-[hsl(152,55%,22%)]">
           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <p>
-            Your residential country is not used for selling. Example: live in the US, sell in Haiti
-            after a Haiti warehouse is verified.
+            {t("wholesale.sellCountryHint")}
           </p>
         </div>
 
@@ -116,10 +115,10 @@ export default function WholesaleSellerWarehouse() {
             onSubmit={onSubmit}
           >
             <p className="text-xs font-extrabold uppercase tracking-wide text-foreground">
-              Register warehouse
+              {t("wholesale.registerWarehouse")}
             </p>
             <div>
-              <label className="text-xs font-semibold uppercase text-muted-foreground">Depot name</label>
+              <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.depotName")}</label>
               <input
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -130,7 +129,7 @@ export default function WholesaleSellerWarehouse() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Country</label>
+                <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.country")}</label>
                 <select
                   value={form.country}
                   onChange={(e) => setForm({ ...form, country: e.target.value })}
@@ -144,7 +143,7 @@ export default function WholesaleSellerWarehouse() {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Region / state</label>
+                <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.regionState")}</label>
                 <input
                   value={form.region}
                   onChange={(e) => setForm({ ...form, region: e.target.value })}
@@ -155,7 +154,7 @@ export default function WholesaleSellerWarehouse() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground">City</label>
+                <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.city")}</label>
                 <input
                   value={form.city}
                   onChange={(e) => setForm({ ...form, city: e.target.value })}
@@ -164,7 +163,7 @@ export default function WholesaleSellerWarehouse() {
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Address</label>
+                <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.address")}</label>
                 <input
                   value={form.address}
                   onChange={(e) => setForm({ ...form, address: e.target.value })}
@@ -175,7 +174,7 @@ export default function WholesaleSellerWarehouse() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Latitude</label>
+                <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.latitude")}</label>
                 <input
                   value={form.latitude}
                   onChange={(e) => setForm({ ...form, latitude: e.target.value })}
@@ -185,7 +184,7 @@ export default function WholesaleSellerWarehouse() {
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Longitude</label>
+                <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.longitude")}</label>
                 <input
                   value={form.longitude}
                   onChange={(e) => setForm({ ...form, longitude: e.target.value })}
@@ -196,7 +195,7 @@ export default function WholesaleSellerWarehouse() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Pickup from this depot only — no retail shipping cart. Submitted as pending until an admin verifies.
+              {t("wholesale.pickupDepotOnly")}
             </p>
             <button
               type="submit"
@@ -204,7 +203,7 @@ export default function WholesaleSellerWarehouse() {
               className="h-11 w-full rounded-xl bg-[hsl(152,55%,28%)] text-sm font-bold text-white disabled:opacity-70"
               data-testid="wholesale-save-warehouse"
             >
-              {saving ? "Saving…" : "Submit for verification"}
+              {saving ? t("wholesale.saving") : t("wholesale.submitVerification")}
             </button>
           </form>
         ) : null}
@@ -212,13 +211,11 @@ export default function WholesaleSellerWarehouse() {
         {error ? <p className="mb-3 text-sm font-semibold text-red-600">{error}</p> : null}
 
         {loading ? (
-          <p className="py-8 text-sm text-muted-foreground">Loading warehouses…</p>
+          <p className="py-8 text-sm text-muted-foreground">{t("wholesale.loadingWarehouses")}</p>
         ) : rows.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-white px-4 py-10 text-center dark:bg-[hsl(152,16%,12%)]">
-            <p className="text-sm font-extrabold text-foreground">No warehouses yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add a depot in each country where you sell. Publish is blocked until that depot is verified.
-            </p>
+            <p className="text-sm font-extrabold text-foreground">{t("wholesale.noWarehousesYet")}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t("wholesale.noWarehousesBody")}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -231,7 +228,7 @@ export default function WholesaleSellerWarehouse() {
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="text-base font-extrabold text-foreground">{w.name}</h3>
                   <span className={`rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase ${statusClass(w.verificationStatus)}`}>
-                    {w.verificationStatus}
+                    {w.verificationStatus === "verified" ? t("wholesale.verified") : w.verificationStatus === "pending" ? t("wholesale.unverified") : w.verificationStatus}
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -244,18 +241,18 @@ export default function WholesaleSellerWarehouse() {
                     GPS {w.latitude.toFixed(4)}, {w.longitude.toFixed(4)}
                   </p>
                 ) : (
-                  <p className="mt-2 text-xs font-semibold text-muted-foreground">No GPS — manual address</p>
+                  <p className="mt-2 text-xs font-semibold text-muted-foreground">{t("wholesale.noGps")}</p>
                 )}
                 {w.verificationStatus === "rejected" && w.rejectionReason ? (
                   <p className="mt-2 text-xs font-semibold text-red-600">{w.rejectionReason}</p>
                 ) : null}
                 {w.verificationStatus === "verified" ? (
                   <p className="mt-2 text-xs font-bold text-[hsl(152,55%,28%)]">
-                    You can publish products for {w.country} from this depot.
+                    {t("wholesale.canPublishCountry", { country: w.country })}
                   </p>
                 ) : w.verificationStatus === "pending" ? (
                   <p className="mt-2 text-xs font-bold text-amber-700">
-                    Awaiting admin verification before publish in {w.country}.
+                    {t("wholesale.awaitingVerification", { country: w.country })}
                   </p>
                 ) : null}
               </div>

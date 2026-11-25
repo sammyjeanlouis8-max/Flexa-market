@@ -99,7 +99,7 @@ export default function WholesaleStore() {
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
               <WholesaleStat label="Listings" value={products.length} />
               <WholesaleStat label="Country" value={depot.country} />
-              <WholesaleStat label="Model" value="Chat only" />
+              <WholesaleStat label={t("wholesale.model")} value={t("wholesale.chatOnly")} />
             </div>
             <div className="mb-4 flex items-center gap-2 rounded-xl border border-[hsl(152,30%,80%)] bg-[hsl(152,40%,96%)] px-3 py-2 text-sm text-[hsl(152,40%,24%)]">
               <Warehouse className="h-4 w-4" />

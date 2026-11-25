@@ -3,11 +3,11 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleDeals() {
   return (
     <WholesaleSimplePage
-      title="Closed deals"
-      subtitle="Chat deals confirmed with depot pickup."
+      titleKey="wholesale.dealsTitle"
+      subtitleKey="wholesale.dealsSubtitle"
       stats={[
-        { label: "This month", value: "12" },
-        { label: "Value", value: "$8.4k" },
+        { label: "This month", labelKey: "wholesale.thisMonth", value: "12" },
+        { label: "Value", labelKey: "wholesale.value", value: "$8.4k" },
       ]}
       items={[
         { title: "Rice · Hotel Karibe", meta: "Closed chat · Delmas Depot · $1,040", href: "/wholesale/inquiries", badge: "Paid" },

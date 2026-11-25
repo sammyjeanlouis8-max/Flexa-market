@@ -1,3 +1,4 @@
+import { useLanguage } from "@/context/LanguageContext";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -12,6 +13,7 @@ import {
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleDraftsScreen() {
+  const { t } = useLanguage();
   const { token } = useAuth();
   const router = useRouter();
   const [rows, setRows] = useState<WholesaleProduct[]>([]);
@@ -39,7 +41,7 @@ export default function WholesaleDraftsScreen() {
 
   return (
     <WholesaleGate>
-      <WholesaleShell title="Draft listings" subtitle="Unpublished wholesale drafts">
+      <WholesaleShell title={t("wholesale_draftsTitle")} subtitle="Unpublished wholesale drafts">
         {loading ? (
           <ActivityIndicator color={T.accent} />
         ) : error ? (

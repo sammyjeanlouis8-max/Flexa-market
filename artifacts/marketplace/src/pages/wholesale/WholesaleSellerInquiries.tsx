@@ -9,7 +9,7 @@ export default function WholesaleSellerInquiries() {
     <WholesalePageGate>
       <WholesaleShell
         title={t("wholesale.sellerInquiriesTitle", { defaultValue: "Inbound chats" })}
-        subtitle="Quote requests on your warehouse stock."
+        subtitle={t("wholesale.sellerInquiriesSubtitle")}
       >
         <div className="space-y-2">
           {WHOLESALE_INQUIRIES.map((q) => (

@@ -3,11 +3,11 @@ import { WholesaleLiveProductsPage } from "@/pages/wholesale/WholesaleLiveProduc
 export default function WholesaleInquiryDetail() {
   return (
     <WholesaleLiveProductsPage
-      title="Inquiry"
-      subtitle="Open a live product, then continue the quote in Market chat."
+      titleKey="wholesale.inquiryTitle"
+      subtitleKey="wholesale.inquirySubtitle"
       stats={[
-        { label: "Flow", value: "Chat" },
-        { label: "Checkout", value: "None" },
+        { label: "Flow", labelKey: "wholesale.flow", value: "Chat" },
+        { label: "Checkout", labelKey: "wholesale.checkoutNone", value: "—" },
       ]}
       badge="Product"
     />

@@ -3,10 +3,10 @@ import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
 export default function WholesaleSellerMedia() {
   return (
     <WholesaleSimplePage
-      title="Media library"
-      subtitle="Photos for depot listings."
+      titleKey="wholesale.mediaTitle"
+      subtitleKey="wholesale.mediaSubtitle"
       stats={[
-        { label: "Images", value: "18" },
+        { label: "Images", labelKey: "wholesale.images", value: "18" },
       ]}
       items={[
         { title: "rice-main.jpg", meta: "Used on 2 listings", href: "/wholesale/seller", badge: "Image" },

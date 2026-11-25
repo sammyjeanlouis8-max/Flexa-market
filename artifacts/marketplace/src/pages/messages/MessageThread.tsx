@@ -912,7 +912,7 @@ function MsgBubble({
           </div>
           <div style={{ padding: "10px 12px 12px" }}>
             <p style={{ margin: 0, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: FLEXA.greenMid }}>
-              Flexa Wholesale
+              {t("wholesale.cardEyebrow", { defaultValue: "Flexa Wholesale" })}
             </p>
             <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 800, color: c.isDark ? "#F8FAFC" : "#0F172A", lineHeight: 1.25 }}>
               {wholesaleCard.title}
@@ -923,8 +923,17 @@ function MsgBubble({
               </p>
             )}
             <p style={{ margin: "4px 0 0", fontSize: 12, color: c.listSub }}>
-              MOQ {wholesaleCard.minOrderQty} {wholesaleCard.wholesaleUnitType}
-              {wholesaleCard.qty ? ` · quote qty ${wholesaleCard.qty}` : ""}
+              {t("wholesale.moqLabel", {
+                qty: wholesaleCard.minOrderQty,
+                unit: wholesaleCard.wholesaleUnitType,
+                defaultValue: `MOQ ${wholesaleCard.minOrderQty} ${wholesaleCard.wholesaleUnitType}`,
+              })}
+              {wholesaleCard.qty
+                ? ` · ${t("wholesale.quoteQtyLabel", {
+                    qty: wholesaleCard.qty,
+                    defaultValue: `quote qty ${wholesaleCard.qty}`,
+                  })}`
+                : ""}
             </p>
             <Link
               href={`/wholesale/products/${wholesaleCard.productId}`}
@@ -945,7 +954,7 @@ function MsgBubble({
                   fontWeight: 700,
                 }}
               >
-                {t("messages.viewProduct", { defaultValue: "View product" })}
+                {t("wholesale.viewProduct", { defaultValue: "View product" })}
                 <ChevronRight style={{ width: 14, height: 14 }} />
               </span>
             </Link>

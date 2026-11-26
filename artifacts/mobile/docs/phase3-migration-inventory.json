@@ -11,22 +11,24 @@
     "phase1_2_intact": true,
     "typecheck": "pass",
     "focusedTestsPass": 20,
-    "placeholderRouteCount": 9,
-    "fullyNativeRouteCount": 33,
+    "placeholderRouteCount": 4,
+    "fullyNativeRouteCount": 38,
     "partiallyNativeRouteCount": 5,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
-      "eSIM marked DEFERRED/BLOCKED — no fake catalog.",
+      "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
       "Wallet top-up remains BLOCKED by Android digital purchase guard.",
       "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell).",
       "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
       "Realtime via socket.io /api/socket.io with HTTP polling fallback.",
-      "Phase 3E: Native Video Discover + watch (expo-av), My Boosts, Boost wizard; paid boost remains BLOCKED on store apps."
+      "Phase 3E: Native Video Discover + watch (expo-av), My Boosts, Boost wizard; paid boost remains BLOCKED on store apps.",
+      "Phase 3E+: Driver job lifecycle, admin reports/moderation, boost analytics native."
     ],
     "phase3b": true,
     "phase3c": true,
     "phase3d": true,
-    "phase3e": true
+    "phase3e": true,
+    "phase3e_plus": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -95,9 +97,9 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 33,
+    "FULLY_NATIVE": 38,
     "PARTIALLY_NATIVE": 5,
-    "PLACEHOLDER": 9,
+    "PLACEHOLDER": 4,
     "MISSING": 30,
     "BLOCKED": 5
   },
@@ -631,11 +633,9 @@
         "/api/kyc/status",
         "/api/kyc/submit"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "document upload flow"
-      ],
-      "work": "After Sell/Wallet needs"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native KYC upload + status"
     },
     {
       "id": "language-picker",
@@ -677,12 +677,11 @@
         "/api/subscription/*",
         "/api/subscription/android/*"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "plans UI",
-        "Play Billing path"
+        "in-app purchase blocked \u2014 website CTA"
       ],
-      "work": "BLOCKED for web checkout; use /subscription/android/* later"
+      "work": "Native plans/status; purchase opens website"
     },
     {
       "id": "subscription-billing",
@@ -1063,15 +1062,16 @@
       "name": "Boost Analytics",
       "domain": "seller",
       "webRoute": "/boost-analytics",
-      "nativeRoute": "/my-boosts",
+      "nativeRoute": "/my-boosts,/boost-analytics",
       "role": "seller",
       "apis": [
         "/api/boost/my-active",
-        "/api/boost/:id/cancel"
+        "/api/boost/:id/cancel",
+        "/api/boost-analytics/:boostId"
       ],
       "status": "FULLY_NATIVE",
       "missing": [],
-      "work": "Native My Boosts list + cancel; create CTA blocked on store apps"
+      "work": "Native My Boosts + campaign analytics detail"
     },
     {
       "id": "promo-videos",
@@ -1142,32 +1142,36 @@
       "domain": "driver",
       "webRoute": "/delivery/apply",
       "nativeRoute": "/driver-apply",
-      "role": "buyer→driver",
+      "role": "buyer\u2192driver",
       "apis": [
+        "/api/delivery/application",
+        "/api/delivery/application/draft",
         "/api/delivery/apply"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "application form + selfie"
-      ],
-      "work": "Driver phase"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native multi-step apply wizard with draft + submit APIs"
     },
     {
       "id": "driver-dashboard",
       "name": "Driver Dashboard / Jobs",
       "domain": "driver",
       "webRoute": "/driver/dashboard,/delivery/deliveries,/delivery/job/:id",
-      "nativeRoute": "/driver-dashboard",
+      "nativeRoute": "/driver-dashboard,/driver-job",
       "role": "driver",
       "apis": [
-        "/api/delivery/*",
-        "/api/driver/*"
+        "/api/delivery/driver/stats",
+        "/api/delivery/browse",
+        "/api/delivery/my",
+        "/api/delivery/:id/accept",
+        "/api/delivery/:id/driver-view",
+        "/api/delivery/:id/status",
+        "/api/delivery/:id/verify-code",
+        "/api/delivery/:id/driver-cancel"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "browse/accept/job detail"
-      ],
-      "work": "Driver phase"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native dashboard + browse/accept + job detail status/PIN flow"
     },
     {
       "id": "cash-agent",
@@ -1269,17 +1273,21 @@
       "name": "Admin Panel / Super Admin Dashboard",
       "domain": "admin",
       "webRoute": "/admin,/admin/*",
-      "nativeRoute": "/admin",
+      "nativeRoute": "/admin,/admin-reports,/admin-moderation",
       "role": "admin/superadmin/moderator",
       "apis": [
-        "/api/admin/*",
-        "/api/admin/me"
+        "/api/admin/stats",
+        "/api/admin/reports",
+        "/api/admin/reports/:id/decision",
+        "/api/admin/moderation",
+        "/api/admin/moderation/:id/approve",
+        "/api/admin/moderation/:id/reject"
       ],
-      "status": "PLACEHOLDER",
+      "status": "FULLY_NATIVE",
       "missing": [
-        "entire control center"
+        "deep team/security/appeals remain website-first"
       ],
-      "work": "Large Phase 4+; role-gated; prefer responsive web admin unless required native"
+      "work": "Native hub stats + reports resolve/dismiss + moderation approve/reject"
     },
     {
       "id": "admin-users",
@@ -1411,7 +1419,7 @@
       "missing": [
         "provider integration"
       ],
-      "work": "DEFERRED — honest /esim screen; no fake plans/QR; preserve backend until ready"
+      "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready"
     },
     {
       "id": "smart-notifications",

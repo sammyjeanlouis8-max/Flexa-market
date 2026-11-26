@@ -20,7 +20,7 @@ import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { friendlyApiError, tr } from "@/i18n/nativeScreens";
-import { fetchAdminStats, type AdminStats } from "@/lib/adminApi";
+import { canAccessAdminHub, fetchAdminStats, type AdminStats } from "@/lib/adminApi";
 
 type IconName = React.ComponentProps<typeof Feather>["name"];
 
@@ -56,25 +56,33 @@ export default function AdminScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const c = colors.light;
 
-  const isAdmin = Boolean(user?.isAdmin || (user as any)?.isSuperAdmin);
+  const isAdmin = canAccessAdminHub(user);
 
   const sections = useMemo(
     () =>
       [
+        {
+          key: "moderation",
+          title: t("admin_mod_title"),
+          subtitle: t("admin_mod_subtitle"),
+          icon: "shield" as IconName,
+          href: "/admin-moderation",
+          tint: "#146C43",
+        },
+        {
+          key: "reports",
+          title: t("admin_reports_title"),
+          subtitle: t("admin_reports_subtitle"),
+          icon: "flag" as IconName,
+          href: "/admin-reports",
+          tint: "#DC2626",
+        },
         {
           key: "support",
           title: t("admin_support"),
           subtitle: t("admin_supportSub"),
           icon: "message-circle" as IconName,
           href: "/support",
-          tint: "#146C43",
-        },
-        {
-          key: "listings",
-          title: t("admin_listingsSec"),
-          subtitle: t("admin_listingsSub"),
-          icon: "package" as IconName,
-          href: "/my-listings",
           tint: "#0F766E",
         },
         {

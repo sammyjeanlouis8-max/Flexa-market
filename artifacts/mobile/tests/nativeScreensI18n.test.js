@@ -15,15 +15,26 @@ const SCREEN_FILES = [
   "app/videos/watch.tsx",
   "app/my-boosts.tsx",
   "app/boost.tsx",
+  "app/boost-analytics.tsx",
   "app/driver-apply.tsx",
   "app/driver-dashboard.tsx",
+  "app/driver-job.tsx",
   "app/admin.tsx",
+  "app/admin-reports.tsx",
+  "app/admin-moderation.tsx",
   "app/website.tsx",
 ];
 
 const FORBIDDEN_HT = ["Verifikasyon Idantite", "Sit web la pa embed"];
 
-const REQUIRED_KEYS = ["videos_title", "driver_apply_welcomeTitle", "website_cta"];
+const REQUIRED_KEYS = [
+  "videos_title",
+  "driver_apply_welcomeTitle",
+  "website_cta",
+  "driver_job_title",
+  "admin_mod_title",
+  "boost_analytics_title",
+];
 
 test("nativeScreens.ts exports en/ht/fr/es with required keys", () => {
   const source = read("i18n/nativeScreens.ts");

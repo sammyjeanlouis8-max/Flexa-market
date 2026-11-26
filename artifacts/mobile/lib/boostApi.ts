@@ -126,3 +126,78 @@ export function estimateRefund(boost: ActiveBoost): number {
   if (!totalMs || totalMs <= 0) return 0;
   return parseFloat((boost.budget * (remainingMs / totalMs)).toFixed(2));
 }
+
+export type BoostAnalyticsOverview = {
+  impressions: number;
+  clicks: number;
+  videoViews: number;
+  spend: number;
+  ctr: number | null;
+  budget: number;
+  status: string;
+  title: string;
+  thumbnail: string | null;
+  plan: string | null;
+  listingId: number | null;
+};
+
+export type BoostDailyPoint = {
+  date: string;
+  impressions: number;
+  clicks?: number;
+};
+
+export type BoostAnalyticsDetail = {
+  overview: BoostAnalyticsOverview;
+  series: BoostDailyPoint[];
+};
+
+function metricNumber(raw: any): number {
+  if (raw == null) return 0;
+  if (typeof raw === "number") return raw;
+  if (typeof raw === "object" && raw.value != null) return Number(raw.value) || 0;
+  return Number(raw) || 0;
+}
+
+export async function fetchBoostAnalytics(
+  boostId: number,
+  opts: AuthOpts,
+): Promise<BoostAnalyticsDetail> {
+  const res = await fetch(`${getApiBase()}/boost-analytics/${boostId}`, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${opts.token}`,
+    },
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Analytics failed (${res.status})`);
+  const campaign = data.campaign ?? {};
+  const overview = data.overview ?? {};
+  const seriesRaw = Array.isArray(data.series) ? data.series : [];
+  return {
+    overview: {
+      impressions: metricNumber(overview.impressions ?? campaign.impressions),
+      clicks: metricNumber(overview.clicks ?? campaign.clicks),
+      videoViews: metricNumber(overview.videoViews ?? campaign.videoViews),
+      spend: metricNumber(overview.spend ?? overview.estimatedSpend),
+      ctr:
+        overview.ctr != null
+          ? metricNumber(overview.ctr)
+          : campaign.impressions
+            ? Math.round((Number(campaign.clicks ?? 0) / Number(campaign.impressions)) * 1000) / 10
+            : null,
+      budget: Number(campaign.budget ?? campaign.price ?? 0),
+      status: String(campaign.status ?? campaign.campaignStatus ?? ""),
+      title: String(campaign.title ?? campaign.productTitle ?? ""),
+      thumbnail: resolveBoostMediaUrl(campaign.thumbnail),
+      plan: campaign.plan != null ? String(campaign.plan) : null,
+      listingId: campaign.listingId != null ? Number(campaign.listingId) : null,
+    },
+    series: seriesRaw.map((p: any) => ({
+      date: String(p.date ?? ""),
+      impressions: Number(p.impressions ?? 0),
+      clicks: p.clicks != null ? Number(p.clicks) : undefined,
+    })),
+  };
+}

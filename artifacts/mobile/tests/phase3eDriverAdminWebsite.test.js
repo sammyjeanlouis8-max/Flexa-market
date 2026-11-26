@@ -35,11 +35,12 @@ test("driver APIs hit delivery endpoints", () => {
   assert.match(api, /\/delivery\/driver\/location/);
   assert.match(api, /\/delivery\/browse/);
   assert.match(api, /\/delivery\/\$\{deliveryId\}\/accept|\/delivery\/.*\/accept/);
+  assert.match(api, /\/delivery\/my/);
   const apply = read("app/driver-apply.tsx");
   assert.match(apply, /submitDriverApplication|saveDriverDraft/);
   assert.match(apply, /driver_apply_welcomeTitle|driver_apply_cta|useLanguage/);
   const dash = read("app/driver-dashboard.tsx");
-  assert.match(dash, /fetchDriverStats|patchDriverLocation|fetchBrowseDeliveries|acceptDeliveryJob/);
+  assert.match(dash, /fetchDriverStats|patchDriverLocation|fetchBrowseDeliveries|acceptDeliveryJob|fetchMyDeliveries/);
   assert.match(dash, /driver_dash_chooseZone|driver_dash_deliveriesToday|driver_dash_availableJobs|useLanguage/);
 });
 

@@ -178,6 +178,18 @@ export default function MyBoostsScreen() {
             style={styles.actionSecondary}
             onPress={() =>
               router.push({
+                pathname: "/boost-analytics",
+                params: { id: String(item.boostId) },
+              } as never)
+            }
+          >
+            <Feather name="bar-chart-2" size={14} color={colors.flexaGreen} />
+            <Text style={styles.actionSecondaryText}>{t("boost_analytics_title")}</Text>
+          </Pressable>
+          <Pressable
+            style={styles.actionSecondary}
+            onPress={() =>
+              router.push({
                 pathname: "/boost",
                 params: { listingId: String(item.listingId) },
               } as never)

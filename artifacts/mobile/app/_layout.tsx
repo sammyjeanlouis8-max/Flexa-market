@@ -64,13 +64,17 @@ export default function RootLayout() {
                       <Stack.Screen name="delivery-tracking" />
                       <Stack.Screen name="driver-apply" />
                       <Stack.Screen name="driver-dashboard" />
+                      <Stack.Screen name="driver-job" />
                       <Stack.Screen name="my-boosts" />
                       <Stack.Screen name="boost" />
+                      <Stack.Screen name="boost-analytics" />
                       <Stack.Screen name="videos" />
                       <Stack.Screen name="videos/watch" />
                       <Stack.Screen name="kyc" />
                       <Stack.Screen name="subscription" />
                       <Stack.Screen name="admin" />
+                      <Stack.Screen name="admin-reports" />
+                      <Stack.Screen name="admin-moderation" />
                       <Stack.Screen name="loans" />
                       <Stack.Screen name="website" />
                       <Stack.Screen name="music/search" />

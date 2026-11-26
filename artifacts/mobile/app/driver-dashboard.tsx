@@ -30,10 +30,13 @@ import {
   fetchBrowseDeliveries,
   fetchDriverStats,
   fetchDriverZones,
+  fetchMyDeliveries,
+  isActiveDriverJobStatus,
   parseWorkZones,
   patchDriverLocation,
   type BrowseDeliveryJob,
   type DriverStatsResponse,
+  type MyDeliveryJob,
   type ZonesPayload,
 } from "@/lib/driverApi";
 
@@ -41,7 +44,8 @@ type MenuItem = {
   key: string;
   label: string;
   icon: React.ComponentProps<typeof Feather>["name"];
-  href: string;
+  href?: string;
+  scrollTo?: "available" | "mine";
   badge?: number | null;
 };
 
@@ -52,6 +56,7 @@ export default function DriverDashboardScreen() {
   const { t } = useLanguage();
   const [data, setData] = useState<DriverStatsResponse | null>(null);
   const [jobs, setJobs] = useState<BrowseDeliveryJob[]>([]);
+  const [myJobs, setMyJobs] = useState<MyDeliveryJob[]>([]);
   const [communesByDepartment, setCommunesByDepartment] = useState<Record<string, string[]>>(
     HAITI_COMMUNES_BY_DEPARTMENT,
   );
@@ -70,13 +75,15 @@ export default function DriverDashboardScreen() {
       if (mode === "refresh") setRefreshing(true);
       else setError(null);
       try {
-        const [stats, zones, browse] = await Promise.all([
+        const [stats, zones, browse, mine] = await Promise.all([
           fetchDriverStats({ token }),
           fetchDriverZones({ token }).catch((): ZonesPayload => ({})),
           fetchBrowseDeliveries({ token }).catch(() => ({ deliveries: [] as BrowseDeliveryJob[] })),
+          fetchMyDeliveries({ token }).catch(() => [] as MyDeliveryJob[]),
         ]);
         setData(stats);
         setJobs(browse.deliveries ?? []);
+        setMyJobs((mine ?? []).filter((j) => isActiveDriverJobStatus(j.status)));
         if (zones.communesByDepartment) {
           setCommunesByDepartment(zones.communesByDepartment);
         } else if (zones.departments && !Array.isArray(zones.departments)) {
@@ -168,7 +175,7 @@ export default function DriverDashboardScreen() {
       await acceptDeliveryJob(job.id, { token });
       Alert.alert(t("common_ok"), t("driver_dash_accepted"));
       void load("refresh");
-      router.push({ pathname: "/delivery-tracking", params: { id: String(job.id) } } as never);
+      router.push({ pathname: "/driver-job", params: { id: String(job.id) } } as never);
     } catch (e) {
       Alert.alert(t("common_error"), friendlyApiError(e instanceof Error ? e.message : undefined, t));
     } finally {
@@ -176,7 +183,7 @@ export default function DriverDashboardScreen() {
     }
   }
 
-  function jobPlace(job: BrowseDeliveryJob): string {
+  function jobPlace(job: BrowseDeliveryJob | MyDeliveryJob): string {
     return (
       job.deliveryCity ||
       job.pickupCity ||
@@ -187,7 +194,7 @@ export default function DriverDashboardScreen() {
     );
   }
 
-  function jobFee(job: BrowseDeliveryJob): string | null {
+  function jobFee(job: BrowseDeliveryJob | MyDeliveryJob): string | null {
     if (job.driverEarnings != null && Number.isFinite(job.driverEarnings)) {
       return formatHtg(job.driverEarnings);
     }
@@ -210,15 +217,15 @@ export default function DriverDashboardScreen() {
       key: "available",
       label: t("driver_dash_available"),
       icon: "package",
-      href: "/delivery-tracking",
-      badge: stats?.availableCount ?? null,
+      scrollTo: "available",
+      badge: stats?.availableCount ?? jobs.length ?? null,
     },
     {
       key: "mine",
       label: t("driver_dash_mine"),
       icon: "truck",
-      href: "/delivery-tracking",
-      badge: stats?.activeCount ?? null,
+      scrollTo: "mine",
+      badge: stats?.activeCount ?? myJobs.length ?? null,
     },
     { key: "earnings", label: t("driver_dash_earnings"), icon: "credit-card", href: "/wallet", badge: null },
     { key: "profile", label: t("driver_dash_profile"), icon: "user", href: "/edit-profile", badge: null },
@@ -319,7 +326,57 @@ export default function DriverDashboardScreen() {
               </View>
             </View>
 
-            <View style={styles.jobsCard}>
+            <View style={styles.jobsCard} nativeID="driver-my-jobs">
+              <View style={styles.jobsHeader}>
+                <Text style={styles.zoneTitle}>{t("driver_dash_activeJobs")}</Text>
+                {myJobs.length > 0 ? (
+                  <View style={styles.jobsCount}>
+                    <Text style={styles.jobsCountText}>{myJobs.length}</Text>
+                  </View>
+                ) : null}
+              </View>
+              {myJobs.length === 0 ? (
+                <View style={styles.jobsEmpty}>
+                  <Feather name="truck" size={22} color="#94A3B8" />
+                  <Text style={styles.jobsEmptyText}>{t("driver_dash_noActiveJobs")}</Text>
+                </View>
+              ) : (
+                myJobs.map((job) => {
+                  const fee = jobFee(job);
+                  const place = jobPlace(job);
+                  return (
+                    <Pressable
+                      key={`mine-${job.id}`}
+                      style={styles.jobRow}
+                      testID={`driver-my-job-${job.id}`}
+                      onPress={() =>
+                        router.push({ pathname: "/driver-job", params: { id: String(job.id) } } as never)
+                      }
+                    >
+                      <View style={styles.jobIcon}>
+                        <Feather name="navigation" size={16} color={DRIVER_BRAND.success} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.jobPlace} numberOfLines={2}>
+                          {place}
+                        </Text>
+                        <Text style={styles.jobSub} numberOfLines={1}>
+                          {job.status}
+                        </Text>
+                        {fee ? (
+                          <Text style={styles.jobFee}>
+                            {t("driver_dash_jobFee")}: {fee}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Feather name="chevron-right" size={18} color="#94A3B8" />
+                    </Pressable>
+                  );
+                })
+              )}
+            </View>
+
+            <View style={styles.jobsCard} nativeID="driver-available-jobs">
               <View style={styles.jobsHeader}>
                 <Text style={styles.zoneTitle}>{t("driver_dash_availableJobs")}</Text>
                 {jobs.length > 0 ? (
@@ -458,7 +515,14 @@ export default function DriverDashboardScreen() {
                 <Pressable
                   key={item.key}
                   style={[styles.menuRow, idx < menuItems.length - 1 && styles.menuBorder]}
-                  onPress={() => router.push(item.href as any)}
+                  onPress={() => {
+                    if (item.href) {
+                      router.push(item.href as any);
+                      return;
+                    }
+                    // In-page sections: refresh so available/mine stay current.
+                    void load("refresh");
+                  }}
                 >
                   <View style={styles.menuIcon}>
                     <Feather name={item.icon} size={18} color={DRIVER_BRAND.success} />

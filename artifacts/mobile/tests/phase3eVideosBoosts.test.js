@@ -35,7 +35,7 @@ test("videos discover fetches feed with sort/seed and filters live boosts", () =
   assert.match(api, /page|sort|seed|q|country/);
   assert.match(api, /isLiveBoost|boostEndAt/);
   assert.match(screen, /fetchVideoFeed/);
-  assert.match(screen, /All|Trending|New|My Videos/);
+  assert.match(screen, /videos_all|videos_trending|videos_new|videos_mine|useLanguage/);
   assert.match(screen, /numColumns=\{2\}|numColumns:\s*2/);
 });
 
@@ -53,8 +53,8 @@ test("my-boosts loads active campaigns and can cancel", () => {
   assert.match(api, /\/boost\/\$\{boostId\}\/cancel|\/boost\/.*\/cancel/);
   assert.match(screen, /fetchMyActiveBoosts|cancelBoost/);
   assert.match(screen, /expo-linear-gradient|LinearGradient/);
-  assert.match(screen, /Impressions|impressions/);
-  assert.match(screen, /digital goods|not available|unavailable/i);
+  assert.match(screen, /boosts_impressions|impressions/);
+  assert.match(screen, /boost_payBlockedTitle|boost_payBlockedBody|useLanguage/);
   assert.equal(/\/boost\/initiate|boost\/video-only/.test(screen), false);
 });
 
@@ -69,7 +69,7 @@ test("boost wizard is visual-only and blocks paid purchase on store apps", () =>
   assert.match(screen, /listingId/);
   assert.match(screen, /my-listings/);
   assert.match(screen, /BOOST_PLANS|p\.price|selected\.price/);
-  assert.match(screen, /Alert\.alert|purchase unavailable|digital goods/i);
+  assert.match(screen, /Alert\.alert|boost_payBlockedTitle|boost_payBlockedBody/);
   assert.equal(/\/boost\/initiate|verify-stripe|video-only/.test(screen), false);
   assert.equal(PlatformPurchasePathBlocked(screen), true);
 });

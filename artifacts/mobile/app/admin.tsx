@@ -4,7 +4,7 @@
  */
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -17,24 +17,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { friendlyApiError, tr } from "@/i18n/nativeScreens";
 import { fetchAdminStats, type AdminStats } from "@/lib/adminApi";
 
 type IconName = React.ComponentProps<typeof Feather>["name"];
-
-const SECTIONS: {
-  key: string;
-  title: string;
-  subtitle: string;
-  icon: IconName;
-  href?: string;
-}[] = [
-  { key: "support", title: "Support", subtitle: "Tickets & live chat", icon: "message-circle", href: "/support" },
-  { key: "listings", title: "Listings", subtitle: "Seller center", icon: "package", href: "/my-listings" },
-  { key: "boosts", title: "Boosts", subtitle: "Active campaigns", icon: "zap", href: "/my-boosts" },
-  { key: "videos", title: "Videos", subtitle: "Promo discover", icon: "film", href: "/videos" },
-  { key: "drivers", title: "Drivers", subtitle: "Driver dashboard", icon: "truck", href: "/driver-dashboard" },
-  { key: "wholesale", title: "Wholesale", subtitle: "B2B admin", icon: "layers", href: "/wholesale/admin" },
-];
 
 function StatCard({ label, value, accent }: { label: string; value: number | string; accent?: string }) {
   return (
@@ -49,12 +36,62 @@ export default function AdminScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const c = colors.light;
 
   const isAdmin = Boolean(user?.isAdmin || (user as any)?.isSuperAdmin);
+
+  const sections = useMemo(
+    () =>
+      [
+        {
+          key: "support",
+          title: t("admin_support"),
+          subtitle: t("admin_supportSub"),
+          icon: "message-circle" as IconName,
+          href: "/support",
+        },
+        {
+          key: "listings",
+          title: t("admin_listingsSec"),
+          subtitle: t("admin_listingsSub"),
+          icon: "package" as IconName,
+          href: "/my-listings",
+        },
+        {
+          key: "boosts",
+          title: t("admin_boosts"),
+          subtitle: t("admin_boostsSub"),
+          icon: "zap" as IconName,
+          href: "/my-boosts",
+        },
+        {
+          key: "videos",
+          title: t("admin_videos"),
+          subtitle: t("admin_videosSub"),
+          icon: "film" as IconName,
+          href: "/videos",
+        },
+        {
+          key: "drivers",
+          title: t("admin_drivers"),
+          subtitle: t("admin_driversSub"),
+          icon: "truck" as IconName,
+          href: "/driver-dashboard",
+        },
+        {
+          key: "wholesale",
+          title: t("admin_wholesale"),
+          subtitle: t("admin_wholesaleSub"),
+          icon: "layers" as IconName,
+          href: "/wholesale/admin",
+        },
+      ] as const,
+    [t],
+  );
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -66,12 +103,14 @@ export default function AdminScreen() {
         setStats(s);
         setError(null);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not load admin stats");
+        setError(
+          friendlyApiError(e instanceof Error ? e.message : undefined, t) || t("admin_loadError"),
+        );
       } finally {
         setRefreshing(false);
       }
     },
-    [token, isAdmin],
+    [token, isAdmin, t],
   );
 
   useFocusEffect(
@@ -92,8 +131,8 @@ export default function AdminScreen() {
         </Pressable>
         <View style={styles.denied}>
           <Feather name="shield-off" size={36} color="#EF4444" />
-          <Text style={styles.deniedTitle}>Aksè admin refize</Text>
-          <Text style={styles.deniedSub}>Ou bezwen dwa moderator / admin pou louvri Control Center.</Text>
+          <Text style={styles.deniedTitle}>{t("admin_deniedTitle")}</Text>
+          <Text style={styles.deniedSub}>{t("admin_deniedBody")}</Text>
         </View>
       </View>
     );
@@ -109,8 +148,8 @@ export default function AdminScreen() {
           <Feather name="arrow-left" size={22} color={c.foreground} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={styles.brand}>Flexa Control</Text>
-          <Text style={styles.topSub}>Admin Control Center</Text>
+          <Text style={styles.brand}>{t("admin_title")}</Text>
+          <Text style={styles.topSub}>{t("admin_subtitle")}</Text>
         </View>
         <Pressable onPress={() => void load("refresh")} style={styles.iconBtn}>
           <Feather name="refresh-cw" size={18} color={c.foreground} />
@@ -127,8 +166,9 @@ export default function AdminScreen() {
           <View style={styles.scopePill}>
             <Feather name="map-pin" size={14} color="#146C43" />
             <Text style={styles.scopeText}>
-              Scope: {stats.scopeCountry}
-              {stats.scopeLevel ? ` · ${stats.scopeLevel}` : ""}
+              {tr(t, "admin_scope", {
+                scope: `${stats.scopeCountry}${stats.scopeLevel ? ` · ${stats.scopeLevel}` : ""}`,
+              })}
             </Text>
           </View>
         ) : null}
@@ -145,21 +185,21 @@ export default function AdminScreen() {
 
         {stats ? (
           <View style={styles.statsGrid}>
-            <StatCard label="Users" value={stats.totalUsers} />
-            <StatCard label="Listings" value={stats.totalListings} accent="#146C43" />
-            <StatCard label="Active" value={stats.activeListings} accent="#2A9B5C" />
-            <StatCard label="Reports" value={stats.pendingReports} accent="#F97316" />
-            <StatCard label="Flagged" value={stats.flaggedUsers} accent="#EA580C" />
-            <StatCard label="Banned" value={stats.bannedUsers} accent="#EF4444" />
+            <StatCard label={t("admin_users")} value={stats.totalUsers} />
+            <StatCard label={t("admin_listings")} value={stats.totalListings} accent="#146C43" />
+            <StatCard label={t("admin_active")} value={stats.activeListings} accent="#2A9B5C" />
+            <StatCard label={t("admin_reports")} value={stats.pendingReports} accent="#F97316" />
+            <StatCard label={t("admin_flagged")} value={stats.flaggedUsers} accent="#EA580C" />
+            <StatCard label={t("admin_banned")} value={stats.bannedUsers} accent="#EF4444" />
           </View>
         ) : null}
 
-        <Text style={styles.sectionHeading}>Sections</Text>
+        <Text style={styles.sectionHeading}>{t("admin_sections")}</Text>
         <View style={styles.sectionCard}>
-          {SECTIONS.map((s, idx) => (
+          {sections.map((s, idx) => (
             <Pressable
               key={s.key}
-              style={[styles.sectionRow, idx < SECTIONS.length - 1 && styles.sectionBorder]}
+              style={[styles.sectionRow, idx < sections.length - 1 && styles.sectionBorder]}
               onPress={() => s.href && router.push(s.href as any)}
             >
               <View style={styles.sectionIcon}>
@@ -176,10 +216,7 @@ export default function AdminScreen() {
 
         <View style={styles.note}>
           <Feather name="info" size={16} color="#64748B" />
-          <Text style={styles.noteText}>
-            Moderation, team, security, appeals, ak analytics avanse rete sou sit web Flexa Market
-            (menm layout Control Center) — app nativ la bay stats rapid ak lyen itil.
-          </Text>
+          <Text style={styles.noteText}>{t("admin_note")}</Text>
         </View>
       </ScrollView>
     </View>

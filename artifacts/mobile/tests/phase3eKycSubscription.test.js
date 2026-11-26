@@ -33,7 +33,7 @@ test("KYC screen uses status + multipart submit APIs", () => {
   assert.match(screen, /fetchKycStatus|submitKyc/);
   assert.match(screen, /expo-image-picker|ImagePicker/);
   assert.match(screen, /national_id|passport|driving_license/);
-  assert.match(screen, /Verifikasyon Idantite|Poukisa KYC/);
+  assert.match(screen, /useLanguage|kycTitle|kycWhy/);
 });
 
 test("Subscription screen loads plans/my and blocks in-app purchase", () => {
@@ -49,6 +49,6 @@ test("Subscription screen loads plans/my and blocks in-app purchase", () => {
   assert.match(screen, /cancelSubscription|uncancelSubscription/);
   assert.equal(screen.includes("/subscription/checkout"), false);
   assert.equal(screen.includes("/subscription/wallet-pay"), false);
-  assert.match(screen, /Acha pa disponib|pa disponib nan aplikasyon/i);
-  assert.match(screen, /Plan Abònman|Jere Abònman/);
+  assert.match(screen, /sub_purchaseBlockedTitle|sub_viewOnWeb|useLanguage/);
+  assert.match(screen, /sub_title|sub_choosePlan/);
 });

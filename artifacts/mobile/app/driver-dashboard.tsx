@@ -17,6 +17,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { friendlyApiError, tr } from "@/i18n/nativeScreens";
 import {
   DRIVER_BRAND,
   formatHtg,
@@ -44,6 +46,7 @@ export default function DriverDashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const [data, setData] = useState<DriverStatsResponse | null>(null);
   const [communesByDepartment, setCommunesByDepartment] = useState<Record<string, string[]>>(
     HAITI_COMMUNES_BY_DEPARTMENT,
@@ -74,12 +77,12 @@ export default function DriverDashboardScreen() {
         }
         setError(null);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not load driver dashboard");
+        setError(friendlyApiError(e instanceof Error ? e.message : undefined, t) || t("driver_dash_loadError"));
       } finally {
         setRefreshing(false);
       }
     },
-    [token],
+    [token, t],
   );
 
   useFocusEffect(
@@ -112,7 +115,7 @@ export default function DriverDashboardScreen() {
 
   async function toggleOnline() {
     if (!token || !driver || driver.status !== "active") {
-      Alert.alert("Pa aktif", "Kont chofè ou poko apwouve / aktif.");
+      Alert.alert(t("driver_dash_notActiveTitle"), t("driver_dash_notActiveBody"));
       return;
     }
     setToggling(true);
@@ -122,7 +125,7 @@ export default function DriverDashboardScreen() {
       setOnline(next);
       void load("refresh");
     } catch (e) {
-      Alert.alert("Erè", e instanceof Error ? e.message : "Update failed");
+      Alert.alert(t("common_error"), friendlyApiError(e instanceof Error ? e.message : undefined, t));
     } finally {
       setToggling(false);
     }
@@ -130,7 +133,7 @@ export default function DriverDashboardScreen() {
 
   async function saveZone() {
     if (!token || !selDepartment) {
-      Alert.alert("Zòn", "Chwazi yon depatman.");
+      Alert.alert(t("driver_dash_zoneTitle"), t("driver_dash_zonePick"));
       return;
     }
     setZoneSaving(true);
@@ -139,10 +142,10 @@ export default function DriverDashboardScreen() {
         { department: selDepartment, workZones: selCommunes, communes: selCommunes },
         { token },
       );
-      Alert.alert("OK", "Zòn travay sove.");
+      Alert.alert(t("common_ok"), t("driver_dash_zoneSaved"));
       void load("refresh");
     } catch (e) {
-      Alert.alert("Erè", e instanceof Error ? e.message : "Save failed");
+      Alert.alert(t("common_error"), friendlyApiError(e instanceof Error ? e.message : undefined, t));
     } finally {
       setZoneSaving(false);
     }
@@ -156,20 +159,20 @@ export default function DriverDashboardScreen() {
   const menuItems: MenuItem[] = [
     {
       key: "available",
-      label: "Available Deliveries",
+      label: t("driver_dash_available"),
       icon: "package",
       href: "/delivery-tracking",
       badge: stats?.availableCount ?? null,
     },
     {
       key: "mine",
-      label: "My Deliveries",
+      label: t("driver_dash_mine"),
       icon: "truck",
       href: "/delivery-tracking",
       badge: stats?.activeCount ?? null,
     },
-    { key: "earnings", label: "My Earnings", icon: "credit-card", href: "/wallet", badge: null },
-    { key: "profile", label: "Driver Profile", icon: "user", href: "/edit-profile", badge: null },
+    { key: "earnings", label: t("driver_dash_earnings"), icon: "credit-card", href: "/wallet", badge: null },
+    { key: "profile", label: t("driver_dash_profile"), icon: "user", href: "/edit-profile", badge: null },
   ];
 
   if (!authLoading && token && data && !driver && !error) {
@@ -179,9 +182,9 @@ export default function DriverDashboardScreen() {
           <Feather name="arrow-left" size={22} color="#0F172A" />
         </Pressable>
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyTitle}>Ou pa yon chofè Flexa Market apwouve.</Text>
+          <Text style={styles.emptyTitle}>{t("driver_dash_notDriver")}</Text>
           <Pressable style={styles.primaryBtn} onPress={() => router.push("/driver-apply")}>
-            <Text style={styles.primaryBtnText}>Apply to become a driver</Text>
+            <Text style={styles.primaryBtnText}>{t("driver_dash_apply")}</Text>
           </Pressable>
         </View>
       </View>
@@ -203,7 +206,7 @@ export default function DriverDashboardScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.brandTitle}>Flexa Market</Text>
             <View style={styles.driverBadge}>
-              <Text style={styles.driverBadgeText}>Driver</Text>
+              <Text style={styles.driverBadgeText}>{t("driver_dash_badge")}</Text>
             </View>
           </View>
           <Pressable onPress={() => void load("refresh")} style={styles.iconBtn}>
@@ -232,11 +235,9 @@ export default function DriverDashboardScreen() {
                 </View>
               )}
               <View style={{ flex: 1 }}>
-                <Text style={styles.greeting}>Good work, {greetingName}!</Text>
+                <Text style={styles.greeting}>{tr(t, "driver_dash_greeting", { name: greetingName })}</Text>
                 <Text style={styles.onlineHint}>
-                  {online
-                    ? "You are available for delivery"
-                    : "You are offline — new jobs are hidden"}
+                  {online ? t("driver_dash_online") : t("driver_dash_offline")}
                 </Text>
               </View>
               <Pressable
@@ -260,18 +261,18 @@ export default function DriverDashboardScreen() {
               <View style={[styles.statSoft, { backgroundColor: DRIVER_BRAND.soft, borderColor: DRIVER_BRAND.softBorder }]}>
                 <Feather name="truck" size={20} color={DRIVER_BRAND.success} />
                 <Text style={styles.statBig}>{deliveriesToday}</Text>
-                <Text style={styles.statCap}>Deliveries today</Text>
+                <Text style={styles.statCap}>{t("driver_dash_deliveriesToday")}</Text>
               </View>
               <View style={styles.statCard}>
                 <Feather name="credit-card" size={20} color={DRIVER_BRAND.success} />
                 <Text style={styles.statMoney}>{formatHtg(earningsToday)}</Text>
-                <Text style={styles.statCap}>Earnings today</Text>
+                <Text style={styles.statCap}>{t("driver_dash_earningsToday")}</Text>
               </View>
             </View>
 
             <View style={styles.zoneCard}>
-              <Text style={styles.zoneTitle}>Choose your work zone</Text>
-              <Text style={styles.fieldLabel}>DEPARTMENT</Text>
+              <Text style={styles.zoneTitle}>{t("driver_dash_chooseZone")}</Text>
+              <Text style={styles.fieldLabel}>{t("driver_dash_department")}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   {departmentOptions.map((dep) => {
@@ -297,7 +298,7 @@ export default function DriverDashboardScreen() {
 
               {selDepartment ? (
                 <>
-                  <Text style={styles.fieldLabel}>COMMUNES (select one or more)</Text>
+                  <Text style={styles.fieldLabel}>{t("driver_dash_communes")}</Text>
                   <View style={styles.communeWrap}>
                     {communeOptions.map((c) => {
                       const active = selCommunes.includes(c);
@@ -332,7 +333,7 @@ export default function DriverDashboardScreen() {
                 ) : (
                   <>
                     <Feather name="check-circle" size={16} color="#fff" />
-                    <Text style={styles.primaryBtnText}>Set work zone</Text>
+                    <Text style={styles.primaryBtnText}>{t("driver_dash_setZone")}</Text>
                   </>
                 )}
               </Pressable>
@@ -360,12 +361,12 @@ export default function DriverDashboardScreen() {
             </View>
 
             <View style={styles.earningsCard}>
-              <Text style={styles.zoneTitle}>Earnings overview</Text>
+              <Text style={styles.zoneTitle}>{t("driver_dash_earningsOverview")}</Text>
               <View style={styles.earnRow}>
                 {[
-                  { label: "Today", value: stats?.earningsTodayHtg },
-                  { label: "Week", value: stats?.earningsWeekHtg },
-                  { label: "Month", value: stats?.earningsMonthHtg },
+                  { label: t("driver_dash_today"), value: stats?.earningsTodayHtg },
+                  { label: t("driver_dash_week"), value: stats?.earningsWeekHtg },
+                  { label: t("driver_dash_month"), value: stats?.earningsMonthHtg },
                 ].map((e) => (
                   <View key={e.label} style={styles.earnCell}>
                     <Text style={styles.earnLabel}>{e.label}</Text>
@@ -373,10 +374,7 @@ export default function DriverDashboardScreen() {
                   </View>
                 ))}
               </View>
-              <Text style={styles.earnNote}>
-                HTG amounts use the live exchange rate for display. Wallet credits remain on the
-                existing payout rules.
-              </Text>
+              <Text style={styles.earnNote}>{t("driver_dash_earningsNote")}</Text>
             </View>
           </>
         ) : null}

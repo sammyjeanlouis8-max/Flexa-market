@@ -19,6 +19,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { friendlyApiError } from "@/i18n/nativeScreens";
 import {
   APPLY_BRAND,
   HAITI_COMMUNES_BY_DEPARTMENT,
@@ -138,6 +140,7 @@ export default function DriverApplyScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, user, isLoading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const [step, setStep] = useState<WizardStep>(0);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [loadingGate, setLoadingGate] = useState(true);
@@ -267,27 +270,27 @@ export default function DriverApplyScreen() {
 
   function validateStep(s: WizardStep): string | null {
     if (s === 1) {
-      if (!form.fullName.trim()) return "Antre non legal ou.";
-      if (!form.dateOfBirth) return "Antre dat nesans (YYYY-MM-DD).";
+      if (!form.fullName.trim()) return t("driver_apply_errName");
+      if (!form.dateOfBirth) return t("driver_apply_errDob");
       const age = ageFromDob(form.dateOfBirth);
-      if (age == null || age < 18) return "Ou dwe gen omwen 18 an.";
-      if (!normalizePhone(form.phone)) return "Antre yon nimewo Ayiti valab (+509).";
-      if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Imèl pa valab.";
+      if (age == null || age < 18) return t("driver_apply_errAge");
+      if (!normalizePhone(form.phone)) return t("driver_apply_errPhone");
+      if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return t("driver_apply_errEmail");
       if (!form.residentialDepartment || !form.residentialCommune) {
-        return "Chwazi depatman ak komin rezidans.";
+        return t("driver_apply_errResidence");
       }
     }
     if (s === 2) {
-      if (!form.vehicleType) return "Chwazi tip transpò.";
+      if (!form.vehicleType) return t("driver_apply_errVehicle");
       if (!form.workDepartment || form.workCommunes.length === 0) {
-        return "Chwazi depatman travay ak omwen yon komin.";
+        return t("driver_apply_errZones");
       }
     }
     if (s === 3) {
-      if (!form.photoId) return "Telechaje kat idantite.";
-      if (form.vehicleType === "car" && !form.photoLicense) return "Lisans obligatwa pou machin.";
+      if (!form.photoId) return t("driver_apply_errId");
+      if (form.vehicleType === "car" && !form.photoLicense) return t("driver_apply_errLicense");
       if ((form.vehicleType === "moto" || form.vehicleType === "car") && !form.photoVehicleDoc) {
-        return "Telechaje dokiman machin / moto.";
+        return t("driver_apply_errVehicleDoc");
       }
     }
     return null;
@@ -296,7 +299,7 @@ export default function DriverApplyScreen() {
   async function goNext() {
     const err = validateStep(step);
     if (err) {
-      Alert.alert("Fòm", err);
+      Alert.alert(t("driver_apply_formTitle"), err);
       return;
     }
     if (!token) return;
@@ -317,7 +320,7 @@ export default function DriverApplyScreen() {
 
   async function submit() {
     if (!form.acceptedTerms) {
-      Alert.alert("Tèm", "Aksepte kondisyon chofè yo.");
+      Alert.alert(t("driver_apply_termsTitle"), t("driver_apply_acceptTerms"));
       return;
     }
     if (!token) return;
@@ -331,7 +334,7 @@ export default function DriverApplyScreen() {
       });
       setStep(5);
     } catch (e) {
-      Alert.alert("Erè", e instanceof Error ? e.message : "Submit failed");
+      Alert.alert(t("common_error"), friendlyApiError(e instanceof Error ? e.message : undefined, t));
     } finally {
       setSubmitting(false);
     }
@@ -341,7 +344,7 @@ export default function DriverApplyScreen() {
     if (!token) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert("Pèmisyon", "Bezwen aksè foto pou telechaje dokiman.");
+      Alert.alert(t("common_error"), t("driver_apply_permPhotos"));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -359,7 +362,7 @@ export default function DriverApplyScreen() {
       });
       setForm((f) => ({ ...f, [key]: uploaded.url }));
     } catch (e) {
-      Alert.alert("Upload", e instanceof Error ? e.message : "Upload failed");
+      Alert.alert(t("common_error"), friendlyApiError(e instanceof Error ? e.message : undefined, t));
     } finally {
       setUploading(null);
     }
@@ -387,16 +390,14 @@ export default function DriverApplyScreen() {
             <Feather name="arrow-left" size={20} color="#fff" />
           </Pressable>
           <Text style={styles.heroBrand}>Flexa Market</Text>
-          <Text style={styles.heroTitle}>Become a Flexa Market Driver</Text>
+          <Text style={styles.heroTitle}>{t("driver_apply_welcomeTitle")}</Text>
         </View>
         <View style={styles.welcomeCard}>
-          <Text style={styles.welcomeSub}>
-            Make deliveries, earn income, and work in your own area in Haiti.
-          </Text>
+          <Text style={styles.welcomeSub}>{t("driver_apply_welcomeSubtitle")}</Text>
           {[
-            { icon: "dollar-sign" as const, text: "Attractive income — get paid for each delivery." },
-            { icon: "calendar" as const, text: "Flexible schedule — work when you are available." },
-            { icon: "map-pin" as const, text: "Work locally — choose your department and communes." },
+            { icon: "dollar-sign" as const, text: t("driver_apply_benefitIncome") },
+            { icon: "calendar" as const, text: t("driver_apply_benefitFlex") },
+            { icon: "map-pin" as const, text: t("driver_apply_benefitLocal") },
           ].map((b) => (
             <View key={b.text} style={styles.benefitRow}>
               <View style={styles.benefitIcon}>
@@ -406,12 +407,9 @@ export default function DriverApplyScreen() {
             </View>
           ))}
           <Pressable style={styles.primaryBtn} onPress={() => setStep(1)}>
-            <Text style={styles.primaryBtnText}>Apply as a driver →</Text>
+            <Text style={styles.primaryBtnText}>{t("driver_apply_cta")}</Text>
           </Pressable>
-          <Text style={styles.disclaimer}>
-            Approval is not guaranteed. Existing Flexa Market accounts are reused — no duplicate
-            driver accounts.
-          </Text>
+          <Text style={styles.disclaimer}>{t("driver_apply_disclaimer")}</Text>
         </View>
       </ScrollView>
     );
@@ -431,35 +429,33 @@ export default function DriverApplyScreen() {
         <View style={styles.successIcon}>
           <Feather name="check" size={36} color={APPLY_BRAND.success} />
         </View>
-        <Text style={styles.successTitle}>Application submitted</Text>
-        <Text style={styles.successBody}>
-          Your application was submitted successfully! We are verifying your information.
-        </Text>
+        <Text style={styles.successTitle}>{t("driver_apply_submittedTitle")}</Text>
+        <Text style={styles.successBody}>{t("driver_apply_submittedBody")}</Text>
         <View style={styles.card}>
-          <Text style={styles.fieldLabel}>APPLICATION STATUS</Text>
+          <Text style={styles.fieldLabel}>{t("driver_apply_status")}</Text>
           <View style={styles.pendingPill}>
             <Feather name="clock" size={14} color="#92400E" />
             <Text style={styles.pendingText}>
-              {submitted.status === "pending" ? "Pending review" : submitted.status}
+              {submitted.status === "pending" ? t("driver_apply_pending") : submitted.status}
             </Text>
           </View>
           <Text style={styles.refLine}>
-            Reference: <Text style={styles.refId}>{submitted.id}</Text>
+            {t("driver_apply_ref")}: <Text style={styles.refId}>{submitted.id}</Text>
           </Text>
         </View>
         <Pressable style={styles.primaryBtn} onPress={() => router.replace("/")}>
           <Feather name="home" size={16} color="#fff" />
-          <Text style={styles.primaryBtnText}>Return to Home</Text>
+          <Text style={styles.primaryBtnText}>{t("driver_apply_backHome")}</Text>
         </Pressable>
       </ScrollView>
     );
   }
 
   const titles: Record<number, string> = {
-    1: "Personal information",
-    2: "Transport information",
-    3: "Documents & verification",
-    4: "Submit application",
+    1: t("driver_apply_stepPersonal"),
+    2: t("driver_apply_stepTransport"),
+    3: t("driver_apply_stepDocs"),
+    4: t("driver_apply_stepReview"),
   };
 
   const residentialCommunes = form.residentialDepartment
@@ -482,7 +478,7 @@ export default function DriverApplyScreen() {
       </View>
       <StepProgress step={step} />
       {existingStatus === "needs_changes" ? (
-        <Text style={styles.needsChanges}>Additional information was requested. Update and resubmit.</Text>
+        <Text style={styles.needsChanges}>{t("driver_apply_needsChanges")}</Text>
       ) : null}
 
       <ScrollView
@@ -492,19 +488,19 @@ export default function DriverApplyScreen() {
         {step === 1 ? (
           <>
             <Field
-              label="Full name *"
+              label={t("driver_apply_fullName")}
               value={form.fullName}
               onChange={(v) => setForm({ ...form, fullName: v })}
               icon="user"
             />
             <Field
-              label="Date of birth * (YYYY-MM-DD)"
+              label={t("driver_apply_dob")}
               value={form.dateOfBirth}
               onChange={(v) => setForm({ ...form, dateOfBirth: v })}
               placeholder="1995-01-15"
             />
             <Field
-              label="Phone *"
+              label={t("driver_apply_phone")}
               value={form.phone}
               onChange={(v) => setForm({ ...form, phone: v })}
               icon="phone"
@@ -512,18 +508,18 @@ export default function DriverApplyScreen() {
               keyboardType="phone-pad"
             />
             <Field
-              label="Email"
+              label={t("driver_apply_email")}
               value={form.email}
               onChange={(v) => setForm({ ...form, email: v })}
               icon="mail"
               keyboardType="email-address"
             />
             <Field
-              label="Residential address"
+              label={t("driver_apply_address")}
               value={form.address}
               onChange={(v) => setForm({ ...form, address: v })}
             />
-            <Text style={styles.fieldLabel}>Department *</Text>
+            <Text style={styles.fieldLabel}>{t("driver_apply_department")}</Text>
             <ChipRow
               options={[...HAITI_DEPARTMENTS]}
               value={form.residentialDepartment}
@@ -531,7 +527,7 @@ export default function DriverApplyScreen() {
                 setForm({ ...form, residentialDepartment: v, residentialCommune: "" })
               }
             />
-            <Text style={styles.fieldLabel}>Commune *</Text>
+            <Text style={styles.fieldLabel}>{t("driver_apply_commune")}</Text>
             <ChipRow
               options={residentialCommunes}
               value={form.residentialCommune}
@@ -542,7 +538,7 @@ export default function DriverApplyScreen() {
 
         {step === 2 ? (
           <>
-            <Text style={styles.fieldLabel}>Transport type *</Text>
+            <Text style={styles.fieldLabel}>{t("driver_apply_vehicleType")}</Text>
             <View style={styles.vehicleRow}>
               {(
                 [
@@ -571,28 +567,28 @@ export default function DriverApplyScreen() {
               })}
             </View>
             <Field
-              label="Brand"
+              label={t("driver_apply_brand")}
               value={form.vehicleBrand}
               onChange={(v) => setForm({ ...form, vehicleBrand: v })}
             />
             <Field
-              label="Model"
+              label={t("driver_apply_model")}
               value={form.vehicleModel}
               onChange={(v) => setForm({ ...form, vehicleModel: v })}
             />
             <Field
-              label="License plate"
+              label={t("driver_apply_plate")}
               value={form.licensePlate}
               onChange={(v) => setForm({ ...form, licensePlate: v })}
               autoCapitalize="characters"
             />
-            <Text style={styles.fieldLabel}>Work department *</Text>
+            <Text style={styles.fieldLabel}>{t("driver_apply_workDept")}</Text>
             <ChipRow
               options={[...HAITI_DEPARTMENTS]}
               value={form.workDepartment}
               onChange={(v) => setForm({ ...form, workDepartment: v, workCommunes: [] })}
             />
-            <Text style={styles.fieldLabel}>Work communes *</Text>
+            <Text style={styles.fieldLabel}>{t("driver_apply_workCommunes")}</Text>
             <View style={styles.communeWrap}>
               {workCommunesOptions.map((c) => {
                 const active = form.workCommunes.includes(c);
@@ -620,24 +616,27 @@ export default function DriverApplyScreen() {
         {step === 3 ? (
           <>
             <DocSlot
-              label="National ID"
-              hint="Photo of your ID document"
+              label={t("driver_apply_docId")}
+              hint={t("driver_apply_docIdHint")}
+              uploadLabel={t("driver_apply_upload")}
               url={form.photoId}
               uploading={uploading === "photoId"}
               onUpload={() => void pickDoc("photoId")}
               onClear={() => setForm({ ...form, photoId: null })}
             />
             <DocSlot
-              label="Driver’s license"
-              hint={form.vehicleType === "car" ? "Required for cars" : "Optional for moto"}
+              label={t("driver_apply_docLicense")}
+              hint={form.vehicleType === "car" ? t("driver_apply_docLicenseHint") : t("driver_apply_docLicenseOpt")}
+              uploadLabel={t("driver_apply_upload")}
               url={form.photoLicense}
               uploading={uploading === "photoLicense"}
               onUpload={() => void pickDoc("photoLicense")}
               onClear={() => setForm({ ...form, photoLicense: null })}
             />
             <DocSlot
-              label="Vehicle document"
-              hint="Registration / insurance photo"
+              label={t("driver_apply_docVehicle")}
+              hint={t("driver_apply_docVehicleHint")}
+              uploadLabel={t("driver_apply_upload")}
               url={form.photoVehicleDoc}
               uploading={uploading === "photoVehicleDoc"}
               onUpload={() => void pickDoc("photoVehicleDoc")}
@@ -648,16 +647,16 @@ export default function DriverApplyScreen() {
 
         {step === 4 ? (
           <View style={styles.card}>
-            <Text style={styles.reviewTitle}>Review & submit</Text>
-            <ReviewLine label="Name" value={form.fullName} />
-            <ReviewLine label="Phone" value={normalizePhone(form.phone)} />
+            <Text style={styles.reviewTitle}>{t("driver_apply_review")}</Text>
+            <ReviewLine label={t("driver_apply_fullName")} value={form.fullName} />
+            <ReviewLine label={t("driver_apply_phone")} value={normalizePhone(form.phone)} />
             <ReviewLine
-              label="Residence"
+              label={t("driver_apply_address")}
               value={`${form.residentialCommune}, ${form.residentialDepartment}`}
             />
-            <ReviewLine label="Vehicle" value={form.vehicleType || "—"} />
+            <ReviewLine label={t("driver_apply_vehicleType")} value={form.vehicleType || "—"} />
             <ReviewLine
-              label="Work zones"
+              label={t("driver_apply_workCommunes")}
               value={`${form.workDepartment}: ${form.workCommunes.join(", ")}`}
             />
             <View style={styles.termsRow}>
@@ -666,9 +665,7 @@ export default function DriverApplyScreen() {
                 onValueChange={(v) => setForm({ ...form, acceptedTerms: v })}
                 trackColor={{ true: APPLY_BRAND.success, false: "#CBD5E1" }}
               />
-              <Text style={styles.termsText}>
-                Mwen aksepte kondisyon chofè Flexa Market yo epi konfime enfòmasyon yo vre.
-              </Text>
+              <Text style={styles.termsText}>{t("driver_apply_terms")}</Text>
             </View>
           </View>
         ) : null}
@@ -684,7 +681,7 @@ export default function DriverApplyScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.primaryBtnText}>
-              {step === 4 ? "Submit application" : "Continue"}
+              {step === 4 ? t("driver_apply_submit") : t("driver_apply_continue")}
             </Text>
           )}
         </Pressable>
@@ -759,6 +756,7 @@ function ChipRow({
 function DocSlot({
   label,
   hint,
+  uploadLabel,
   url,
   uploading,
   onUpload,
@@ -766,6 +764,7 @@ function DocSlot({
 }: {
   label: string;
   hint: string;
+  uploadLabel: string;
   url: string | null;
   uploading: boolean;
   onUpload: () => void;
@@ -796,7 +795,7 @@ function DocSlot({
           ) : (
             <>
               <Feather name="upload" size={22} color="#64748B" />
-              <Text style={styles.docUploadText}>Tap to upload</Text>
+              <Text style={styles.docUploadText}>{uploadLabel}</Text>
             </>
           )}
         </Pressable>

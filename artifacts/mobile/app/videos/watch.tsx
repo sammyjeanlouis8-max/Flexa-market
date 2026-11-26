@@ -7,12 +7,14 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLanguage } from "@/context/LanguageContext";
 import { formatPrice, formatViews } from "@/lib/videosApi";
 import colors from "@/constants/colors";
 
 export default function VideoWatchScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useLanguage();
   const params = useLocalSearchParams<{
     video?: string;
     url?: string;
@@ -31,7 +33,7 @@ export default function VideoWatchScreen() {
     return u.trim() || null;
   }, [params.url]);
 
-  const title = typeof params.title === "string" ? params.title : "Promo video";
+  const title = typeof params.title === "string" ? params.title : t("videos_title");
   const seller = typeof params.seller === "string" ? params.seller : "";
   const views = Number(params.views ?? 0) || 0;
   const price = Number(params.price ?? 0) || 0;
@@ -70,7 +72,7 @@ export default function VideoWatchScreen() {
         ) : (
           <View style={styles.missing}>
             <Feather name="alert-circle" size={28} color="#94A3B8" />
-            <Text style={styles.missingText}>Video unavailable</Text>
+            <Text style={styles.missingText}>{t("common_loadFailed")}</Text>
           </View>
         )}
       </View>
@@ -78,14 +80,16 @@ export default function VideoWatchScreen() {
       <View style={[styles.info, { paddingBottom: insets.bottom + 16 }]}>
         <Text style={styles.title}>{title}</Text>
         {seller ? <Text style={styles.seller}>{seller}</Text> : null}
-        <Text style={styles.meta}>{formatViews(views)} views</Text>
+        <Text style={styles.meta}>
+          {formatViews(views)} {t("videos_views")}
+        </Text>
         {canBuy ? (
           <Pressable
             style={styles.buy}
             onPress={() => router.push(`/listing/${listingId}` as never)}
           >
             <Feather name="shopping-cart" size={16} color="#fff" />
-            <Text style={styles.buyText}>Buy {priceLabel}</Text>
+            <Text style={styles.buyText}>{priceLabel}</Text>
           </Pressable>
         ) : null}
       </View>

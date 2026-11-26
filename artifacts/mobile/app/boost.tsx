@@ -8,7 +8,6 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +16,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { friendlyApiError, tr } from "@/i18n/nativeScreens";
 import { fetchListing, type Listing } from "@/lib/api";
 import { BOOST_PLANS, resolveBoostMediaUrl } from "@/lib/boostApi";
 import { cleanListingImageUrls } from "@/lib/listingImages";
@@ -30,6 +31,7 @@ export default function BoostScreen() {
   const params = useLocalSearchParams<{ listingId?: string }>();
   const listingId = Number(params.listingId ?? 0) || 0;
   const { token, isLoading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(Boolean(listingId));
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export default function BoostScreen() {
           }
         } catch (e) {
           if (!cancelled) {
-            setError(e instanceof Error ? e.message : "Could not load listing");
+            setError(friendlyApiError(e instanceof Error ? e.message : undefined, t) || t("common_loadFailed"));
             setListing(null);
           }
         } finally {
@@ -68,12 +70,7 @@ export default function BoostScreen() {
 
   const onPaidBlocked = () => {
     // Never call paid initiate on Android / iOS store builds.
-    Alert.alert(
-      "Boost purchase unavailable",
-      Platform.OS === "android"
-        ? "Paid boosts cannot be purchased in the Android app (Google Play digital goods policy). Use the website to start a paid campaign."
-        : "Paid boost purchase is not available in the store app. Use the website to start a paid campaign.",
-    );
+    Alert.alert(t("boost_payBlockedTitle"), t("boost_payBlockedBody"));
   };
 
   if (!listingId) {
@@ -86,22 +83,20 @@ export default function BoostScreen() {
           >
             <Feather name="arrow-left" size={22} color="#0F172A" />
           </Pressable>
-          <Text style={styles.title}>Boost</Text>
+          <Text style={styles.title}>{t("boost_title")}</Text>
           <View style={{ width: 40 }} />
         </View>
         <View style={styles.empty}>
           <View style={styles.emptyIcon}>
             <Feather name="zap" size={32} color="#F97316" />
           </View>
-          <Text style={styles.emptyTitle}>Choose a listing</Text>
-          <Text style={styles.emptyDesc}>
-            Open My Listings and pick a product to boost.
-          </Text>
+          <Text style={styles.emptyTitle}>{t("boost_chooseListing")}</Text>
+          <Text style={styles.emptyDesc}>{t("boost_chooseListingHint")}</Text>
           <Pressable
             style={styles.cta}
             onPress={() => router.replace("/my-listings" as never)}
           >
-            <Text style={styles.ctaText}>Go to My Listings</Text>
+            <Text style={styles.ctaText}>{t("boost_goListings")}</Text>
           </Pressable>
         </View>
       </View>
@@ -121,7 +116,7 @@ export default function BoostScreen() {
         >
           <Feather name="arrow-left" size={22} color="#0F172A" />
         </Pressable>
-        <Text style={styles.title}>Boost listing</Text>
+        <Text style={styles.title}>{t("boost_title")}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -149,11 +144,8 @@ export default function BoostScreen() {
             </View>
           </View>
 
-          <Text style={styles.section}>Choose duration</Text>
-          <Text style={styles.sectionHint}>
-            More days means longer featured placement. Prices shown for reference only —
-            purchase is blocked in this app.
-          </Text>
+          <Text style={styles.section}>{t("boost_duration")}</Text>
+          <Text style={styles.sectionHint}>{t("boost_payBlockedBody")}</Text>
 
           <View style={styles.plans}>
             {BOOST_PLANS.map((p) => {
@@ -181,7 +173,7 @@ export default function BoostScreen() {
           </View>
 
           <View style={styles.summary}>
-            <Text style={styles.summaryLabel}>Selected</Text>
+            <Text style={styles.summaryLabel}>{t("boost_duration")}</Text>
             <Text style={styles.summaryValue}>
               {selected.label} · ${selected.price.toFixed(2)}
             </Text>
@@ -189,12 +181,11 @@ export default function BoostScreen() {
 
           <Pressable style={styles.payBtn} onPress={onPaidBlocked} testID="boost-pay-cta">
             <Feather name="credit-card" size={18} color="#fff" />
-            <Text style={styles.payBtnText}>Continue to pay ${selected.price.toFixed(2)}</Text>
+            <Text style={styles.payBtnText}>
+              {tr(t, "boost_continuePay", { amount: `$${selected.price.toFixed(2)}` })}
+            </Text>
           </Pressable>
-          <Text style={styles.policyNote}>
-            Paid boost initiate is disabled on {Platform.OS === "ios" ? "iOS" : "Android"} store
-            builds. Managing and cancelling existing campaigns remains available under My Boosts.
-          </Text>
+          <Text style={styles.policyNote}>{t("boost_payBlockedBody")}</Text>
         </ScrollView>
       )}
     </View>

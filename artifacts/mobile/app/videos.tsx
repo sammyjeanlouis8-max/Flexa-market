@@ -18,6 +18,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { friendlyApiError } from "@/i18n/nativeScreens";
 import {
   DiscoverSort,
   DiscoverVideo,
@@ -27,18 +29,14 @@ import {
 } from "@/lib/videosApi";
 import colors from "@/constants/colors";
 
-const SORTS: { key: DiscoverSort; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "trending", label: "Trending" },
-  { key: "new", label: "New" },
-  { key: "mine", label: "My Videos" },
-];
+const SORT_KEYS: DiscoverSort[] = ["all", "trending", "new", "mine"];
 
 export default function VideosDiscoverScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width } = useWindowDimensions();
   const { token, user, isLoading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const [sort, setSort] = useState<DiscoverSort>("all");
   const [query, setQuery] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -95,7 +93,7 @@ export default function VideosDiscoverScreen() {
         setPage(p);
         setError(null);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not load videos");
+        setError(friendlyApiError(e instanceof Error ? e.message : undefined, t) || t("videos_loadError"));
         if (replace) setVideos((prev) => prev);
       } finally {
         setLoading(false);
@@ -103,7 +101,7 @@ export default function VideosDiscoverScreen() {
         setRefreshing(false);
       }
     },
-    [token, user?.country, sort, debouncedQ],
+    [token, user?.country, sort, debouncedQ, t],
   );
 
   useFocusEffect(
@@ -176,15 +174,23 @@ export default function VideosDiscoverScreen() {
         </Text>
         <View style={styles.metaRow}>
           <Feather name="eye" size={12} color="#64748B" />
-          <Text style={styles.meta}>{formatViews(item.viewCount)} views</Text>
+          <Text style={styles.meta}>{formatViews(item.viewCount)} {t("videos_views")}</Text>
         </View>
         {canBuy && priceLabel ? <Text style={styles.price}>{priceLabel}</Text> : null}
       </Pressable>
     );
   };
 
+  const sortLabel = (key: DiscoverSort) => {
+    if (key === "all") return t("videos_all");
+    if (key === "trending") return t("videos_trending");
+    if (key === "new") return t("videos_new");
+    return t("videos_mine");
+  };
   const allLabel =
-    sort === "all" && totalHint > 0 ? `All (${Math.max(totalHint, videos.length)})` : "All";
+    sort === "all" && totalHint > 0
+      ? `${t("videos_all")} (${Math.max(totalHint, videos.length)})`
+      : t("videos_all");
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 8 }]} testID="video-discover-page">
@@ -199,7 +205,7 @@ export default function VideosDiscoverScreen() {
           <Feather name="play" size={14} color="#fff" />
         </View>
         <Text style={styles.title} numberOfLines={1}>
-          Promotional Videos
+          {t("videos_title")}
         </Text>
         <Pressable style={styles.iconBtn} onPress={() => setSearchOpen((v) => !v)}>
           <Feather name="search" size={20} color="#0F172A" />
@@ -211,22 +217,22 @@ export default function VideosDiscoverScreen() {
           style={styles.search}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search promotional videos…"
+          placeholder={t("videos_searchPlaceholder")}
           placeholderTextColor="#94A3B8"
           autoFocus
         />
       ) : null}
 
       <View style={styles.chips}>
-        {SORTS.map((s) => {
-          const active = sort === s.key;
-          const label = s.key === "all" ? allLabel : s.label;
+        {SORT_KEYS.map((key) => {
+          const active = sort === key;
+          const label = key === "all" ? allLabel : sortLabel(key);
           return (
             <Pressable
-              key={s.key}
+              key={key}
               style={[styles.chip, active && styles.chipOn]}
-              onPress={() => onSort(s.key)}
-              testID={`video-filter-${s.key}`}
+              onPress={() => onSort(key)}
+              testID={`video-filter-${key}`}
             >
               <Text style={[styles.chipText, active && styles.chipTextOn]}>{label}</Text>
             </Pressable>
@@ -263,16 +269,8 @@ export default function VideosDiscoverScreen() {
               <View style={styles.emptyIcon}>
                 <Feather name="film" size={36} color={colors.flexaGreen} />
               </View>
-              <Text style={styles.emptyTitle}>
-                {sort === "mine"
-                  ? "You have no promotional videos"
-                  : "No promotional videos yet"}
-              </Text>
-              <Text style={styles.emptyDesc}>
-                {sort === "mine"
-                  ? "Boost a product video to appear here while the campaign is active."
-                  : "Check back soon — sellers boost products with promo videos."}
-              </Text>
+              <Text style={styles.emptyTitle}>{t("videos_empty")}</Text>
+              <Text style={styles.emptyDesc}>{t("videos_emptyHint")}</Text>
             </View>
           }
           ListFooterComponent={

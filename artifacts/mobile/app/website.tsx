@@ -9,10 +9,12 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import colors from "@/constants/colors";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function WebsiteScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useLanguage();
   const c = colors.light;
 
   return (
@@ -37,14 +39,11 @@ export default function WebsiteScreen() {
             <Text style={styles.logoText}>FM</Text>
           </View>
           <Text style={styles.brand}>Flexa Market</Text>
-          <Text style={styles.heroSub}>Native app experience</Text>
+          <Text style={styles.heroSub}>{t("website_heroSub")}</Text>
         </LinearGradient>
 
-        <Text style={[styles.title, { color: c.foreground }]}>Sit web la pa embed ankò</Text>
-        <Text style={[styles.subtitle, { color: c.mutedForeground }]}>
-          Tout navigasyon marketplace a se nativ kounye a. Itilize Home pou browse lisaj yo — menm
-          aparans ak flexamarket.com, san WebView.
-        </Text>
+        <Text style={[styles.title, { color: c.foreground }]}>{t("website_title")}</Text>
+        <Text style={[styles.subtitle, { color: c.mutedForeground }]}>{t("website_body")}</Text>
 
         <Pressable
           style={styles.cta}
@@ -52,7 +51,7 @@ export default function WebsiteScreen() {
           accessibilityRole="button"
         >
           <Feather name="home" size={18} color="#fff" />
-          <Text style={styles.ctaText}>Ale nan Home</Text>
+          <Text style={styles.ctaText}>{t("website_cta")}</Text>
         </Pressable>
       </View>
     </View>

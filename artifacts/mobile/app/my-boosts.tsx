@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -19,6 +18,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
+import { friendlyApiError, tr } from "@/i18n/nativeScreens";
 import {
   ActiveBoost,
   cancelBoost,
@@ -39,6 +40,7 @@ export default function MyBoostsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const [boosts, setBoosts] = useState<ActiveBoost[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,13 +56,13 @@ export default function MyBoostsScreen() {
         setBoosts(rows);
         setError(null);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not load boosts");
+        setError(friendlyApiError(e instanceof Error ? e.message : undefined, t) || t("boosts_loadError"));
         setBoosts((prev) => prev ?? []);
       } finally {
         setRefreshing(false);
       }
     },
-    [token],
+    [token, t],
   );
 
   useFocusEffect(
@@ -83,14 +85,12 @@ export default function MyBoostsScreen() {
 
   const onCreateBlocked = () => {
     Alert.alert(
-      "Boost purchase unavailable",
-      Platform.OS === "android"
-        ? "Paid boost campaigns cannot be purchased in the Android app (Google Play digital goods policy). Manage existing campaigns here, or open My Listings to pick a product."
-        : "Paid boost purchase is not available in the store app. Open My Listings to select a listing, or manage existing campaigns here.",
+      t("boost_payBlockedTitle"),
+      t("boost_payBlockedBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("boosts_cancel"), style: "cancel" },
         {
-          text: "My Listings",
+          text: t("boost_goListings"),
           onPress: () => router.push("/my-listings" as never),
         },
       ],
@@ -100,29 +100,27 @@ export default function MyBoostsScreen() {
   const onCancel = (boost: ActiveBoost) => {
     const refund = estimateRefund(boost);
     Alert.alert(
-      "Cancel boost?",
+      t("boosts_cancelTitle"),
       refund > 0
-        ? `Stop “${boost.title}” now? Estimated refund ~${money(refund)} to your FM Wallet.`
-        : `Stop “${boost.title}” immediately?`,
+        ? `${boost.title} — ${t("boosts_cancelBody")} (~${money(refund)})`
+        : `${boost.title} — ${t("boosts_cancelBody")}`,
       [
-        { text: "Keep", style: "cancel" },
+        { text: t("common_ok"), style: "cancel" },
         {
-          text: "Cancel boost",
+          text: t("boosts_cancel"),
           style: "destructive",
           onPress: async () => {
             if (!token) return;
             setCancellingId(boost.boostId);
             try {
-              const { refundUsd } = await cancelBoost(boost.boostId, { token });
-              Alert.alert(
-                "Boost cancelled",
-                refundUsd > 0
-                  ? `${money(refundUsd)} returned to your FM Wallet.`
-                  : "Boost cancelled.",
-              );
+              await cancelBoost(boost.boostId, { token });
+              Alert.alert(t("common_ok"), t("boosts_cancelBody"));
               await load("refresh");
             } catch (e) {
-              Alert.alert("Cancel failed", e instanceof Error ? e.message : "Error");
+              Alert.alert(
+                t("common_error"),
+                friendlyApiError(e instanceof Error ? e.message : undefined, t),
+              );
             } finally {
               setCancellingId(null);
             }
@@ -159,28 +157,28 @@ export default function MyBoostsScreen() {
               </Text>
               {item.isExpired ? (
                 <View style={[styles.pill, styles.pillMuted]}>
-                  <Text style={styles.pillMutedText}>Expired</Text>
+                  <Text style={styles.pillMutedText}>{t("sub_expired")}</Text>
                 </View>
               ) : days !== null ? (
                 <View style={[styles.pill, expiringSoon ? styles.pillWarn : styles.pillOk]}>
                   <Text style={expiringSoon ? styles.pillWarnText : styles.pillOkText}>
-                    {days === 0 ? "Ends soon" : `${days}d left`}
+                    {tr(t, "boosts_daysLeft", { n: days })}
                   </Text>
                 </View>
               ) : null}
             </View>
             <View style={styles.statRow}>
-              <Text style={styles.statBlue}>{item.impressions.toLocaleString()} imp</Text>
-              <Text style={styles.statOrange}>{item.clicks.toLocaleString()} clicks</Text>
+              <Text style={styles.statBlue}>{item.impressions.toLocaleString()} {t("boosts_impressions")}</Text>
+              <Text style={styles.statOrange}>{item.clicks.toLocaleString()} {t("boosts_clicks")}</Text>
               <Text style={styles.statCtr}>CTR {ctr}</Text>
             </View>
             <View style={styles.budgetRow}>
-              <Text style={styles.budgetCell}>Budget {money(item.budget)}</Text>
+              <Text style={styles.budgetCell}>{t("boosts_budget")} {money(item.budget)}</Text>
               <Text style={styles.budgetCell}>
-                Spent {money(item.estimatedSpentUsd ?? 0)}
+                {t("boosts_spent")} {money(item.estimatedSpentUsd ?? 0)}
               </Text>
               <Text style={styles.budgetCell}>
-                Left {money(item.remainingBudgetUsd ?? item.budget)}
+                {t("boosts_remaining")} {money(item.remainingBudgetUsd ?? item.budget)}
               </Text>
             </View>
           </View>
@@ -196,7 +194,7 @@ export default function MyBoostsScreen() {
             }
           >
             <Feather name="zap" size={14} color={colors.flexaGreen} />
-            <Text style={styles.actionSecondaryText}>Manage</Text>
+            <Text style={styles.actionSecondaryText}>{t("boost_title")}</Text>
           </Pressable>
           {!item.isExpired ? (
             <Pressable
@@ -235,23 +233,23 @@ export default function MyBoostsScreen() {
             <Feather name="zap" size={16} color="#fff" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>My Boosts</Text>
-            <Text style={styles.headerSub}>Campaign performance</Text>
+            <Text style={styles.headerTitle}>{t("boosts_title")}</Text>
+            <Text style={styles.headerSub}>{t("boosts_subtitle")}</Text>
           </View>
         </View>
         {(boosts?.length ?? 0) > 0 ? (
           <View style={styles.summary}>
             <View style={styles.summaryCell}>
               <Text style={styles.summaryValue}>{totals.impressions.toLocaleString()}</Text>
-              <Text style={styles.summaryLabel}>Impressions</Text>
+              <Text style={styles.summaryLabel}>{t("boosts_impressions")}</Text>
             </View>
             <View style={styles.summaryCell}>
               <Text style={styles.summaryValue}>{totals.views.toLocaleString()}</Text>
-              <Text style={styles.summaryLabel}>Views</Text>
+              <Text style={styles.summaryLabel}>{t("boosts_views")}</Text>
             </View>
             <View style={styles.summaryCell}>
               <Text style={styles.summaryValue}>{totals.clicks.toLocaleString()}</Text>
-              <Text style={styles.summaryLabel}>Clicks</Text>
+              <Text style={styles.summaryLabel}>{t("boosts_clicks")}</Text>
             </View>
           </View>
         ) : null}
@@ -283,13 +281,11 @@ export default function MyBoostsScreen() {
               <View style={styles.emptyIcon}>
                 <Feather name="film" size={32} color={colors.flexaGreen} />
               </View>
-              <Text style={styles.emptyTitle}>No active boosts</Text>
-              <Text style={styles.emptyDesc}>
-                Boost a listing to get more views. Paid create is blocked in store apps.
-              </Text>
+              <Text style={styles.emptyTitle}>{t("boosts_empty")}</Text>
+              <Text style={styles.emptyDesc}>{t("boosts_emptyHint")}</Text>
               <Pressable style={styles.createBtn} onPress={onCreateBlocked}>
                 <Feather name="zap" size={16} color="#fff" />
-                <Text style={styles.createBtnText}>Create boost</Text>
+                <Text style={styles.createBtnText}>{t("boosts_create")}</Text>
               </Pressable>
             </View>
           }
@@ -297,7 +293,7 @@ export default function MyBoostsScreen() {
             (boosts?.length ?? 0) > 0 ? (
               <Pressable style={styles.createAgain} onPress={onCreateBlocked}>
                 <Feather name="zap" size={16} color={colors.flexaGreen} />
-                <Text style={styles.createAgainText}>Launch another boost</Text>
+                <Text style={styles.createAgainText}>{t("boosts_create")}</Text>
               </Pressable>
             ) : null
           }

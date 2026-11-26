@@ -1,11 +1,11 @@
 /**
  * Native KYC — identity verification (document + selfie).
- * Matches marketplace web KYCVerification layout and Creole copy.
+ * Matches marketplace web KYCVerification layout; copy via useLanguage().
  */
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -17,7 +17,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import colors from "@/constants/colors";
+import { friendlyApiError } from "@/i18n/nativeScreens";
 import {
   fetchKycStatus,
   submitKyc,
@@ -26,22 +28,35 @@ import {
   type KycImageAsset,
 } from "@/lib/kycApi";
 
-const DOC_OPTIONS: {
-  value: KycDocType;
-  label: string;
-  icon: React.ComponentProps<typeof Feather>["name"];
-}[] = [
-  { value: "national_id", label: "Kat Idantite Nasyonal", icon: "user" },
-  { value: "passport", label: "Paspò", icon: "file-text" },
-  { value: "driving_license", label: "Lisans Kondwi", icon: "truck" },
-];
-
 type PickedImage = KycImageAsset & { previewUri: string };
 
 export default function KycScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
+  const { t } = useLanguage();
+
+  const docOptions = useMemo(
+    () =>
+      [
+        {
+          value: "national_id" as KycDocType,
+          label: t("kycNatId"),
+          icon: "user" as React.ComponentProps<typeof Feather>["name"],
+        },
+        {
+          value: "passport" as KycDocType,
+          label: t("kycPassport"),
+          icon: "file-text" as React.ComponentProps<typeof Feather>["name"],
+        },
+        {
+          value: "driving_license" as KycDocType,
+          label: t("kycDrivingLicense"),
+          icon: "truck" as React.ComponentProps<typeof Feather>["name"],
+        },
+      ] as const,
+    [t],
+  );
 
   const [kycInfo, setKycInfo] = useState<KycInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,7 +94,7 @@ export default function KycScreen() {
   const pickImage = async (kind: "document" | "selfie") => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      setError("Tanpri otorize aksè nan galri foto a.");
+      setError(t("driver_apply_permPhotos"));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -102,7 +117,7 @@ export default function KycScreen() {
 
   const handleSubmit = async () => {
     if (!token || !docImage || !selfieImage) {
-      setError("Tanpri telechaje foto dokiman ak selfie ou a.");
+      setError(t("kycErrDocs"));
       return;
     }
     setError(null);
@@ -119,7 +134,9 @@ export default function KycScreen() {
       setSuccess(true);
       setKycInfo({ status: "pending" });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Soumisyon echwe");
+      setError(
+        friendlyApiError(e instanceof Error ? e.message : undefined, t) || t("kycErrMsg"),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -137,7 +154,7 @@ export default function KycScreen() {
         >
           <Feather name="arrow-left" size={22} color="#0F172A" />
         </Pressable>
-        <Text style={styles.topTitle}>Verifikasyon Idantite</Text>
+        <Text style={styles.topTitle}>{t("kycTitle")}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -153,8 +170,8 @@ export default function KycScreen() {
               <Feather name="shield" size={22} color={colors.flexaGreen} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.h1}>Verifikasyon Idantite</Text>
-              <Text style={styles.sub}>KYC — Know Your Customer</Text>
+              <Text style={styles.h1}>{t("kycTitle")}</Text>
+              <Text style={styles.sub}>{t("kycSubtitle")}</Text>
             </View>
           </View>
 
@@ -165,9 +182,9 @@ export default function KycScreen() {
                   icon="clock"
                   iconBg="#FEF9C3"
                   iconColor="#CA8A04"
-                  title="Ap tann revizyon"
-                  body="Demann ou a ap revize pa ekip nou an (1-3 jou travay)."
-                  badge="An Atant"
+                  title={t("kycPendingTitle")}
+                  body={t("kycPendingBody")}
+                  badge={t("kycPendingBadge")}
                   badgeColor="#CA8A04"
                   badgeBorder="#EAB308"
                 />
@@ -177,9 +194,9 @@ export default function KycScreen() {
                   icon="check-circle"
                   iconBg="#DCFCE7"
                   iconColor="#16A34A"
-                  title="Idantite Verifye ✓"
-                  body="Ou ka fè tranzaksyon gwo montan san restriksyon."
-                  badge="Apwouve"
+                  title={t("kycApprovedTitle")}
+                  body={t("kycApprovedSub")}
+                  badge={t("kycApprovedBadge")}
                   badgeColor="#16A34A"
                   badgeBorder="#22C55E"
                 />
@@ -189,9 +206,9 @@ export default function KycScreen() {
                   icon="x-circle"
                   iconBg="#FEE2E2"
                   iconColor="#DC2626"
-                  title="Demann Rejte"
-                  body={kycInfo?.rejectionReason || "Tanpri soumèt dokiman yo ankò."}
-                  badge="Rejte"
+                  title={t("kycRejectedTitle")}
+                  body={kycInfo?.rejectionReason || t("kycRejectedDefault")}
+                  badge={t("kycRejectedBadge")}
                   badgeColor="#DC2626"
                   badgeBorder="#EF4444"
                 />
@@ -202,13 +219,9 @@ export default function KycScreen() {
           <View style={styles.whyCard}>
             <View style={styles.whyTitleRow}>
               <Feather name="alert-circle" size={16} color={colors.flexaGreen} />
-              <Text style={styles.whyTitle}>Poukisa KYC?</Text>
+              <Text style={styles.whyTitle}>{t("kycWhy")}</Text>
             </View>
-            {[
-              "Transfè P2P plis pase $500 egzije KYC",
-              "Pwoteje kont ou kont fwod ak vol idantite",
-              "Debloye limit transfè pou ajan otorize",
-            ].map((line) => (
+            {[t("kycWhy1"), t("kycWhy2"), t("kycWhy3")].map((line) => (
               <View key={line} style={styles.whyRow}>
                 <Feather name="chevron-right" size={14} color={colors.flexaGreen} />
                 <Text style={styles.whyText}>{line}</Text>
@@ -221,21 +234,18 @@ export default function KycScreen() {
               <View style={[styles.iconCircle, { backgroundColor: "#DCFCE7" }]}>
                 <Feather name="check-circle" size={36} color="#16A34A" />
               </View>
-              <Text style={styles.successTitle}>Dokiman yo Soumèt ✓</Text>
-              <Text style={styles.successBody}>
-                Ekip nou an ap revize demann ou a nan 1-3 jou travay. Ou ap resevwa yon
-                imel lè verifikasyon an fini.
-              </Text>
+              <Text style={styles.successTitle}>{t("kycSuccessTitle")}</Text>
+              <Text style={styles.successBody}>{t("kycSuccessBody")}</Text>
             </View>
           ) : null}
 
           {canSubmit && !success ? (
             <View style={styles.formCard}>
-              <Text style={styles.formTitle}>Soumèt Dokiman ou</Text>
+              <Text style={styles.formTitle}>{t("kycSubmitDocs")}</Text>
 
-              <Text style={styles.label}>Tip Dokiman</Text>
+              <Text style={styles.label}>{t("kycDocType")}</Text>
               <View style={styles.docGrid}>
-                {DOC_OPTIONS.map((opt) => {
+                {docOptions.map((opt) => {
                   const on = docType === opt.value;
                   return (
                     <Pressable
@@ -257,26 +267,28 @@ export default function KycScreen() {
               </View>
 
               <Text style={styles.label}>
-                Foto Dokiman <Text style={styles.labelMuted}>(devan)</Text>
+                {t("kycDocFront")}{" "}
+                <Text style={styles.labelMuted}>{t("kycDocFrontMuted")}</Text>
               </Text>
               <ImagePickerBox
                 previewUri={docImage?.previewUri}
                 emptyIcon="upload"
-                emptyTitle="Klike pou telechaje foto dokiman"
-                emptyHint="JPG, PNG — maks 10 MB"
-                changeLabel="Chanje foto"
+                emptyTitle={t("kycUploadDoc")}
+                emptyHint={t("kycUploadDocHint")}
+                changeLabel={t("kycChangePhoto")}
                 onPress={() => void pickImage("document")}
               />
 
               <Text style={styles.label}>
-                Selfie <Text style={styles.labelMuted}>(foto ou ak dokiman a)</Text>
+                {t("kycSelfie")}{" "}
+                <Text style={styles.labelMuted}>{t("kycSelfieMuted")}</Text>
               </Text>
               <ImagePickerBox
                 previewUri={selfieImage?.previewUri}
                 emptyIcon="user"
-                emptyTitle="Klike pou telechaje selfie"
-                emptyHint="Kenbe dokiman a bò figi ou"
-                changeLabel="Chanje selfie"
+                emptyTitle={t("kycUploadSelfie")}
+                emptyHint={t("kycUploadSelfieHint")}
+                changeLabel={t("kycChangeSelfie")}
                 onPress={() => void pickImage("selfie")}
               />
 
@@ -300,13 +312,11 @@ export default function KycScreen() {
                 ) : (
                   <>
                     <Feather name="shield" size={18} color="#fff" />
-                    <Text style={styles.submitText}>Soumèt pou Verifikasyon</Text>
+                    <Text style={styles.submitText}>{t("kycSubmitBtn")}</Text>
                   </>
                 )}
               </Pressable>
-              <Text style={styles.privacy}>
-                Dokiman ou yo pwoteje epi pa janm pataje ak twazyèm pati.
-              </Text>
+              <Text style={styles.privacy}>{t("kycPrivacy")}</Text>
             </View>
           ) : null}
         </ScrollView>

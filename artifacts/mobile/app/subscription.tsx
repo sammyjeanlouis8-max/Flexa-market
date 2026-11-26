@@ -17,7 +17,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import colors from "@/constants/colors";
+import { friendlyApiError } from "@/i18n/nativeScreens";
 import {
   cancelSubscription,
   featureLabel,
@@ -90,17 +92,18 @@ const PLAN_ICONS: Record<string, React.ComponentProps<typeof Feather>["name"]> =
   vip: "award",
 };
 
-function visLabel(tier: number): string {
-  if (tier <= 0) return "Lòd nòmal";
-  if (tier === 1) return "Lòd anwo";
-  if (tier === 2) return "Lòd siperyè";
-  return "Premye pozisyon";
+function visLabel(tier: number, t: (k: string) => string): string {
+  if (tier <= 0) return t("sub_visibility0");
+  if (tier === 1) return t("sub_visibility1");
+  if (tier === 2) return t("sub_visibility2");
+  return t("sub_visibility3");
 }
 
 export default function SubscriptionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
+  const { t } = useLanguage();
 
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [mySub, setMySub] = useState<MySubscription | null>(null);
@@ -144,78 +147,62 @@ export default function SubscriptionScreen() {
   );
 
   const onPurchaseBlocked = () => {
-    Alert.alert(
-      "Acha pa disponib",
-      "Achte abònman nan aplikasyon an poko disponib (règleman Google Play / App Store pou pwodui dijital). Ou ka wè plan yo ak estati abònman ou isit la.",
-    );
+    Alert.alert(t("sub_purchaseBlockedTitle"), t("sub_purchaseBlockedBody"));
   };
 
   const onCancel = () => {
     if (!token || !mySub) return;
-    Alert.alert(
-      "Anile abònman?",
-      `Abònman ou ap rete aktif jiska ${fmtSubDate(mySub.expiresAt)} — ou pap pèdi aksè kounye a.\n\nApre dat sa a, plan ou ap retounen sou Basic gratis.`,
-      [
-        { text: "Fèmen — Kenbe abònman", style: "cancel" },
-        {
-          text: "Wi, anile",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              setActionBusy(true);
-              try {
-                const res = await cancelSubscription({ token });
-                Alert.alert(
-                  "Abònman anile",
-                  `Ou gen aksè jiska ${fmtSubDate(res.accessUntil ?? mySub.expiresAt)}.`,
-                );
-                await load("refresh");
-              } catch (e) {
-                Alert.alert(
-                  "Erè",
-                  e instanceof Error ? e.message : "Pa t kapab anile abònman an.",
-                );
-              } finally {
-                setActionBusy(false);
-              }
-            })();
-          },
+    Alert.alert(t("sub_cancelConfirmTitle"), t("sub_cancelConfirmBody"), [
+      { text: t("sub_uncancel"), style: "cancel" },
+      {
+        text: t("sub_cancel"),
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            setActionBusy(true);
+            try {
+              await cancelSubscription({ token });
+              Alert.alert(t("common_ok"), t("sub_cancelConfirmBody"));
+              await load("refresh");
+            } catch (e) {
+              Alert.alert(
+                t("common_error"),
+                friendlyApiError(e instanceof Error ? e.message : undefined, t),
+              );
+            } finally {
+              setActionBusy(false);
+            }
+          })();
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const onUncancel = () => {
     if (!token) return;
-    Alert.alert(
-      "Reaktive abònman?",
-      "Abònman ou ap renouvle otomatikman nan fen peryòd la.",
-      [
-        { text: "Anile", style: "cancel" },
-        {
-          text: "Reaktive",
-          onPress: () => {
-            void (async () => {
-              setActionBusy(true);
-              try {
-                await uncancelSubscription({ token });
-                Alert.alert("Abònman reaktive!", "Abònman ou ap renouvle otomatikman.");
-                await load("refresh");
-              } catch (e) {
-                Alert.alert(
-                  "Pa disponib",
-                  e instanceof Error
-                    ? e.message
-                    : "Reaktivasyon pa disponib nan aplikasyon an pou kounye a.",
-                );
-              } finally {
-                setActionBusy(false);
-              }
-            })();
-          },
+    Alert.alert(t("sub_uncancel"), t("sub_uncancelOk"), [
+      { text: t("boosts_cancel"), style: "cancel" },
+      {
+        text: t("sub_uncancel"),
+        onPress: () => {
+          void (async () => {
+            setActionBusy(true);
+            try {
+              await uncancelSubscription({ token });
+              Alert.alert(t("common_ok"), t("sub_uncancelOk"));
+              await load("refresh");
+            } catch (e) {
+              Alert.alert(
+                t("common_error"),
+                friendlyApiError(e instanceof Error ? e.message : undefined, t),
+              );
+            } finally {
+              setActionBusy(false);
+            }
+          })();
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const currentPlanId = mySub?.plan ?? "basic";
@@ -231,23 +218,23 @@ export default function SubscriptionScreen() {
         >
           <Feather name="arrow-left" size={22} color="#0F172A" />
         </Pressable>
-        <Text style={styles.topTitle}>Abònman FLEXA</Text>
+        <Text style={styles.topTitle}>{t("sub_title")}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       {loading && plans.length === 0 ? (
         <View style={styles.centered}>
           <ActivityIndicator color={colors.flexaOrange} />
-          <Text style={styles.loadingText}>Chajman plan yo…</Text>
+          <Text style={styles.loadingText}>{t("sub_subtitle")}</Text>
         </View>
       ) : loadError && plans.length === 0 ? (
         <View style={styles.centered}>
           <Feather name="alert-circle" size={36} color="#94A3B8" />
-          <Text style={styles.errorTitle}>Nou pa t kapab chaje plan yo</Text>
-          <Text style={styles.errorBody}>Verifye koneksyon ou epi eseye ankò.</Text>
+          <Text style={styles.errorTitle}>{t("sub_loadError")}</Text>
+          <Text style={styles.errorBody}>{t("common_loadFailed")}</Text>
           <Pressable style={styles.retryBtn} onPress={() => void load("initial")}>
             <Feather name="refresh-cw" size={14} color="#0F172A" />
-            <Text style={styles.retryText}>Eseye ankò</Text>
+            <Text style={styles.retryText}>{t("common_retry")}</Text>
           </Pressable>
         </View>
       ) : (
@@ -265,12 +252,10 @@ export default function SubscriptionScreen() {
           <View style={styles.hero}>
             <View style={styles.crownBadge}>
               <Feather name="award" size={12} color={colors.flexaGreen} />
-              <Text style={styles.crownBadgeText}>Plan Abònman</Text>
+              <Text style={styles.crownBadgeText}>{t("sub_title")}</Text>
             </View>
-            <Text style={styles.h1}>Jere Abònman Ou</Text>
-            <Text style={styles.subtitle}>
-              Amelyore vizibilite lis ou yo epi deblouke fonksyon pou vann plis
-            </Text>
+            <Text style={styles.h1}>{t("sub_choosePlan")}</Text>
+            <Text style={styles.subtitle}>{t("sub_subtitle")}</Text>
           </View>
 
           {mySub && mySub.plan !== "basic" ? (
@@ -281,6 +266,7 @@ export default function SubscriptionScreen() {
               actionBusy={actionBusy}
               onCancel={onCancel}
               onUncancel={onUncancel}
+              t={t}
             />
           ) : null}
 
@@ -288,20 +274,15 @@ export default function SubscriptionScreen() {
             <View style={styles.expiredBanner}>
               <Feather name="alert-circle" size={16} color="#DC2626" />
               <View style={{ flex: 1 }}>
-                <Text style={styles.expiredTitle}>Abònman ou ekspire</Text>
-                <Text style={styles.expiredBody}>
-                  Lis ou yo kache. Chwazi yon plan anba pou rekòmanse vann.
-                </Text>
+                <Text style={styles.expiredTitle}>{t("sub_expired")}</Text>
+                <Text style={styles.expiredBody}>{t("sub_choosePlan")}</Text>
               </View>
             </View>
           ) : null}
 
           <View style={styles.policyNote}>
             <Feather name="info" size={14} color="#64748B" />
-            <Text style={styles.policyText}>
-              Acha abònman pa disponib nan aplikasyon mobil la (règleman magazen). Ou ka
-              wè plan yo ak estati ou isit la.
-            </Text>
+            <Text style={styles.policyText}>{t("sub_purchaseBlockedBody")}</Text>
           </View>
 
           {plans.map((plan) => {
@@ -340,7 +321,7 @@ export default function SubscriptionScreen() {
                           { color: isCurrent ? c.badgeText : "#FFFFFF" },
                         ]}
                       >
-                        {isCurrent ? "Plan Ou" : "Pi Popilè"}
+                        {isCurrent ? t("sub_currentPlan") : t("sub_choosePlan")}
                       </Text>
                     </View>
                   </View>
@@ -360,17 +341,14 @@ export default function SubscriptionScreen() {
 
                 <View style={styles.priceRow}>
                   {plan.priceUsd === 0 ? (
-                    <Text style={styles.price}>Gratis</Text>
+                    <Text style={styles.price}>$0</Text>
                   ) : (
                     <>
                       <Text style={styles.price}>${plan.priceUsd}</Text>
-                      <Text style={styles.perMonth}>/mwa</Text>
+                      <Text style={styles.perMonth}>{t("sub_perMonth")}</Text>
                     </>
                   )}
                 </View>
-                {plan.priceUsd > 0 ? (
-                  <Text style={styles.cancelAnytime}>Anile nenpòt ki lè</Text>
-                ) : null}
 
                 <View style={styles.divider} />
 
@@ -378,20 +356,13 @@ export default function SubscriptionScreen() {
                   <Text style={styles.spec}>
                     {plan.maxListings != null ? (
                       <>
-                        <Text style={styles.specStrong}>{plan.maxListings}</Text> lis
+                        <Text style={styles.specStrong}>{plan.maxListings}</Text>
                       </>
                     ) : (
-                      <>
-                        <Text style={styles.specStrong}>Ilimite</Text>
-                      </>
+                      <Text style={styles.specStrong}>∞</Text>
                     )}
                   </Text>
-                  <Text
-                    style={[styles.spec, plan.videoEnabled && { color: "#16A34A" }]}
-                  >
-                    {plan.videoEnabled ? "Videyo" : "Pa gen videyo"}
-                  </Text>
-                  <Text style={styles.spec}>{visLabel(plan.tier)}</Text>
+                  <Text style={styles.spec}>{visLabel(plan.tier, t)}</Text>
                 </View>
 
                 <View style={styles.features}>
@@ -407,19 +378,19 @@ export default function SubscriptionScreen() {
                   {plan.priceUsd === 0 ? (
                     <View style={styles.passiveCta}>
                       <Text style={styles.passiveCtaText}>
-                        {isCurrent ? "Plan Aktif" : "Plan pa defò"}
+                        {isCurrent ? t("sub_active") : t("sub_currentPlan")}
                       </Text>
                     </View>
                   ) : isCurrent ? (
                     <View style={styles.passiveCta}>
-                      <Text style={styles.passiveCtaText}>Plan Aktif</Text>
+                      <Text style={styles.passiveCtaText}>{t("sub_active")}</Text>
                     </View>
                   ) : (
                     <Pressable
                       style={[styles.buyBtn, { backgroundColor: c.btnBg }]}
                       onPress={onPurchaseBlocked}
                     >
-                      <Text style={styles.buyBtnText}>Kòmanse</Text>
+                      <Text style={styles.buyBtnText}>{t("sub_viewOnWeb")}</Text>
                     </Pressable>
                   )}
                 </View>
@@ -439,6 +410,7 @@ function StatusBar({
   actionBusy,
   onCancel,
   onUncancel,
+  t,
 }: {
   mySub: MySubscription;
   isGrace: boolean;
@@ -446,6 +418,7 @@ function StatusBar({
   actionBusy: boolean;
   onCancel: () => void;
   onUncancel: () => void;
+  t: (k: string) => string;
 }) {
   const c = PLAN_COLORS[mySub.plan] ?? PLAN_COLORS.basic;
   const icon = PLAN_ICONS[mySub.plan] ?? "award";
@@ -466,22 +439,22 @@ function StatusBar({
   let pillBg = "#DCFCE7";
   let pillColor = "#15803D";
   let pillIcon: React.ComponentProps<typeof Feather>["name"] = "shield";
-  let pillLabel = "Aktif";
+  let pillLabel = t("sub_active");
   if (isGrace) {
     pillBg = "#FEF3C7";
     pillColor = "#B45309";
     pillIcon = "alert-triangle";
-    pillLabel = "Peryòd Gras";
+    pillLabel = t("sub_grace");
   } else if (isExpired) {
     pillBg = "#FEE2E2";
     pillColor = "#DC2626";
     pillIcon = "alert-circle";
-    pillLabel = "Ekspire";
+    pillLabel = t("sub_expired");
   } else if (mySub.cancelAtPeriodEnd) {
     pillBg = "#FEF9C3";
     pillColor = "#A16207";
     pillIcon = "slash";
-    pillLabel = "Anile — aksè jiska ekspire";
+    pillLabel = t("sub_cancelling");
   }
 
   return (
@@ -490,7 +463,8 @@ function StatusBar({
         <Feather name={icon} size={16} color={c.iconColor} />
         <Text style={styles.statusPlan}>{mySub.planName}</Text>
         <Text style={styles.statusPrice}>
-          ${mySub.priceUsd}/mwa · faktire chak mwa
+          ${mySub.priceUsd}
+          {t("sub_perMonth")}
         </Text>
       </View>
       <View style={[styles.statusPill, { backgroundColor: pillBg }]}>
@@ -500,18 +474,14 @@ function StatusBar({
 
       {mySub.nextBillingDate && !mySub.cancelAtPeriodEnd && !isExpired && !isGrace ? (
         <Text style={styles.statusDate}>
-          Pwochen faktire:{" "}
+          {t("sub_nextBilling")}:{" "}
           <Text style={styles.statusDateStrong}>{fmtSubDate(mySub.nextBillingDate)}</Text>
         </Text>
       ) : null}
       {mySub.expiresAt ? (
         <Text style={styles.statusDate}>
-          {mySub.cancelAtPeriodEnd
-            ? "Aksè jiska"
-            : isExpired
-              ? "Ekspire"
-              : "Peryòd fini"}
-          : <Text style={styles.statusDateStrong}> {fmtSubDate(mySub.expiresAt)}</Text>
+          {t("sub_expires")}:{" "}
+          <Text style={styles.statusDateStrong}>{fmtSubDate(mySub.expiresAt)}</Text>
         </Text>
       ) : null}
 
@@ -519,9 +489,9 @@ function StatusBar({
         <View style={styles.graceBox}>
           <Feather name="alert-triangle" size={14} color="#B45309" />
           <View style={{ flex: 1 }}>
-            <Text style={styles.graceTitle}>Peman ou te echwe</Text>
+            <Text style={styles.graceTitle}>{t("sub_grace")}</Text>
             <Text style={styles.graceBody}>
-              Aksè ou ap rete aktif jiska {fmtSubDate(mySub.graceUntil)}.
+              {t("sub_expires")} {fmtSubDate(mySub.graceUntil)}
             </Text>
           </View>
         </View>
@@ -540,7 +510,7 @@ function StatusBar({
               ) : (
                 <>
                   <Feather name="refresh-cw" size={12} color="#0F172A" />
-                  <Text style={styles.outlineBtnText}>Reaktive abònman</Text>
+                  <Text style={styles.outlineBtnText}>{t("sub_uncancel")}</Text>
                 </>
               )}
             </Pressable>
@@ -552,7 +522,7 @@ function StatusBar({
             >
               <Feather name="x" size={12} color="#DC2626" />
               <Text style={[styles.outlineBtnText, { color: "#DC2626" }]}>
-                Anile abònman
+                {t("sub_cancel")}
               </Text>
             </Pressable>
           )}

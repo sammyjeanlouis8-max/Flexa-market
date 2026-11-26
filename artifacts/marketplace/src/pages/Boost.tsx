@@ -25,7 +25,7 @@ import {
   BoostVideoUploadError,
   MAX_BOOST_VIDEO_BYTES,
 } from "@/lib/boostVideoUpload";
-import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { areNativeDigitalPurchasesDisabled } from "@/lib/androidPurchasePolicy";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import { extractVideoPoster } from "@/lib/videoPoster";
@@ -129,7 +129,7 @@ export default function BoostPage() {
   const queryClient   = useQueryClient();
   const { user, token } = useAuth();
   const { t }         = useTranslation();
-  const purchasesDisabled = isAndroidApp();
+  const purchasesDisabled = areNativeDigitalPurchasesDisabled();
 
   // Fetch the live USDT TRX wallet address configured by admin.
   const { data: usdtWalletData } = useQuery<{ address: string }>({

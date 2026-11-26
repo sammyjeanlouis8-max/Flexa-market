@@ -2,6 +2,7 @@ declare global {
   interface Window {
     ReactNativeWebView?: unknown;
     __flexaPlatform?: string;
+    __iosWebView?: boolean;
   }
 }
 
@@ -25,6 +26,15 @@ export function detectAndroidApp(userAgent: string, runtime: AndroidPurchaseRunt
   return /Version\/4\.0/i.test(ua) && /Mobile\s+Safari/i.test(ua) && !/(?:Chrome|CriOS)\//i.test(ua);
 }
 
+/** Pure detector for the installed iOS app (not Safari). */
+export function detectIosApp(userAgent: string, runtime: AndroidPurchaseRuntime = {}): boolean {
+  const ua = userAgent || "";
+  if (/FlexaMarketiOS/i.test(ua)) return true;
+  if (runtime.flexaPlatform?.toLowerCase() === "ios") return true;
+  if (/ReactNative/i.test(ua) && /(iPhone|iPad|iPod)/i.test(ua)) return true;
+  return false;
+}
+
 /** True only inside the Android native app/WebView, never normal Android Chrome. */
 export function isAndroidApp(): boolean {
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
@@ -32,4 +42,19 @@ export function isAndroidApp(): boolean {
     reactNativeWebView: Boolean(window.ReactNativeWebView),
     flexaPlatform: window.__flexaPlatform,
   });
+}
+
+/** True only inside the iOS native app/WebView, never Safari. */
+export function isIosApp(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  if (window.__iosWebView === true) return true;
+  return detectIosApp(navigator.userAgent, {
+    reactNativeWebView: Boolean(window.ReactNativeWebView),
+    flexaPlatform: window.__flexaPlatform,
+  });
+}
+
+/** Digital goods / wallet funding must not use Stripe/MonCash inside store binaries. */
+export function areNativeDigitalPurchasesDisabled(): boolean {
+  return isAndroidApp() || isIosApp();
 }

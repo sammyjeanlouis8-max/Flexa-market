@@ -36,7 +36,7 @@ test("wallet uses real balance/history APIs and does not initiate top-up", () =>
   assert.match(api, /\/wallet\/history/);
   assert.match(wallet, /fetchWalletBalance|fetchWalletHistory/);
   assert.equal(wallet.includes("/wallet/topup"), false);
-  assert.match(wallet, /Top-up unavailable|not available in the Android app/i);
+  assert.match(wallet, /top-ups are not offered|In-app wallet top-ups/i);
 });
 
 test("addresses CRUD hits /me/addresses", () => {

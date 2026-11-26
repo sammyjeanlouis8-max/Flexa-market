@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 
+/** Kept for native clients that already key off this code (Android + iOS). */
 export const ANDROID_DIGITAL_PURCHASE_UNAVAILABLE =
   "ANDROID_DIGITAL_PURCHASE_UNAVAILABLE";
 
@@ -15,6 +16,21 @@ export function isAndroidNativeApp(userAgent: string | undefined): boolean {
       (/; wv\b/i.test(userAgent) ||
         /FlexaMarket/i.test(userAgent) ||
         /ReactNative/i.test(userAgent)));
+}
+
+/** Installed iOS app (Expo / WebView shell), not Safari. */
+export function isIosNativeApp(userAgent: string | undefined): boolean {
+  if (!userAgent) return false;
+  if (/FlexaMarketiOS/i.test(userAgent)) return true;
+  if (/__flexaPlatform=ios/i.test(userAgent)) return true;
+  // React Native default UA often includes "iPhone" / "iPad" with ReactNative.
+  if (/ReactNative/i.test(userAgent) && /(iPhone|iPad|iPod)/i.test(userAgent)) return true;
+  return false;
+}
+
+/** Native store binary where digital goods must use IAP / Play Billing (or stay blocked). */
+export function isStoreNativeApp(userAgent: string | undefined): boolean {
+  return isAndroidNativeApp(userAgent) || isIosNativeApp(userAgent);
 }
 
 type ProtectedRoute = {
@@ -77,12 +93,14 @@ export function androidDigitalPurchaseGuard(
   res: Response,
   next: NextFunction,
 ): void {
+  const ua = req.get("user-agent");
   if (
-    isAndroidNativeApp(req.get("user-agent")) &&
+    isStoreNativeApp(ua) &&
     isDigitalPurchaseInitiation(req.method, normalizedApiPath(req))
   ) {
+    const platform = isIosNativeApp(ua) ? "iOS" : "Android";
     res.status(403).json({
-      error: "Digital purchases are unavailable in the Android app.",
+      error: `Digital purchases are unavailable in the ${platform} app.`,
       code: ANDROID_DIGITAL_PURCHASE_UNAVAILABLE,
     });
     return;

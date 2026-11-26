@@ -167,6 +167,84 @@ export async function patchDriverLocation(
   return data;
 }
 
+export type BrowseDeliveryJob = {
+  id: number;
+  deliveryMethod?: string | null;
+  pickupAddress?: string | null;
+  pickupCity?: string | null;
+  deliveryAddress?: string | null;
+  deliveryCity?: string | null;
+  country?: string | null;
+  status?: string | null;
+  feeUsd?: number | null;
+  feeLocal?: number | null;
+  driverEarnings?: number | null;
+  currency?: string | null;
+  distanceKm?: number | null;
+  listingTitle?: string | null;
+  createdAt?: string | null;
+};
+
+export type BrowseDeliveriesResponse = {
+  deliveries: BrowseDeliveryJob[];
+  driverCta?: string;
+  driverHasGps?: boolean;
+  driverCommune?: string | null;
+};
+
+function mapBrowseJob(raw: any): BrowseDeliveryJob {
+  return {
+    id: Number(raw.id),
+    deliveryMethod: raw.deliveryMethod ?? null,
+    pickupAddress: raw.pickupAddress ?? null,
+    pickupCity: raw.pickupCity ?? null,
+    deliveryAddress: raw.deliveryAddress ?? null,
+    deliveryCity: raw.deliveryCity ?? null,
+    country: raw.country ?? null,
+    status: raw.status ?? null,
+    feeUsd: raw.feeUsd != null ? Number(raw.feeUsd) : null,
+    feeLocal: raw.feeLocal != null ? Number(raw.feeLocal) : null,
+    driverEarnings: raw.driverEarnings != null ? Number(raw.driverEarnings) : null,
+    currency: raw.currency ?? null,
+    distanceKm: raw.distanceKm != null ? Number(raw.distanceKm) : null,
+    listingTitle: raw.listingTitle ?? null,
+    createdAt: raw.createdAt ?? null,
+  };
+}
+
+export async function fetchBrowseDeliveries(
+  opts: AuthOpts & { country?: string },
+): Promise<BrowseDeliveriesResponse> {
+  const qs = opts.country ? `?country=${encodeURIComponent(opts.country)}` : "";
+  const res = await fetch(`${getApiBase()}/delivery/browse${qs}`, {
+    headers: { Accept: "application/json", Authorization: `Bearer ${opts.token}` },
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Browse failed (${res.status})`);
+  const rows = Array.isArray(data.deliveries) ? data.deliveries : [];
+  return {
+    deliveries: rows.map(mapBrowseJob),
+    driverCta: data.driverCta,
+    driverHasGps: data.driverHasGps,
+    driverCommune: data.driverCommune ?? null,
+  };
+}
+
+export async function acceptDeliveryJob(deliveryId: number, opts: AuthOpts) {
+  const res = await fetch(`${getApiBase()}/delivery/${deliveryId}/accept`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${opts.token}`,
+    },
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Accept failed (${res.status})`);
+  return data;
+}
+
 export function parseWorkZones(raw: string[] | string | null | undefined): string[] {
   if (Array.isArray(raw)) return raw.map(String);
   if (typeof raw === "string" && raw.trim().startsWith("[")) {

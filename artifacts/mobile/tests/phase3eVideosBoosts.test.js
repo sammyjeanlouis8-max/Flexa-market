@@ -54,7 +54,7 @@ test("my-boosts loads active campaigns and can cancel", () => {
   assert.match(screen, /fetchMyActiveBoosts|cancelBoost/);
   assert.match(screen, /expo-linear-gradient|LinearGradient/);
   assert.match(screen, /boosts_impressions|impressions/);
-  assert.match(screen, /boost_payBlockedTitle|boost_payBlockedBody|useLanguage/);
+  assert.match(screen, /my-listings|boosts_createHint|boost_payBlockedTitle|boost_payBlockedBody|useLanguage/);
   assert.equal(/\/boost\/initiate|boost\/video-only/.test(screen), false);
 });
 
@@ -69,7 +69,8 @@ test("boost wizard is visual-only and blocks paid purchase on store apps", () =>
   assert.match(screen, /listingId/);
   assert.match(screen, /my-listings/);
   assert.match(screen, /BOOST_PLANS|p\.price|selected\.price/);
-  assert.match(screen, /Alert\.alert|boost_payBlockedTitle|boost_payBlockedBody/);
+  assert.match(screen, /boost_viewOnWeb|boost_policyShort|boost_payBlockedTitle|boost_payBlockedBody/);
+  assert.match(screen, /Linking\.openURL|flexamarket\.com/);
   assert.equal(/\/boost\/initiate|verify-stripe|video-only/.test(screen), false);
   assert.equal(PlatformPurchasePathBlocked(screen), true);
 });

@@ -1,5 +1,6 @@
 /**
  * Native Boost wizard — duration plans (visual). Paid purchase blocked on store apps.
+ * Primary CTA opens the website honestly (no fake in-app pay).
  */
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -7,7 +8,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,13 +18,19 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
-import { friendlyApiError, tr } from "@/i18n/nativeScreens";
+import { friendlyApiError } from "@/i18n/nativeScreens";
 import { fetchListing, type Listing } from "@/lib/api";
 import { BOOST_PLANS, resolveBoostMediaUrl } from "@/lib/boostApi";
 import { cleanListingImageUrls } from "@/lib/listingImages";
 import colors from "@/constants/colors";
 
 type PlanId = (typeof BOOST_PLANS)[number]["id"];
+
+const PLAN_ACCENT: Record<PlanId, string> = {
+  "1day": "#3B82F6",
+  "3day": "#F97316",
+  "7day": "#8B5CF6",
+};
 
 export default function BoostScreen() {
   const insets = useSafeAreaInsets();
@@ -65,12 +72,16 @@ export default function BoostScreen() {
       return () => {
         cancelled = true;
       };
-    }, [authLoading, token, listingId, router]),
+    }, [authLoading, token, listingId, router, t]),
   );
 
-  const onPaidBlocked = () => {
+  const openOnWeb = () => {
     // Never call paid initiate on Android / iOS store builds.
-    Alert.alert(t("boost_payBlockedTitle"), t("boost_payBlockedBody"));
+    // Honest CTA: open website boost flow (boost_payBlockedBody policy still applies).
+    const url = listingId
+      ? `https://flexamarket.com/boost/${listingId}`
+      : "https://flexamarket.com/booster";
+    void Linking.openURL(url);
   };
 
   if (!listingId) {
@@ -106,6 +117,7 @@ export default function BoostScreen() {
   const images = cleanListingImageUrls(listing?.images);
   const thumb = resolveBoostMediaUrl(images[0] ?? null);
   const selected = BOOST_PLANS.find((p) => p.id === plan) ?? BOOST_PLANS[1];
+  const selectedAccent = PLAN_ACCENT[selected.id] ?? "#F97316";
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 8 }]} testID="boost-wizard">
@@ -126,7 +138,12 @@ export default function BoostScreen() {
         <ScrollView
           contentContainerStyle={{ paddingBottom: insets.bottom + 28, paddingHorizontal: 16 }}
         >
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? (
+            <View style={styles.errorBox}>
+              <Feather name="alert-circle" size={14} color="#B91C1C" />
+              <Text style={styles.error}>{error}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.listingCard}>
             {thumb ? (
@@ -144,48 +161,55 @@ export default function BoostScreen() {
             </View>
           </View>
 
+          <View style={styles.policyChip} accessibilityLabel={t("boost_payBlockedBody")}>
+            <Feather name="info" size={13} color="#9A3412" />
+            <Text style={styles.policyChipText}>{t("boost_policyShort")}</Text>
+          </View>
+
           <Text style={styles.section}>{t("boost_duration")}</Text>
-          <Text style={styles.sectionHint}>{t("boost_payBlockedBody")}</Text>
 
           <View style={styles.plans}>
             {BOOST_PLANS.map((p) => {
               const on = plan === p.id;
+              const accent = PLAN_ACCENT[p.id];
               return (
                 <Pressable
                   key={p.id}
-                  style={[styles.plan, on && styles.planOn]}
+                  style={[
+                    styles.plan,
+                    { borderLeftColor: accent },
+                    on && { borderColor: accent, backgroundColor: `${accent}12` },
+                  ]}
                   onPress={() => setPlan(p.id)}
                   testID={`boost-plan-${p.id}`}
                 >
                   {p.badge ? (
-                    <View style={styles.planBadge}>
+                    <View style={[styles.planBadge, { backgroundColor: accent }]}>
                       <Text style={styles.planBadgeText}>{p.badge}</Text>
                     </View>
                   ) : null}
-                  <Text style={[styles.planDays, on && styles.planDaysOn]}>{p.label}</Text>
-                  <Text style={[styles.planPrice, on && styles.planPriceOn]}>
+                  <View style={[styles.planAccentDot, { backgroundColor: accent }]} />
+                  <Text style={[styles.planDays, on && { color: accent }]}>{p.label}</Text>
+                  <Text style={[styles.planPrice, on && { color: accent }]}>
                     ${p.price.toFixed(2)}
                   </Text>
-                  {on ? <Feather name="check-circle" size={18} color={colors.flexaGreen} /> : null}
+                  {on ? <Feather name="check-circle" size={18} color={accent} /> : null}
                 </Pressable>
               );
             })}
           </View>
 
-          <View style={styles.summary}>
-            <Text style={styles.summaryLabel}>{t("boost_duration")}</Text>
+          <View style={[styles.summary, { borderColor: `${selectedAccent}55`, backgroundColor: `${selectedAccent}10` }]}>
+            <Text style={[styles.summaryLabel, { color: selectedAccent }]}>{t("boost_duration")}</Text>
             <Text style={styles.summaryValue}>
               {selected.label} · ${selected.price.toFixed(2)}
             </Text>
           </View>
 
-          <Pressable style={styles.payBtn} onPress={onPaidBlocked} testID="boost-pay-cta">
-            <Feather name="credit-card" size={18} color="#fff" />
-            <Text style={styles.payBtnText}>
-              {tr(t, "boost_continuePay", { amount: `$${selected.price.toFixed(2)}` })}
-            </Text>
+          <Pressable style={styles.payBtn} onPress={openOnWeb} testID="boost-pay-cta">
+            <Feather name="external-link" size={18} color="#fff" />
+            <Text style={styles.payBtnText}>{t("boost_viewOnWeb")}</Text>
           </Pressable>
-          <Text style={styles.policyNote}>{t("boost_payBlockedBody")}</Text>
         </ScrollView>
       )}
     </View>
@@ -212,7 +236,18 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   title: { fontSize: 18, fontWeight: "800", color: "#0F172A" },
-  error: { color: "#B91C1C", marginBottom: 8, fontWeight: "600" },
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  error: { flex: 1, color: "#B91C1C", fontWeight: "600", fontSize: 13 },
   listingCard: {
     flexDirection: "row",
     gap: 12,
@@ -221,7 +256,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
     padding: 12,
-    marginBottom: 18,
+    marginBottom: 14,
   },
   listingThumb: {
     width: 64,
@@ -232,70 +267,64 @@ const styles = StyleSheet.create({
   thumbFallback: { alignItems: "center", justifyContent: "center" },
   listingTitle: { fontWeight: "800", color: "#0F172A", fontSize: 15 },
   listingSub: { marginTop: 4, color: "#94A3B8", fontSize: 12, fontWeight: "600" },
-  section: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
-  sectionHint: {
-    marginTop: 4,
-    marginBottom: 12,
-    color: "#64748B",
-    fontSize: 13,
-    lineHeight: 18,
+  policyChip: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginBottom: 16,
   },
+  policyChipText: { fontSize: 12, fontWeight: "700", color: "#9A3412", maxWidth: 280 },
+  section: { fontSize: 16, fontWeight: "800", color: "#0F172A", marginBottom: 12 },
   plans: { gap: 10 },
   plan: {
     backgroundColor: "#FFFFFF",
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
+    borderLeftWidth: 5,
     padding: 16,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-  },
-  planOn: {
-    borderColor: colors.flexaGreen,
-    backgroundColor: "#ECFDF5",
+    gap: 10,
   },
   planBadge: {
     position: "absolute",
     top: -8,
     right: 12,
-    backgroundColor: "#F97316",
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
   planBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  planAccentDot: { width: 8, height: 8, borderRadius: 4 },
   planDays: { flex: 1, fontSize: 16, fontWeight: "800", color: "#0F172A" },
-  planDaysOn: { color: colors.flexaGreenDeep },
   planPrice: { fontSize: 18, fontWeight: "900", color: "#64748B" },
-  planPriceOn: { color: colors.flexaGreen },
   summary: {
     marginTop: 18,
-    backgroundColor: "#FFF7ED",
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#FED7AA",
   },
-  summaryLabel: { color: "#9A3412", fontSize: 12, fontWeight: "700" },
+  summaryLabel: { fontSize: 12, fontWeight: "700" },
   summaryValue: { marginTop: 2, color: "#0F172A", fontSize: 16, fontWeight: "900" },
   payBtn: {
     marginTop: 16,
     height: 52,
     borderRadius: 14,
-    backgroundColor: "#F97316",
+    backgroundColor: colors.flexaGreen,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
   },
   payBtnText: { color: "#fff", fontWeight: "800", fontSize: 15 },
-  policyNote: {
-    marginTop: 12,
-    fontSize: 12,
-    lineHeight: 17,
-    color: "#64748B",
-  },
   empty: { alignItems: "center", paddingHorizontal: 28, paddingTop: 48 },
   emptyIcon: {
     width: 72,

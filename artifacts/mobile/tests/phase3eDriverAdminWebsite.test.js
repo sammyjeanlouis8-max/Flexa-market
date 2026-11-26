@@ -33,12 +33,14 @@ test("driver APIs hit delivery endpoints", () => {
   assert.match(api, /\/delivery\/apply/);
   assert.match(api, /\/delivery\/driver\/stats/);
   assert.match(api, /\/delivery\/driver\/location/);
+  assert.match(api, /\/delivery\/browse/);
+  assert.match(api, /\/delivery\/\$\{deliveryId\}\/accept|\/delivery\/.*\/accept/);
   const apply = read("app/driver-apply.tsx");
   assert.match(apply, /submitDriverApplication|saveDriverDraft/);
   assert.match(apply, /driver_apply_welcomeTitle|driver_apply_cta|useLanguage/);
   const dash = read("app/driver-dashboard.tsx");
-  assert.match(dash, /fetchDriverStats|patchDriverLocation/);
-  assert.match(dash, /driver_dash_chooseZone|driver_dash_deliveriesToday|useLanguage/);
+  assert.match(dash, /fetchDriverStats|patchDriverLocation|fetchBrowseDeliveries|acceptDeliveryJob/);
+  assert.match(dash, /driver_dash_chooseZone|driver_dash_deliveriesToday|driver_dash_availableJobs|useLanguage/);
 });
 
 test("admin hub loads /admin/stats without WebView", () => {
@@ -46,6 +48,7 @@ test("admin hub loads /admin/stats without WebView", () => {
   const screen = read("app/admin.tsx");
   assert.match(api, /\/admin\/stats/);
   assert.match(screen, /fetchAdminStats|admin_title|useLanguage/);
+  assert.match(screen, /LinearGradient|expo-linear-gradient/);
   assert.equal(screen.includes("SafeWebView"), false);
 });
 

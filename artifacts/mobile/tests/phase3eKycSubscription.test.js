@@ -49,6 +49,7 @@ test("Subscription screen loads plans/my and blocks in-app purchase", () => {
   assert.match(screen, /cancelSubscription|uncancelSubscription/);
   assert.equal(screen.includes("/subscription/checkout"), false);
   assert.equal(screen.includes("/subscription/wallet-pay"), false);
-  assert.match(screen, /sub_purchaseBlockedTitle|sub_viewOnWeb|useLanguage/);
+  assert.match(screen, /sub_purchaseBlockedTitle|sub_viewOnWeb|sub_policyShort|useLanguage/);
   assert.match(screen, /sub_title|sub_choosePlan/);
+  assert.match(screen, /Linking\.openURL|flexamarket\.com\/subscription/);
 });

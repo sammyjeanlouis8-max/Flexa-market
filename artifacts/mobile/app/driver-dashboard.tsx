@@ -26,10 +26,13 @@ import {
   HAITI_DEPARTMENTS,
 } from "@/lib/haitiCommunes";
 import {
+  acceptDeliveryJob,
+  fetchBrowseDeliveries,
   fetchDriverStats,
   fetchDriverZones,
   parseWorkZones,
   patchDriverLocation,
+  type BrowseDeliveryJob,
   type DriverStatsResponse,
   type ZonesPayload,
 } from "@/lib/driverApi";
@@ -48,6 +51,7 @@ export default function DriverDashboardScreen() {
   const { token, user, isLoading: authLoading } = useAuth();
   const { t } = useLanguage();
   const [data, setData] = useState<DriverStatsResponse | null>(null);
+  const [jobs, setJobs] = useState<BrowseDeliveryJob[]>([]);
   const [communesByDepartment, setCommunesByDepartment] = useState<Record<string, string[]>>(
     HAITI_COMMUNES_BY_DEPARTMENT,
   );
@@ -58,6 +62,7 @@ export default function DriverDashboardScreen() {
   const [selDepartment, setSelDepartment] = useState("");
   const [selCommunes, setSelCommunes] = useState<string[]>([]);
   const [zoneSaving, setZoneSaving] = useState(false);
+  const [acceptingId, setAcceptingId] = useState<number | null>(null);
 
   const load = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -65,11 +70,13 @@ export default function DriverDashboardScreen() {
       if (mode === "refresh") setRefreshing(true);
       else setError(null);
       try {
-        const [stats, zones] = await Promise.all([
+        const [stats, zones, browse] = await Promise.all([
           fetchDriverStats({ token }),
           fetchDriverZones({ token }).catch((): ZonesPayload => ({})),
+          fetchBrowseDeliveries({ token }).catch(() => ({ deliveries: [] as BrowseDeliveryJob[] })),
         ]);
         setData(stats);
+        setJobs(browse.deliveries ?? []);
         if (zones.communesByDepartment) {
           setCommunesByDepartment(zones.communesByDepartment);
         } else if (zones.departments && !Array.isArray(zones.departments)) {
@@ -149,6 +156,48 @@ export default function DriverDashboardScreen() {
     } finally {
       setZoneSaving(false);
     }
+  }
+
+  async function onAcceptJob(job: BrowseDeliveryJob) {
+    if (!token || !online) {
+      Alert.alert(t("driver_dash_offline"), t("driver_dash_goOnlineForJobs"));
+      return;
+    }
+    setAcceptingId(job.id);
+    try {
+      await acceptDeliveryJob(job.id, { token });
+      Alert.alert(t("common_ok"), t("driver_dash_accepted"));
+      void load("refresh");
+      router.push({ pathname: "/delivery-tracking", params: { id: String(job.id) } } as never);
+    } catch (e) {
+      Alert.alert(t("common_error"), friendlyApiError(e instanceof Error ? e.message : undefined, t));
+    } finally {
+      setAcceptingId(null);
+    }
+  }
+
+  function jobPlace(job: BrowseDeliveryJob): string {
+    return (
+      job.deliveryCity ||
+      job.pickupCity ||
+      job.deliveryAddress ||
+      job.pickupAddress ||
+      job.listingTitle ||
+      `#${job.id}`
+    );
+  }
+
+  function jobFee(job: BrowseDeliveryJob): string | null {
+    if (job.driverEarnings != null && Number.isFinite(job.driverEarnings)) {
+      return formatHtg(job.driverEarnings);
+    }
+    if (job.feeLocal != null && Number.isFinite(job.feeLocal)) {
+      return formatHtg(job.feeLocal);
+    }
+    if (job.feeUsd != null && Number.isFinite(job.feeUsd)) {
+      return `$${job.feeUsd.toFixed(2)}`;
+    }
+    return null;
   }
 
   const greetingName = user?.name?.split(" ")[0] || "Driver";
@@ -268,6 +317,71 @@ export default function DriverDashboardScreen() {
                 <Text style={styles.statMoney}>{formatHtg(earningsToday)}</Text>
                 <Text style={styles.statCap}>{t("driver_dash_earningsToday")}</Text>
               </View>
+            </View>
+
+            <View style={styles.jobsCard}>
+              <View style={styles.jobsHeader}>
+                <Text style={styles.zoneTitle}>{t("driver_dash_availableJobs")}</Text>
+                {jobs.length > 0 ? (
+                  <View style={styles.jobsCount}>
+                    <Text style={styles.jobsCountText}>{jobs.length}</Text>
+                  </View>
+                ) : null}
+              </View>
+              {!online ? (
+                <Text style={styles.jobsOfflineNote}>{t("driver_dash_goOnlineForJobs")}</Text>
+              ) : null}
+              {online && jobs.length === 0 ? (
+                <View style={styles.jobsEmpty}>
+                  <Feather name="inbox" size={22} color="#94A3B8" />
+                  <Text style={styles.jobsEmptyText}>{t("driver_dash_noJobs")}</Text>
+                </View>
+              ) : null}
+              {online
+                ? jobs.map((job) => {
+                    const fee = jobFee(job);
+                    const place = jobPlace(job);
+                    const busy = acceptingId === job.id;
+                    return (
+                      <View key={job.id} style={styles.jobRow} testID={`driver-job-${job.id}`}>
+                        <View style={styles.jobIcon}>
+                          <Feather name="map-pin" size={16} color={DRIVER_BRAND.success} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.jobPlace} numberOfLines={2}>
+                            {place}
+                          </Text>
+                          {job.pickupCity && job.deliveryCity && job.pickupCity !== job.deliveryCity ? (
+                            <Text style={styles.jobSub} numberOfLines={1}>
+                              {job.pickupCity} → {job.deliveryCity}
+                            </Text>
+                          ) : job.pickupAddress ? (
+                            <Text style={styles.jobSub} numberOfLines={1}>
+                              {job.pickupAddress}
+                            </Text>
+                          ) : null}
+                          {fee ? (
+                            <Text style={styles.jobFee}>
+                              {t("driver_dash_jobFee")}: {fee}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Pressable
+                          style={[styles.acceptBtn, busy && { opacity: 0.7 }]}
+                          disabled={busy}
+                          onPress={() => void onAcceptJob(job)}
+                          accessibilityLabel={busy ? t("driver_dash_accepting") : t("driver_dash_accept")}
+                        >
+                          {busy ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text style={styles.acceptBtnText}>{t("driver_dash_accept")}</Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    );
+                  })
+                : null}
             </View>
 
             <View style={styles.zoneCard}>
@@ -464,6 +578,64 @@ const styles = StyleSheet.create({
   statBig: { fontSize: 28, fontWeight: "900", color: "#0F172A" },
   statMoney: { fontSize: 18, fontWeight: "900", color: "#0F172A" },
   statCap: { fontSize: 12, fontWeight: "700", color: "#64748B" },
+  jobsCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 14,
+    gap: 10,
+  },
+  jobsHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  jobsCount: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: DRIVER_BRAND.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  jobsCountText: { color: "#fff", fontSize: 11, fontWeight: "900" },
+  jobsOfflineNote: { fontSize: 12, color: "#64748B", lineHeight: 17 },
+  jobsEmpty: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 18,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+  },
+  jobsEmptyText: { fontSize: 13, fontWeight: "600", color: "#64748B", textAlign: "center" },
+  jobRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+  jobIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: DRIVER_BRAND.soft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  jobPlace: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
+  jobSub: { fontSize: 11, color: "#64748B", marginTop: 2 },
+  jobFee: { fontSize: 12, fontWeight: "800", color: DRIVER_BRAND.success, marginTop: 4 },
+  acceptBtn: {
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: DRIVER_BRAND.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 72,
+  },
+  acceptBtnText: { color: "#fff", fontWeight: "800", fontSize: 12 },
   zoneCard: {
     backgroundColor: "#fff",
     borderRadius: 16,

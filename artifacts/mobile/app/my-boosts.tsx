@@ -83,18 +83,8 @@ export default function MyBoostsScreen() {
     return { impressions, views, clicks };
   }, [boosts]);
 
-  const onCreateBlocked = () => {
-    Alert.alert(
-      t("boost_payBlockedTitle"),
-      t("boost_payBlockedBody"),
-      [
-        { text: t("boosts_cancel"), style: "cancel" },
-        {
-          text: t("boost_goListings"),
-          onPress: () => router.push("/my-listings" as never),
-        },
-      ],
-    );
+  const onCreate = () => {
+    router.push("/my-listings" as never);
   };
 
   const onCancel = (boost: ActiveBoost) => {
@@ -279,22 +269,26 @@ export default function MyBoostsScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <View style={styles.emptyIcon}>
-                <Feather name="film" size={32} color={colors.flexaGreen} />
+                <Feather name="zap" size={32} color="#F97316" />
               </View>
               <Text style={styles.emptyTitle}>{t("boosts_empty")}</Text>
               <Text style={styles.emptyDesc}>{t("boosts_emptyHint")}</Text>
-              <Pressable style={styles.createBtn} onPress={onCreateBlocked}>
+              <Pressable style={styles.createBtn} onPress={onCreate}>
                 <Feather name="zap" size={16} color="#fff" />
                 <Text style={styles.createBtnText}>{t("boosts_create")}</Text>
               </Pressable>
+              <Text style={styles.createHint}>{t("boosts_createHint")}</Text>
             </View>
           }
           ListFooterComponent={
             (boosts?.length ?? 0) > 0 ? (
-              <Pressable style={styles.createAgain} onPress={onCreateBlocked}>
-                <Feather name="zap" size={16} color={colors.flexaGreen} />
-                <Text style={styles.createAgainText}>{t("boosts_create")}</Text>
-              </Pressable>
+              <View style={styles.createAgainWrap}>
+                <Pressable style={styles.createAgain} onPress={onCreate}>
+                  <Feather name="zap" size={16} color={colors.flexaGreen} />
+                  <Text style={styles.createAgainText}>{t("boosts_create")}</Text>
+                </Pressable>
+                <Text style={styles.createHint}>{t("boosts_createHint")}</Text>
+              </View>
             ) : null
           }
         />
@@ -420,7 +414,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#ECFDF5",
+    backgroundColor: "#FFF7ED",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 14,
@@ -444,8 +438,16 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   createBtnText: { color: "#fff", fontWeight: "800" },
+  createHint: {
+    marginTop: 10,
+    textAlign: "center",
+    color: "#94A3B8",
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: 12,
+  },
+  createAgainWrap: { marginTop: 8 },
   createAgain: {
-    marginTop: 8,
     height: 48,
     borderRadius: 14,
     borderWidth: 2,

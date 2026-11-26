@@ -8,6 +8,7 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -146,8 +147,9 @@ export default function SubscriptionScreen() {
     }, [authLoading, token, router, load]),
   );
 
-  const onPurchaseBlocked = () => {
-    Alert.alert(t("sub_purchaseBlockedTitle"), t("sub_purchaseBlockedBody"));
+  const openOnWeb = () => {
+    // Store apps cannot sell digital subscriptions in-app (sub_purchaseBlockedTitle).
+    void Linking.openURL("https://flexamarket.com/subscription");
   };
 
   const onCancel = () => {
@@ -280,9 +282,12 @@ export default function SubscriptionScreen() {
             </View>
           ) : null}
 
-          <View style={styles.policyNote}>
+          <View
+            style={styles.policyNote}
+            accessibilityLabel={t("sub_purchaseBlockedBody")}
+          >
             <Feather name="info" size={14} color="#64748B" />
-            <Text style={styles.policyText}>{t("sub_purchaseBlockedBody")}</Text>
+            <Text style={styles.policyText}>{t("sub_policyShort")}</Text>
           </View>
 
           {plans.map((plan) => {
@@ -388,8 +393,9 @@ export default function SubscriptionScreen() {
                   ) : (
                     <Pressable
                       style={[styles.buyBtn, { backgroundColor: c.btnBg }]}
-                      onPress={onPurchaseBlocked}
+                      onPress={openOnWeb}
                     >
+                      <Feather name="external-link" size={13} color="#FFFFFF" />
                       <Text style={styles.buyBtnText}>{t("sub_viewOnWeb")}</Text>
                     </Pressable>
                   )}
@@ -648,13 +654,15 @@ const styles = StyleSheet.create({
   expiredBody: { color: "#64748B", fontSize: 12, marginTop: 2 },
   policyNote: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     backgroundColor: "#F1F5F9",
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     marginBottom: 14,
   },
-  policyText: { flex: 1, fontSize: 12, color: "#64748B", lineHeight: 17 },
+  policyText: { flex: 1, fontSize: 12, fontWeight: "600", color: "#64748B", lineHeight: 16 },
   planCard: {
     borderWidth: 1.5,
     borderRadius: 16,
@@ -719,10 +727,12 @@ const styles = StyleSheet.create({
   },
   passiveCtaText: { fontSize: 12, color: "#64748B", fontWeight: "600" },
   buyBtn: {
-    height: 36,
+    height: 40,
     borderRadius: 10,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
   },
   buyBtnText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
 });

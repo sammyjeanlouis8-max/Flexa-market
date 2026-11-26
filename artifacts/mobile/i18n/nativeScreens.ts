@@ -65,6 +65,7 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     sub_perMonth: "/ month",
     sub_getPlan: "Get {{plan}}",
     sub_viewOnWeb: "View on website",
+    sub_policyShort: "In-app purchase unavailable — open the website to subscribe.",
 
     videos_title: "Promotional Videos",
     videos_all: "All",
@@ -82,6 +83,7 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     boosts_empty: "No active boosts",
     boosts_emptyHint: "Boost a listing to get more views. Paid create is blocked in store apps.",
     boosts_create: "Create boost",
+    boosts_createHint: "Pick a listing in My Listings, then open Boost — paid campaigns start on the website.",
     boosts_impressions: "Impressions",
     boosts_views: "Views",
     boosts_clicks: "Clicks",
@@ -103,6 +105,8 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     boost_payBlockedBody:
       "Paid boosts cannot be purchased in the store app (digital goods policy). Use the website to start a paid campaign.",
     boost_continuePay: "Continue to pay {{amount}}",
+    boost_viewOnWeb: "Open on website",
+    boost_policyShort: "Paid boosts open on the website (store policy).",
     boost_dayPlan: "{{n}} day",
     boost_daysPlan: "{{n}} days",
 
@@ -195,6 +199,13 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     driver_dash_zonePick: "Select a department.",
     driver_dash_zoneSaved: "Work zone saved.",
     driver_dash_loadError: "Could not load driver dashboard",
+    driver_dash_availableJobs: "Available jobs",
+    driver_dash_noJobs: "No jobs nearby right now. Pull to refresh.",
+    driver_dash_accept: "Accept",
+    driver_dash_accepting: "Accepting…",
+    driver_dash_jobFee: "Fee",
+    driver_dash_goOnlineForJobs: "Go online to see and accept available jobs.",
+    driver_dash_accepted: "Job accepted.",
 
     admin_title: "Flexa Control",
     admin_subtitle: "Admin Control Center",
@@ -225,9 +236,9 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     admin_loadError: "Could not load admin stats",
 
     website_heroSub: "Native app experience",
-    website_title: "Website is no longer embedded",
+    website_title: "Browse in the native app",
     website_body:
-      "All marketplace navigation is native now. Use Home to browse listings — same look as flexamarket.com, without WebView.",
+      "Marketplace navigation is fully native. Open Home to shop — same Flexa Market experience, without an embedded website.",
     website_cta: "Go to Home",
   },
 
@@ -292,6 +303,7 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     sub_perMonth: "/ mwa",
     sub_getPlan: "Pran {{plan}}",
     sub_viewOnWeb: "Wè sou sit la",
+    sub_policyShort: "Acha nan app pa disponib — louvri sit la pou abòne.",
 
     videos_title: "Videyo Pwomosyonèl",
     videos_all: "Tout",
@@ -309,6 +321,7 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     boosts_empty: "Pa gen boost aktif",
     boosts_emptyHint: "Boost yon lisaj pou plis vizit. Kreye peye bloke nan app magazen yo.",
     boosts_create: "Kreye boost",
+    boosts_createHint: "Chwazi yon lisaj nan Lisaj mwen yo, apre louvri Boost — kanpay peye kòmanse sou sit la.",
     boosts_impressions: "Enpresyon",
     boosts_views: "Vizit",
     boosts_clicks: "Klik",
@@ -330,6 +343,8 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     boost_payBlockedBody:
       "Ou pa ka achte boost peye nan app magazen an (règ dijital). Itilize sit la pou kòmanse yon kanpay.",
     boost_continuePay: "Kontinye pou peye {{amount}}",
+    boost_viewOnWeb: "Louvri sou sit la",
+    boost_policyShort: "Boost peye louvri sou sit la (règ magazen).",
     boost_dayPlan: "{{n}} jou",
     boost_daysPlan: "{{n}} jou",
 
@@ -421,6 +436,13 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     driver_dash_zonePick: "Chwazi yon depatman.",
     driver_dash_zoneSaved: "Zòn travay sove.",
     driver_dash_loadError: "Nou pa t kapab chaje tablodbò chofè a",
+    driver_dash_availableJobs: "Travay disponib",
+    driver_dash_noJobs: "Pa gen travay toupre kounye a. Rale pou rafrechi.",
+    driver_dash_accept: "Aksepte",
+    driver_dash_accepting: "Ap aksepte…",
+    driver_dash_jobFee: "Frè",
+    driver_dash_goOnlineForJobs: "Ale online pou wè epi aksepte travay disponib.",
+    driver_dash_accepted: "Travay aksepte.",
 
     admin_title: "Flexa Control",
     admin_subtitle: "Sant Kontwòl Admin",
@@ -451,9 +473,9 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     admin_loadError: "Nou pa t kapab chaje stats admin",
 
     website_heroSub: "Eksperyans app nativ",
-    website_title: "Sit web la pa embed ankò",
+    website_title: "Browse nan app nativ la",
     website_body:
-      "Tout navigasyon marketplace a se nativ kounye a. Itilize Home pou browse lisaj yo — menm aparans ak flexamarket.com, san WebView.",
+      "Navigasyon marketplace a se nativ nèt. Louvri Home pou achte — menm eksperyans Flexa Market, san sit embed.",
     website_cta: "Ale nan Home",
   },
 
@@ -518,6 +540,7 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     sub_perMonth: "/ mois",
     sub_getPlan: "Prendre {{plan}}",
     sub_viewOnWeb: "Voir sur le site",
+    sub_policyShort: "Achat in-app indisponible — ouvrez le site pour vous abonner.",
 
     videos_title: "Vidéos promotionnelles",
     videos_all: "Tous",
@@ -535,6 +558,7 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     boosts_empty: "Aucun boost actif",
     boosts_emptyHint: "Boostez une annonce pour plus de vues. La création payante est bloquée dans l’app store.",
     boosts_create: "Créer un boost",
+    boosts_createHint: "Choisissez une annonce dans Mes annonces, puis ouvrez Boost — les campagnes payantes démarrent sur le site.",
     boosts_impressions: "Impressions",
     boosts_views: "Vues",
     boosts_clicks: "Clics",
@@ -556,6 +580,8 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     boost_payBlockedBody:
       "Les boosts payants ne peuvent pas être achetés dans l’app store. Utilisez le site pour lancer une campagne.",
     boost_continuePay: "Continuer pour payer {{amount}}",
+    boost_viewOnWeb: "Ouvrir sur le site",
+    boost_policyShort: "Les boosts payants s’ouvrent sur le site (politique store).",
     boost_dayPlan: "{{n}} jour",
     boost_daysPlan: "{{n}} jours",
 
@@ -647,6 +673,13 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     driver_dash_zonePick: "Sélectionnez un département.",
     driver_dash_zoneSaved: "Zone de travail enregistrée.",
     driver_dash_loadError: "Impossible de charger le tableau de bord chauffeur",
+    driver_dash_availableJobs: "Courses disponibles",
+    driver_dash_noJobs: "Aucune course à proximité. Tirez pour actualiser.",
+    driver_dash_accept: "Accepter",
+    driver_dash_accepting: "Acceptation…",
+    driver_dash_jobFee: "Frais",
+    driver_dash_goOnlineForJobs: "Passez en ligne pour voir et accepter les courses.",
+    driver_dash_accepted: "Course acceptée.",
 
     admin_title: "Flexa Control",
     admin_subtitle: "Centre de contrôle admin",
@@ -677,9 +710,9 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     admin_loadError: "Impossible de charger les stats admin",
 
     website_heroSub: "Expérience app native",
-    website_title: "Le site n’est plus intégré",
+    website_title: "Parcourir dans l’app native",
     website_body:
-      "Toute la navigation marketplace est native. Utilisez Accueil pour parcourir — même apparence que flexamarket.com, sans WebView.",
+      "La navigation marketplace est entièrement native. Ouvrez Accueil pour acheter — la même expérience Flexa Market, sans site intégré.",
     website_cta: "Aller à l’accueil",
   },
 
@@ -744,6 +777,7 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     sub_perMonth: "/ mes",
     sub_getPlan: "Obtener {{plan}}",
     sub_viewOnWeb: "Ver en el sitio",
+    sub_policyShort: "Compra in-app no disponible — abre el sitio para suscribirte.",
 
     videos_title: "Videos promocionales",
     videos_all: "Todos",
@@ -761,6 +795,7 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     boosts_empty: "No hay boosts activos",
     boosts_emptyHint: "Impulsa un anuncio para más vistas. La creación de pago está bloqueada en la app.",
     boosts_create: "Crear boost",
+    boosts_createHint: "Elige un anuncio en Mis anuncios y abre Boost — las campañas de pago empiezan en el sitio.",
     boosts_impressions: "Impresiones",
     boosts_views: "Vistas",
     boosts_clicks: "Clics",
@@ -782,6 +817,8 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     boost_payBlockedBody:
       "Los boosts de pago no se pueden comprar en la app de la tienda. Usa el sitio para iniciar una campaña.",
     boost_continuePay: "Continuar para pagar {{amount}}",
+    boost_viewOnWeb: "Abrir en el sitio",
+    boost_policyShort: "Los boosts de pago se abren en el sitio (política de tienda).",
     boost_dayPlan: "{{n}} día",
     boost_daysPlan: "{{n}} días",
 
@@ -873,6 +910,13 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     driver_dash_zonePick: "Selecciona un departamento.",
     driver_dash_zoneSaved: "Zona de trabajo guardada.",
     driver_dash_loadError: "No se pudo cargar el panel del conductor",
+    driver_dash_availableJobs: "Trabajos disponibles",
+    driver_dash_noJobs: "No hay trabajos cerca ahora. Desliza para actualizar.",
+    driver_dash_accept: "Aceptar",
+    driver_dash_accepting: "Aceptando…",
+    driver_dash_jobFee: "Tarifa",
+    driver_dash_goOnlineForJobs: "Ponte en línea para ver y aceptar trabajos.",
+    driver_dash_accepted: "Trabajo aceptado.",
 
     admin_title: "Flexa Control",
     admin_subtitle: "Centro de control admin",
@@ -903,9 +947,9 @@ export const NATIVE_SCREEN_I18N: Record<"en" | "ht" | "fr" | "es", NativeScreenD
     admin_loadError: "No se pudieron cargar las estadísticas admin",
 
     website_heroSub: "Experiencia de app nativa",
-    website_title: "El sitio ya no está incrustado",
+    website_title: "Explora en la app nativa",
     website_body:
-      "Toda la navegación del marketplace es nativa. Usa Inicio para explorar — misma apariencia que flexamarket.com, sin WebView.",
+      "La navegación del marketplace es totalmente nativa. Abre Inicio para comprar — la misma experiencia Flexa Market, sin sitio incrustado.",
     website_cta: "Ir al inicio",
   },
 };

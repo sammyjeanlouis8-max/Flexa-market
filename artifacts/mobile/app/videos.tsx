@@ -262,7 +262,12 @@ export default function VideosDiscoverScreen() {
           }}
           onEndReachedThreshold={0.4}
           ListHeaderComponent={
-            error ? <Text style={styles.error}>{error}</Text> : null
+            error ? (
+              <View style={styles.errorBox}>
+                <Feather name="alert-circle" size={14} color="#B91C1C" />
+                <Text style={styles.error}>{error}</Text>
+              </View>
+            ) : null
           }
           ListEmptyComponent={
             <View style={styles.empty} testID="video-discover-empty">
@@ -349,11 +354,23 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.flexaGreen, borderColor: colors.flexaGreen },
   chipText: { fontWeight: "700", color: "#64748B", fontSize: 12 },
   chipTextOn: { color: "#FFFFFF" },
-  error: {
-    color: "#B91C1C",
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 10,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 12,
+    padding: 12,
+  },
+  error: {
+    flex: 1,
+    color: "#B91C1C",
     fontWeight: "600",
+    fontSize: 13,
   },
   card: {
     backgroundColor: "#FFFFFF",

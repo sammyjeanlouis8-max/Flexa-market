@@ -3785,6 +3785,83 @@ export async function runStartupMigrations(): Promise<void> {
     logger.warn({ err: err?.message }, "Migration: vacuum listing category fix failed (non-fatal)");
   }
 
+  // Flexa Restaurant — profiles, dish models (Modèl Manje), daily menus (Meni Chak Jou)
+  try {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS restaurants (
+        id serial PRIMARY KEY,
+        owner_user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name text NOT NULL,
+        bio text,
+        cuisine_tags text[] NOT NULL DEFAULT '{}',
+        phone text,
+        cover_photo_url text,
+        logo_url text,
+        address_line1 text NOT NULL,
+        address_line2 text,
+        city text NOT NULL,
+        state text,
+        postal_code text,
+        country text NOT NULL DEFAULT 'HT',
+        latitude real,
+        longitude real,
+        schedule jsonb NOT NULL DEFAULT '[]'::jsonb,
+        offers_delivery boolean NOT NULL DEFAULT false,
+        delivery_fee_usd real,
+        delivery_eta_minutes integer,
+        delivery_notes text,
+        is_published boolean NOT NULL DEFAULT false,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurants_owner_idx ON restaurants(owner_user_id)`));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurants_published_idx ON restaurants(is_published)`));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurants_city_idx ON restaurants(city)`));
+
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS restaurant_dish_models (
+        id serial PRIMARY KEY,
+        restaurant_id integer NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+        name text NOT NULL,
+        description text,
+        price real NOT NULL,
+        currency text NOT NULL DEFAULT 'USD',
+        category text NOT NULL DEFAULT 'main',
+        photo_url text,
+        tags text[] NOT NULL DEFAULT '{}',
+        is_available_by_default boolean NOT NULL DEFAULT true,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurant_dish_models_restaurant_idx ON restaurant_dish_models(restaurant_id)`));
+
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS restaurant_daily_menu_items (
+        id serial PRIMARY KEY,
+        restaurant_id integer NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+        menu_date text NOT NULL,
+        dish_model_id integer REFERENCES restaurant_dish_models(id) ON DELETE SET NULL,
+        name text NOT NULL,
+        description text,
+        price real NOT NULL,
+        currency text NOT NULL DEFAULT 'USD',
+        category text NOT NULL DEFAULT 'main',
+        photo_url text,
+        available boolean NOT NULL DEFAULT true,
+        sold_out boolean NOT NULL DEFAULT false,
+        portion_limit integer,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurant_daily_menu_restaurant_date_idx ON restaurant_daily_menu_items(restaurant_id, menu_date)`));
+    logger.info("Migration: Flexa Restaurant tables ready");
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: Flexa Restaurant tables failed (non-fatal)");
+  }
+
   logger.info({ applied, failed }, "Startup migrations complete");
 }
 

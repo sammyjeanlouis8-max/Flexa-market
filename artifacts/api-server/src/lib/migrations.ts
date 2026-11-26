@@ -3705,7 +3705,6 @@ export async function runStartupMigrations(): Promise<void> {
     logger.warn({ err: err?.message }, "Migration: video username backfill failed (non-fatal)");
   }
 
-
   // Haiti driver apply — distinct national ID + uncertain-doc flag + residential department
   try {
     await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_national_id text`));
@@ -3738,6 +3737,52 @@ export async function runStartupMigrations(): Promise<void> {
     logger.info("Migration: driver application national-id columns + uncertain photo flags");
   } catch (err: any) {
     logger.warn({ err: err?.message }, "Migration: driver national-id columns failed (non-fatal)");
+  }
+
+  // Data fix: Cordless Mattress Vacuum Cleaner was miscategorized under Electronics >
+  // Accessories & Cables. Retarget to Appliances > Microwaves & Blenders (small-appliances),
+  // the closest existing Appliances subcategory. Matches by title (and legacy id 4 when
+  // title matches) — not a UI exception for listing id.
+  try {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS app_data_migrations (
+        name text PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT NOW()
+      );
+    `));
+    await db.execute(sql.raw(`
+      WITH claimed AS (
+        INSERT INTO app_data_migrations (name)
+        VALUES ('fix_vacuum_listing_appliances_v1')
+        ON CONFLICT (name) DO NOTHING
+        RETURNING name
+      ),
+      cats AS (
+        SELECT
+          (SELECT id FROM categories WHERE slug = 'appliances' AND parent_id IS NULL LIMIT 1) AS appliances_id,
+          (SELECT c.id FROM categories c
+             JOIN categories p ON p.id = c.parent_id
+            WHERE c.slug = 'small-appliances' AND p.slug = 'appliances'
+            LIMIT 1) AS small_appliances_id
+      )
+      UPDATE listings l
+         SET category_id = cats.appliances_id,
+             subcategory_id = cats.small_appliances_id
+        FROM cats, claimed
+       WHERE cats.appliances_id IS NOT NULL
+         AND cats.small_appliances_id IS NOT NULL
+         AND (
+           (l.id = 4 AND l.title ILIKE '%Vacuum%Cleaner%')
+           OR l.title ILIKE '%Cordless Mattress Vacuum Cleaner%'
+         )
+         AND (
+           l.category_id IS DISTINCT FROM cats.appliances_id
+           OR l.subcategory_id IS DISTINCT FROM cats.small_appliances_id
+         )
+    `));
+    logger.info("Migration: vacuum listing category fix attempted (Appliances > small-appliances)");
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: vacuum listing category fix failed (non-fatal)");
   }
 
   logger.info({ applied, failed }, "Startup migrations complete");

@@ -406,6 +406,13 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const boostAd = useBoostAdTrigger();
   const bs = useBroadcast();
   const { data: marketCategories } = useGetCategories();
+  const { guestLocation } = useShoppingLocation();
+  // Delivery destination ≠ browse zone ≠ product location.
+  // Only show a city after the shopper chose one (profile location or manual guest city).
+  const deliveryDestination =
+    (user?.location && user.location.trim()) ||
+    (guestLocation?.manual && guestLocation.city?.trim()) ||
+    null;
   const [moreOpen, setMoreOpen] = useState(false);
   const [showInlineSell, setShowInlineSell] = useState(false);
   const [showInlineMessages, setShowInlineMessages] = useState(false);
@@ -872,19 +879,30 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               </>
             )}
 
-            {/* Deliver to — desktop market chrome */}
+            {/* Deliver to — destination only (not browse zone / product city) */}
             {isMarketGreenHeader && (
-              <div
-                className="hidden lg:flex items-center gap-1.5 shrink-0 max-w-[140px] xl:max-w-[180px] text-white/95 px-2 py-1 rounded-lg hover:bg-white/10"
+              <button
+                type="button"
+                className="hidden lg:flex items-center gap-1.5 shrink-0 max-w-[180px] xl:max-w-[220px] text-white/95 px-2 py-1 rounded-lg hover:bg-white/10 text-left"
                 data-testid="header-deliver-to"
-                title={user?.location || user?.country || undefined}
+                title={deliveryDestination || t("home.chooseDeliveryDestination", { defaultValue: "Choose delivery destination" })}
+                onClick={() => {
+                  if (isHomePage) {
+                    window.dispatchEvent(new CustomEvent("flexa:open-delivery-picker"));
+                  } else {
+                    window.location.assign("/?setDelivery=1");
+                  }
+                }}
               >
                 <MapPin className="h-4 w-4 shrink-0" />
                 <div className="min-w-0 leading-tight">
                   <p className="text-[10px] text-white/75 truncate">{t("home.deliverTo", { defaultValue: "Deliver to" })}</p>
-                  <p className="text-[12px] font-bold truncate">{user?.location || user?.country || "—"}</p>
+                  <p className="text-[12px] font-bold truncate">
+                    {deliveryDestination
+                      || t("home.chooseDeliveryDestination", { defaultValue: "Choose delivery destination" })}
+                  </p>
                 </div>
-              </div>
+              </button>
             )}
 
             {/* Account */}
@@ -915,8 +933,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
             </div>
           </div>
 
-          {/* Secondary category nav — Amazon-style under green header */}
-          {isMarketGreenHeader && marketCategories && marketCategories.length > 0 && (
+          {/* Secondary category nav — hide on home (Shop by Category is the primary explore zone) */}
+          {isMarketGreenHeader && !isHomePage && marketCategories && marketCategories.length > 0 && (
             <div className="hidden md:block bg-[hsl(152,65%,14%)] border-t border-white/10">
               <div className="max-w-7xl mx-auto px-3 flex items-center gap-1 overflow-x-auto scrollbar-none h-10" data-testid="header-category-nav">
                 <button

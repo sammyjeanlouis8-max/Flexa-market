@@ -29,6 +29,7 @@ import {
   parseWorkZones,
   patchDriverLocation,
   type DriverStatsResponse,
+  type ZonesPayload,
 } from "@/lib/driverApi";
 
 type MenuItem = {
@@ -63,7 +64,7 @@ export default function DriverDashboardScreen() {
       try {
         const [stats, zones] = await Promise.all([
           fetchDriverStats({ token }),
-          fetchDriverZones({ token }).catch(() => ({})),
+          fetchDriverZones({ token }).catch((): ZonesPayload => ({})),
         ]);
         setData(stats);
         if (zones.communesByDepartment) {

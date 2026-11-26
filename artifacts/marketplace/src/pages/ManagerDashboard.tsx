@@ -86,7 +86,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function ManagerDashboard() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 

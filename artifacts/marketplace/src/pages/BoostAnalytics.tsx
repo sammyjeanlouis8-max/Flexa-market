@@ -175,7 +175,7 @@ export default function BoostAnalytics() {
                 <div className="ba-kpi" key={key} title={m?.note}>
                   <div className="k">{t(`boostAnalytics.metrics.${key}`)}</div>
                   <div className={`v${!m?.available ? " na" : ""}`}>
-                    {fmtMetric(m, t, moneyKind(key))}
+                    {fmtMetric(m, t as unknown as (k: string, o?: object) => string, moneyKind(key))}
                   </div>
                 </div>
               );

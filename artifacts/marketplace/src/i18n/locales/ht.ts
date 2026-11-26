@@ -486,6 +486,10 @@ export default {
     brandTitle: "Achte epi vann ak konfyans atravè mond lan.",
     brandSubtitle: "Yon sèl kont sekirize pou achtè, vandè, chofè ak admin.",
 },
+  authGate: {
+    signInToContinue: "Konekte pou kontinye",
+    signInBody: "Kreye yon kont oswa konekte pou kontinye aksyon sa a.",
+  },
   listing: {
     condition: "Kondisyon",
     conditions: {

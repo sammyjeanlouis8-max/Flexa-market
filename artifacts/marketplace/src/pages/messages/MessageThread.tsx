@@ -1486,7 +1486,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       // Retry the first request quietly so the conversation can open without
       // exposing a transient error state to the user.
       retry: 2,
-      retryDelay: attemptIndex => Math.min(400 * 2 ** attemptIndex, 1_500),
+      retryDelay: (attemptIndex: number) => Math.min(400 * 2 ** attemptIndex, 1_500),
     },
     request: { timeoutMs: 6_000 },
   });
@@ -2104,13 +2104,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 /iPad|iPhone|iPod/.test(navigator.userAgent) ? "audio/mp4" : "audio/webm",
               );
               // Safari IDB can return a detached/odd buffer view — copy into a fresh Uint8Array.
-              const raw = item.bytes;
-              const bytes =
-                raw instanceof ArrayBuffer
-                  ? new Uint8Array(raw)
-                  : raw instanceof Uint8Array
-                    ? raw
-                    : new Uint8Array(raw as ArrayBuffer);
+              const bytes = new Uint8Array(item.bytes);
               const blob = new Blob([bytes], { type: mime });
               if (blob.size < 800) {
                 throw new Error("Recording too short");
@@ -3126,7 +3120,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                     left: attachMenuPos.left,
                     bottom: attachMenuPos.bottom,
                     minWidth: 168,
-                    background: c.isDark ? c.cardBg : "#FFFFFF",
+                    background: c.isDark ? c.contextBg : "#FFFFFF",
                     border: `1px solid ${c.isDark ? c.listBorder : "#E5E7EB"}`,
                     borderRadius: 12,
                     boxShadow: "0 8px 24px rgba(15, 23, 42, 0.14)",

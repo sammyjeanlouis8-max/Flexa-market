@@ -6,7 +6,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { useCreateListing, useUpdateListing, useGetListing, useGetCategories, getGetListingsQueryKey, getGetListingQueryKey, getGetUserListingsQueryKey } from "@workspace/api-client-react";
+import { useCreateListing, useUpdateListing, useGetListing, useGetCategories, getGetListingsQueryKey, getGetListingQueryKey, getGetUserListingsQueryKey, type Category } from "@workspace/api-client-react";
 import { useUpload } from "@workspace/object-storage-web";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -39,6 +39,7 @@ import {
   formatSectionMissingLabel,
   sectionForField,
   type SellSectionId,
+  type SellValidationMessages,
 } from "@/lib/sellValidation";
 import { cleanListingImageUrls } from "@/lib/listingImages";
 
@@ -82,7 +83,7 @@ function FieldErrorIcon({ show }: { show: boolean }) {
   );
 }
 
-function buildSellSchema(messages: typeof SELL_VALIDATION_EN) {
+function buildSellSchema(messages: SellValidationMessages) {
   return z.object({
     title: z
       .string()
@@ -199,7 +200,7 @@ export default function Sell() {
   const [editPrefilled, setEditPrefilled] = useState(false);
 
   const { uploadFile } = useUpload({
-    onError: (error) => setUploadErrorMessage(error.message),
+    onError: (error: Error) => setUploadErrorMessage(error.message),
     throwOnError: true,
   });
 
@@ -234,7 +235,7 @@ export default function Sell() {
   const validationBannerRef = useRef<HTMLDivElement | null>(null);
 
   const validationMessages = useMemo(
-    () => defaultSellValidationMessages((key, opts) => t(key, opts as any)),
+    () => defaultSellValidationMessages((key, opts) => String(t(key, opts as any))),
     [t, i18n.language],
   );
   const sellSchema = useMemo(() => buildSellSchema(validationMessages), [validationMessages]);
@@ -1314,7 +1315,7 @@ export default function Sell() {
           {/* Category picker — sheet-based, Facebook Marketplace style */}
           <FormField control={form.control} name="categoryId" render={({ field }) => {
             const selectedSubId = form.watch("subcategoryId");
-            const selectedCat = categories?.find(c => c.id === field.value);
+            const selectedCat = categories?.find((c: Category) => c.id === field.value);
             const selectedSub = selectedCat
               ? (selectedCat as any).children?.find((s: any) => s.id === selectedSubId)
               : null;
@@ -1435,7 +1436,7 @@ export default function Sell() {
                     <div className="flex-1 overflow-y-auto overscroll-contain">
                       {sheetStep === "parents" && (
                         <ul className="divide-y divide-border">
-                          {(categories ?? []).map(cat => {
+                          {(categories ?? []).map((cat: Category) => {
                             const isSelected = field.value === cat.id;
                             return (
                               <li key={cat.id}>
@@ -2443,7 +2444,7 @@ export default function Sell() {
           {/* ── Live listing preview ─────────────────────────────────────────── */}
           {(() => {
             const vals = form.watch();
-            const selCat = categories?.find(c => c.id === vals.categoryId);
+            const selCat = categories?.find((c: Category) => c.id === vals.categoryId);
             const selSub = selCat
               ? (selCat as any).children?.find((s: any) => s.id === vals.subcategoryId)
               : null;
@@ -2657,7 +2658,7 @@ export default function Sell() {
           </p>
           {(() => {
             const vals = watchedVals;
-            const selCat = categories?.find(c => c.id === vals.categoryId);
+            const selCat = categories?.find((c: Category) => c.id === vals.categoryId);
             const selSub = selCat ? (selCat as any).children?.find((s: any) => s.id === vals.subcategoryId) : null;
             const imgs = uploadedImages.map(img => img.previewUrl);
             const usingSample = imgs.length === 0;

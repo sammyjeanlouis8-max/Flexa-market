@@ -431,13 +431,13 @@ async function createRenderer(canvas: HTMLCanvasElement) {
   }
 
   function destroy() {
-    gl.deleteTexture(tex);
-    gl.deleteBuffer(sphere.pos);
-    gl.deleteBuffer(sphere.norm);
-    if (sphere.uv) gl.deleteBuffer(sphere.uv);
-    gl.deleteBuffer(sphere.idx);
-    gl.deleteProgram(globeProg);
-    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    gl!.deleteTexture(tex);
+    gl!.deleteBuffer(sphere.pos);
+    gl!.deleteBuffer(sphere.norm);
+    if (sphere.uv) gl!.deleteBuffer(sphere.uv);
+    gl!.deleteBuffer(sphere.idx);
+    gl!.deleteProgram(globeProg);
+    gl!.getExtension("WEBGL_lose_context")?.loseContext();
   }
 
   return { resize, render, destroy };

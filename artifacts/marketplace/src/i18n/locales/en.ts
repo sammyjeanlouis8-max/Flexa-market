@@ -486,6 +486,10 @@ export default {
     brandTitle: "Buy & sell with confidence worldwide.",
     brandSubtitle: "One secure account for shoppers, sellers, drivers, and admins.",
 },
+  authGate: {
+    signInToContinue: "Sign in to continue",
+    signInBody: "Create an account or sign in to continue with this action.",
+  },
   listing: {
     condition: "Condition",
     conditions: {

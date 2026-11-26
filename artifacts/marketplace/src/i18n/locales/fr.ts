@@ -486,6 +486,10 @@ export default {
     brandTitle: "Achetez et vendez en toute confiance dans le monde entier.",
     brandSubtitle: "Un compte sécurisé pour acheteurs, vendeurs, chauffeurs et admins.",
 },
+  authGate: {
+    signInToContinue: "Connectez-vous pour continuer",
+    signInBody: "Créez un compte ou connectez-vous pour continuer cette action.",
+  },
   listing: {
     condition: "État",
     conditions: {

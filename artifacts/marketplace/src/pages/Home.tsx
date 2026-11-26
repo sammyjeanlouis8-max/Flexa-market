@@ -6,7 +6,7 @@ import { Link, useLocation } from "wouter";
 import { Search, ChevronRight, Package, MapPin, Navigation, ShieldCheck, X, RefreshCw, ChevronDown, Pencil, CheckCircle2, Loader2, Play, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useGetCategories } from "@workspace/api-client-react";
+import { useGetCategories, type Category } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
 import { useShoppingLocation } from "@/contexts/shopping-location";
 import ListingCard from "@/components/ListingCard";
@@ -1007,7 +1007,7 @@ export default function Home() {
               >
                 {t("home.allCategories")}
               </button>
-              {categories.map(cat => (
+              {categories.map((cat: Category) => (
                 <button
                   key={cat.id}
                   onClick={() => handleCategoryClick(cat.slug)}
@@ -1084,7 +1084,7 @@ export default function Home() {
               </Link>
             </div>
             <div className="grid grid-cols-4 gap-2">
-              {categories.slice(0, 8).map((cat) => (
+              {categories.slice(0, 8).map((cat: Category) => (
                 <Link
                   key={cat.id}
                   href={`/categories/${encodeURIComponent(cat.slug)}`}

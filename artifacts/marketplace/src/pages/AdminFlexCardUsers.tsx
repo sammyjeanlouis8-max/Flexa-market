@@ -45,7 +45,7 @@ export default function AdminFlexCardUsers() {
   const [page, setPage]               = useState(1);
   const [q, setQ]                     = useState("");
   const [blockedOnly, setBlockedOnly] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Inline block form
   const [blocking, setBlocking]           = useState<UserRow | null>(null);

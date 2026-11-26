@@ -133,6 +133,22 @@ type CustomerContext = {
   orders: Array<{ id: number; orderRef: string; status: string; total: number; listingTitle: string | null; deepLink: string }>;
 };
 
+type LinkedOrderContext = {
+  id: number;
+  orderRef: string;
+  status: string;
+  paymentStatus?: string | null;
+  orderStatus?: string | null;
+  total: number;
+  listingTitle: string | null;
+  deliveredAt?: string | null;
+  buyerConfirmedAt?: string | null;
+  returnStatus?: string | null;
+  returnReason?: string | null;
+  refunds?: Array<{ id: number; amountCents: number; currency: string; providerStatus: string; stripeRefundId: string | null }>;
+  deepLink: string;
+};
+
 type ThreadDetail = SupportThread & { messages: SupportMessage[] };
 
 type InboxFilter = "all" | "unassigned" | "mine" | "waiting" | "active" | "resolved";
@@ -242,6 +258,7 @@ export default function AdminLiveSupport() {
   const [typingName, setTypingName] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<SupportAnalytics | null>(null);
   const [customerCtx, setCustomerCtx] = useState<CustomerContext | null>(null);
+  const [linkedOrder, setLinkedOrder] = useState<LinkedOrderContext | null>(null);
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [copilotSuggestion, setCopilotSuggestion] = useState<string | null>(null);
   const [agentAvailable, setAgentAvailable] = useState(true);
@@ -296,6 +313,13 @@ export default function AdminLiveSupport() {
       authFetch(`/api/support/threads/${id}/customer`)
         .then((ctx: CustomerContext) => setCustomerCtx(ctx))
         .catch(() => setCustomerCtx(null));
+      if (data.relatedOrderId) {
+        authFetch(`/api/support/orders/${data.relatedOrderId}?threadId=${id}`)
+          .then((ord: LinkedOrderContext) => setLinkedOrder(ord))
+          .catch(() => setLinkedOrder(null));
+      } else {
+        setLinkedOrder(null);
+      }
     } catch (e: any) {
       toast({ title: t("liveSupport.error", { defaultValue: "Error" }), description: e.message, variant: "destructive" });
     }
@@ -783,13 +807,36 @@ export default function AdminLiveSupport() {
         ) : null}
       </div>
 
+      {/* Linked order for this ticket */}
+      {linkedOrder ? (
+        <div className="rounded-xl border border-emerald-300/60 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 space-y-2 text-sm" data-testid="linked-order-context">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">Linked order</p>
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="font-mono font-semibold">{linkedOrder.orderRef}</span>
+            <span className="capitalize text-muted-foreground">{linkedOrder.orderStatus || linkedOrder.status}</span>
+          </div>
+          <p className="text-xs line-clamp-2">{linkedOrder.listingTitle || "Order"}</p>
+          <div className="grid grid-cols-2 gap-1.5 text-[11px] text-muted-foreground">
+            <p>Payment: <span className="font-medium text-foreground">{linkedOrder.paymentStatus || "—"}</span></p>
+            <p>Total: <span className="font-medium text-foreground">${Number(linkedOrder.total ?? 0).toFixed(2)}</span></p>
+            <p>Delivered: <span className="font-medium text-foreground">{linkedOrder.deliveredAt ? new Date(linkedOrder.deliveredAt).toLocaleDateString() : "—"}</span></p>
+            <p>Confirmed: <span className="font-medium text-foreground">{linkedOrder.buyerConfirmedAt ? new Date(linkedOrder.buyerConfirmedAt).toLocaleDateString() : "—"}</span></p>
+            <p>Return: <span className="font-medium text-foreground">{linkedOrder.returnStatus || "none"}</span></p>
+            <p>Refunds: <span className="font-medium text-foreground">{linkedOrder.refunds?.length ? linkedOrder.refunds.map((r) => r.providerStatus).join(", ") : "none"}</span></p>
+          </div>
+          <Link href={linkedOrder.deepLink} className="inline-block text-xs font-semibold text-emerald-700 hover:underline">
+            Open order
+          </Link>
+        </div>
+      ) : null}
+
       {/* Orders */}
       {customerCtx?.orders?.length ? (
         <div className="rounded-xl border border-border bg-card p-3 space-y-2 text-sm">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Recent orders</p>
           <ul className="space-y-2">
             {customerCtx.orders.slice(0, 5).map((o) => (
-              <li key={o.id} className="rounded-lg border border-border/70 px-2.5 py-2 text-xs">
+              <li key={o.id} className={`rounded-lg border px-2.5 py-2 text-xs ${detail?.relatedOrderId === o.id ? "border-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/20" : "border-border/70"}`}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono font-semibold">{o.orderRef}</span>
                   <span className="capitalize text-muted-foreground">{o.status}</span>

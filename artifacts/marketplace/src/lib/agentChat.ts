@@ -35,7 +35,10 @@ export function prepareAgentChat(
     client.setQueryData(getGetMessagesQueryKey(data.conversationId), data.initialMessages);
   } else {
     void client.prefetchQuery(getGetMessagesQueryOptions(data.conversationId, {
-      query: { staleTime: 15_000 },
+      query: {
+        queryKey: getGetMessagesQueryKey(data.conversationId),
+        staleTime: 15_000,
+      },
       request: { timeoutMs: 6_000 },
     }));
   }

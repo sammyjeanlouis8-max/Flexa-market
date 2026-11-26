@@ -6160,7 +6160,6 @@ export default {
     motorcycle: "1 motorcycle",
     shipFee: "+${{amount}} ship",
     estimatingDelivery: "Estimating delivery…",
-    freeDelivery: "Free delivery",
     deliveryFeePending: "Delivery fee pending",
     addCityForEstimate: "Add city at checkout for delivery estimate",
     cityFee: "{{city}} · ${{amount}}",

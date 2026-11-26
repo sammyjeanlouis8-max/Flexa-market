@@ -86,12 +86,14 @@ import musicRouter from "./music";
 import storeManagerRouter from "./storeManager";
 import bridgeRouter from "./bridge";
 import wholesaleRouter from "./wholesale";
+import restaurantRouter from "./restaurant";
 import { extractToken, verifyToken } from "../lib/auth";
 import { loadAuthUser } from "../middlewares/auth";
 
 const router: IRouter = Router();
 router.use(bridgeRouter);
 router.use(wholesaleRouter);
+router.use(restaurantRouter);
 
 // ─── Rate Limiters ────────────────────────────────────────────────────────────
 

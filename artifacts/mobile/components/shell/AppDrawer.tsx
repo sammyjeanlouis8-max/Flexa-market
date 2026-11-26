@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigationChrome } from "@/context/NavigationContext";
+import { canAccessRestaurant } from "@/lib/restaurantAccess";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
 import { fetchWalletBalance } from "@/lib/walletApi";
 
@@ -67,29 +68,39 @@ export function AppDrawer() {
   const sections: DrawerSection[] = useMemo(() => {
     // Store review: only link finished native screens. Keep /loans (home redirect)
     // and /website (legacy stand-in) out of the menu to avoid 2.1 rejections.
+    const discoverItems: DrawerItem[] = [
+      { icon: "home", label: "Home", href: "/", testID: "drawer-home" },
+    ];
+    if (canAccessWholesale(user)) {
+      discoverItems.push({
+        icon: "home",
+        label: "Flexa Wholesale",
+        href: "/wholesale",
+        testID: "drawer-flexa-wholesale",
+      });
+    }
+    if (canAccessRestaurant(user)) {
+      discoverItems.push({
+        icon: "coffee",
+        label: "Flexa Restaurant",
+        href: "/restaurant",
+        testID: "drawer-flexa-restaurant",
+      });
+    }
+    discoverItems.push(
+      { icon: "grid", label: "Categories", href: "/search", testID: "drawer-categories" },
+      { icon: "tag", label: "Offers & Promotions", href: "/offers", testID: "drawer-offers" },
+      { icon: "star", label: "Flexa Picks", href: "/search?boosted=true", testID: "drawer-flexa-picks" },
+      { icon: "film", label: "Promotional Videos", href: "/videos", testID: "drawer-promo-videos" },
+    );
+
     const discover: DrawerSection = {
       id: "discover",
       heading: "HOME & DISCOVER",
-      items: [
-        { icon: "home", label: "Home", href: "/", testID: "drawer-home" },
-        { icon: "grid", label: "Categories", href: "/search", testID: "drawer-categories" },
-        { icon: "tag", label: "Offers & Promotions", href: "/offers", testID: "drawer-offers" },
-        { icon: "star", label: "Flexa Picks", href: "/search?boosted=true", testID: "drawer-flexa-picks" },
-        { icon: "film", label: "Promotional Videos", href: "/videos", testID: "drawer-promo-videos" },
-      ],
+      items: discoverItems,
     };
 
     const out: DrawerSection[] = [discover];
-
-    if (canAccessWholesale(user)) {
-      out.push({
-        id: "wholesale",
-        heading: "FLEXA WHOLESALE",
-        items: [
-          { icon: "home", label: "Flexa Wholesale", href: "/wholesale", testID: "drawer-flexa-wholesale" },
-        ],
-      });
-    }
 
     if (user) {
       out.push({

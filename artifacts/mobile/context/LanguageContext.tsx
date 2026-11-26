@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { NATIVE_SCREEN_I18N } from "@/i18n/nativeScreens";
 
 export type Lang = "en" | "ht" | "fr" | "es" | "pt" | "de" | "hi" | "fil" | "ha" | "zu" | "af";
 
@@ -1947,6 +1948,11 @@ const T: Record<Lang, Record<string, string>> = {
     errConnection: "Verbindingsfout", alreadyAccount: "Het jy reeds 'n rekening?",
   },
 };
+
+// Merge native-screen dictionaries (en/ht/fr/es). Other langs fall back via t().
+for (const code of ["en", "ht", "fr", "es"] as const) {
+  Object.assign(T[code], NATIVE_SCREEN_I18N[code]);
+}
 
 const ALL_LANGS = new Set<string>(["en","ht","fr","es","pt","de","hi","fil","ha","zu","af"]);
 

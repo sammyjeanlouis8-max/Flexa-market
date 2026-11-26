@@ -2,23 +2,38 @@ import { useLanguage } from "@/context/LanguageContext";
 import React from "react";
 import { WholesaleSimplePage } from "@/components/wholesale/WholesaleSimplePage";
 
-export default function Screen() {
+export default function WholesaleAdminReportsScreen() {
   const { t } = useLanguage();
   return (
     <WholesaleSimplePage
       title={t("wholesale_adminReports")}
-      subtitle="Wholesale volume without checkout GMV."
-
-        stats={[
-          { label: "Chats", value: 410 },
-          { label: "Closed", value: 92 },
-        ]}
-
-        items={[
-          { title: "Haiti report", meta: "Download CSV", badge: "CSV" },
-          { title: "Depot report", meta: "Download CSV", badge: "CSV" },
-        ]}
-      empty="Nothing here yet — chat-only wholesale."
+      subtitle={t("wholesale_adminReportsSub")}
+      stats={[
+        { label: t("wholesale_chats"), value: 410 },
+        { label: t("wholesale_closed"), value: 92 },
+        { label: t("wholesale_flagged"), value: 2 },
+        { label: "Depots live", value: 6 },
+      ]}
+      items={[
+        {
+          title: "Haiti report",
+          meta: "Chat volume · CSV export preview",
+          href: "/wholesale/admin",
+          badge: "CSV",
+        },
+        {
+          title: "Depot report",
+          meta: "Verified warehouses · CSV export preview",
+          href: "/wholesale/admin/warehouses",
+          badge: "CSV",
+        },
+        {
+          title: "Inquiry health",
+          meta: "Open vs closed chat metrics",
+          href: "/wholesale/admin/chats",
+          badge: "Chat",
+        },
+      ]}
     />
   );
 }

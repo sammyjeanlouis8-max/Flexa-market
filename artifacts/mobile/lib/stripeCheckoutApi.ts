@@ -1,11 +1,15 @@
 /**
- * Stripe Checkout for physical marketplace goods (allowed on Android).
+ * Stripe Checkout for physical marketplace goods (allowed on iOS + Android).
  * Opens hosted Stripe Checkout URL via system browser — not an in-app marketplace shell.
  * Digital goods (wallet top-up, boost, subscription, music) stay blocked by server guard.
  *
  * Body fields match POST /api/stripe/checkout (shippingName, shippingStreet, …).
  */
+import { Platform } from "react-native";
 import { getApiBase } from "./api";
+
+const NATIVE_UA =
+  Platform.OS === "ios" ? "FlexaMarketiOS/1.0" : "FlexaMarketAndroid/1.0";
 
 export type StripeCheckoutBody = {
   listingId: number;
@@ -55,8 +59,8 @@ export async function createStripeCheckoutSession(
       Accept: "application/json",
       "Content-Type": "application/json",
       Authorization: `Bearer ${opts.token}`,
-      // Identify as native for logging; physical /stripe/checkout is not in the digital guard list.
-      "User-Agent": "FlexaMarketAndroid",
+      // Identify platform for logging/guards; physical /stripe/checkout is not digital-blocked.
+      "User-Agent": NATIVE_UA,
     },
     body: JSON.stringify({
       listingId: body.listingId,

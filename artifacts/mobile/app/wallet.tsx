@@ -1,6 +1,7 @@
 /**
- * Native Wallet / Card FM — balance + history (read-only funding actions).
- * Top-up / card recharge remain blocked on Android (Play digital goods policy).
+ * Native Wallet / Card FM — balance + history.
+ * Top-up / card recharge are not offered in store builds (App Store / Play
+ * digital goods policy). Spending existing balance on physical goods is OK.
  */
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -106,13 +107,6 @@ export default function WalletScreen() {
     [],
   );
 
-  const onUnsupportedFunding = () => {
-    Alert.alert(
-      "Top-up unavailable",
-      "Wallet top-ups and Card FM recharges are not available in the Android app (Google Play digital goods policy). Balance, history, and wallet checkout for physical goods remain available.",
-    );
-  };
-
   const renderTx = ({ item }: { item: WalletTx }) => {
     const credit = item.amountUsd >= 0;
     return (
@@ -193,10 +187,6 @@ export default function WalletScreen() {
               </View>
 
               <View style={styles.actions}>
-                <Pressable style={styles.actionDisabled} onPress={onUnsupportedFunding}>
-                  <Feather name="plus-circle" size={18} color="#94A3B8" />
-                  <Text style={styles.actionDisabledText}>Top up</Text>
-                </Pressable>
                 <Pressable
                   style={styles.action}
                   onPress={() => router.push("/orders")}
@@ -206,8 +196,8 @@ export default function WalletScreen() {
                 </Pressable>
               </View>
               <Text style={styles.policyNote}>
-                Top-ups and withdrawals are not offered in this Android build. Use wallet
-                balance for Haiti cart checkout where available.
+                Use your available balance for eligible physical-goods checkout.
+                In-app wallet top-ups are not offered in the mobile app.
               </Text>
 
               <View style={styles.totals}>
@@ -324,19 +314,6 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   actionText: { fontWeight: "700", color: "#0F172A" },
-  actionDisabled: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#F1F5F9",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  actionDisabledText: { fontWeight: "700", color: "#94A3B8" },
   policyNote: {
     fontSize: 12,
     lineHeight: 17,

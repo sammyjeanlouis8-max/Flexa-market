@@ -23,7 +23,7 @@ import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES, isStripeOnlySale } from 
 import ListingCard from "@/components/ListingCard";
 import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { apiFetch } from "@/lib/api";
-import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { areNativeDigitalPurchasesDisabled } from "@/lib/androidPurchasePolicy";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import sellPreviewCar from "@/assets/sell-preview-car.webp";
@@ -151,7 +151,7 @@ function getStorageUrl(objectPath: string): string {
 }
 
 export default function Sell() {
-  const purchasesDisabled = isAndroidApp();
+  const purchasesDisabled = areNativeDigitalPurchasesDisabled();
   const { user, token, isLoading: authLoading } = useAuth();
   const { isRestricted, showRestrictionToast } = useRestriction();
   const userRole = (user as any)?.role;

@@ -483,15 +483,15 @@ export default function CheckoutScreen() {
               </Pressable>
             ) : (
               <Text style={styles.hint}>
-                Stripe card checkout is available for single-item purchases and
-                wallet top-ups — not multi-item cart checkout.
+                Stripe card checkout is available for single-item physical
+                purchases — not multi-item cart checkout.
               </Text>
             )}
             {walletAvailable != null && walletAvailable < estimatedTotal ? (
               <Text style={styles.warn}>
                 Balance may be insufficient for the estimated total ($
-                {estimatedTotal.toFixed(2)}). Top up your wallet if checkout
-                fails.
+                {estimatedTotal.toFixed(2)}). Use card checkout for a single
+                item, or reduce your cart.
               </Text>
             ) : null}
           </View>

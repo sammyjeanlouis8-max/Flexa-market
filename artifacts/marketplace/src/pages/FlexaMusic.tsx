@@ -20,7 +20,7 @@ import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useMusicUpload } from "@/contexts/MusicUpload";
 import { gAudio, getMusicState, patchMusicState, subscribeMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicRequestPause, musicRequestPlay, musicSeek, musicToggleShuffle, musicCycleRepeat, musicSetSleepTimer, clearSleepTimer, musicSetPlaybackRate, musicShareTrack, type MusicRepeatMode } from "@/lib/musicStore";
-import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { areNativeDigitalPurchasesDisabled } from "@/lib/androidPurchasePolicy";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { musicListeningIsFree, musicUploadsAreFree, MUSIC_COMMERCE_ENABLED } from "@/lib/musicCommerce";
 import { MUSIC_RECENTLY_PLAYED_KEY } from "@/lib/musicTheme";
@@ -206,7 +206,7 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
   const { t } = useTranslation();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isOwner = !!(currentUserId && track.artist_user_id && currentUserId === track.artist_user_id);
-  const purchasesDisabled = isAndroidApp();
+  const purchasesDisabled = areNativeDigitalPurchasesDisabled();
 
   const isPaidLocked = track.monetization_type === "sale" && !canDownload;
 
@@ -592,7 +592,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
   const [errMsg,        setErrMsg]        = useState("");
   const [walletBal,     setWalletBal]     = useState<number | null>(null);
   const { t } = useTranslation();
-  const purchasesDisabled = isAndroidApp();
+  const purchasesDisabled = areNativeDigitalPurchasesDisabled();
 
   const getToken = () =>
     localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
@@ -790,7 +790,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
   const [errMsg,  setErrMsg]  = useState("");
   const [walletBal, setWalletBal] = useState<number | null>(null);
   const { t } = useTranslation();
-  const purchasesDisabled = isAndroidApp();
+  const purchasesDisabled = areNativeDigitalPurchasesDisabled();
 
   // Fetch wallet balance on mount so we can show it in the FM button
   useEffect(() => {
@@ -1650,7 +1650,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
                           <span>{fmtPlays(track.play_count)}</span>
                         </div>
                       </div>
-                      {MUSIC_COMMERCE_ENABLED && !isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                      {MUSIC_COMMERCE_ENABLED && !areNativeDigitalPurchasesDisabled() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
                         <span className="text-[#00D9FF] text-xs font-bold shrink-0">${Number(track.price_usd).toFixed(2)}</span>
                       )}
                       {MUSIC_COMMERCE_ENABLED && track.monetization_type === "sale" && purchasedIds.has(track.id) && (
@@ -1690,7 +1690,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className={`text-sm font-semibold truncate ${track.id === currentTrackId ? "text-[#00D9FF]" : "text-white"}`}>{track.title}</p>
-                          {MUSIC_COMMERCE_ENABLED && !isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                          {MUSIC_COMMERCE_ENABLED && !areNativeDigitalPurchasesDisabled() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
                             <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
                               style={{ background: "rgba(0,217,255,0.15)", color: "#00D9FF" }}>
                               ${Number(track.price_usd).toFixed(2)}
@@ -2456,7 +2456,7 @@ function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, c
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className={`text-sm font-semibold truncate ${isActive ? "text-violet-400" : "text-white"}`}>{track.title}</p>
-                      {MUSIC_COMMERCE_ENABLED && !isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                      {MUSIC_COMMERCE_ENABLED && !areNativeDigitalPurchasesDisabled() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
                         <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
                           style={{ background: "rgba(0,217,255,0.15)", color: "#00D9FF" }}>
                           ${Number(track.price_usd).toFixed(2)}

@@ -7,15 +7,19 @@ import {
   androidDigitalPurchaseGuard,
   isAndroidNativeApp,
   isDigitalPurchaseInitiation,
+  isIosNativeApp,
+  isStoreNativeApp,
 } from "../middlewares/androidDigitalPurchaseGuard";
 
 const NEW_APP_UA = "FlexaMarketAndroid/1.0";
+const NEW_IOS_APP_UA = "FlexaMarketiOS/1.0";
 const LEGACY_WEBVIEW_UA =
   "Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230805.001; wv) AppleWebKit/537.36 Version/4.0 Chrome/117.0 Mobile Safari/537.36";
 const ANDROID_CHROME_UA =
   "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/122.0 Mobile Safari/537.36";
-const IOS_UA =
+const IOS_SAFARI_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
+const IOS_RN_UA = "ReactNative iPhone";
 
 const protectedRoutes: Array<[string, string]> = [
   ["POST", "/api/subscription/checkout"],
@@ -60,7 +64,7 @@ const allowedRoutes: Array<[string, string]> = [
   ["POST", "/api/wallet/admin/stripe-retry"],
   ["POST", "/api/wallet/topup/confirm"],
   // Redeeming a prepaid code settles an already-paid purchase; it must not
-  // strand value merely because redemption happens in the Android app.
+  // strand value merely because redemption happens in the store app.
   ["POST", "/api/wallet/redeem-card"],
   ["POST", "/api/delivery/42/tip"],
   ["POST", "/api/transactions/42/cancel"],
@@ -95,12 +99,37 @@ describe("Android native detection contract", () => {
     expect(isAndroidNativeApp(ua)).toBe(true);
   });
 
-  it.each([ANDROID_CHROME_UA, IOS_UA, "ReactNative iPhone", undefined])(
-    "does not classify normal web/iOS UA %s",
+  it.each([ANDROID_CHROME_UA, IOS_SAFARI_UA, IOS_RN_UA, undefined])(
+    "does not classify normal web/iOS UA %s as Android",
     (ua) => {
       expect(isAndroidNativeApp(ua)).toBe(false);
     },
   );
+});
+
+describe("iOS native detection contract", () => {
+  it.each([
+    NEW_IOS_APP_UA,
+    "FlexaMarketiOS/2.1 (iPhone)",
+    IOS_RN_UA,
+    "Something __flexaPlatform=ios Something",
+  ])("detects native iOS UA %s", (ua) => {
+    expect(isIosNativeApp(ua)).toBe(true);
+  });
+
+  it.each([IOS_SAFARI_UA, ANDROID_CHROME_UA, NEW_APP_UA, undefined])(
+    "does not classify Safari/Android/web UA %s as iOS native",
+    (ua) => {
+      expect(isIosNativeApp(ua)).toBe(false);
+    },
+  );
+
+  it("treats both store binaries as store-native", () => {
+    expect(isStoreNativeApp(NEW_APP_UA)).toBe(true);
+    expect(isStoreNativeApp(NEW_IOS_APP_UA)).toBe(true);
+    expect(isStoreNativeApp(IOS_SAFARI_UA)).toBe(false);
+    expect(isStoreNativeApp(ANDROID_CHROME_UA)).toBe(false);
+  });
 });
 
 describe("digital purchase route matrix", () => {
@@ -135,8 +164,18 @@ describe("guard execution before charging handlers", () => {
     expect(result.next).not.toHaveBeenCalled();
   });
 
-  it.each([ANDROID_CHROME_UA, IOS_UA])(
-    "leaves protected routes unchanged for %s",
+  it.each(protectedRoutes)("blocks iOS app %s %s without calling next", (method, path) => {
+    const result = invokeGuard(NEW_IOS_APP_UA, method, `${path}?source=app`);
+    expect(result.status).toHaveBeenCalledWith(403);
+    expect(result.json).toHaveBeenCalledWith({
+      error: "Digital purchases are unavailable in the iOS app.",
+      code: ANDROID_DIGITAL_PURCHASE_UNAVAILABLE,
+    });
+    expect(result.next).not.toHaveBeenCalled();
+  });
+
+  it.each([ANDROID_CHROME_UA, IOS_SAFARI_UA])(
+    "leaves protected routes unchanged for browser %s",
     (ua) => {
       const result = invokeGuard(ua, "POST", "/api/subscription/checkout");
       expect(result.status).not.toHaveBeenCalled();
@@ -146,6 +185,12 @@ describe("guard execution before charging handlers", () => {
 
   it.each(allowedRoutes)("allows Android %s %s", (method, path) => {
     const result = invokeGuard(NEW_APP_UA, method, path);
+    expect(result.status).not.toHaveBeenCalled();
+    expect(result.next).toHaveBeenCalledOnce();
+  });
+
+  it.each(allowedRoutes)("allows iOS app %s %s", (method, path) => {
+    const result = invokeGuard(NEW_IOS_APP_UA, method, path);
     expect(result.status).not.toHaveBeenCalled();
     expect(result.next).toHaveBeenCalledOnce();
   });

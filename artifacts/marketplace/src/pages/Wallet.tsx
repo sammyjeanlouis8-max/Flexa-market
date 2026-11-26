@@ -15,7 +15,7 @@ import {
   Upload, ImageIcon, CheckCircle, MapPin, KeyRound, DollarSign, Zap, RefreshCw, ShieldCheck, Truck,
   MessageCircle, Crown, LayoutGrid, BarChart3, Plus,
 } from "lucide-react";
-import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { areNativeDigitalPurchasesDisabled } from "@/lib/androidPurchasePolicy";
 import { preloadAgentChat, prepareAgentChat } from "@/lib/agentChat";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { HaitiCheckoutError, initiateHaitiCheckout } from "@/lib/haitiCheckout";
@@ -246,7 +246,7 @@ export default function WalletPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const purchasesDisabled = isAndroidApp();
+  const purchasesDisabled = areNativeDigitalPurchasesDisabled();
   const isHaiti = user?.country === "Haiti";
   const isDominican = user?.country === "Dominican Republic";
   const isDeliveryCountry = isHaiti || isDominican;

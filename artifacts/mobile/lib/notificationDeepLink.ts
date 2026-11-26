@@ -54,12 +54,11 @@ export function pathFromNotificationData(
   if (screen === "videos" || screen === "promo") {
     const profileId = pick("userId", "creatorId", "profileId", "id");
     if (profileId && (screen === "videos" || data.videoProfile)) {
-      return `/videos`; // native videos surface is placeholder; SPA owns /videos/profile/:id
+      return `/videos`;
     }
     return "/videos";
   }
   if (screen === "video_profile" || screen === "videoprofile") {
-    // Deep-link identity matches marketplace SPA; Expo videos UI remains placeholder.
     return "/videos";
   }
   if (screen === "chatbot") return "/chatbot";
@@ -109,7 +108,6 @@ export function pathFromNotificationData(
       if (/\/saved|\/favorites/.test(path)) return "/favorites";
       if (/\/notifications/.test(path)) return "/notifications";
       if (/\/chatbot/.test(path)) return "/chatbot";
-      // Same /videos/profile/:id identity as marketplace SPA (Expo videos is placeholder).
       if (/\/videos\/profile\/\d+/.test(path)) return "/videos";
       if (/\/videos/.test(path)) return "/videos";
     } catch {

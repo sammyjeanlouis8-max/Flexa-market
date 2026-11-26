@@ -67,6 +67,7 @@ export default function RootLayout() {
                       <Stack.Screen name="my-boosts" />
                       <Stack.Screen name="boost" />
                       <Stack.Screen name="videos" />
+                      <Stack.Screen name="videos/watch" />
                       <Stack.Screen name="kyc" />
                       <Stack.Screen name="subscription" />
                       <Stack.Screen name="admin" />

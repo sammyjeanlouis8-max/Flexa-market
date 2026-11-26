@@ -10,21 +10,23 @@
   "verification": {
     "phase1_2_intact": true,
     "typecheck": "pass",
-    "focusedTestsPass": 19,
-    "placeholderRouteCount": 12,
-    "fullyNativeRouteCount": 30,
+    "focusedTestsPass": 20,
+    "placeholderRouteCount": 9,
+    "fullyNativeRouteCount": 33,
     "partiallyNativeRouteCount": 5,
     "notes": [
       "Phase 3B: Wallet, Addresses, Edit Profile, Stripe single-item, Language picker native.",
-      "eSIM marked DEFERRED/BLOCKED \u2014 no fake catalog.",
+      "eSIM marked DEFERRED/BLOCKED — no fake catalog.",
       "Wallet top-up remains BLOCKED by Android digital purchase guard.",
       "Stripe physical checkout opens hosted URL via expo-web-browser (not WebView shell).",
       "Phase 3C: Flexa Chat inbox + thread + smart notification deep-links.",
-      "Realtime via socket.io /api/socket.io with HTTP polling fallback."
+      "Realtime via socket.io /api/socket.io with HTTP polling fallback.",
+      "Phase 3E: Native Video Discover + watch (expo-av), My Boosts, Boost wizard; paid boost remains BLOCKED on store apps."
     ],
     "phase3b": true,
     "phase3c": true,
-    "phase3d": true
+    "phase3d": true,
+    "phase3e": true
   },
   "statusLegend": {
     "FULLY_NATIVE": "Real RN UI + API wiring; not NativePlaceholder; not WebView for the feature",
@@ -93,9 +95,9 @@
     }
   ],
   "summaryCounts": {
-    "FULLY_NATIVE": 30,
+    "FULLY_NATIVE": 33,
     "PARTIALLY_NATIVE": 5,
-    "PLACEHOLDER": 12,
+    "PLACEHOLDER": 9,
     "MISSING": 30,
     "BLOCKED": 5
   },
@@ -1036,11 +1038,9 @@
         "/api/boost/*",
         "/api/booster/*"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "campaign create UI"
-      ],
-      "work": "Paid boost BLOCKED on Android; free/admin modes may work"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native duration wizard; paid initiate blocked on store apps (see boost-paid)"
     },
     {
       "id": "boost-paid",
@@ -1066,13 +1066,12 @@
       "nativeRoute": "/my-boosts",
       "role": "seller",
       "apis": [
-        "/api/boost-analytics*"
+        "/api/boost/my-active",
+        "/api/boost/:id/cancel"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "analytics UI"
-      ],
-      "work": "After Boost"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native My Boosts list + cancel; create CTA blocked on store apps"
     },
     {
       "id": "promo-videos",
@@ -1084,11 +1083,9 @@
       "apis": [
         "/api/videos/feed"
       ],
-      "status": "PLACEHOLDER",
-      "missing": [
-        "TikTok-style feed"
-      ],
-      "work": "Medium priority"
+      "status": "FULLY_NATIVE",
+      "missing": [],
+      "work": "Native discover grid + expo-av watch player"
     },
     {
       "id": "drafts",
@@ -1145,7 +1142,7 @@
       "domain": "driver",
       "webRoute": "/delivery/apply",
       "nativeRoute": "/driver-apply",
-      "role": "buyer\u2192driver",
+      "role": "buyer→driver",
       "apis": [
         "/api/delivery/apply"
       ],
@@ -1414,7 +1411,7 @@
       "missing": [
         "provider integration"
       ],
-      "work": "DEFERRED \u2014 honest /esim screen; no fake plans/QR; preserve backend until ready"
+      "work": "DEFERRED — honest /esim screen; no fake plans/QR; preserve backend until ready"
     },
     {
       "id": "smart-notifications",

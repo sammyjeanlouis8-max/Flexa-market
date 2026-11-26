@@ -10,9 +10,12 @@ import { useTabContentPaddingBottom } from "@/hooks/useTabContentInsets";
 const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap }[] = [
   { label: "Flexa Music", href: "/(tabs)/music", icon: "music" },
   { label: "Edit profile", href: "/edit-profile", icon: "edit-2" },
+  { label: "Identity verification", href: "/kyc", icon: "shield" },
+  { label: "Subscription", href: "/subscription", icon: "award" },
   { label: "My orders", href: "/orders", icon: "package" },
   { label: "Seller sales", href: "/sales", icon: "bar-chart-2" },
   { label: "My listings", href: "/my-listings", icon: "grid" },
+  { label: "My boosts", href: "/my-boosts", icon: "zap" },
   { label: "Private offers", href: "/offers", icon: "tag" },
   { label: "Favorites", href: "/favorites", icon: "heart" },
   { label: "Wallet", href: "/wallet", icon: "credit-card" },
@@ -21,6 +24,7 @@ const LINKS: { label: string; href: string; icon: keyof typeof Feather.glyphMap 
   { label: "Notifications", href: "/notifications", icon: "bell" },
   { label: "Settings", href: "/settings", icon: "settings" },
   { label: "Delivery tracking", href: "/delivery-tracking", icon: "map" },
+  { label: "Driver apply", href: "/driver-apply", icon: "truck" },
 ];
 
 export default function ProfileTab() {

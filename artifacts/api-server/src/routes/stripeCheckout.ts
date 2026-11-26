@@ -1,4 +1,5 @@
 import { contactOnlyError, hasContactOnlyListing } from "../lib/contactOnlyCheckout";
+import { recordListingCheckout, settleListingCheckout } from "../lib/listingCheckoutOrder";
 import { Router } from "express";
 import { db, usersTable, transactionsTable, listingsTable, promoWalletTable, walletTransactionsTable, boostsTable, notificationsTable, sellerPayoutAccountsTable, offersTable } from "@workspace/db";
 import { sendPushToUser } from "../lib/push";
@@ -141,14 +142,6 @@ const BASE_URL = (() => {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
   return domain ? `https://${domain}` : "https://flexamarket.com";
 })();
-
-function decrementStock(listing: typeof listingsTable.$inferSelect): Partial<typeof listingsTable.$inferInsert> {
-  if (listing.stockQuantity === null || listing.stockQuantity === undefined) {
-    return { status: "sold" };
-  }
-  const next = listing.stockQuantity - 1;
-  return next > 0 ? { stockQuantity: next } : { stockQuantity: 0, status: "sold" };
-}
 
 const DEFAULT_COMMISSION = 0.07; // 7%
 
@@ -358,7 +351,7 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
     });
 
     // Create a pending transaction record — amount = listing price (seller side)
-    await db.insert(transactionsTable).values({
+    await recordListingCheckout(session.id, {
       userId: req.userId,
       listingId: listing.id,
       requiresStripePayout,
@@ -381,7 +374,6 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       buyerTotal: buyerTotalUsd,
       listingCurrency,
       listingPriceOriginal: listing.price,
-      stripeCheckoutSessionId: session.id,
       listingCountry: listing.country ?? null,
       shippingName: shippingName ?? null,
       shippingPhone: shippingPhone ?? null,
@@ -757,6 +749,7 @@ async function handleStripeEvent(event: Stripe.Event): Promise<void> {
   logger.info({ type: event.type }, "Processing Stripe event");
 
   switch (event.type) {
+    case "checkout.session.async_payment_succeeded":
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       await handleCheckoutCompleted(session);
@@ -1360,8 +1353,12 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
   // ── Standard listing purchase ────────────────────────────────────────────
   const listingId = meta.listingId ? Number(meta.listingId) : null;
   const [pendingPurchase] = await db.select().from(transactionsTable)
-    .where(eq(transactionsTable.stripeCheckoutSessionId, sessionId));
+    .where(eq(transactionsTable.stripeCheckoutSessionId, sessionId))
+    .orderBy(transactionsTable.id).limit(1);
   if (!pendingPurchase) {
+    if (listingId && meta.buyerUserId) {
+      throw new Error("Paid listing session is awaiting its local order");
+    }
     logger.warn({ sessionId }, "Stripe standard order: transaction not found");
     return;
   }
@@ -1386,37 +1383,8 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
   // Update pending transaction → completed.
   // WHERE paymentStatus='pending' is the idempotency gate: duplicate webhook retries
   // find the row already 'completed' so .returning() yields nothing → early return.
-  const [updatedTx] = await db
-    .update(transactionsTable)
-    .set({
-      paymentStatus: "completed",
-      orderStatus: "ready_to_ship",
-      stripePaymentIntentId: paymentIntentId,
-      paymentRef: sessionId,
-      stripeVerifiedAmountCents: session.amount_total ?? 0,
-      stripeVerifiedStatus: session.payment_status === "paid" ? "paid" : session.payment_status,
-      stripeVerifiedCurrency: (session.currency ?? "usd").toUpperCase(),
-      stripeVerifiedAt: new Date(),
-    })
-    .where(and(
-      eq(transactionsTable.stripeCheckoutSessionId, sessionId),
-      eq(transactionsTable.paymentStatus, "pending"),
-    ))
-    .returning();
-
-  if (!updatedTx) {
-    logger.warn({ sessionId }, "Stripe standard order: transaction already processed or not found — skipping (idempotent)");
-    return;
-  }
-
-  // Decrement stock (or mark sold if single-item / stock exhausted)
-  if (listingId) {
-    const [existing] = await db.select().from(listingsTable).where(eq(listingsTable.id, listingId));
-    if (existing) {
-      const update = decrementStock(existing);
-      await db.update(listingsTable).set(update).where(eq(listingsTable.id, listingId));
-    }
-  }
+  const updatedTx = await settleListingCheckout(pendingPurchase.id, listingId, session, paymentIntentId);
+  if (!updatedTx) return;
 
   // Notify buyer: order confirmed
   const buyerUserId = meta.buyerUserId ? Number(meta.buyerUserId) : null;
@@ -1511,7 +1479,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
             buyerName: buyerUser.name ?? "Achetè",
             orderId:   updatedTx.id,
             listingTitle,
-            amount:    Number(updatedTx.amount ?? 0),
+            amount:    Number(updatedTx.buyerTotal ?? updatedTx.amount),
             sellerName: sellerUser?.name ?? "Vandè",
           });
           await sendEmail({ to: buyerUser.email, ...tpl });

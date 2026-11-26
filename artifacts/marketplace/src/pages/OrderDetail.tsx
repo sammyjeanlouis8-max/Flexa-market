@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRoute, useLocation } from "wouter";
 import {
   Printer, ChevronLeft, Truck, CheckCircle2, Package, Clock, MapPin,
-  ExternalLink, ShieldCheck, ChevronDown, ChevronUp, RotateCcw, AlertTriangle, X, Copy, Lock, XCircle, Bus, Footprints, Info, Pencil, Phone,
+  ExternalLink, ShieldCheck, ChevronDown, ChevronUp, RotateCcw, AlertTriangle, X, Copy, Lock, XCircle, Bus, Footprints, Info, Pencil, Phone, Flag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -2094,9 +2094,20 @@ export default function OrderDetail() {
                     <p className="text-xs text-muted-foreground mt-1">
                       Ou gen <strong className="text-amber-700 dark:text-amber-400">{daysLeft} jou</strong> pou mande retou si pwodui a domaje, pa kòm deskripsyon, oswa move atik.
                     </p>
-                    <Button size="sm" variant="outline" className="mt-3 h-8 text-xs border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/40 gap-1.5" onClick={() => setShowReturnDialog(true)}>
-                      <RotateCcw className="h-3 w-3" /> Mande Retou
-                    </Button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" className="h-8 text-xs border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/40 gap-1.5" onClick={() => setShowReturnDialog(true)}>
+                        <RotateCcw className="h-3 w-3" /> Mande Retou
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs gap-1.5"
+                        data-testid="order-report-wrong-item"
+                        onClick={() => setLocation(`/support?topic=wrong_item&orderId=${order.orderId}`)}
+                      >
+                        <Flag className="h-3 w-3" /> Rapòte move atik
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>

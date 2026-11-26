@@ -8,6 +8,7 @@ import {
   notificationsTable,
   adminLogsTable,
   transactionsTable,
+  stripeRefundLedgerTable,
   listingsTable,
   supportKnowledgeTable,
 } from "@workspace/db";
@@ -320,6 +321,21 @@ router.post("/support/threads", requireAuth, async (req, res): Promise<void> => 
   const { subject, message } = parsed;
   const now = new Date();
 
+  const rawOrderId = Number((req.body as any)?.relatedOrderId ?? (req.body as any)?.orderId);
+  let linkedOrderId: number | null =
+    Number.isFinite(rawOrderId) && rawOrderId > 0 ? rawOrderId : null;
+  if (linkedOrderId != null) {
+    const [owned] = await db
+      .select({ id: transactionsTable.id })
+      .from(transactionsTable)
+      .where(and(eq(transactionsTable.id, linkedOrderId), eq(transactionsTable.userId, req.userId!)))
+      .limit(1);
+    if (!owned) {
+      res.status(403).json({ error: "Order not found for this account" });
+      return;
+    }
+  }
+
   const [sender] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
   const classified = classifySupportTicket({ subject, message });
   const ops = await getSupportOpsSnapshot(classified.priority);
@@ -341,7 +357,7 @@ router.post("/support/threads", requireAuth, async (req, res): Promise<void> => 
       assignedAdminId: assignedAdminId ?? null,
       estimatedResponseMinutes: ops.eta.minutesMax,
       estimatedResponseLabel: ops.eta.label,
-      relatedOrderId: classified.relatedOrderHint,
+      relatedOrderId: linkedOrderId ?? classified.relatedOrderHint,
     } as any)
     .returning();
 
@@ -1120,8 +1136,9 @@ router.get("/support/threads/:id/customer", requireRole("support"), async (req, 
   const orders = await db
     .select({
       id: transactionsTable.id,
-      status: transactionsTable.status,
-      amount: transactionsTable.amount,
+      status: transactionsTable.orderStatus,
+      amount: transactionsTable.buyerTotal,
+      fallbackAmount: transactionsTable.amount,
       createdAt: transactionsTable.createdAt,
       listingTitle: listingsTable.title,
       listingId: listingsTable.id,
@@ -1160,7 +1177,7 @@ router.get("/support/threads/:id/customer", requireRole("support"), async (req, 
       id: o.id,
       orderRef: `#FM-${String(o.id).padStart(6, "0")}`,
       status: o.status,
-      total: o.amount,
+      total: o.amount ?? o.fallbackAmount,
       listingTitle: o.listingTitle ?? null,
       listingId: o.listingId ?? null,
       createdAt: o.createdAt?.toISOString?.() ?? null,
@@ -1181,12 +1198,19 @@ router.get("/support/orders/:orderId", requireRole("support"), async (req, res):
   const [order] = await db
     .select({
       id: transactionsTable.id,
-      status: transactionsTable.status,
+      paymentStatus: transactionsTable.paymentStatus,
+      orderStatus: transactionsTable.orderStatus,
       amount: transactionsTable.amount,
+      buyerTotal: transactionsTable.buyerTotal,
       userId: transactionsTable.userId,
       sellerUserId: transactionsTable.sellerUserId,
+      deliveredAt: transactionsTable.deliveredAt,
+      buyerConfirmedAt: transactionsTable.buyerConfirmedAt,
+      stripePaymentIntentId: transactionsTable.stripePaymentIntentId,
+      stripeCheckoutSessionId: transactionsTable.stripeCheckoutSessionId,
       createdAt: transactionsTable.createdAt,
       listingTitle: listingsTable.title,
+      listingId: listingsTable.id,
     })
     .from(transactionsTable)
     .leftJoin(listingsTable, eq(transactionsTable.listingId, listingsTable.id))
@@ -1198,12 +1222,59 @@ router.get("/support/orders/:orderId", requireRole("support"), async (req, res):
     res.status(403).json({ error: "Order does not belong to this customer" });
     return;
   }
+
+  const refunds = await db
+    .select({
+      id: stripeRefundLedgerTable.id,
+      amountCents: stripeRefundLedgerTable.amountCents,
+      currency: stripeRefundLedgerTable.currency,
+      providerStatus: stripeRefundLedgerTable.providerStatus,
+      stripeRefundId: stripeRefundLedgerTable.stripeRefundId,
+      createdAt: stripeRefundLedgerTable.createdAt,
+    })
+    .from(stripeRefundLedgerTable)
+    .where(eq(stripeRefundLedgerTable.transactionId, orderId))
+    .orderBy(desc(stripeRefundLedgerTable.createdAt))
+    .limit(10);
+
+  let returnStatus: string | null = null;
+  let returnReason: string | null = null;
+  try {
+    const retRows = await db.execute(sql`
+      SELECT status, reason FROM order_returns
+      WHERE order_id = ${orderId}
+      ORDER BY created_at DESC LIMIT 1
+    `);
+    const row = (retRows as any).rows?.[0] as { status?: string; reason?: string } | undefined;
+    returnStatus = row?.status ?? null;
+    returnReason = row?.reason ?? null;
+  } catch {
+    /* order_returns may be unavailable in some envs */
+  }
+
   res.json({
     id: order.id,
     orderRef: `#FM-${String(order.id).padStart(6, "0")}`,
-    status: order.status,
-    total: order.amount,
+    status: order.orderStatus,
+    paymentStatus: order.paymentStatus,
+    orderStatus: order.orderStatus,
+    total: order.buyerTotal ?? order.amount,
     listingTitle: order.listingTitle ?? null,
+    listingId: order.listingId ?? null,
+    deliveredAt: order.deliveredAt?.toISOString?.() ?? null,
+    buyerConfirmedAt: order.buyerConfirmedAt?.toISOString?.() ?? null,
+    stripePaymentIntentId: order.stripePaymentIntentId ?? null,
+    stripeCheckoutSessionId: order.stripeCheckoutSessionId ?? null,
+    returnStatus,
+    returnReason,
+    refunds: refunds.map((r) => ({
+      id: r.id,
+      amountCents: r.amountCents,
+      currency: r.currency,
+      providerStatus: r.providerStatus,
+      stripeRefundId: r.stripeRefundId,
+      createdAt: r.createdAt?.toISOString?.() ?? null,
+    })),
     createdAt: order.createdAt?.toISOString?.() ?? null,
     deepLink: `/orders/${order.id}`,
   });

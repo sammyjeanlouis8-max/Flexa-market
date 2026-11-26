@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   ChevronLeft, MessageSquare, Send, Plus, Lock,
   Check, CheckCheck, Bot, Loader2, CheckCircle2, Star,
-  Headphones,
+  Headphones, Paperclip,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useSocket } from "@/hooks/useSocket";
@@ -210,9 +210,11 @@ function getBotResponse(input: string, failCount: number): BotResult {
 interface BotChatViewProps {
   user: { id: number; name?: string | null };
   onEscalate: (threadId: number) => void;
+  relatedOrderId?: number | null;
+  initialTopic?: string | null;
 }
 
-function BotChatView({ user, onEscalate }: BotChatViewProps) {
+function BotChatView({ user, onEscalate, relatedOrderId = null, initialTopic = null }: BotChatViewProps) {
   const [msgs, setMsgs] = useState<BotMsg[]>([]);
   const [quickReplies, setQuickReplies] = useState<QuickReply[] | null>(null);
   const [inputText, setInputText] = useState("");
@@ -220,7 +222,7 @@ function BotChatView({ user, onEscalate }: BotChatViewProps) {
   const [failCount, setFailCount] = useState(0);
   const [escalating, setEscalating] = useState(false);
   const [escalated, setEscalated] = useState(false);
-  const [topic, setTopic] = useState("Sipò jeneral");
+  const [topic, setTopic] = useState(initialTopic && initialTopic.length > 3 ? initialTopic : "Sipò jeneral");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const addBotMsg = useCallback((content: string, qr?: QuickReply[]) => {
@@ -269,6 +271,7 @@ function BotChatView({ user, onEscalate }: BotChatViewProps) {
           subject: topic.length > 3 ? topic : "Sipò jeneral",
           message: lastUserMsg,
           botHistory,
+          ...(relatedOrderId ? { relatedOrderId } : {}),
         }),
       });
       const ref = r.ticketRef ? `#${r.ticketRef}` : `#${r.id}`;
@@ -276,6 +279,7 @@ function BotChatView({ user, onEscalate }: BotChatViewProps) {
       addBotMsg(
         `Your support request has been received.\n\nTicket: ${ref}\nStatus: Pending Review\nEstimated Response: ${eta}` +
           (typeof r.agentsOnline === "number" ? `\nAgents available: ${r.agentsOnline}` : "") +
+          (relatedOrderId ? `\nLinked order: #FM-${String(relatedOrderId).padStart(6, "0")}` : "") +
           `\n\nOur support team will review your request. Opening your FlexaBot ticket…`,
       );
       setEscalated(true);
@@ -284,7 +288,7 @@ function BotChatView({ user, onEscalate }: BotChatViewProps) {
       addBotMsg("Something went wrong. Please try again in a few seconds.");
       setEscalating(false);
     }
-  }, [topic, addBotMsg, onEscalate]);
+  }, [topic, addBotMsg, onEscalate, relatedOrderId]);
 
   const handleQuickReply = (qr: QuickReply) => {
     if (escalating || escalated) return;
@@ -493,6 +497,17 @@ function BotChatView({ user, onEscalate }: BotChatViewProps) {
 
 // ── Support Main Page ──────────────────────────────────────────────────────────
 
+function readSupportQuery() {
+  if (typeof window === "undefined") return { orderId: null as number | null, topic: null as string | null };
+  const params = new URLSearchParams(window.location.search);
+  const rawOrder = Number(params.get("orderId") || params.get("relatedOrderId") || "");
+  const topic = params.get("topic") || null;
+  return {
+    orderId: Number.isFinite(rawOrder) && rawOrder > 0 ? rawOrder : null,
+    topic: topic && topic.trim() ? topic.trim() : null,
+  };
+}
+
 export default function Support() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -502,21 +517,32 @@ export default function Support() {
 
   const [matchDetail, paramsDetail] = useRoute<{ id: string }>("/support/:id");
   const routeId = matchDetail ? Number(paramsDetail?.id) : null;
+  const queryCtx = readSupportQuery();
+  const relatedOrderId = queryCtx.orderId;
+  const queryTopic = queryCtx.topic
+    ? (queryCtx.topic === "delivery"
+      ? "🚚 Livrezon"
+      : queryCtx.topic === "wrong_item"
+        ? "⚠️ Move atik resevwa"
+        : queryCtx.topic)
+    : null;
 
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeId, setActiveIdState] = useState<number | null>(
     routeId && Number.isFinite(routeId) ? routeId : null,
   );
-  const [showBot, setShowBot] = useState(false);
+  const [showBot, setShowBot] = useState(() => !!(relatedOrderId || queryTopic) && !(routeId && Number.isFinite(routeId)));
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [ratingBusy, setRatingBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typingAdmin, setTypingAdmin] = useState(false);
   const typingTimeout = useRef<NodeJS.Timeout | null>(null);
   const myTypingTimeout = useRef<NodeJS.Timeout | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const setActiveId = useCallback((id: number | null) => {
     setActiveIdState(id);
@@ -701,7 +727,60 @@ export default function Support() {
   const openBot = () => {
     setActiveIdState(null);
     setShowBot(true);
-    setLocation("/support");
+    const qs = relatedOrderId
+      ? `?orderId=${relatedOrderId}${queryTopic ? `&topic=${encodeURIComponent(queryTopic)}` : ""}`
+      : "";
+    setLocation(`/support${qs}`);
+  };
+
+  const uploadAttachment = async (file: File) => {
+    if (!activeId || !user) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem("flexamarket_token");
+      const req = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: file.name,
+          size: file.size,
+          contentType: file.type || "application/octet-stream",
+        }),
+      });
+      if (!req.ok) throw new Error("Upload request failed");
+      const { uploadURL, objectPath } = await req.json();
+      const put = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!put.ok) throw new Error("Upload failed");
+      const putJson = await put.json().catch(() => ({}));
+      const mediaUrl = putJson?.url || putJson?.objectPath || objectPath;
+      const messageType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "document";
+      const msg = await apiFetch<Message>(`/api/support/threads/${activeId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({
+          content: file.name,
+          messageType,
+          mediaUrl,
+          mediaName: file.name,
+          mediaMime: file.type || null,
+          mediaSize: file.size,
+        }),
+      });
+      setDetail((prev) => {
+        if (!prev) return prev;
+        if (prev.messages.some((m) => m.id === msg.id)) return prev;
+        return { ...prev, messages: [...prev.messages, msg] };
+      });
+    } catch (e: any) {
+      setError(e.message ?? "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   if (!user) return (
@@ -745,7 +824,12 @@ export default function Support() {
 
   // ── Shared right-panel content ──────────────────────────────────────────────
   const rightPanel = showBot ? (
-    <BotChatView user={user} onEscalate={handleBotEscalate} />
+    <BotChatView
+      user={user}
+      onEscalate={handleBotEscalate}
+      relatedOrderId={relatedOrderId}
+      initialTopic={queryTopic}
+    />
   ) : activeId && detail ? (
     <>
       {/* Thread detail header */}
@@ -883,19 +967,41 @@ export default function Support() {
       {/* Input */}
       {detail.status !== "closed" ? (
         <div className="flex shrink-0 gap-2 border-t border-slate-200 bg-white px-3 py-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void uploadAttachment(f);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0 rounded-full"
+            disabled={sending || uploading}
+            onClick={() => fileInputRef.current?.click()}
+            data-testid="button-attach-photo"
+            aria-label={t("support.attachPhoto", { defaultValue: "Attach photo" })}
+          >
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+          </Button>
           <Input
             value={text}
             onChange={(e) => { setText(e.target.value); handleTyping(); }}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), send())}
             onBlur={() => { if (activeId && user) socket.emitSupportStopTyping(activeId, user.id); }}
             placeholder={t("support.typeMessage", { defaultValue: "Write a reply…" })}
-            disabled={sending}
+            disabled={sending || uploading}
             className="rounded-full border-slate-200 bg-slate-50 focus-visible:ring-1"
             data-testid="input-reply"
           />
           <Button
             onClick={send}
-            disabled={!text.trim() || sending}
+            disabled={!text.trim() || sending || uploading}
             size="icon"
             className="shrink-0 rounded-full text-white"
             style={{ background: BRAND_GREEN }}

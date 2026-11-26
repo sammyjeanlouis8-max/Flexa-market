@@ -260,8 +260,8 @@ export function orderPlacedBuyerEmail(opts: {
       ${orderCard("Seller", opts.sellerName)}
       ${orderCard("Escrow status", badge("Funds secured", SUCCESS))}
     </table>
-    ${p(`Your funds are held in escrow and will be released only when you confirm delivery. If there is an issue, you can open a return request within 30 days.`, MUTED)}
-    ${ctaButton("View Your Order", "https://flexamarket.com/orders")}
+    ${p(`Your funds are held in escrow and will be released only when you confirm delivery. If there is an issue, open your order to contact support and review the applicable return policy.`, MUTED)}
+    ${ctaButton("View Your Order", `https://flexamarket.com/orders/${opts.orderId}`)}
   `);
   const text = `Order #${opts.orderId} confirmed. Item: ${opts.listingTitle}. Amount: $${opts.amount.toFixed(2)}. Seller: ${opts.sellerName}.`;
   return { subject, html, text };

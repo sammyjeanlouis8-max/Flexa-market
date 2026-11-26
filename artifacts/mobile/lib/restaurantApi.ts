@@ -10,6 +10,8 @@ import type {
   DishModel,
   Restaurant,
   RestaurantFilters,
+  RestaurantOrderRequest,
+  RestaurantOrderStatus,
   UpsertDailyMenuItemInput,
   UpsertDishModelInput,
   DailyScheduleItem,
@@ -76,7 +78,42 @@ function mapRestaurant(row: Record<string, unknown>): Restaurant {
           : null,
     deliveryNotes: (row.deliveryNotes as string | null) ?? (row.delivery_notes as string | null) ?? null,
     isPublished: Boolean(row.isPublished ?? row.is_published),
+    kitchenClosedDate:
+      (row.kitchenClosedDate as string | null) ??
+      (row.kitchen_closed_date as string | null) ??
+      null,
+    kitchenClosedToday: Boolean(row.kitchenClosedToday ?? row.kitchen_closed_today),
     isOpenNow: row.isOpenNow != null ? Boolean(row.isOpenNow) : isOpenNow(schedule),
+    ownerVerified: Boolean(row.ownerVerified ?? row.owner_verified),
+    createdAt: String(row.createdAt ?? row.created_at ?? ""),
+    updatedAt: String(row.updatedAt ?? row.updated_at ?? ""),
+  };
+}
+
+function mapOrder(row: Record<string, unknown>): RestaurantOrderRequest {
+  return {
+    id: Number(row.id),
+    restaurantId: Number(row.restaurantId ?? row.restaurant_id),
+    restaurantName: (row.restaurantName as string | null) ?? null,
+    buyerUserId: Number(row.buyerUserId ?? row.buyer_user_id),
+    ownerUserId: Number(row.ownerUserId ?? row.owner_user_id),
+    status: String(row.status ?? "pending"),
+    fulfillment: String(row.fulfillment ?? "pickup"),
+    items: Array.isArray(row.items) ? (row.items as RestaurantOrderRequest["items"]) : [],
+    note: (row.note as string | null) ?? null,
+    subtotalUsd: Number(row.subtotalUsd ?? row.subtotal_usd ?? 0),
+    deliveryFeeUsd:
+      row.deliveryFeeUsd != null
+        ? Number(row.deliveryFeeUsd)
+        : row.delivery_fee_usd != null
+          ? Number(row.delivery_fee_usd)
+          : null,
+    conversationId:
+      row.conversationId != null
+        ? Number(row.conversationId)
+        : row.conversation_id != null
+          ? Number(row.conversation_id)
+          : null,
     createdAt: String(row.createdAt ?? row.created_at ?? ""),
     updatedAt: String(row.updatedAt ?? row.updated_at ?? ""),
   };
@@ -560,4 +597,97 @@ export async function importDishModelToDailyMenu(
   const data = await readJson(res);
   if (!res.ok) throw new Error(String(data.error || `Import dish failed (${res.status})`));
   return mapDailyItem((data.item ?? data) as Record<string, unknown>);
+}
+
+export async function duplicateYesterdayMenu(
+  restaurantId: number,
+  opts: AuthOpts & { menuDate?: string; fromDate?: string },
+): Promise<{ copied: number; skipped: number; items: DailyMenuItem[] }> {
+  const res = await fetch(
+    `${getApiBase()}/restaurant/${restaurantId}/daily-menu/duplicate-yesterday`,
+    {
+      method: "POST",
+      headers: headers(opts.token),
+      body: JSON.stringify({ menuDate: opts.menuDate, fromDate: opts.fromDate }),
+      signal: opts.signal,
+    },
+  );
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(String(data.error || `Duplicate menu failed (${res.status})`));
+  const rows = Array.isArray(data.items) ? data.items : [];
+  return {
+    copied: Number(data.copied ?? 0),
+    skipped: Number(data.skipped ?? 0),
+    items: rows.map((r) => mapDailyItem(r as Record<string, unknown>)),
+  };
+}
+
+export async function setKitchenClosed(
+  restaurantId: number,
+  closed: boolean,
+  opts: AuthOpts & { date?: string },
+): Promise<Restaurant> {
+  const res = await fetch(`${getApiBase()}/restaurant/${restaurantId}/close-kitchen`, {
+    method: "POST",
+    headers: headers(opts.token),
+    body: JSON.stringify({ closed, date: opts.date }),
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(String(data.error || `Close kitchen failed (${res.status})`));
+  return mapRestaurant((data.restaurant ?? data) as Record<string, unknown>);
+}
+
+export async function createRestaurantOrder(
+  restaurantId: number,
+  input: {
+    fulfillment: "pickup" | "delivery";
+    items: Array<{ dailyMenuItemId: number; qty: number }>;
+    note?: string | null;
+  },
+  opts: AuthOpts,
+): Promise<{ order: RestaurantOrderRequest; conversationId: number }> {
+  const res = await fetch(`${getApiBase()}/restaurant/${restaurantId}/orders`, {
+    method: "POST",
+    headers: headers(opts.token),
+    body: JSON.stringify(input),
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(String(data.error || `Order failed (${res.status})`));
+  const orderRow = (data.order ?? data) as Record<string, unknown>;
+  return {
+    order: mapOrder(orderRow),
+    conversationId: Number(data.conversationId ?? orderRow.conversationId ?? 0),
+  };
+}
+
+export async function fetchMyRestaurantOrders(
+  role: "buyer" | "owner",
+  opts: AuthOpts,
+): Promise<RestaurantOrderRequest[]> {
+  const res = await fetch(`${getApiBase()}/restaurant/orders/mine?role=${role}`, {
+    headers: headers(opts.token),
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(String(data.error || `Orders failed (${res.status})`));
+  const rows = Array.isArray(data.orders) ? data.orders : [];
+  return rows.map((r) => mapOrder(r as Record<string, unknown>));
+}
+
+export async function updateRestaurantOrderStatus(
+  orderId: number,
+  status: RestaurantOrderStatus | string,
+  opts: AuthOpts,
+): Promise<RestaurantOrderRequest> {
+  const res = await fetch(`${getApiBase()}/restaurant/orders/${orderId}`, {
+    method: "PATCH",
+    headers: headers(opts.token),
+    body: JSON.stringify({ status }),
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(String(data.error || `Update order failed (${res.status})`));
+  return mapOrder((data.order ?? data) as Record<string, unknown>);
 }

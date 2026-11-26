@@ -5,7 +5,8 @@ import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { OrderSheet } from "@/components/restaurant/OrderSheet";
 import { RestaurantGate } from "@/components/restaurant/RestaurantGate";
 import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import { useAuth } from "@/context/AuthContext";
@@ -23,12 +24,18 @@ function categoryLabel(c: string): string {
 export default function RestaurantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const restaurantId = Number(id);
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [menu, setMenu] = useState<DailyMenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [orderOpen, setOrderOpen] = useState(false);
   const menuDate = todayYmd();
+  const canOrder =
+    !!restaurant &&
+    restaurant.isOpenNow &&
+    user?.id !== restaurant.ownerUserId &&
+    menu.some((m) => m.available && !m.soldOut);
 
   const load = useCallback(async () => {
     if (!token || !Number.isFinite(restaurantId)) return;
@@ -107,6 +114,12 @@ export default function RestaurantDetailScreen() {
             </View>
 
             {restaurant.bio ? <Text style={styles.bio}>{restaurant.bio}</Text> : null}
+            {restaurant.ownerVerified ? (
+              <View style={styles.verifiedRow}>
+                <Feather name="check-circle" size={14} color={T.open} />
+                <Text style={styles.verifiedText}>Verified kitchen owner</Text>
+              </View>
+            ) : null}
 
             <View style={styles.infoCard}>
               <Row icon="map-pin" text={`${restaurant.addressLine1}, ${restaurant.city}${restaurant.country ? `, ${restaurant.country}` : ""}`} />
@@ -123,6 +136,24 @@ export default function RestaurantDetailScreen() {
                 />
               ) : null}
             </View>
+
+            {canOrder ? (
+              <Pressable
+                style={styles.orderCta}
+                onPress={() => setOrderOpen(true)}
+                testID="restaurant-order-cta"
+              >
+                <Feather name="shopping-bag" size={16} color={T.white} />
+                <Text style={styles.orderCtaText}>Order / Message kitchen</Text>
+                <Feather name="chevron-right" size={16} color="rgba(255,255,255,0.7)" />
+              </Pressable>
+            ) : restaurant.kitchenClosedToday || !restaurant.isOpenNow ? (
+              <View style={styles.closedBanner}>
+                <Text style={styles.closedBannerText}>
+                  Kitchen closed — you can still browse today’s menu.
+                </Text>
+              </View>
+            ) : null}
 
             <Text style={styles.section}>Hours</Text>
             <View style={styles.hoursCard}>
@@ -180,6 +211,14 @@ export default function RestaurantDetailScreen() {
                 </View>
               ))
             )}
+            {restaurant ? (
+              <OrderSheet
+                visible={orderOpen}
+                onClose={() => setOrderOpen(false)}
+                restaurant={restaurant}
+                menu={menu}
+              />
+            ) : null}
           </>
         )}
       </RestaurantShell>
@@ -214,6 +253,31 @@ const styles = StyleSheet.create({
   delivery: { backgroundColor: T.forest },
   badgeText: { color: T.white, fontSize: 11, fontWeight: "800" },
   bio: { fontSize: 14, color: T.muted, lineHeight: 20, marginBottom: 12 },
+  verifiedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  verifiedText: { fontSize: 12, fontWeight: "700", color: T.open },
+  orderCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: T.forest,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 14,
+  },
+  orderCtaText: { flex: 1, color: T.white, fontWeight: "800", fontSize: 14 },
+  closedBanner: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+  },
+  closedBannerText: { color: T.warn, fontWeight: "700", fontSize: 12 },
   infoCard: {
     backgroundColor: T.white,
     borderRadius: 12,

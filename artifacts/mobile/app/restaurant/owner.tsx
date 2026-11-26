@@ -89,6 +89,15 @@ export default function RestaurantOwnerScreen() {
           ) : null}
         </View>
 
+        <Pressable
+          style={styles.ordersLink}
+          onPress={() => router.push("/restaurant/orders" as never)}
+        >
+          <Feather name="shopping-bag" size={16} color={T.forest} />
+          <Text style={styles.ordersLinkText}>Kitchen orders inbox</Text>
+          <Feather name="chevron-right" size={16} color="#94A3B8" />
+        </Pressable>
+
         <Pressable style={styles.addBtn} onPress={onAdd} testID="restaurant-add-cta">
           <Feather name="plus" size={18} color={T.white} />
           <Text style={styles.addBtnText}>Add Restaurant</Text>
@@ -170,6 +179,19 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   verifyBtnText: { color: T.white, fontWeight: "800", fontSize: 12 },
+  ordersLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: T.white,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: T.line,
+  },
+  ordersLinkText: { flex: 1, color: T.forest, fontSize: 14, fontWeight: "800" },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",

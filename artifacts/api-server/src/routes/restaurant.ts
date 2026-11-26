@@ -1,19 +1,28 @@
 /**
- * Flexa Restaurant API — discover, owner CRUD, dish models, daily menus.
+ * Flexa Restaurant API — discover, owner CRUD, dish models, daily menus,
+ * chat-first order requests, close-kitchen, duplicate-yesterday.
  * Identity gate: publish / create requires users.kyc_status === 'approved'.
  */
 import { Router } from "express";
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import {
   db,
   usersTable,
   restaurantsTable,
   restaurantDishModelsTable,
   restaurantDailyMenuItemsTable,
+  restaurantOrderRequestsTable,
+  conversationsTable,
+  messagesTable,
+  notificationsTable,
   type RestaurantScheduleJson,
+  type RestaurantOrderItemJson,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
 import { isOpenNow as computeIsOpenNow, type ScheduleItem } from "../lib/restaurantHours";
+import { emitConvUpdate, emitNewMessage } from "../lib/socketServer";
+import { publicDisplayName } from "../lib/publicDisplayName";
+import { sendExpoPushToUser } from "../lib/expo-push";
 
 const router = Router();
 
@@ -55,8 +64,27 @@ function normalizeSchedule(raw: unknown): RestaurantScheduleJson {
   });
 }
 
-function serializeRestaurant(row: typeof restaurantsTable.$inferSelect) {
+function todayYmd(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function yesterdayYmd(d = new Date()): string {
+  const x = new Date(d);
+  x.setDate(x.getDate() - 1);
+  return todayYmd(x);
+}
+
+function serializeRestaurant(
+  row: typeof restaurantsTable.$inferSelect,
+  opts?: { ownerVerified?: boolean },
+) {
   const schedule = normalizeSchedule(row.schedule);
+  const kitchenClosedDate = (row as { kitchenClosedDate?: string | null }).kitchenClosedDate ?? null;
+  const kitchenClosedToday = kitchenClosedDate === todayYmd();
+  const openBySchedule = computeIsOpenNow(schedule);
   return {
     id: row.id,
     ownerUserId: row.ownerUserId,
@@ -80,11 +108,43 @@ function serializeRestaurant(row: typeof restaurantsTable.$inferSelect) {
     deliveryEtaMinutes: row.deliveryEtaMinutes,
     deliveryNotes: row.deliveryNotes,
     isPublished: row.isPublished,
-    isOpenNow: computeIsOpenNow(schedule),
+    kitchenClosedDate,
+    kitchenClosedToday,
+    isOpenNow: openBySchedule && !kitchenClosedToday,
+    ownerVerified: Boolean(opts?.ownerVerified),
     createdAt: row.createdAt?.toISOString?.() ?? row.createdAt,
     updatedAt: row.updatedAt?.toISOString?.() ?? row.updatedAt,
   };
 }
+
+function serializeOrder(row: typeof restaurantOrderRequestsTable.$inferSelect) {
+  return {
+    id: row.id,
+    restaurantId: row.restaurantId,
+    buyerUserId: row.buyerUserId,
+    ownerUserId: row.ownerUserId,
+    status: row.status,
+    fulfillment: row.fulfillment,
+    items: Array.isArray(row.items) ? row.items : [],
+    note: row.note,
+    subtotalUsd: row.subtotalUsd,
+    deliveryFeeUsd: row.deliveryFeeUsd,
+    conversationId: row.conversationId,
+    createdAt: row.createdAt?.toISOString?.() ?? row.createdAt,
+    updatedAt: row.updatedAt?.toISOString?.() ?? row.updatedAt,
+  };
+}
+
+const ORDER_STATUSES = [
+  "pending",
+  "accepted",
+  "preparing",
+  "ready",
+  "out_for_delivery",
+  "completed",
+  "cancelled",
+  "declined",
+] as const;
 
 function serializeDish(row: typeof restaurantDishModelsTable.$inferSelect) {
   return {
@@ -152,6 +212,21 @@ function validateAddress(body: Record<string, unknown>): string | null {
   return null;
 }
 
+async function ownerVerifiedMap(ownerIds: number[]): Promise<Map<number, boolean>> {
+  const map = new Map<number, boolean>();
+  const unique = [...new Set(ownerIds.filter((n) => Number.isFinite(n)))];
+  if (unique.length === 0) return map;
+  const rows = await db
+    .select({
+      id: usersTable.id,
+      kycStatus: sql<string>`coalesce(kyc_status, 'not_submitted')`,
+    })
+    .from(usersTable)
+    .where(inArray(usersTable.id, unique));
+  for (const r of rows) map.set(r.id, r.kycStatus === "approved");
+  return map;
+}
+
 // ─── Discover ────────────────────────────────────────────────────────────────
 
 router.get("/restaurant", requireAuth, async (req, res): Promise<void> => {
@@ -182,7 +257,10 @@ router.get("/restaurant", requireAuth, async (req, res): Promise<void> => {
     .orderBy(desc(restaurantsTable.updatedAt))
     .limit(100);
 
-  let list = rows.map(serializeRestaurant);
+  const verified = await ownerVerifiedMap(rows.map((r) => r.ownerUserId));
+  let list = rows.map((r) =>
+    serializeRestaurant(r, { ownerVerified: verified.get(r.ownerUserId) === true }),
+  );
   if (openNow) list = list.filter((r) => r.isOpenNow);
   res.json({ restaurants: list });
 });
@@ -193,7 +271,94 @@ router.get("/restaurant/mine", requireAuth, async (req, res): Promise<void> => {
     .from(restaurantsTable)
     .where(eq(restaurantsTable.ownerUserId, req.userId!))
     .orderBy(desc(restaurantsTable.updatedAt));
-  res.json({ restaurants: rows.map(serializeRestaurant) });
+  const verified = await ownerVerifiedMap(rows.map((r) => r.ownerUserId));
+  res.json({
+    restaurants: rows.map((r) =>
+      serializeRestaurant(r, { ownerVerified: verified.get(r.ownerUserId) === true }),
+    ),
+  });
+});
+
+/** Must be registered before `/restaurant/:id` so "orders" is not parsed as an id. */
+router.get("/restaurant/orders/mine", requireAuth, async (req, res): Promise<void> => {
+  const role = String(req.query.role || "buyer");
+  const cond =
+    role === "owner"
+      ? eq(restaurantOrderRequestsTable.ownerUserId, req.userId!)
+      : eq(restaurantOrderRequestsTable.buyerUserId, req.userId!);
+  const rows = await db
+    .select({
+      order: restaurantOrderRequestsTable,
+      restaurantName: restaurantsTable.name,
+    })
+    .from(restaurantOrderRequestsTable)
+    .leftJoin(restaurantsTable, eq(restaurantsTable.id, restaurantOrderRequestsTable.restaurantId))
+    .where(cond)
+    .orderBy(desc(restaurantOrderRequestsTable.createdAt))
+    .limit(100);
+  res.json({
+    orders: rows.map((r) => ({
+      ...serializeOrder(r.order),
+      restaurantName: r.restaurantName ?? null,
+    })),
+  });
+});
+
+router.patch("/restaurant/orders/:orderId", requireAuth, async (req, res): Promise<void> => {
+  const orderId = Number(req.params.orderId);
+  const [order] = await db
+    .select()
+    .from(restaurantOrderRequestsTable)
+    .where(eq(restaurantOrderRequestsTable.id, orderId))
+    .limit(1);
+  if (!order) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+  const isOwner = order.ownerUserId === req.userId;
+  const isBuyer = order.buyerUserId === req.userId;
+  if (!isOwner && !isBuyer) {
+    res.status(403).json({ error: "Not allowed" });
+    return;
+  }
+
+  const nextStatus = String(req.body?.status || "").trim();
+  if (!ORDER_STATUSES.includes(nextStatus as (typeof ORDER_STATUSES)[number])) {
+    res.status(400).json({ error: "Invalid status" });
+    return;
+  }
+
+  if (isBuyer && !isOwner) {
+    if (!(nextStatus === "cancelled" && order.status === "pending")) {
+      res.status(403).json({ error: "Buyers can only cancel pending orders" });
+      return;
+    }
+  }
+
+  const [updated] = await db
+    .update(restaurantOrderRequestsTable)
+    .set({ status: nextStatus })
+    .where(eq(restaurantOrderRequestsTable.id, orderId))
+    .returning();
+
+  const notifyUserId = isOwner ? order.buyerUserId : order.ownerUserId;
+  await db
+    .insert(notificationsTable)
+    .values({
+      userId: notifyUserId,
+      actorId: req.userId!,
+      type: "order_update",
+      message: `Restaurant order #${orderId} is now ${nextStatus.replace(/_/g, " ")}`,
+      referenceId: orderId,
+    })
+    .catch(() => {});
+  void sendExpoPushToUser(notifyUserId, {
+    title: "Order update",
+    body: `Order #${orderId}: ${nextStatus.replace(/_/g, " ")}`,
+    data: { type: "restaurant_order", orderId, url: "/restaurant/orders" },
+  });
+
+  res.json({ order: serializeOrder(updated) });
 });
 
 router.get("/restaurant/:id", requireAuth, async (req, res): Promise<void> => {
@@ -212,7 +377,12 @@ router.get("/restaurant/:id", requireAuth, async (req, res): Promise<void> => {
     res.status(404).json({ error: "Restaurant not found" });
     return;
   }
-  res.json({ restaurant: serializeRestaurant(row) });
+  const verified = await ownerVerifiedMap([row.ownerUserId]);
+  res.json({
+    restaurant: serializeRestaurant(row, {
+      ownerVerified: verified.get(row.ownerUserId) === true,
+    }),
+  });
 });
 
 router.post("/restaurant", requireAuth, async (req, res): Promise<void> => {
@@ -724,5 +894,327 @@ router.delete(
     res.json({ ok: true });
   },
 );
+
+/** Duplicate yesterday's daily menu into today (skip items already present by name). */
+router.post(
+  "/restaurant/:id/daily-menu/duplicate-yesterday",
+  requireAuth,
+  async (req, res): Promise<void> => {
+    const id = Number(req.params.id);
+    const owned = await requireOwnedRestaurant(id, req.userId!);
+    if (!owned) {
+      res.status(404).json({ error: "Restaurant not found" });
+      return;
+    }
+    const targetDate = String(req.body?.menuDate || todayYmd()).trim();
+    const sourceDate = String(req.body?.fromDate || yesterdayYmd()).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate) || !/^\d{4}-\d{2}-\d{2}$/.test(sourceDate)) {
+      res.status(400).json({ error: "Invalid date" });
+      return;
+    }
+    const source = await db
+      .select()
+      .from(restaurantDailyMenuItemsTable)
+      .where(
+        and(
+          eq(restaurantDailyMenuItemsTable.restaurantId, id),
+          eq(restaurantDailyMenuItemsTable.menuDate, sourceDate),
+        ),
+      );
+    if (source.length === 0) {
+      res.status(404).json({ error: `No menu found for ${sourceDate}` });
+      return;
+    }
+    const existing = await db
+      .select()
+      .from(restaurantDailyMenuItemsTable)
+      .where(
+        and(
+          eq(restaurantDailyMenuItemsTable.restaurantId, id),
+          eq(restaurantDailyMenuItemsTable.menuDate, targetDate),
+        ),
+      );
+    const existingNames = new Set(existing.map((e) => e.name.trim().toLowerCase()));
+    const toInsert = source.filter((s) => !existingNames.has(s.name.trim().toLowerCase()));
+    let created: typeof restaurantDailyMenuItemsTable.$inferSelect[] = [];
+    if (toInsert.length > 0) {
+      created = await db
+        .insert(restaurantDailyMenuItemsTable)
+        .values(
+          toInsert.map((s) => ({
+            restaurantId: id,
+            menuDate: targetDate,
+            dishModelId: s.dishModelId,
+            name: s.name,
+            description: s.description,
+            price: s.price,
+            currency: s.currency,
+            category: s.category,
+            photoUrl: s.photoUrl,
+            available: s.available,
+            soldOut: false,
+            portionLimit: s.portionLimit,
+          })),
+        )
+        .returning();
+    }
+    res.status(201).json({
+      fromDate: sourceDate,
+      menuDate: targetDate,
+      copied: created.length,
+      skipped: source.length - toInsert.length,
+      items: [...existing, ...created].map(serializeMenuItem),
+    });
+  },
+);
+
+/** Force-close (or reopen) kitchen for a calendar day. */
+router.post("/restaurant/:id/close-kitchen", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const owned = await requireOwnedRestaurant(id, req.userId!);
+  if (!owned) {
+    res.status(404).json({ error: "Restaurant not found" });
+    return;
+  }
+  const closed = req.body?.closed !== false;
+  const date = String(req.body?.date || todayYmd()).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    res.status(400).json({ error: "Invalid date" });
+    return;
+  }
+  const [updated] = await db
+    .update(restaurantsTable)
+    .set({ kitchenClosedDate: closed ? date : null })
+    .where(eq(restaurantsTable.id, id))
+    .returning();
+  res.json({ restaurant: serializeRestaurant(updated) });
+});
+
+// ─── Order requests (chat-first) ─────────────────────────────────────────────
+
+router.get("/restaurant/:id/orders", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const owned = await requireOwnedRestaurant(id, req.userId!);
+  if (!owned) {
+    res.status(404).json({ error: "Restaurant not found" });
+    return;
+  }
+  const rows = await db
+    .select()
+    .from(restaurantOrderRequestsTable)
+    .where(eq(restaurantOrderRequestsTable.restaurantId, id))
+    .orderBy(desc(restaurantOrderRequestsTable.createdAt))
+    .limit(100);
+  res.json({ orders: rows.map(serializeOrder) });
+});
+
+router.post("/restaurant/:id/orders", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const buyerId = req.userId!;
+  const [rest] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, id)).limit(1);
+  if (!rest || !rest.isPublished) {
+    res.status(404).json({ error: "Restaurant not found" });
+    return;
+  }
+  if (rest.ownerUserId === buyerId) {
+    res.status(400).json({ error: "Cannot order from your own restaurant" });
+    return;
+  }
+  const serialized = serializeRestaurant(rest);
+  if (!serialized.isOpenNow) {
+    res.status(409).json({ error: "Kitchen is closed right now" });
+    return;
+  }
+
+  const body = (req.body || {}) as Record<string, unknown>;
+  const fulfillment = String(body.fulfillment || "pickup") === "delivery" ? "delivery" : "pickup";
+  if (fulfillment === "delivery" && !rest.offersDelivery) {
+    res.status(400).json({ error: "This restaurant does not offer delivery" });
+    return;
+  }
+  const note = body.note != null ? String(body.note).slice(0, 500) : null;
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+  if (rawItems.length === 0) {
+    res.status(400).json({ error: "Add at least one menu item" });
+    return;
+  }
+
+  const menuIds = rawItems
+    .map((it) => Number((it as Record<string, unknown>).dailyMenuItemId))
+    .filter((n) => Number.isFinite(n));
+  const menuRows =
+    menuIds.length > 0
+      ? await db
+          .select()
+          .from(restaurantDailyMenuItemsTable)
+          .where(
+            and(
+              eq(restaurantDailyMenuItemsTable.restaurantId, id),
+              inArray(restaurantDailyMenuItemsTable.id, menuIds),
+            ),
+          )
+      : [];
+  const byId = new Map(menuRows.map((m) => [m.id, m]));
+
+  const items: RestaurantOrderItemJson[] = [];
+  for (const raw of rawItems) {
+    const r = raw as Record<string, unknown>;
+    const mid = Number(r.dailyMenuItemId);
+    const qty = Math.max(1, Math.min(99, Math.floor(Number(r.qty) || 1)));
+    const menu = byId.get(mid);
+    if (!menu || !menu.available || menu.soldOut) {
+      res.status(400).json({ error: `Item unavailable: ${menu?.name || mid}` });
+      return;
+    }
+    if (menu.menuDate !== todayYmd()) {
+      res.status(400).json({ error: "Orders only accept today's daily menu items" });
+      return;
+    }
+    items.push({
+      dailyMenuItemId: menu.id,
+      name: menu.name,
+      unitPrice: Number(menu.price),
+      currency: menu.currency || "USD",
+      qty,
+    });
+  }
+
+  const subtotalUsd = items.reduce((s, it) => s + it.unitPrice * it.qty, 0);
+  const deliveryFeeUsd =
+    fulfillment === "delivery" && rest.deliveryFeeUsd != null ? Number(rest.deliveryFeeUsd) : null;
+
+  // Reuse open restaurant conversation between buyer and owner
+  const [open] = await db
+    .select()
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.buyerId, buyerId),
+        eq(conversationsTable.sellerId, rest.ownerUserId),
+        eq(conversationsTable.conversationType, "restaurant"),
+      ),
+    )
+    .orderBy(desc(conversationsTable.lastMessageAt))
+    .limit(1);
+
+  let conversationId = open?.id ?? 0;
+  if (!conversationId) {
+    const [conv] = await db
+      .insert(conversationsTable)
+      .values({
+        listingId: null,
+        buyerId,
+        sellerId: rest.ownerUserId,
+        conversationType: "restaurant",
+        lastMessage: `From Flexa Restaurant · ${rest.name}`,
+        lastMessageAt: new Date(),
+      })
+      .returning();
+    conversationId = conv.id;
+  }
+
+  const lines = items.map((it) => `• ${it.qty}× ${it.name} ($${it.unitPrice.toFixed(2)})`).join("\n");
+  const preview = `From Flexa Restaurant · ${rest.name} · ${fulfillment} · $${subtotalUsd.toFixed(2)}`;
+  const content = [
+    preview,
+    "",
+    lines,
+    note ? `\nNote: ${note}` : "",
+    deliveryFeeUsd != null ? `\nDelivery fee: $${deliveryFeeUsd.toFixed(2)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const [msg] = await db
+    .insert(messagesTable)
+    .values({
+      conversationId,
+      senderId: buyerId,
+      content,
+      messageType: "text",
+    })
+    .returning();
+
+  await db
+    .update(conversationsTable)
+    .set({ lastMessage: preview, lastMessageAt: msg.createdAt })
+    .where(eq(conversationsTable.id, conversationId));
+
+  const [order] = await db
+    .insert(restaurantOrderRequestsTable)
+    .values({
+      restaurantId: id,
+      buyerUserId: buyerId,
+      ownerUserId: rest.ownerUserId,
+      status: "pending",
+      fulfillment,
+      items,
+      note,
+      subtotalUsd,
+      deliveryFeeUsd,
+      conversationId,
+    })
+    .returning();
+
+  await db
+    .insert(notificationsTable)
+    .values({
+      userId: rest.ownerUserId,
+      actorId: buyerId,
+      type: "new_order",
+      message: `New Flexa Restaurant order at ${rest.name}: $${subtotalUsd.toFixed(2)} (${fulfillment})`,
+      referenceId: order.id,
+    })
+    .catch(() => {});
+
+  void sendExpoPushToUser(rest.ownerUserId, {
+    title: "New kitchen order",
+    body: `${rest.name}: $${subtotalUsd.toFixed(2)} · ${fulfillment}`,
+    data: { type: "restaurant_order", orderId: order.id, restaurantId: id, url: "/restaurant/orders" },
+  });
+
+  const [sender] = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      avatar: usersTable.avatar,
+      isAdmin: usersTable.isAdmin,
+      isSuperAdmin: usersTable.isSuperAdmin,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, buyerId))
+    .limit(1);
+
+  try {
+    emitNewMessage(conversationId, {
+      id: msg.id,
+      conversationId,
+      senderId: buyerId,
+      senderName: publicDisplayName(sender?.name),
+      senderAvatar: sender?.avatar ?? null,
+      senderIsAdmin: !!(sender?.isAdmin || sender?.isSuperAdmin),
+      content: msg.content,
+      messageType: msg.messageType,
+      mediaUrl: null,
+      imageUrl: null,
+      isRead: false,
+      isListened: false,
+      isDeleted: false,
+      clientMessageId: null,
+      createdAt: msg.createdAt.toISOString(),
+    });
+    emitConvUpdate(conversationId, {
+      lastMessage: preview,
+      lastMessageAt: msg.createdAt.toISOString(),
+    });
+  } catch {
+    /* socket optional */
+  }
+
+  res.status(201).json({
+    order: serializeOrder(order),
+    conversationId,
+  });
+});
 
 export default router;

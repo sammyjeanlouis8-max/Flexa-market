@@ -26,13 +26,14 @@ const TABS: Tab[] = [
       p === "/restaurant" ||
       p === "/restaurant/" ||
       p.startsWith("/restaurant/discover") ||
-      (p.startsWith("/restaurant/") &&
-        !p.startsWith("/restaurant/owner") &&
-        !p.startsWith("/restaurant/add") &&
-        !p.startsWith("/restaurant/verify") &&
-        !p.includes("/edit") &&
-        !p.includes("/dishes") &&
-        !p.includes("/menu")),
+      (/^\/restaurant\/\d+\/?$/.test(p)),
+  },
+  {
+    key: "orders",
+    label: "Orders",
+    icon: "shopping-bag",
+    href: "/restaurant/orders",
+    match: (p) => p.startsWith("/restaurant/orders"),
   },
   {
     key: "owner",

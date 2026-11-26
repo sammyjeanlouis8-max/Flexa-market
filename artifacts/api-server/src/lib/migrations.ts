@@ -3857,6 +3857,28 @@ export async function runStartupMigrations(): Promise<void> {
       )
     `));
     await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurant_daily_menu_restaurant_date_idx ON restaurant_daily_menu_items(restaurant_id, menu_date)`));
+    await db.execute(sql.raw(`ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS kitchen_closed_date text`));
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS restaurant_order_requests (
+        id serial PRIMARY KEY,
+        restaurant_id integer NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+        buyer_user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        owner_user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status text NOT NULL DEFAULT 'pending',
+        fulfillment text NOT NULL DEFAULT 'pickup',
+        items jsonb NOT NULL DEFAULT '[]'::jsonb,
+        note text,
+        subtotal_usd real NOT NULL DEFAULT 0,
+        delivery_fee_usd real,
+        conversation_id integer,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurant_orders_restaurant_idx ON restaurant_order_requests(restaurant_id)`));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurant_orders_buyer_idx ON restaurant_order_requests(buyer_user_id)`));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurant_orders_owner_idx ON restaurant_order_requests(owner_user_id)`));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurant_orders_status_idx ON restaurant_order_requests(status)`));
     logger.info("Migration: Flexa Restaurant tables ready");
   } catch (err: any) {
     logger.warn({ err: err?.message }, "Migration: Flexa Restaurant tables failed (non-fatal)");

@@ -33,9 +33,17 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
         </View>
       </View>
       <View style={styles.body}>
-        <Text style={styles.name} numberOfLines={1}>
-          {restaurant.name}
-        </Text>
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={1}>
+            {restaurant.name}
+          </Text>
+          {restaurant.ownerVerified ? (
+            <View style={styles.verified}>
+              <Feather name="check-circle" size={12} color={T.open} />
+              <Text style={styles.verifiedText}>Verified</Text>
+            </View>
+          ) : null}
+        </View>
         <Text style={styles.meta} numberOfLines={1}>
           {[restaurant.city, restaurant.cuisineTags.slice(0, 2).join(" · ")].filter(Boolean).join(" · ")}
         </Text>
@@ -44,6 +52,11 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
             <View style={styles.chip}>
               <Feather name="truck" size={12} color={T.accent} />
               <Text style={styles.chipText}>Delivery</Text>
+            </View>
+          ) : null}
+          {restaurant.kitchenClosedToday ? (
+            <View style={[styles.chip, { backgroundColor: "#FEE2E2" }]}>
+              <Text style={[styles.chipText, { color: T.danger }]}>Kitchen closed</Text>
             </View>
           ) : null}
           <Feather name="chevron-right" size={16} color="#94A3B8" style={{ marginLeft: "auto" }} />
@@ -81,7 +94,18 @@ const styles = StyleSheet.create({
   badgeClosed: { backgroundColor: "rgba(15,23,42,0.65)" },
   badgeText: { color: T.white, fontSize: 11, fontWeight: "800" },
   body: { padding: 12, gap: 4 },
-  name: { fontSize: 16, fontWeight: "800", color: T.ink },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  name: { flex: 1, fontSize: 16, fontWeight: "800", color: T.ink },
+  verified: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: T.mint,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  verifiedText: { fontSize: 10, fontWeight: "800", color: T.open },
   meta: { fontSize: 12, color: T.muted, fontWeight: "500" },
   row: { flexDirection: "row", alignItems: "center", marginTop: 6, gap: 8 },
   chip: {

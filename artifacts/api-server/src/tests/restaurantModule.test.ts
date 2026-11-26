@@ -46,6 +46,25 @@ describe("Flexa Restaurant module contracts", () => {
     expect(api).toContain("requireKycApproved");
   });
 
+  it("ships chat-first orders, duplicate-yesterday, and close-kitchen", () => {
+    const api = fs.readFileSync(
+      path.join(repoRoot, "artifacts/api-server/src/routes/restaurant.ts"),
+      "utf8",
+    );
+    const migrations = fs.readFileSync(
+      path.join(repoRoot, "artifacts/api-server/src/lib/migrations.ts"),
+      "utf8",
+    );
+    expect(api).toContain("/restaurant/:id/orders");
+    expect(api).toContain("/restaurant/orders/mine");
+    expect(api).toContain("daily-menu/duplicate-yesterday");
+    expect(api).toContain("close-kitchen");
+    expect(api).toContain('conversationType: "restaurant"');
+    expect(api).toContain("sendExpoPushToUser");
+    expect(migrations).toContain("restaurant_order_requests");
+    expect(migrations).toContain("kitchen_closed_date");
+  });
+
   it("ships native restaurant hub screens and USE_RESTAURANT_MOCK toggle", () => {
     const client = fs.readFileSync(
       path.join(repoRoot, "artifacts/mobile/lib/restaurantApi.ts"),
@@ -57,9 +76,11 @@ describe("Flexa Restaurant module contracts", () => {
       "artifacts/mobile/app/restaurant/owner.tsx",
       "artifacts/mobile/app/restaurant/verify.tsx",
       "artifacts/mobile/app/restaurant/add.tsx",
+      "artifacts/mobile/app/restaurant/orders.tsx",
       "artifacts/mobile/app/restaurant/[id].tsx",
       "artifacts/mobile/app/restaurant/[id]/dishes.tsx",
       "artifacts/mobile/app/restaurant/[id]/menu.tsx",
+      "artifacts/mobile/components/restaurant/OrderSheet.tsx",
     ]) {
       expect(fs.existsSync(path.join(repoRoot, rel))).toBe(true);
     }

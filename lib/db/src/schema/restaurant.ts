@@ -53,6 +53,8 @@ export const restaurantsTable = pgTable(
     deliveryEtaMinutes: integer("delivery_eta_minutes"),
     deliveryNotes: text("delivery_notes"),
     isPublished: boolean("is_published").notNull().default(false),
+    /** YYYY-MM-DD — when set to today, kitchen is force-closed regardless of schedule */
+    kitchenClosedDate: text("kitchen_closed_date"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -63,6 +65,51 @@ export const restaurantsTable = pgTable(
     ownerIdx: index("restaurants_owner_idx").on(t.ownerUserId),
     publishedIdx: index("restaurants_published_idx").on(t.isPublished),
     cityIdx: index("restaurants_city_idx").on(t.city),
+  }),
+);
+
+export type RestaurantOrderItemJson = {
+  dailyMenuItemId: number | null;
+  name: string;
+  unitPrice: number;
+  currency: string;
+  qty: number;
+};
+
+/** Chat-first kitchen order requests (not Stripe checkout). */
+export const restaurantOrderRequestsTable = pgTable(
+  "restaurant_order_requests",
+  {
+    id: serial("id").primaryKey(),
+    restaurantId: integer("restaurant_id")
+      .notNull()
+      .references(() => restaurantsTable.id, { onDelete: "cascade" }),
+    buyerUserId: integer("buyer_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    ownerUserId: integer("owner_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    /** pending | accepted | preparing | ready | out_for_delivery | completed | cancelled | declined */
+    status: text("status").notNull().default("pending"),
+    /** pickup | delivery */
+    fulfillment: text("fulfillment").notNull().default("pickup"),
+    items: jsonb("items").$type<RestaurantOrderItemJson[]>().notNull().default([]),
+    note: text("note"),
+    subtotalUsd: real("subtotal_usd").notNull().default(0),
+    deliveryFeeUsd: real("delivery_fee_usd"),
+    conversationId: integer("conversation_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => ({
+    restaurantIdx: index("restaurant_orders_restaurant_idx").on(t.restaurantId),
+    buyerIdx: index("restaurant_orders_buyer_idx").on(t.buyerUserId),
+    ownerIdx: index("restaurant_orders_owner_idx").on(t.ownerUserId),
+    statusIdx: index("restaurant_orders_status_idx").on(t.status),
   }),
 );
 
@@ -152,3 +199,11 @@ export const insertDailyMenuItemSchema = createInsertSchema(restaurantDailyMenuI
 });
 export type InsertDailyMenuItem = z.infer<typeof insertDailyMenuItemSchema>;
 export type DailyMenuItemRow = typeof restaurantDailyMenuItemsTable.$inferSelect;
+
+export const insertRestaurantOrderSchema = createInsertSchema(restaurantOrderRequestsTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertRestaurantOrder = z.infer<typeof insertRestaurantOrderSchema>;
+export type RestaurantOrderRow = typeof restaurantOrderRequestsTable.$inferSelect;

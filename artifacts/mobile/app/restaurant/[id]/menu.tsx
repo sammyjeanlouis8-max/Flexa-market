@@ -20,14 +20,17 @@ import { useAuth } from "@/context/AuthContext";
 import {
   createDailyMenuItem,
   deleteDailyMenuItem,
+  duplicateYesterdayMenu,
   fetchDailyMenu,
   fetchDishModels,
+  fetchRestaurant,
   importDishModelToDailyMenu,
+  setKitchenClosed,
   updateDailyMenuItem,
 } from "@/lib/restaurantApi";
 import { todayYmd } from "@/lib/restaurantHours";
 import { restaurantTheme as T } from "@/lib/restaurantTheme";
-import type { DailyMenuItem, DishCategory, DishModel } from "@/lib/restaurantTypes";
+import type { DailyMenuItem, DishCategory, DishModel, Restaurant } from "@/lib/restaurantTypes";
 
 export default function DailyMenuScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,6 +39,7 @@ export default function DailyMenuScreen() {
   const [menuDate, setMenuDate] = useState(todayYmd());
   const [items, setItems] = useState<DailyMenuItem[]>([]);
   const [models, setModels] = useState<DishModel[]>([]);
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -52,12 +56,14 @@ export default function DailyMenuScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [menu, dishes] = await Promise.all([
+      const [menu, dishes, rest] = await Promise.all([
         fetchDailyMenu(restaurantId, menuDate, { token }),
         fetchDishModels(restaurantId, { token }),
+        fetchRestaurant(restaurantId, { token }),
       ]);
       setItems(menu);
       setModels(dishes);
+      setRestaurant(rest);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     } finally {
@@ -188,6 +194,73 @@ export default function DailyMenuScreen() {
         </View>
 
         <View style={styles.toolbar}>
+          <Pressable
+            style={styles.toolBtn}
+            disabled={saving}
+            onPress={() => {
+              void (async () => {
+                if (!token) return;
+                setSaving(true);
+                setError(null);
+                try {
+                  const result = await duplicateYesterdayMenu(restaurantId, {
+                    token,
+                    menuDate,
+                  });
+                  setItems(result.items);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Duplicate failed");
+                } finally {
+                  setSaving(false);
+                }
+              })();
+            }}
+            testID="restaurant-duplicate-yesterday"
+          >
+            <Feather name="copy" size={14} color={T.forest} />
+            <Text style={styles.toolText}>Duplicate yesterday</Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.toolBtn,
+              restaurant?.kitchenClosedToday && { backgroundColor: "#FEE2E2" },
+            ]}
+            disabled={saving}
+            onPress={() => {
+              void (async () => {
+                if (!token) return;
+                setSaving(true);
+                setError(null);
+                try {
+                  const next = !(restaurant?.kitchenClosedToday);
+                  const updated = await setKitchenClosed(restaurantId, next, {
+                    token,
+                    date: menuDate,
+                  });
+                  setRestaurant(updated);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Close kitchen failed");
+                } finally {
+                  setSaving(false);
+                }
+              })();
+            }}
+            testID="restaurant-close-kitchen"
+          >
+            <Feather
+              name={restaurant?.kitchenClosedToday ? "play-circle" : "slash"}
+              size={14}
+              color={restaurant?.kitchenClosedToday ? T.danger : T.forest}
+            />
+            <Text
+              style={[
+                styles.toolText,
+                restaurant?.kitchenClosedToday && { color: T.danger },
+              ]}
+            >
+              {restaurant?.kitchenClosedToday ? "Reopen kitchen" : "Close kitchen today"}
+            </Text>
+          </Pressable>
           <Pressable style={styles.toolBtn} onPress={() => setImportOpen(true)}>
             <Feather name="download" size={14} color={T.forest} />
             <Text style={styles.toolText}>Import from Dish Model</Text>

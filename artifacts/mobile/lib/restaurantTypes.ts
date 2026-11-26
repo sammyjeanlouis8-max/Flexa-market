@@ -60,7 +60,45 @@ export type Restaurant = {
   deliveryEtaMinutes: number | null;
   deliveryNotes: string | null;
   isPublished: boolean;
+  kitchenClosedDate?: string | null;
+  kitchenClosedToday?: boolean;
   isOpenNow?: boolean;
+  ownerVerified?: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RestaurantOrderStatus =
+  | "pending"
+  | "accepted"
+  | "preparing"
+  | "ready"
+  | "out_for_delivery"
+  | "completed"
+  | "cancelled"
+  | "declined";
+
+export type RestaurantOrderItem = {
+  dailyMenuItemId: number | null;
+  name: string;
+  unitPrice: number;
+  currency: string;
+  qty: number;
+};
+
+export type RestaurantOrderRequest = {
+  id: number;
+  restaurantId: number;
+  restaurantName?: string | null;
+  buyerUserId: number;
+  ownerUserId: number;
+  status: RestaurantOrderStatus | string;
+  fulfillment: "pickup" | "delivery" | string;
+  items: RestaurantOrderItem[];
+  note: string | null;
+  subtotalUsd: number;
+  deliveryFeeUsd: number | null;
+  conversationId: number | null;
   createdAt: string;
   updatedAt: string;
 };

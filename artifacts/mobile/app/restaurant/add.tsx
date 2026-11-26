@@ -50,6 +50,7 @@ export default function AddRestaurantScreen() {
   const [addressLine1, setAddressLine1] = useState("");
   const [addressLine2, setAddressLine2] = useState("");
   const [city, setCity] = useState("");
+  const [commune, setCommune] = useState("");
   const [state, setState] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [country, setCountry] = useState("HT");
@@ -184,6 +185,7 @@ export default function AddRestaurantScreen() {
           addressLine1: addressLine1.trim(),
           addressLine2: addressLine2.trim() || null,
           city: city.trim(),
+          commune: (commune.trim() || city.trim()) || null,
           state: state.trim() || null,
           postalCode: postalCode.trim() || null,
           country: country.trim().toUpperCase(),
@@ -246,7 +248,8 @@ export default function AddRestaurantScreen() {
             <View style={styles.block}>
               <Field label="Street address *" value={addressLine1} onChangeText={setAddressLine1} placeholder="12 Rue …" />
               <Field label="Address line 2" value={addressLine2} onChangeText={setAddressLine2} placeholder="Apt / Suite" />
-              <Field label="City *" value={city} onChangeText={setCity} placeholder="Port-au-Prince" />
+              <Field label="City *" value={city} onChangeText={(t) => { setCity(t); if (!commune) setCommune(t); }} placeholder="Port-au-Prince" />
+              <Field label="Commune *" value={commune} onChangeText={setCommune} placeholder="Delmas / Pétion-Ville…" />
               <Field label="State / Region" value={state} onChangeText={setState} placeholder="Ouest" />
               <Field label="Postal code" value={postalCode} onChangeText={setPostalCode} placeholder="HT6110" />
               <Field label="Country *" value={country} onChangeText={setCountry} placeholder="HT" autoCapitalize="characters" />

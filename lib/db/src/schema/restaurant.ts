@@ -41,6 +41,8 @@ export const restaurantsTable = pgTable(
     addressLine1: text("address_line1").notNull(),
     addressLine2: text("address_line2"),
     city: text("city").notNull(),
+    /** Haiti commune (often same as city); used for local discover */
+    commune: text("commune"),
     state: text("state"),
     postalCode: text("postal_code"),
     country: text("country").notNull().default("HT"),

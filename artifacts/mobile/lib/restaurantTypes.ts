@@ -49,11 +49,14 @@ export type Restaurant = {
   addressLine1: string;
   addressLine2: string | null;
   city: string;
+  commune?: string | null;
   state: string | null;
   postalCode: string | null;
   country: string;
   latitude: number | null;
   longitude: number | null;
+  distanceKm?: number | null;
+  sameCommune?: boolean;
   schedule: DailyScheduleItem[];
   offersDelivery: boolean;
   deliveryFeeUsd: number | null;
@@ -141,6 +144,11 @@ export type RestaurantFilters = {
   openNow?: boolean;
   offersDelivery?: boolean;
   cuisine?: string;
+  commune?: string;
+  nearby?: boolean;
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
 };
 
 export type CreateRestaurantInput = {
@@ -153,6 +161,7 @@ export type CreateRestaurantInput = {
   addressLine1: string;
   addressLine2?: string | null;
   city: string;
+  commune?: string | null;
   state?: string | null;
   postalCode?: string | null;
   country: string;

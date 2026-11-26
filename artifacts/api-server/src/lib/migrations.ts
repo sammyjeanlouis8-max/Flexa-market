@@ -3858,6 +3858,15 @@ export async function runStartupMigrations(): Promise<void> {
     `));
     await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurant_daily_menu_restaurant_date_idx ON restaurant_daily_menu_items(restaurant_id, menu_date)`));
     await db.execute(sql.raw(`ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS kitchen_closed_date text`));
+    await db.execute(sql.raw(`ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS commune text`));
+    await db.execute(sql.raw(`CREATE INDEX IF NOT EXISTS restaurants_commune_idx ON restaurants(commune)`));
+    await db.execute(sql.raw(`
+      UPDATE restaurants
+         SET commune = city
+       WHERE commune IS NULL
+         AND city IS NOT NULL
+         AND btrim(city) <> ''
+    `));
     await db.execute(sql.raw(`
       CREATE TABLE IF NOT EXISTS restaurant_order_requests (
         id serial PRIMARY KEY,

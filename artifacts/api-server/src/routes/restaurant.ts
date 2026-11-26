@@ -23,6 +23,8 @@ import { isOpenNow as computeIsOpenNow, type ScheduleItem } from "../lib/restaur
 import { emitConvUpdate, emitNewMessage } from "../lib/socketServer";
 import { publicDisplayName } from "../lib/publicDisplayName";
 import { sendExpoPushToUser } from "../lib/expo-push";
+import { haversineKm, lookupCity } from "../lib/deliveryPricing";
+import { haitiZonesApiPayload, normalizeHaitiPlace } from "../lib/haitiGeography";
 
 const router = Router();
 
@@ -77,14 +79,28 @@ function yesterdayYmd(d = new Date()): string {
   return todayYmd(x);
 }
 
+function resolveRestaurantCoords(row: typeof restaurantsTable.$inferSelect): {
+  lat: number | null;
+  lng: number | null;
+} {
+  if (row.latitude != null && row.longitude != null) {
+    return { lat: Number(row.latitude), lng: Number(row.longitude) };
+  }
+  const place = row.commune || row.city;
+  const looked = place ? lookupCity(place) : null;
+  if (looked) return { lat: looked[0], lng: looked[1] };
+  return { lat: null, lng: null };
+}
+
 function serializeRestaurant(
   row: typeof restaurantsTable.$inferSelect,
-  opts?: { ownerVerified?: boolean },
+  opts?: { ownerVerified?: boolean; distanceKm?: number | null },
 ) {
   const schedule = normalizeSchedule(row.schedule);
-  const kitchenClosedDate = (row as { kitchenClosedDate?: string | null }).kitchenClosedDate ?? null;
+  const kitchenClosedDate = row.kitchenClosedDate ?? null;
   const kitchenClosedToday = kitchenClosedDate === todayYmd();
   const openBySchedule = computeIsOpenNow(schedule);
+  const commune = row.commune || row.city || null;
   return {
     id: row.id,
     ownerUserId: row.ownerUserId,
@@ -97,6 +113,7 @@ function serializeRestaurant(
     addressLine1: row.addressLine1,
     addressLine2: row.addressLine2,
     city: row.city,
+    commune,
     state: row.state,
     postalCode: row.postalCode,
     country: row.country,
@@ -112,6 +129,8 @@ function serializeRestaurant(
     kitchenClosedToday,
     isOpenNow: openBySchedule && !kitchenClosedToday,
     ownerVerified: Boolean(opts?.ownerVerified),
+    distanceKm: opts?.distanceKm ?? null,
+    sameCommune: false,
     createdAt: row.createdAt?.toISOString?.() ?? row.createdAt,
     updatedAt: row.updatedAt?.toISOString?.() ?? row.updatedAt,
   };
@@ -229,11 +248,21 @@ async function ownerVerifiedMap(ownerIds: number[]): Promise<Map<number, boolean
 
 // ─── Discover ────────────────────────────────────────────────────────────────
 
+router.get("/restaurant/geo/communes", requireAuth, async (_req, res): Promise<void> => {
+  res.json(haitiZonesApiPayload());
+});
+
 router.get("/restaurant", requireAuth, async (req, res): Promise<void> => {
   const q = String(req.query.q || "").trim();
   const cuisine = String(req.query.cuisine || "").trim();
+  const commune = String(req.query.commune || "").trim();
   const openNow = req.query.openNow === "1" || req.query.openNow === "true";
   const offersDelivery = req.query.offersDelivery === "1" || req.query.offersDelivery === "true";
+  const nearby = req.query.nearby === "1" || req.query.nearby === "true";
+  const lat = req.query.lat != null ? Number(req.query.lat) : NaN;
+  const lng = req.query.lng != null ? Number(req.query.lng) : NaN;
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+  const radiusKm = Math.min(80, Math.max(1, Number(req.query.radiusKm) || 20));
 
   const conds = [eq(restaurantsTable.isPublished, true)];
   if (offersDelivery) conds.push(eq(restaurantsTable.offersDelivery, true));
@@ -243,11 +272,25 @@ router.get("/restaurant", requireAuth, async (req, res): Promise<void> => {
         ilike(restaurantsTable.name, `%${q}%`),
         ilike(restaurantsTable.bio, `%${q}%`),
         ilike(restaurantsTable.city, `%${q}%`),
+        ilike(restaurantsTable.commune, `%${q}%`),
       )!,
     );
   }
   if (cuisine) {
     conds.push(sql`${cuisine} = ANY(${restaurantsTable.cuisineTags})`);
+  }
+  if (commune) {
+    const n = normalizeHaitiPlace(commune);
+    conds.push(
+      or(
+        sql`lower(coalesce(${restaurantsTable.commune}, '')) = lower(${commune})`,
+        sql`lower(coalesce(${restaurantsTable.city}, '')) = lower(${commune})`,
+        // normalized loose match via ILIKE on raw labels
+        ilike(restaurantsTable.commune, `%${commune}%`),
+        ilike(restaurantsTable.city, `%${commune}%`),
+        sql`replace(lower(coalesce(${restaurantsTable.commune}, ${restaurantsTable.city}, '')), '-', ' ') LIKE ${`%${n.replace(/-/g, " ")}%`}`,
+      )!,
+    );
   }
 
   const rows = await db
@@ -255,14 +298,65 @@ router.get("/restaurant", requireAuth, async (req, res): Promise<void> => {
     .from(restaurantsTable)
     .where(and(...conds))
     .orderBy(desc(restaurantsTable.updatedAt))
-    .limit(100);
+    .limit(200);
 
   const verified = await ownerVerifiedMap(rows.map((r) => r.ownerUserId));
-  let list = rows.map((r) =>
-    serializeRestaurant(r, { ownerVerified: verified.get(r.ownerUserId) === true }),
-  );
+  const communeNorm = commune ? normalizeHaitiPlace(commune) : "";
+
+  let list = rows.map((r) => {
+    const coords = resolveRestaurantCoords(r);
+    let distanceKm: number | null = null;
+    if (hasCoords && coords.lat != null && coords.lng != null) {
+      distanceKm = Number(haversineKm(lat, lng, coords.lat, coords.lng).toFixed(2));
+    }
+    const place = normalizeHaitiPlace(r.commune || r.city || "");
+    const sameCommune = Boolean(communeNorm && place && place === communeNorm);
+    return {
+      ...serializeRestaurant(r, {
+        ownerVerified: verified.get(r.ownerUserId) === true,
+        distanceKm,
+      }),
+      sameCommune,
+    };
+  });
+
   if (openNow) list = list.filter((r) => r.isOpenNow);
-  res.json({ restaurants: list });
+
+  if (nearby && hasCoords) {
+    list = list
+      .filter((r) => r.distanceKm == null || r.distanceKm <= radiusKm)
+      .sort((a, b) => {
+        // Same commune first, then by distance, then open
+        if (a.sameCommune !== b.sameCommune) return a.sameCommune ? -1 : 1;
+        const da = a.distanceKm ?? 9999;
+        const db_ = b.distanceKm ?? 9999;
+        if (da !== db_) return da - db_;
+        if (a.isOpenNow !== b.isOpenNow) return a.isOpenNow ? -1 : 1;
+        return 0;
+      });
+  } else if (commune) {
+    list = list.sort((a, b) => {
+      if (a.sameCommune !== b.sameCommune) return a.sameCommune ? -1 : 1;
+      if (a.isOpenNow !== b.isOpenNow) return a.isOpenNow ? -1 : 1;
+      return 0;
+    });
+  } else if (hasCoords) {
+    list = list.sort((a, b) => {
+      const da = a.distanceKm ?? 9999;
+      const db_ = b.distanceKm ?? 9999;
+      return da - db_;
+    });
+  }
+
+  res.json({
+    restaurants: list.slice(0, 100),
+    meta: {
+      nearby: nearby && hasCoords,
+      radiusKm: nearby && hasCoords ? radiusKm : null,
+      commune: commune || null,
+      hasCoords,
+    },
+  });
 });
 
 router.get("/restaurant/mine", requireAuth, async (req, res): Promise<void> => {
@@ -429,6 +523,10 @@ router.post("/restaurant", requireAuth, async (req, res): Promise<void> => {
       addressLine1: String(body.addressLine1).trim(),
       addressLine2: body.addressLine2 != null ? String(body.addressLine2) : null,
       city: String(body.city).trim(),
+      commune:
+        body.commune != null && String(body.commune).trim()
+          ? String(body.commune).trim()
+          : String(body.city).trim(),
       state: body.state != null ? String(body.state) : null,
       postalCode: body.postalCode != null ? String(body.postalCode) : null,
       country: String(body.country || "HT").trim(),
@@ -484,6 +582,14 @@ router.patch("/restaurant/:id", requireAuth, async (req, res): Promise<void> => 
     patch.addressLine2 = body.addressLine2 != null ? String(body.addressLine2) : null;
   }
   if (body.city != null) patch.city = String(body.city).trim();
+  if (body.commune !== undefined) {
+    patch.commune =
+      body.commune != null && String(body.commune).trim()
+        ? String(body.commune).trim()
+        : patch.city || owned.city;
+  } else if (body.city != null && !owned.commune) {
+    patch.commune = String(body.city).trim();
+  }
   if (body.state !== undefined) patch.state = body.state != null ? String(body.state) : null;
   if (body.postalCode !== undefined) {
     patch.postalCode = body.postalCode != null ? String(body.postalCode) : null;

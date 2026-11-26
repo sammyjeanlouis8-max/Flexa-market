@@ -65,6 +65,29 @@ describe("Flexa Restaurant module contracts", () => {
     expect(migrations).toContain("kitchen_closed_date");
   });
 
+  it("supports nearby + commune discover sorting", () => {
+    const api = fs.readFileSync(
+      path.join(repoRoot, "artifacts/api-server/src/routes/restaurant.ts"),
+      "utf8",
+    );
+    const hub = fs.readFileSync(
+      path.join(repoRoot, "artifacts/mobile/app/restaurant/index.tsx"),
+      "utf8",
+    );
+    const migrations = fs.readFileSync(
+      path.join(repoRoot, "artifacts/api-server/src/lib/migrations.ts"),
+      "utf8",
+    );
+    expect(api).toContain("haversineKm");
+    expect(api).toContain("nearby");
+    expect(api).toContain("radiusKm");
+    expect(api).toContain("/restaurant/geo/communes");
+    expect(migrations).toContain("ADD COLUMN IF NOT EXISTS commune");
+    expect(hub).toContain('mode === "nearby"');
+    expect(hub).toContain("restaurant-search-btn");
+    expect(hub).toContain("Chwazi komin");
+  });
+
   it("ships native restaurant hub screens and USE_RESTAURANT_MOCK toggle", () => {
     const client = fs.readFileSync(
       path.join(repoRoot, "artifacts/mobile/lib/restaurantApi.ts"),

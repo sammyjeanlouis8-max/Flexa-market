@@ -45,9 +45,30 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
           ) : null}
         </View>
         <Text style={styles.meta} numberOfLines={1}>
-          {[restaurant.city, restaurant.cuisineTags.slice(0, 2).join(" · ")].filter(Boolean).join(" · ")}
+          {[
+            restaurant.commune || restaurant.city,
+            restaurant.cuisineTags.slice(0, 2).join(" · "),
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </Text>
         <View style={styles.row}>
+          {restaurant.distanceKm != null ? (
+            <View style={styles.chip}>
+              <Feather name="navigation" size={12} color={T.accent} />
+              <Text style={styles.chipText}>
+                {restaurant.distanceKm < 1
+                  ? `${Math.round(restaurant.distanceKm * 1000)} m`
+                  : `${restaurant.distanceKm.toFixed(1)} km`}
+              </Text>
+            </View>
+          ) : null}
+          {restaurant.sameCommune ? (
+            <View style={styles.chip}>
+              <Feather name="map-pin" size={12} color={T.accent} />
+              <Text style={styles.chipText}>Menm komin</Text>
+            </View>
+          ) : null}
           {restaurant.offersDelivery ? (
             <View style={styles.chip}>
               <Feather name="truck" size={12} color={T.accent} />

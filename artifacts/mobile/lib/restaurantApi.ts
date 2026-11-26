@@ -57,6 +57,7 @@ function mapRestaurant(row: Record<string, unknown>): Restaurant {
     addressLine1: String(row.addressLine1 ?? row.address_line1 ?? ""),
     addressLine2: (row.addressLine2 as string | null) ?? (row.address_line2 as string | null) ?? null,
     city: String(row.city ?? ""),
+    commune: (row.commune as string | null) ?? null,
     state: (row.state as string | null) ?? null,
     postalCode: (row.postalCode as string | null) ?? (row.postal_code as string | null) ?? null,
     country: String(row.country ?? "HT"),
@@ -85,6 +86,13 @@ function mapRestaurant(row: Record<string, unknown>): Restaurant {
     kitchenClosedToday: Boolean(row.kitchenClosedToday ?? row.kitchen_closed_today),
     isOpenNow: row.isOpenNow != null ? Boolean(row.isOpenNow) : isOpenNow(schedule),
     ownerVerified: Boolean(row.ownerVerified ?? row.owner_verified),
+    distanceKm:
+      row.distanceKm != null
+        ? Number(row.distanceKm)
+        : row.distance_km != null
+          ? Number(row.distance_km)
+          : null,
+    sameCommune: Boolean(row.sameCommune ?? row.same_commune),
     createdAt: String(row.createdAt ?? row.created_at ?? ""),
     updatedAt: String(row.updatedAt ?? row.updated_at ?? ""),
   };
@@ -209,6 +217,11 @@ export async function fetchRestaurants(
   if (filters?.openNow) qs.set("openNow", "1");
   if (filters?.offersDelivery) qs.set("offersDelivery", "1");
   if (filters?.cuisine) qs.set("cuisine", filters.cuisine);
+  if (filters?.commune) qs.set("commune", filters.commune);
+  if (filters?.nearby) qs.set("nearby", "1");
+  if (filters?.lat != null) qs.set("lat", String(filters.lat));
+  if (filters?.lng != null) qs.set("lng", String(filters.lng));
+  if (filters?.radiusKm != null) qs.set("radiusKm", String(filters.radiusKm));
   const res = await fetch(`${getApiBase()}/restaurant?${qs}`, {
     headers: headers(opts.token),
     signal: opts.signal,

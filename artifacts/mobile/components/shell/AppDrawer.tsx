@@ -65,8 +65,8 @@ export function AppDrawer() {
   }, [drawerOpen, token]);
 
   const sections: DrawerSection[] = useMemo(() => {
-    // Store review: omit unfinished / placeholder routes from the drawer.
-    // Reviewers open every menu item; NativePlaceholder screens cause 2.1 rejections.
+    // Store review: only link finished native screens. Keep /loans (home redirect)
+    // and /website (legacy stand-in) out of the menu to avoid 2.1 rejections.
     const discover: DrawerSection = {
       id: "discover",
       heading: "HOME & DISCOVER",
@@ -75,6 +75,7 @@ export function AppDrawer() {
         { icon: "grid", label: "Categories", href: "/search", testID: "drawer-categories" },
         { icon: "tag", label: "Offers & Promotions", href: "/offers", testID: "drawer-offers" },
         { icon: "star", label: "Flexa Picks", href: "/search?boosted=true", testID: "drawer-flexa-picks" },
+        { icon: "film", label: "Promotional Videos", href: "/videos", testID: "drawer-promo-videos" },
       ],
     };
 
@@ -97,6 +98,7 @@ export function AppDrawer() {
         items: [
           { icon: "package", label: "My listings", href: "/my-listings", testID: "drawer-my-products" },
           { icon: "plus-square", label: "Add a product", href: "/sell", testID: "drawer-add-product" },
+          { icon: "zap", label: "My Active Boosts", href: "/my-boosts", testID: "drawer-shop-my-boosts" },
           { icon: "settings", label: "Shop settings", href: "/settings", testID: "drawer-shop-settings" },
         ],
       });
@@ -113,6 +115,8 @@ export function AppDrawer() {
         id: "delivery",
         heading: "DELIVERY",
         items: [
+          { icon: "truck", label: "Available deliveries", href: "/driver-dashboard", testID: "drawer-deliveries" },
+          { icon: "user-plus", label: "Apply as driver", href: "/driver-apply", testID: "drawer-driver-apply" },
           { icon: "map-pin", label: "Order tracking", href: "/delivery-tracking", testID: "drawer-tracking" },
         ],
       });
@@ -123,6 +127,7 @@ export function AppDrawer() {
           { icon: "user", label: "Profile", href: "/profile", testID: "drawer-profile" },
           { icon: "heart", label: "Saved", href: "/favorites", testID: "drawer-saved" },
           { icon: "credit-card", label: "Wallet", href: "/wallet", testID: "drawer-wallet" },
+          { icon: "award", label: "Subscription", href: "/subscription", testID: "drawer-subscription" },
           { icon: "settings", label: "Settings", href: "/settings", testID: "drawer-settings" },
           { icon: "bell", label: "Notifications", href: "/notifications", testID: "drawer-notifications" },
         ],
@@ -140,13 +145,23 @@ export function AppDrawer() {
       heading: "FLEXA SERVICES",
       items: [
         { icon: "music", label: "Flexa Music", href: "/music", testID: "drawer-flexa-music" },
+        ...(user
+          ? ([{ icon: "zap", label: "My Boosts", href: "/my-boosts", testID: "drawer-my-boosts" }] as DrawerItem[])
+          : []),
         { icon: "message-circle", label: "FlexaBot AI", href: "/chatbot", testID: "drawer-chatbot" },
         { icon: "help-circle", label: "Support", href: "/support", testID: "drawer-support" },
       ],
     });
 
-    // Admin / loans / boosts / driver apply / website / videos / subscription
-    // stay out of the store build menu until native screens are complete.
+    if (user?.isAdmin || user?.isSuperAdmin) {
+      out.push({
+        id: "admin",
+        heading: "ADMIN",
+        items: [
+          { icon: "shield", label: "Admin Dashboard", href: "/admin", testID: "drawer-admin" },
+        ],
+      });
+    }
 
     return out;
   }, [user]);

@@ -1,41 +1,75 @@
+import { useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRoute } from "wouter";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "@/contexts/auth";
 import { WholesalePageGate } from "@/components/wholesale/WholesalePageGate";
 import { WholesaleShell } from "@/components/wholesale/WholesaleShell";
+import { fetchWholesaleProduct, updateWholesaleProduct } from "@/lib/wholesaleApi";
+
+function ProductEditor({ id }: { id: number }) {
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const product = useQuery({
+    queryKey: ["wholesale-edit", user?.id, id],
+    queryFn: () => fetchWholesaleProduct(id),
+    gcTime: 0,
+    enabled: Number.isSafeInteger(id) && id > 0,
+  });
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const title = String(data.get("title")).trim();
+    if (title.length < 3) {
+      setNotice("wholesale.invalidTitle");
+      return;
+    }
+    setSaving(true);
+    setNotice("");
+    try {
+      await updateWholesaleProduct(id, {
+        title, unitPrice: Number(data.get("price")), stockQuantity: Number(data.get("stock")),
+      });
+      setNotice("wholesale.changesSaved");
+    } catch {
+      setNotice("wholesale.saveFailed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const item = product.data;
+  const field = "mt-1 block h-11 w-full rounded-xl border border-border bg-background px-3";
+  return (
+    <WholesaleShell title={t("wholesale.editTitle")} subtitle={`#${id}`}>
+      {item ? (
+        <form onSubmit={save} onChange={() => setNotice("")}>
+          <fieldset disabled={saving} className="space-y-3 rounded-2xl border p-4">
+            <label className="block">{t("wholesale.formTitle")}
+              <input className={field} name="title" defaultValue={item.title} required minLength={3} maxLength={160} />
+            </label>
+            <label className="block">{t("wholesale.unitPrice")} ({item.currency})
+              <input className={field} name="price" defaultValue={item.unitPrice} required type="number" min="0.01" step="any" />
+            </label>
+            <label className="block">{t("wholesale.stock")}
+              <input className={field} name="stock" defaultValue={item.stockQuantity} required type="number" min="0" max="2147483647" step="1" />
+            </label>
+            <p>{t("wholesale.depot")} · {item.warehouse?.name ?? item.warehouseName ?? "—"}</p>
+            <button className="h-11 w-full rounded-xl bg-[hsl(152,55%,28%)] font-bold text-white">{t("wholesale.saveChanges")}</button>
+          </fieldset>
+        </form>
+      ) : <p>{t(product.isLoading ? "common.loading" : "wholesale.failedLoad")}</p>}
+      {notice && <p role="status">{t(notice)}</p>}
+    </WholesaleShell>
+  );
+}
 
 export default function WholesaleSellerEdit() {
-  const { t } = useTranslation();
   const [, params] = useRoute("/wholesale/seller/products/:id/edit");
-  const id = params?.id ?? "101";
-
-  return (
-    <WholesalePageGate>
-      <WholesaleShell
-        title={t("wholesale.editTitle", { defaultValue: "Edit listing" })}
-        subtitle={`#${id} · ${t("wholesale.editSubtitle")}`}
-      >
-        <form className="space-y-3 rounded-2xl border border-border/70 bg-white p-4 dark:bg-[hsl(152,16%,12%)]" onSubmit={(e) => e.preventDefault()}>
-          <div>
-            <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.formTitle")}</label>
-            <input defaultValue="Rice 50lb bags — Port-au-Prince warehouse" className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.unitPrice")}</label>
-              <input defaultValue="28.50" type="number" step="0.01" className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.stock")}</label>
-              <input defaultValue="420" type="number" className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm" />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold uppercase text-muted-foreground">{t("wholesale.depot")}</label>
-            <input defaultValue="Flexa Delmas Depot" className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm" />
-          </div>
-          <button type="submit" className="h-11 w-full rounded-xl bg-[hsl(152,55%,28%)] text-sm font-bold text-white">{t("wholesale.saveChanges")}</button>
-        </form>
-      </WholesaleShell>
-    </WholesalePageGate>
-  );
+  const { user } = useAuth();
+  return <WholesalePageGate><ProductEditor key={`${user?.id}/${params?.id}`} id={Number(params?.id)} /></WholesalePageGate>;
 }

@@ -412,6 +412,9 @@ export default function WholesaleSeller() {
                   {p.status}
                 </span>
               </Link>
+              <Link className="inline-block px-3 py-2 text-sm underline" href={`/wholesale/seller/products/${p.id}/edit`}>
+                {t("wholesale.editTitle")}
+              </Link>
             </li>
           ))}
         </ul>

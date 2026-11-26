@@ -1,16 +1,5 @@
-import { WholesaleSimplePage } from "@/pages/wholesale/WholesaleSimplePage";
+import WholesaleSellerProductList from "./WholesaleSellerProductList";
 
 export default function WholesaleSellerTiers() {
-  return (
-    <WholesaleSimplePage
-      titleKey="wholesale.tiersTitle"
-      subtitleKey="wholesale.tiersSubtitle"
-      items={[
-        { title: "10–19", meta: "$28.50", href: "/wholesale/seller/products/101/edit", badge: "Tier" },
-        { title: "20–49", meta: "$26.00", href: "/wholesale/seller/products/101/edit", badge: "Tier" },
-        { title: "50+", meta: "$23.75", href: "/wholesale/seller/products/101/edit", badge: "Tier" },
-
-      ]}
-    />
-  );
+  return <WholesaleSellerProductList view="tiers" />;
 }

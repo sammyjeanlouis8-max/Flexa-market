@@ -5,7 +5,6 @@ import { WholesaleListCard, WholesaleShell } from "@/components/wholesale/Wholes
 const NOTES = [
   { id: 1, title: "New chat on Rice 50lb bags", meta: "Hotel Karibe · 2h ago", href: "/wholesale/inquiries" },
   { id: 2, title: "Depot Delmas stock reminder", meta: "Update stock for weekend · 1d", href: "/wholesale/seller/warehouse" },
-  { id: 3, title: "Growth plan tip", meta: "Feature your Haiti depot · 2d", href: "/wholesale/seller/plans" },
 ];
 
 export default function WholesaleNotifications() {

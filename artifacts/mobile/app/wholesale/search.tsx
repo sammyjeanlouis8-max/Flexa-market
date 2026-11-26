@@ -2,7 +2,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -22,9 +22,16 @@ import {
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 export default function WholesaleSearchScreen() {
+  const { user } = useAuth();
+  return <WholesaleGate><Search key={`${user?.id}/${user?.country}`} /></WholesaleGate>;
+}
+
+function Search() {
   const { t } = useLanguage();
   const { token, user } = useAuth();
   const router = useRouter();
+  const latest = useRef(0);
+  const [searched, setSearched] = useState(false);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,9 +41,10 @@ export default function WholesaleSearchScreen() {
   const search = useCallback(async () => {
     if (!token) return;
     if (!country) {
-      setError("Your account country is required to search Flexa Wholesale.");
+      setError("wholesale_setProfileCountry");
       return;
     }
+    const request = ++latest.current;
     setLoading(true);
     setError(null);
     try {
@@ -44,23 +52,25 @@ export default function WholesaleSearchScreen() {
         { q: q.trim() || undefined, country, limit: 30 },
         { token },
       );
+      if (request !== latest.current) return;
       setProducts(page.products);
-    } catch (e: any) {
-      setError(e?.message || "Search failed");
+      setSearched(true);
+    } catch {
+      if (request !== latest.current) return;
+      setError("wholesale_failedLoad");
       setProducts([]);
     } finally {
-      setLoading(false);
+      if (request === latest.current) setLoading(false);
     }
   }, [token, q, country]);
 
   return (
-    <WholesaleGate>
-      <WholesaleShell title={t("wholesale_searchTitle")} subtitle={`Depot stock in ${country || "your account country"}`}>
+      <WholesaleShell title={t("wholesale_searchTitle")} subtitle={country}>
         <View style={styles.searchRow}>
           <TextInput
             value={q}
             onChangeText={setQ}
-            placeholder="Search by title…"
+            placeholder={t("wholesale_searchPlaceholder")}
             placeholderTextColor={T.muted}
             style={styles.search}
             returnKeyType="search"
@@ -74,9 +84,9 @@ export default function WholesaleSearchScreen() {
         {loading ? (
           <ActivityIndicator color={T.accent} />
         ) : error ? (
-          <Text style={styles.error}>{error}</Text>
-        ) : products.length === 0 ? (
-          <Text style={styles.empty}>No matches in {country || "your country"}.</Text>
+          <Text style={styles.error}>{t(error)}</Text>
+        ) : !searched ? null : products.length === 0 ? (
+          <Text style={styles.empty}>{t("wholesale_noSearchMatches")}</Text>
         ) : (
           <View style={styles.list}>
             {products.map((p) => (
@@ -103,7 +113,6 @@ export default function WholesaleSearchScreen() {
           </View>
         )}
       </WholesaleShell>
-    </WholesaleGate>
   );
 }
 

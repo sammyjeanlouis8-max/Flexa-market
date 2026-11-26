@@ -146,15 +146,16 @@ function DocCompletionBar({ pct, label }: { pct: number; label: string }) {
 }
 
 function driverDocPct(app: any) {
+  // Haiti wizard core docs first; legacy face/vehicle angles still count when present.
   const docs = [
-    // KYC face photos
-    app.facePhotoFront, app.facePhotoLeft, app.facePhotoRight, app.facePhotoHoldingId,
-    // Vehicle photos (new fields preferred, fallback to legacy)
+    app.photoNationalId,
+    app.facePhotoHoldingId,
+    app.photoLicenseFront,
+    app.photoVehicleRegistration,
+    app.facePhotoFront, app.facePhotoLeft, app.facePhotoRight,
     app.photoVehicleFront ?? app.photoFront,
     app.photoVehicleSide  ?? app.photoSide,
-    // Document photos
-    app.photoLicensePlate, app.photoVehicleRegistration, app.photoVehicleInsurance,
-    app.photoLicenseFront,
+    app.photoLicensePlate, app.photoVehicleInsurance,
   ];
   const present = docs.filter(Boolean).length;
   return Math.round((present / docs.length) * 100);
@@ -419,20 +420,23 @@ function DriverAppCard({ app, expanded, onToggle, onAction, actioning, scopeLock
     : app.status === "needs_changes" ? "from-blue-50/80 to-indigo-50/40 dark:from-blue-900/10 dark:to-indigo-900/5"
     : "from-card to-card";
 
+  const uncertainDocs = !!app.docsNeedReview;
   const driverPhotos: DocSlide[] = [
     { url: app.photoVehicleFront ?? app.photoFront,  title: "Devan Veyikil" },
     { url: app.photoVehicleSide  ?? app.photoSide,   title: "Kote Veyikil" },
     { url: app.photoBody,                            title: t("adminApps.photoVehicleBody") },
     { url: app.photoLicensePlate,                    title: "Foto Plak" },
-    { url: app.photoVehicleRegistration,             title: "Immatrikilasyon" },
+    { url: app.photoVehicleRegistration,             title: t("adminApps.photoVehicleRegistration", { defaultValue: "Dokiman veyikil" }) },
     { url: app.photoVehicleInsurance,                title: "Asirans" },
-    { url: app.photoLicenseFront,                    title: "Lisans — Devan" },
+    { url: app.photoLicenseFront,                    title: t("adminApps.photoLicenseFront", { defaultValue: "Lisans chofè" }) },
     { url: app.photoLicenseBack,                     title: "Lisans — Dèyè" },
-    { url: app.photoIdSelfie,                        title: t("adminApps.photoSelfieId") },
+    { url: app.photoNationalId,                      title: t("adminApps.photoNationalId", { defaultValue: "Pyès idantite" }) },
+    { url: app.facePhotoHoldingId,                   title: t("adminApps.photoHoldingId", { defaultValue: "Selfie ak pyès idantite" }) },
+    { url: app.selfiePhotoUrl && app.selfiePhotoUrl !== app.facePhotoHoldingId ? app.selfiePhotoUrl : null, title: t("adminApps.photoSelfie", { defaultValue: "Selfie" }) },
+    { url: !app.photoNationalId && app.photoIdSelfie ? app.photoIdSelfie : null, title: uncertainDocs ? t("adminApps.photoUncertain", { defaultValue: "Foto — verifye kalite" }) : t("adminApps.photoSelfieId") },
     { url: app.facePhotoFront,                       title: t("adminApps.photoFaceFront") },
     { url: app.facePhotoLeft,                        title: t("adminApps.photoFaceLeft") },
     { url: app.facePhotoRight,                       title: t("adminApps.photoFaceRight") },
-    { url: app.facePhotoHoldingId,                   title: t("adminApps.photoHoldingId") },
   ];
 
   return (
@@ -465,6 +469,12 @@ function DriverAppCard({ app, expanded, onToggle, onAction, actioning, scopeLock
           <div className="mt-1.5 max-w-xs">
             <DocCompletionBar pct={docPct} label={t("adminApps.docCompletionLabel")} />
           </div>
+          {uncertainDocs && (
+            <p className="mt-1 text-[10px] font-bold text-amber-700 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              {t("adminApps.docsNeedReview", { defaultValue: "Verify photo labels — legacy upload" })}
+            </p>
+          )}
         </div>
 
         <button type="button"
@@ -536,21 +546,30 @@ function DriverAppCard({ app, expanded, onToggle, onAction, actioning, scopeLock
 
             {activeTab === "dokiman" && (
               <div className="space-y-4">
-                <PhotoGrid label="🪪 Lisans & Idantite" photos={[
-                  { url: app.photoLicenseFront, title: "Permis chofè (devan)" },
-                  { url: app.photoLicenseBack,  title: "Permis chofè (dèyè)" },
-                  { url: app.photoIdSelfie,     title: t("adminApps.photoSelfieId") },
+                {uncertainDocs && (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 font-semibold">
+                    {t("adminApps.docsNeedReviewHint", {
+                      defaultValue: "Some photos may be mislabeled from an older upload. Open each image and confirm the document type before approving.",
+                    })}
+                  </div>
+                )}
+                <PhotoGrid label="🪪 Idantite & Lisans" photos={[
+                  { url: app.photoNationalId, title: t("adminApps.photoNationalId", { defaultValue: "Pyès idantite" }) },
+                  { url: app.photoLicenseFront, title: t("adminApps.photoLicenseFront", { defaultValue: "Lisans chofè (devan)" }) },
+                  { url: app.photoLicenseBack,  title: "Lisans chofè (dèyè)" },
+                  { url: !app.photoNationalId && app.photoIdSelfie ? app.photoIdSelfie : null, title: uncertainDocs ? t("adminApps.photoUncertain", { defaultValue: "Foto — verifye kalite" }) : t("adminApps.photoSelfieId") },
                 ]} />
                 <PhotoGrid label="📋 Kat enskripsyon & Asirans" photos={[
-                  { url: app.photoVehicleRegistration, title: "Kat Immatrikilasyon" },
+                  { url: app.photoVehicleRegistration, title: t("adminApps.photoVehicleRegistration", { defaultValue: "Dokiman veyikil" }) },
                   { url: app.photoVehicleInsurance,    title: "Asirans Veyikil" },
                   { url: app.photoLicensePlate,        title: "Foto Plak" },
                 ]} />
-                <PhotoGrid label="🤳 KYC Selfie" photos={[
+                <PhotoGrid label="🤳 Selfie & KYC" photos={[
+                  { url: app.facePhotoHoldingId, title: t("adminApps.photoHoldingId", { defaultValue: "Selfie ak pyès idantite" }) },
+                  { url: app.selfiePhotoUrl && app.selfiePhotoUrl !== app.facePhotoHoldingId ? app.selfiePhotoUrl : null, title: t("adminApps.photoSelfie", { defaultValue: "Selfie" }) },
                   { url: app.facePhotoFront,     title: t("adminApps.photoFaceFront") },
                   { url: app.facePhotoLeft,      title: t("adminApps.photoFaceLeft") },
                   { url: app.facePhotoRight,     title: t("adminApps.photoFaceRight") },
-                  { url: app.facePhotoHoldingId, title: t("adminApps.photoHoldingId") },
                 ]} />
               </div>
             )}
@@ -571,12 +590,18 @@ function DriverAppCard({ app, expanded, onToggle, onAction, actioning, scopeLock
 
             {activeTab === "selfie" && (
               <div className="space-y-3">
-                {app.selfiePhotoUrl || app.photoIdSelfie ? (
+                {app.facePhotoHoldingId || app.selfiePhotoUrl ? (
                   <>
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">🤳 Selfie Verifikasyon</p>
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">
+                      🤳 {t("adminApps.photoHoldingId", { defaultValue: "Selfie ak pyès idantite" })}
+                    </p>
                     <div className="flex justify-center">
                       <div className="w-48 h-48 rounded-2xl overflow-hidden border-2 border-green-300 shadow-sm">
-                        <img src={app.selfiePhotoUrl ?? app.photoIdSelfie} alt="Selfie" className="w-full h-full object-cover" />
+                        <img
+                          src={app.facePhotoHoldingId || app.selfiePhotoUrl}
+                          alt={t("adminApps.photoHoldingId", { defaultValue: "Selfie ak pyès idantite" })}
+                          className="w-full h-full object-cover"
+                        />
                       </div>
                     </div>
                     <div className="flex items-center justify-center gap-1.5 text-xs text-green-600 font-semibold">

@@ -14,17 +14,33 @@ Recruitment + application flow for new Flexa Market drivers in Haiti. Extends ex
 
 | Endpoint | Role |
 |----------|------|
-| `GET /api/delivery/application` | Resume / gate |
-| `PUT /api/delivery/application/draft` | **New** — save/resume draft (`status: draft`) |
-| `POST /api/delivery/apply` | Submit for review (`pending`); updates draft/needs_changes/rejected in place |
+| `GET /api/delivery/application` | Resume / gate (auth user only) |
+| `PUT /api/delivery/application/draft` | Save incomplete draft (`status: draft`); no doc gate |
+| `POST /api/delivery/apply` | Submit for review (`pending`) after Haiti doc validation; keeps draft if docs missing |
+| `POST /api/delivery/application/upload` | Private driver-doc upload (`driver-docs/{userId}/…`) |
+| `GET /api/delivery/application/document?key=` | Owner or authorized admin opens a private doc |
 | Admin approve/reject/request-changes | Unchanged |
-| `POST /api/upload` | Private document storage |
+
+## Documents (Haiti)
+
+| Field | Label | Required |
+|-------|-------|----------|
+| `photoNationalId` | National ID | Always |
+| `facePhotoHoldingId` | Selfie holding ID | Always |
+| `photoLicenseFront` | Driver’s license | Cars |
+| `photoVehicleRegistration` | Vehicle registration | Moto & car |
+
+Legacy rows that dual-wrote the same URL into selfie slots are kept and flagged `docs_need_review` for admin verification.
 
 ## Statuses
 
-`draft` → `pending` → `approved` | `rejected` | `needs_changes` (+ existing `suspended` for drivers)
+`draft` → `pending` (An revizyon) → `approved` | `rejected` | `needs_changes` (+ existing `suspended` for drivers)
 
 Applicants never receive delivery assignment access until admin approval creates/activates a `drivers` row.
+
+## Mobile
+
+`artifacts/mobile/app/driver-apply.tsx` opens the same web wizard (`/delivery/apply`) in a WebView — no parallel native form.
 
 ## Branding
 

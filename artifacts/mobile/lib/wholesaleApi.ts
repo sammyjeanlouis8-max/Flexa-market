@@ -311,6 +311,27 @@ export async function fetchSellerStats(opts: AuthOpts): Promise<WholesaleSellerS
   return data as WholesaleSellerStats;
 }
 
+export type WholesaleSellerSettings = {
+  company: string;
+  chatAuto: boolean;
+  showStock: boolean;
+};
+
+export async function wholesaleSellerSettings(
+  opts: AuthOpts,
+  values?: WholesaleSellerSettings,
+): Promise<WholesaleSellerSettings> {
+  const res = await fetch(`${getApiBase()}/wholesale/seller/settings`, {
+    method: values ? "PUT" : "GET",
+    headers: headers(opts.token),
+    body: values ? JSON.stringify(values) : undefined,
+    signal: opts.signal,
+  });
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || "Seller settings request failed");
+  return (data.settings ?? { company: "", chatAuto: true, showStock: true }) as WholesaleSellerSettings;
+}
+
 export async function fetchFavorites(
   opts: AuthOpts & { country?: string; limit?: number; offset?: number },
 ): Promise<{ products: WholesaleProduct[]; pagination: WholesalePagination }> {

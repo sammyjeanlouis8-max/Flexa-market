@@ -5,15 +5,19 @@ import { useLanguage } from "@/context/LanguageContext";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { WholesaleGate } from "@/components/wholesale/WholesaleGate";
 import { WholesaleShell } from "@/components/wholesale/WholesaleShell";
 import { useAuth } from "@/context/AuthContext";
+import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES } from "@/lib/countries";
 import {
   fetchWholesaleProductsPage,
   formatMoney,
@@ -23,28 +27,31 @@ import {
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 
 const PAGE_SIZE = 20;
+const GRID_GAP = 12;
 
 export default function WholesaleCatalogScreen() {
   const { t } = useLanguage();
   const { token, user } = useAuth();
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const cardWidth = Math.floor((width - 32 - GRID_GAP) / 2);
+
   const [q, setQ] = useState("");
+  const [country, setCountry] = useState(user?.country ?? "");
+  const [countryOpen, setCountryOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
   const [pagination, setPagination] = useState<WholesalePagination | null>(null);
-  const marketplaceCountry = user?.country || "";
+
+  useEffect(() => {
+    if (user?.country && !country) setCountry(user.country);
+  }, [user?.country, country]);
 
   const load = useCallback(
     async (offset = 0, append = false) => {
       if (!token) return;
-      if (!marketplaceCountry) {
-        setError("Set your profile country to browse Flexa Wholesale in your marketplace.");
-        setLoading(false);
-        setProducts([]);
-        return;
-      }
       if (append) setLoadingMore(true);
       else setLoading(true);
       setError(null);
@@ -52,7 +59,7 @@ export default function WholesaleCatalogScreen() {
         const page = await fetchWholesaleProductsPage(
           {
             q: q.trim() || undefined,
-            country: marketplaceCountry,
+            country: country || undefined,
             limit: PAGE_SIZE,
             offset,
           },
@@ -68,12 +75,20 @@ export default function WholesaleCatalogScreen() {
         setLoadingMore(false);
       }
     },
-    [token, q, marketplaceCountry],
+    [token, q, country],
   );
 
   useEffect(() => {
     void load(0, false);
   }, [load]);
+
+  const countryLabel = country
+    ? `${COUNTRY_FLAGS[country] ? `${COUNTRY_FLAGS[country]} ` : ""}${country}`
+    : t("wholesale_allCountries");
+
+  const leadText = country
+    ? `Wholesale only — chat vendors stocking a verified warehouse in ${country}.`
+    : t("wholesale_tagline");
 
   return (
     <WholesaleGate>
@@ -85,26 +100,22 @@ export default function WholesaleCatalogScreen() {
             testID="wholesale-sell-cta"
           >
             <Feather name="plus" size={14} color={T.forest} />
-            <Text style={styles.sellBtnText}>Sell</Text>
+            <Text style={styles.sellBtnText}>{t("wholesale_sellCta")}</Text>
           </Pressable>
         }
       >
-        <Text style={styles.lead}>
-          Wholesale only — chat vendors stocking a verified warehouse in{" "}
-          {marketplaceCountry || "your country"}.
-        </Text>
+        <Text style={styles.lead}>{leadText}</Text>
         <View style={styles.banner}>
-          <Text style={styles.bannerText}>
-            Strict country filter · no buy button · depot pickup · page {PAGE_SIZE}
-          </Text>
+          <Text style={styles.bannerText}>{t("wholesale_modelNote")}</Text>
         </View>
 
         <View style={styles.chips}>
           {[
-            { label: "Categories", href: "/wholesale/categories" },
-            { label: "Depots", href: "/wholesale/warehouses" },
-            { label: "Search", href: "/wholesale/search" },
-            { label: "How it works", href: "/wholesale/help" },
+            { label: t("wholesale_categoriesTitle"), href: "/wholesale/categories" },
+            { label: t("wholesale_depotsTitle"), href: "/wholesale/warehouses" },
+            { label: t("wholesale_searchTitle"), href: "/wholesale/search" },
+            { label: t("wholesale_helpTitle"), href: "/wholesale/help" },
+            { label: "Haiti", href: "/wholesale/country/Haiti" },
           ].map((c) => (
             <Pressable key={c.href} style={styles.chip} onPress={() => router.push(c.href as any)}>
               <Text style={styles.chipText}>{c.label}</Text>
@@ -116,7 +127,7 @@ export default function WholesaleCatalogScreen() {
           <TextInput
             value={q}
             onChangeText={setQ}
-            placeholder={`Search in ${marketplaceCountry || "your country"}…`}
+            placeholder={t("wholesale_searchPlaceholder")}
             placeholderTextColor={T.muted}
             style={styles.search}
             returnKeyType="search"
@@ -128,6 +139,18 @@ export default function WholesaleCatalogScreen() {
           </Pressable>
         </View>
 
+        <Pressable
+          style={styles.countryBtn}
+          onPress={() => setCountryOpen(true)}
+          testID="wholesale-country-filter"
+        >
+          <Feather name="globe" size={16} color={T.accent} />
+          <Text style={styles.countryBtnText} numberOfLines={1}>
+            {countryLabel}
+          </Text>
+          <Feather name="chevron-down" size={16} color={T.muted} />
+        </Pressable>
+
         {loading ? (
           <ActivityIndicator color={T.accent} style={{ marginTop: 24 }} />
         ) : error ? (
@@ -135,12 +158,10 @@ export default function WholesaleCatalogScreen() {
         ) : products.length === 0 ? (
           <View style={styles.empty}>
             <Feather name="package" size={28} color={T.accent} />
-            <Text style={styles.emptyTitle}>No wholesale products in {marketplaceCountry || "this country"}</Text>
-            <Text style={styles.emptyBody}>
-              Sellers need a verified warehouse here. Cross-country stock stays in its depot country.
-            </Text>
+            <Text style={styles.emptyTitle}>{t("wholesale_emptyTitle")}</Text>
+            <Text style={styles.emptyBody}>{t("wholesale_emptyBody")}</Text>
             <Pressable style={styles.primary} onPress={() => router.push("/wholesale/seller/new")}>
-              <Text style={styles.primaryText}>+ Create wholesale product</Text>
+              <Text style={styles.primaryText}>+ {t("wholesale_createFirst")}</Text>
             </Pressable>
           </View>
         ) : (
@@ -148,7 +169,7 @@ export default function WholesaleCatalogScreen() {
             {products.map((p) => (
               <Pressable
                 key={p.id}
-                style={styles.card}
+                style={[styles.card, { width: cardWidth }]}
                 onPress={() => router.push(`/wholesale/products/${p.id}`)}
                 testID={`wholesale-product-${p.id}`}
               >
@@ -161,7 +182,7 @@ export default function WholesaleCatalogScreen() {
                     </View>
                   )}
                   <View style={styles.tag}>
-                    <Text style={styles.tagText}>WHOLESALE</Text>
+                    <Text style={styles.tagText}>{t("wholesale_bulkBadge").toUpperCase()}</Text>
                   </View>
                 </View>
                 <Text style={styles.cardTitle} numberOfLines={2}>
@@ -170,8 +191,8 @@ export default function WholesaleCatalogScreen() {
                 <Text style={styles.price}>
                   {formatMoney(p.unitPrice, p.currency)} / {p.wholesaleUnitType}
                 </Text>
-                <Text style={styles.meta}>
-                  Min {p.minOrderQty} · {p.sellerName || "Seller"} · {p.country}
+                <Text style={styles.meta} numberOfLines={1}>
+                  {t("wholesale_minOrder")} {p.minOrderQty} · {p.sellerName || "Seller"}
                 </Text>
                 {p.warehouseName ? (
                   <Text style={styles.depot} numberOfLines={1}>
@@ -183,7 +204,7 @@ export default function WholesaleCatalogScreen() {
             ))}
             {pagination?.hasMore ? (
               <Pressable
-                style={styles.loadMore}
+                style={[styles.loadMore, { width: "100%" }]}
                 onPress={() => void load(products.length, true)}
                 disabled={loadingMore}
                 testID="wholesale-load-more"
@@ -197,15 +218,51 @@ export default function WholesaleCatalogScreen() {
                 )}
               </Pressable>
             ) : pagination ? (
-              <Text style={styles.footer}>
-                Showing {products.length} of {pagination.total} in {marketplaceCountry}
+              <Text style={[styles.footer, { width: "100%" }]}>
+                Showing {products.length} of {pagination.total}
+                {country ? ` · ${country}` : ""}
               </Text>
             ) : null}
           </View>
         )}
 
-        <Text style={styles.footer}>Flexa Wholesale · chat-only · country warehouses</Text>
+        <Text style={styles.footer}>{t("wholesale_nativeNote")}</Text>
       </WholesaleShell>
+
+      <Modal
+        visible={countryOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setCountryOpen(false)}
+      >
+        <Pressable style={styles.backdrop} onPress={() => setCountryOpen(false)}>
+          <View style={styles.sheet}>
+            <Text style={styles.sheetTitle}>{t("wholesale_allCountries")}</Text>
+            <FlatList
+              data={["", ...SUPPORTED_COUNTRIES]}
+              keyExtractor={(item) => item || "__all__"}
+              renderItem={({ item }) => {
+                const selected = item === country;
+                const label = item
+                  ? `${COUNTRY_FLAGS[item] ? `${COUNTRY_FLAGS[item]} ` : ""}${item}`
+                  : t("wholesale_allCountries");
+                return (
+                  <Pressable
+                    style={styles.countryRow}
+                    onPress={() => {
+                      setCountry(item);
+                      setCountryOpen(false);
+                    }}
+                  >
+                    <Text style={styles.countryName}>{label}</Text>
+                    {selected ? <Feather name="check" size={18} color={T.accent} /> : null}
+                  </Pressable>
+                );
+              }}
+            />
+          </View>
+        </Pressable>
+      </Modal>
     </WholesaleGate>
   );
 }
@@ -217,19 +274,21 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: T.line,
   },
   bannerText: { color: T.accent, fontSize: 12, fontWeight: "700" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
   chip: {
     backgroundColor: T.white,
-    borderRadius: 999,
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: T.line,
   },
   chipText: { fontSize: 12, fontWeight: "700", color: T.ink },
-  searchRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
+  searchRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
   search: {
     flex: 1,
     backgroundColor: T.white,
@@ -248,6 +307,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  countryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: T.white,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: T.line,
+  },
+  countryBtnText: { flex: 1, fontSize: 14, fontWeight: "700", color: T.ink },
   sellBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -258,7 +330,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   sellBtnText: { color: T.forest, fontSize: 11, fontWeight: "800" },
-  grid: { gap: 12 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: GRID_GAP },
   card: {
     backgroundColor: T.white,
     borderRadius: 16,
@@ -267,22 +339,22 @@ const styles = StyleSheet.create({
     borderColor: T.line,
   },
   thumbWrap: { position: "relative" },
-  thumb: { width: "100%", height: 160, backgroundColor: T.mint },
+  thumb: { width: "100%", height: 120, backgroundColor: T.mint },
   thumbEmpty: { alignItems: "center", justifyContent: "center" },
   tag: {
     position: "absolute",
-    top: 10,
-    left: 10,
+    top: 8,
+    left: 8,
     backgroundColor: T.forest,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
     borderRadius: 6,
   },
-  tagText: { color: T.white, fontSize: 10, fontWeight: "800" },
-  cardTitle: { paddingHorizontal: 12, paddingTop: 10, fontSize: 15, fontWeight: "800", color: T.ink },
-  price: { paddingHorizontal: 12, marginTop: 4, fontSize: 15, fontWeight: "800", color: T.accent },
-  meta: { paddingHorizontal: 12, marginTop: 2, fontSize: 12, color: T.muted },
-  depot: { paddingHorizontal: 12, paddingBottom: 12, marginTop: 4, fontSize: 12, color: T.muted },
+  tagText: { color: T.white, fontSize: 9, fontWeight: "800" },
+  cardTitle: { paddingHorizontal: 10, paddingTop: 8, fontSize: 13, fontWeight: "800", color: T.ink },
+  price: { paddingHorizontal: 10, marginTop: 4, fontSize: 13, fontWeight: "800", color: T.accent },
+  meta: { paddingHorizontal: 10, marginTop: 2, fontSize: 11, color: T.muted },
+  depot: { paddingHorizontal: 10, paddingBottom: 10, marginTop: 4, fontSize: 11, color: T.muted },
   loadMore: {
     marginTop: 4,
     backgroundColor: T.mint,
@@ -312,4 +384,33 @@ const styles = StyleSheet.create({
   primaryText: { color: T.white, fontWeight: "800", fontSize: 13 },
   error: { color: T.danger, marginTop: 16, fontWeight: "700" },
   footer: { marginTop: 24, textAlign: "center", fontSize: 11, color: T.muted },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    maxHeight: "70%",
+    backgroundColor: T.white,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: T.ink,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  countryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: T.line,
+  },
+  countryName: { flex: 1, fontSize: 15, fontWeight: "600", color: T.ink },
 });

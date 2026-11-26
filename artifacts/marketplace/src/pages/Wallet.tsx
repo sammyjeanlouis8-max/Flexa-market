@@ -128,7 +128,7 @@ const TOPUP_AMOUNTS_HTG = [500, 1000, 2000, 5000];
 const TOPUP_AMOUNTS_USD = [5, 10, 25, 50];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-type TFunc = (key: string) => string;
+type TFunc = (key: string, opts?: { defaultValue?: string }) => string;
 
 function typeLabel(type: string, amountUsd: number, t: TFunc) {
   if (type === "recharge") return { label: t("wallet.txRecharge"), color: "text-green-400", sign: "+", Icon: ArrowDownCircle, iconColor: "bg-green-900/30 text-green-400" };

@@ -503,7 +503,7 @@ export default function AdminWalletMonitor() {
                             if (d.ok) {
                               if (d.credited > 0) {
                                 toast({ title: `✅ ${d.credited} rechaj Stripe kreditye pou ${a.fullName}` });
-                                refetch();
+                                void load();
                               } else {
                                 toast({ title: "Okenn rechaj Stripe annatant", description: d.results?.map((x: any) => x.status).join(", ") });
                               }
@@ -570,7 +570,7 @@ export default function AdminWalletMonitor() {
                       const d = await r.json();
                       if (d.ok) {
                         toast({ title: `✅ $${parseFloat(creditAmt).toFixed(2)} kreditye sou ${creditUser.fullName}` });
-                        setCreditUser(null); refetch();
+                        setCreditUser(null); void load();
                       } else { toast({ title: "Erè", description: d.error ?? "Echèk", variant: "destructive" }); }
                     } catch { toast({ title: "Erè rezo", variant: "destructive" }); }
                     finally { setCreditLoading(false); }

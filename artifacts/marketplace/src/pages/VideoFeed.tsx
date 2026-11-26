@@ -847,6 +847,7 @@ function CommentPanel({ listingId, sellerId, onClose }: { listingId: number; sel
       {/* TikTok-style emoji panel */}
       <TikTokEmojiPanel
         visible={showEmojiPanel && !isRestricted}
+        onRequestClose={() => setShowEmojiPanel(false)}
         onEmojiSelect={emoji => {
           if (textRef.current) {
             setText(insertEmojiAtCursor(textRef.current, text, emoji));

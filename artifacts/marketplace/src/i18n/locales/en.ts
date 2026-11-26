@@ -486,6 +486,10 @@ export default {
     brandTitle: "Buy & sell with confidence worldwide.",
     brandSubtitle: "One secure account for shoppers, sellers, drivers, and admins.",
 },
+  authGate: {
+    signInToContinue: "Sign in to continue",
+    signInBody: "Create an account or sign in to continue with this action.",
+  },
   listing: {
     condition: "Condition",
     conditions: {
@@ -6156,7 +6160,6 @@ export default {
     motorcycle: "1 motorcycle",
     shipFee: "+${{amount}} ship",
     estimatingDelivery: "Estimating delivery…",
-    freeDelivery: "Free delivery",
     deliveryFeePending: "Delivery fee pending",
     addCityForEstimate: "Add city at checkout for delivery estimate",
     cityFee: "{{city}} · ${{amount}}",

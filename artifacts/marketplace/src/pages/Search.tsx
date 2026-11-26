@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MobileSelect } from "@/components/ui/mobile-select";
 import { Slider } from "@/components/ui/slider";
-import { useGetListings, useGetCategories } from "@workspace/api-client-react";
+import { useGetListings, useGetCategories, type Category, type Listing } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
 import { useShoppingLocation } from "@/contexts/shopping-location";
 import ListingCard from "@/components/ListingCard";
@@ -376,7 +376,7 @@ export default function SearchPage() {
   const summaryCountry: string | null | undefined = isAdmin ? effectiveAdminCountry : userCountry;
 
   const selectedParent = useMemo(
-    () => categories?.find(c => c.slug === category),
+    () => categories?.find((c: Category) => c.slug === category),
     [categories, category],
   );
 
@@ -672,8 +672,8 @@ export default function SearchPage() {
           )}
           {category && (
             <Badge variant="secondary" className="flex items-center gap-1 px-2 py-1">
-              {categories?.find(c => c.slug === category)?.icon}{" "}
-              {categories?.find(c => c.slug === category)?.name}
+              {categories?.find((c: Category) => c.slug === category)?.icon}{" "}
+              {categories?.find((c: Category) => c.slug === category)?.name}
               <button
                 onClick={() => { setCategory(""); setSubcategory(""); setPage(1); }}
                 className="ml-1 hover:text-destructive"
@@ -727,7 +727,7 @@ export default function SearchPage() {
           ) : data?.listings && data.listings.length > 0 ? (
             <>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
-              {data.listings.map(l => <ListingCard key={l.id} listing={l} />)}
+              {data.listings.map((l: Listing) => <ListingCard key={l.id} listing={l} />)}
             </div>
               {data.totalPages > 1 && (
                 <div className="flex justify-center gap-2 mt-6">

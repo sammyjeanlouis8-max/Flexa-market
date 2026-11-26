@@ -2,7 +2,7 @@ import { Fragment, useState } from "react";
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, ChevronDown, Eye, Package, Printer } from "lucide-react";
-import type { SellerSalesReportRow } from "@workspace/api-client-react";
+import type { SellerSalesRefund, SellerSalesReportRow } from "@workspace/api-client-react";
 import { addKnown, formatDate, KNOWN_WARNINGS } from "@/lib/sales-report-format";
 import { Money, StatusText } from "./Money";
 
@@ -14,7 +14,7 @@ function Warnings({ row }: { row: SellerSalesReportRow }) {
   if (!row.warnings.length) return null;
   return (
     <ul className="space-y-1" data-testid={`warnings-${row.id}`}>
-      {row.warnings.map(w => (
+      {row.warnings.map((w: string) => (
         <li key={w} className="flex items-start gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">
           <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden />
           {KNOWN_WARNINGS.includes(w) ? t(`salesReport.warn.${w}`) : `${t("salesReport.unknownWarning")}: ${w}`}
@@ -66,7 +66,7 @@ function RowDetails({ row, tz, locale }: { row: SellerSalesReportRow; tz: string
         <div>
           <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">{t("salesReport.refundEvidence")}</p>
           <ul className="space-y-1 text-xs">
-            {row.refunds.map(r => (
+            {row.refunds.map((r: SellerSalesRefund) => (
               <li key={r.id} className="flex flex-wrap gap-x-3 gap-y-0.5 rounded-md bg-muted/40 px-2 py-1.5">
                 <span className="font-mono">{r.id}</span>
                 <span>{t("salesReport.refundSource")}: {t(`salesReport.sources.${r.source}`, { defaultValue: r.source })}</span>

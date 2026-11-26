@@ -489,7 +489,7 @@ export default function ListingDetail() {
     if (sp.get("contact") !== "1") return;
     window.history.replaceState(null, "", `/listings/${id}`);
     createConv.mutate({ data: { listingId: id, sellerId: listing.sellerId } }, {
-      onSuccess: (conv) => setLocation(`/messages/${(conv as any).id}`),
+      onSuccess: (conv: { id: number }) => setLocation(`/messages/${conv.id}`),
       onError: () => toast({ title: "Error", description: "Could not start conversation", variant: "destructive" }),
     });
   }, [listing?.id, user]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1014,7 +1014,7 @@ export default function ListingDetail() {
       if (!isLoading) {
         requireAuth({ action: "favorite", next: `/listings/${id}`, listingId: id });
       }
-      return null;
+      return;
     }
     const isFav = (listing as any).isFavorited;
     if (isFav) {
@@ -1039,10 +1039,10 @@ export default function ListingDetail() {
           title: t("authGate.signInToContact", { defaultValue: "Sign in to contact this seller." }),
         });
       }
-      return null;
+      return;
     }
     createConv.mutate({ data: { listingId: id, sellerId: listing.sellerId } }, {
-      onSuccess: (conv) => setLocation(`/messages/${(conv as any).id}`),
+      onSuccess: (conv: { id: number }) => setLocation(`/messages/${conv.id}`),
       onError: () => toast({ title: "Error", description: "Could not start conversation", variant: "destructive" }),
     });
   };
@@ -1102,7 +1102,7 @@ export default function ListingDetail() {
       if (!isLoading) {
         requireAuth({ action: "generic", next: `/listings/${id}`, listingId: id });
       }
-      return null;
+      return;
     }
     const raw = offerAmount.trim();
     if (!raw) {
@@ -1154,7 +1154,7 @@ export default function ListingDetail() {
   };
 
   const handleSubmitReview = async () => {
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
     if (reviewRating === 0) {
       toast({ title: t("review.chooseStars", { defaultValue: "Please choose a star rating" }), variant: "destructive" });
       return;

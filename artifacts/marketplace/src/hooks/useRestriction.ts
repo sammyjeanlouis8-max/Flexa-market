@@ -3,7 +3,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import { createElement, useCallback } from "react";
 import { useLocation } from "wouter";
-import { ToastAction } from "@/components/ui/toast";
+import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
 
 export function useRestriction() {
   const { user } = useAuth();
@@ -28,7 +28,7 @@ export function useRestriction() {
       action: createElement(ToastAction, {
         altText: t("restriction.contactSupport"),
         onClick: () => setLocation("/support"),
-      }, t("restriction.contactSupport")),
+      }, t("restriction.contactSupport")) as unknown as ToastActionElement,
     });
   }, [toast, t, setLocation]);
 

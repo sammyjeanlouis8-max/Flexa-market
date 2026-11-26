@@ -237,7 +237,7 @@ export function useUpload(options: UseUploadOptions = {}) {
 
         setProgress(10);
         let uploadResponse: UploadResponse | null = null;
-        let resolvedPath: string;
+        let resolvedPath: string | undefined;
         const fallbackEligible =
           convertedFile.type.startsWith("image/") &&
           convertedFile.size <= 10 * 1024 * 1024;
@@ -275,6 +275,10 @@ export function useUpload(options: UseUploadOptions = {}) {
             if (!(putError instanceof UploadHttpError)) throw putError;
             resolvedPath = await useImageFallback(putError);
           }
+        }
+
+        if (typeof resolvedPath !== "string" || !resolvedPath) {
+          throw new Error("Upload completed without a resolved object path");
         }
 
         const finalResponse: UploadResponse = {

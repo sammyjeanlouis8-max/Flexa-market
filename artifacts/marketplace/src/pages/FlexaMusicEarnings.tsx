@@ -94,7 +94,7 @@ export default function FlexaMusicEarnings() {
     if (!silent) setLoading(true); else setRefreshing(true);
     try {
       const token = localStorage.getItem("flexamarket_token");
-      const authHdr = token ? { Authorization: `Bearer ${token}` } : {};
+      const authHdr: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
       const [statsRes, earningsRes] = await Promise.all([
         fetch("/api/music/artist/stats",    { headers: authHdr }),
         fetch("/api/music/artist/earnings", { headers: authHdr }),

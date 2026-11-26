@@ -3407,6 +3407,15 @@ export async function runStartupMigrations(): Promise<void> {
   });
 
   migrations.push({
+    name: "wholesale_seller_settings.create",
+    sql: `CREATE TABLE IF NOT EXISTS wholesale_seller_settings (
+      seller_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      company TEXT NOT NULL,
+      chat_auto BOOLEAN NOT NULL,
+      show_stock BOOLEAN NOT NULL
+    )`,
+  });
+  migrations.push({
     name: "wholesale_products.create",
     sql: `CREATE TABLE IF NOT EXISTS wholesale_products (
       id SERIAL PRIMARY KEY,

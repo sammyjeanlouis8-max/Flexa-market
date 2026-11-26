@@ -3,6 +3,13 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 
+export const wholesaleSellerSettingsTable = pgTable("wholesale_seller_settings", {
+  sellerId: integer("seller_id").primaryKey().references(() => usersTable.id, { onDelete: "cascade" }),
+  company: text("company").notNull(),
+  chatAuto: boolean("chat_auto").notNull(),
+  showStock: boolean("show_stock").notNull(),
+});
+
 /**
  * Seller warehouses / depots — separate from residential user addresses.
  * A US-based seller can sell in Haiti only with a verified warehouse there.

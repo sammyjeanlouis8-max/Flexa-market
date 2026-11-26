@@ -94,6 +94,28 @@ export async function fetchWholesaleProduct(id: number): Promise<WholesaleProduc
   return data.product;
 }
 
+export async function updateWholesaleProduct(id: number, changes: {
+  title: string; unitPrice: number; stockQuantity: number;
+}): Promise<WholesaleProduct> {
+  const res = await fetch(`/api/wholesale/products/${id}`, {
+    method: "PATCH", headers: authHeaders(), body: JSON.stringify(changes),
+  });
+  if (!res.ok) throw new Error("Could not save product");
+  return (await res.json()).product;
+}
+
+export type SellerSettings = { company: string; chatAuto: boolean; showStock: boolean };
+
+export async function wholesaleSellerSettings(values?: SellerSettings): Promise<SellerSettings> {
+  const res = await fetch("/api/wholesale/seller/settings", {
+    method: values ? "PUT" : "GET",
+    headers: authHeaders(),
+    body: values ? JSON.stringify(values) : undefined,
+  });
+  if (!res.ok) throw new Error("Seller settings request failed");
+  return (await res.json()).settings;
+}
+
 export async function createWholesaleProduct(body: Record<string, unknown>): Promise<WholesaleProduct> {
   const res = await fetch("/api/wholesale/products", {
     method: "POST",

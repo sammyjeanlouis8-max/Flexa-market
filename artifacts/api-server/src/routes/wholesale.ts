@@ -6,6 +6,7 @@ import {
   conversationsTable,
   messagesTable,
   wholesalePriceTiersTable,
+  wholesaleSellerSettingsTable,
   wholesaleProductsTable,
   wholesaleWarehousesTable,
   wholesaleInventoryTable,
@@ -92,6 +93,25 @@ async function requireWholesaleAccess(req: Parameters<typeof requireAuth>[0], re
     res.status(403).json({ error: "Wholesale preview is Admin / Moderator only" });
   });
 }
+
+router.get("/wholesale/seller/settings", requireWholesaleAccess, async (req, res) => {
+  const [settings] = await db.select().from(wholesaleSellerSettingsTable)
+    .where(eq(wholesaleSellerSettingsTable.sellerId, req.userId!));
+  res.json({ settings: settings ?? { company: "", chatAuto: true, showStock: true } });
+});
+
+router.put("/wholesale/seller/settings", requireWholesaleAccess, async (req, res): Promise<void> => {
+  const { company, chatAuto, showStock } = req.body ?? {};
+  if (typeof company !== "string" || company.trim().length > 160 ||
+      typeof chatAuto !== "boolean" || typeof showStock !== "boolean") {
+    res.status(400).json({ error: "Invalid seller settings" });
+    return;
+  }
+  const values = { company: company.trim(), chatAuto, showStock };
+  await db.insert(wholesaleSellerSettingsTable).values({ sellerId: req.userId!, ...values })
+    .onConflictDoUpdate({ target: wholesaleSellerSettingsTable.sellerId, set: values });
+  res.json({ settings: values });
+});
 
 function shapeWarehouse(row: typeof wholesaleWarehousesTable.$inferSelect, sellerName?: string | null) {
   return {
@@ -769,25 +789,28 @@ router.patch("/wholesale/products/:id", requireWholesaleAccess, async (req, res)
     patch.warehouseCity = wh.city;
   }
 
-  const [updated] = await db
-    .update(wholesaleProductsTable)
-    .set({ ...patch, updatedAt: new Date() })
-    .where(eq(wholesaleProductsTable.id, id))
-    .returning();
+  const updated = await db.transaction(async (tx) => {
+    const [product] = await tx
+      .update(wholesaleProductsTable)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(wholesaleProductsTable.id, id))
+      .returning();
 
-  if (patch.stockQuantity != null && updated.warehouseId) {
-    await db
-      .insert(wholesaleInventoryTable)
-      .values({
-        warehouseId: updated.warehouseId,
-        productId: updated.id,
-        stockQuantity: updated.stockQuantity,
-      })
-      .onConflictDoUpdate({
-        target: [wholesaleInventoryTable.warehouseId, wholesaleInventoryTable.productId],
-        set: { stockQuantity: updated.stockQuantity, updatedAt: new Date() },
-      });
-  }
+    if (patch.stockQuantity != null && product.warehouseId) {
+      await tx
+        .insert(wholesaleInventoryTable)
+        .values({
+          warehouseId: product.warehouseId,
+          productId: product.id,
+          stockQuantity: product.stockQuantity,
+        })
+        .onConflictDoUpdate({
+          target: [wholesaleInventoryTable.warehouseId, wholesaleInventoryTable.productId],
+          set: { stockQuantity: product.stockQuantity, updatedAt: new Date() },
+        });
+    }
+    return product;
+  });
 
   if (Array.isArray(body.tiers)) {
     await db.delete(wholesalePriceTiersTable).where(eq(wholesalePriceTiersTable.productId, id));

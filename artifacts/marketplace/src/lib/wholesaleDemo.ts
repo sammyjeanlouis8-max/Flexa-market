@@ -23,9 +23,3 @@ export const WHOLESALE_INQUIRIES = [
   { id: 3, product: "Cement bags", buyer: "Construct SA", qty: 200, status: "open", country: "Haiti", ago: "1d" },
   { id: 4, product: "Water pallets", buyer: "Event Pro", qty: 60, status: "closed", country: "Haiti", ago: "3d" },
 ] as const;
-
-export const WHOLESALE_PLANS = [
-  { id: "starter", name: "Starter", price: 0, perks: ["5 active listings", "1 warehouse", "Chat buyers"] },
-  { id: "growth", name: "Growth", price: 29, perks: ["40 listings", "3 warehouses", "Priority chat", "Country badge"] },
-  { id: "pro", name: "Pro Depot", price: 79, perks: ["Unlimited listings", "Unlimited depots", "Featured catalog", "Admin support"] },
-] as const;

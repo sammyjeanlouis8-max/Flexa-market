@@ -6,7 +6,6 @@ import { WholesaleShell } from "@/components/wholesale/WholesaleShell";
 const STEPS = [
   { href: "/wholesale/seller/warehouse", titleKey: "wholesale.stepAddDepot", bodyKey: "wholesale.stepAddDepotBody" },
   { href: "/wholesale/seller", titleKey: "wholesale.stepPublish", bodyKey: "wholesale.stepPublishBody" },
-  { href: "/wholesale/seller/plans", titleKey: "wholesale.stepPlan", bodyKey: "wholesale.stepPlanBody" },
 ] as const;
 
 export default function WholesaleOnboarding() {

@@ -93,8 +93,7 @@ function buildSellSchema(messages: SellValidationMessages) {
     description: z
       .string()
       .trim()
-      .min(1, messages.descriptionRequired)
-      .min(10, messages.descriptionRequired),
+      .min(1, messages.descriptionRequired),
     price: z.preprocess(
       (val) => {
         if (val === "" || val === null || val === undefined) return undefined;
@@ -175,6 +174,8 @@ export default function Sell() {
   const [assistSuggestions, setAssistSuggestions] = useState<AssistSuggestion[]>([]);
   const [assistLoading, setAssistLoading] = useState(false);
   const [assistDismissed, setAssistDismissed] = useState(false);
+  const [categoryChallengePending, setCategoryChallengePending] = useState(false);
+  const categoryChallengeAckRef = useRef(false);
   const assistAbortRef = useRef(0);
 
   // ── Edit mode detection ────────────────────────────────────────────────────
@@ -660,7 +661,23 @@ export default function Sell() {
       applyPublishErrors(extraErrors);
       return;
     }
-    const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery ? Number(intlShippingCost || 0) : null, shippingCarriers: !isLocalDelivery && !isDominicanSelfDelivery ? shippingCarriers : [], deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : isDominicanSelfDelivery ? "self_delivery" : null, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
+    const payload = {
+      ...values,
+      currency,
+      images: imageUrls,
+      subcategoryId: values.subcategoryId ?? undefined,
+      stockQuantity: values.stockQuantity ?? undefined,
+      itemSize: itemSize || undefined,
+      listingVideoUrl: listingVideoUrl ?? undefined,
+      shippingCost: !isLocalDelivery ? Number(intlShippingCost || 0) : null,
+      shippingCarriers: !isLocalDelivery && !isDominicanSelfDelivery ? shippingCarriers : [],
+      deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : isDominicanSelfDelivery ? "self_delivery" : null,
+      weightLbs: weightLbs ? Number(weightLbs) : undefined,
+      packageLengthIn: pkgLength ? Number(pkgLength) : undefined,
+      packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined,
+      packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined,
+      ...(categoryChallengeAckRef.current ? { categoryChallengeAcknowledged: true } : {}),
+    };
 
     const persistSellerShipFrom = () => {
       const tk = localStorage.getItem("flexamarket_token") ?? "";
@@ -693,6 +710,8 @@ export default function Sell() {
     const handleSuccess = (_listing: any) => {
       publishInFlightRef.current = false;
       publishIdempotencyKeyRef.current = null;
+      categoryChallengeAckRef.current = false;
+      setCategoryChallengePending(false);
       const l = _listing as any;
       const softTips = Array.isArray(l?.verification?.suggestions)
         ? l.verification.suggestions.filter((s: AssistSuggestion) => s?.optional !== false && s?.message)
@@ -744,6 +763,9 @@ export default function Sell() {
       if (serverSuggestions.length) {
         setAssistSuggestions(serverSuggestions);
         setAssistDismissed(false);
+      }
+      if (verificationDecision === "CORRECTION_REQUIRED") {
+        setCategoryChallengePending(true);
       }
       if (code === "USER_RESTRICTED" || raw === "USER_RESTRICTED") {
         setSubmitRestricted(true);
@@ -1136,7 +1158,7 @@ export default function Sell() {
   const checklist = {
     title: (watchedVals.title ?? "").trim().length >= 3,
     category: Number(watchedVals.categoryId) > 0,
-    description: (watchedVals.description ?? "").trim().length >= 10,
+    description: (watchedVals.description ?? "").trim().length >= 1,
     photos: uploadedImages.length >= requiredPhotoCount,
     price: Number(watchedVals.price) > 0,
     stock: true, // optional
@@ -1595,7 +1617,7 @@ export default function Sell() {
               <div className="flex items-center justify-between gap-2">
                 <FormLabel className={cn("mb-0", fieldState.error && "text-red-600")}>
                   {t("sell.description")} *
-                  <ReqDot filled={(field.value ?? "").trim().length >= 10} />
+                  <ReqDot filled={(field.value ?? "").trim().length >= 1} />
                 </FormLabel>
                 <Button
                   type="button"
@@ -1845,7 +1867,7 @@ export default function Sell() {
                 <p className="mt-1">{t("sell.uploadRetryHint")}</p>
               </div>
             )}
-            {(assistLoading || (assistSuggestions.length > 0 && !assistDismissed)) && (
+            {(assistLoading || (assistSuggestions.length > 0 && !assistDismissed) || categoryChallengePending) && (
               <div
                 className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2.5 text-sm text-emerald-950"
                 data-testid="sell-assist-suggestions"
@@ -1866,7 +1888,10 @@ export default function Sell() {
                       <button
                         type="button"
                         className="text-xs text-emerald-800/80 underline shrink-0"
-                        onClick={() => setAssistDismissed(true)}
+                        onClick={() => {
+                          setAssistDismissed(true);
+                          setCategoryChallengePending(false);
+                        }}
                       >
                         {t("sell.moderation.keepCategory")}
                       </button>
@@ -1891,6 +1916,27 @@ export default function Sell() {
                         </li>
                       ))}
                     </ul>
+                    {categoryChallengePending && (
+                      <div className="mt-3 flex flex-col gap-2 border-t border-emerald-200/80 pt-2">
+                        <p className="text-xs text-emerald-900">
+                          {t("sell.moderation.challengeHint")}
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 text-xs self-start"
+                          data-testid="sell-challenge-category"
+                          onClick={() => {
+                            categoryChallengeAckRef.current = true;
+                            setCategoryChallengePending(false);
+                            toast({ title: t("sell.moderation.challengeConfirmToast") });
+                            void form.handleSubmit(onSubmit, onInvalidSubmit)();
+                          }}
+                        >
+                          {t("sell.moderation.challengeConfirm")}
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

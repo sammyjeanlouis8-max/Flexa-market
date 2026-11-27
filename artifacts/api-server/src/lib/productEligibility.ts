@@ -61,6 +61,11 @@ export interface EligibilityInput {
   verificationPolicy?: ProductVerificationPolicy;
   /** Force ANALYSIS_FAILED path (tests / AI outage). */
   forceAnalysisFailed?: boolean;
+  /**
+   * Seller challenged an AI category recommendation and confirmed their category.
+   * Never permanently rejects solely on AI category classification.
+   */
+  categoryChallengeAcknowledged?: boolean;
 }
 
 export interface EligibilityResult {
@@ -112,7 +117,8 @@ function validateBasics(input: EligibilityInput): string | null {
   const title = (input.title ?? "").trim();
   const description = (input.description ?? "").trim();
   if (title.length < 3) return "Title must be at least 3 characters.";
-  if (description.length < 10) return "Description must be at least 10 characters.";
+  // Presence only — no arbitrary minimum length; short copy is a soft tip, not a block.
+  if (description.length < 1) return "Please add a short product description.";
   if (input.price != null && (Number.isNaN(Number(input.price)) || Number(input.price) < 0)) {
     return "Price must be zero or greater.";
   }
@@ -187,6 +193,31 @@ export function classifyFromModeration(
   };
 }
 
+/** Low AI confidence alone must never treat a listing as suspicious. */
+function softenUncertainAi(
+  classified: ReturnType<typeof classifyFromModeration>,
+  moderation: ModerationResult,
+  policy: ProductVerificationPolicy,
+  categorySlug?: string | null,
+): ReturnType<typeof classifyFromModeration> {
+  if (classified.eligibilityClass !== "REQUIRES_REVIEW") return classified;
+  if (classified.decision === "rejected") return classified;
+  const always = categorySlugInList(categorySlug, policy.alwaysReviewCategorySlugs);
+  if (always || moderation.riskLevel === "high") return classified;
+  // Uncertain AI → allow; tips may still be shown upstream. Never treat low confidence as suspicious.
+  if (moderation.confidence < 0.55) {
+    return {
+      eligibilityClass: "ALLOWED",
+      decision: "approved",
+      rejectionCode: null,
+      lifecycleOnInsert: "published",
+      publishStatus: "available",
+      reason: "AI confidence was low — published after deterministic checks (not treated as suspicious).",
+    };
+  }
+  return classified;
+}
+
 function softenReviewForPolicy(
   classified: ReturnType<typeof classifyFromModeration>,
   moderation: ModerationResult,
@@ -204,21 +235,27 @@ function softenReviewForPolicy(
       reason: classified.reason,
     };
   }
-  if (policy.mode === "balanced") {
-    const always = categorySlugInList(categorySlug, policy.alwaysReviewCategorySlugs);
-    const soft = categorySlugInList(categorySlug, policy.softReviewCategorySlugs);
-    if (!always && (soft || moderation.riskLevel === "medium" || moderation.riskLevel === "low")) {
-      return {
-        eligibilityClass: "ALLOWED",
-        decision: "approved",
-        rejectionCode: null,
-        lifecycleOnInsert: "published",
-        publishStatus: "available",
-        reason: soft
-          ? "Eligible for publication with optional category compliance tips."
-          : classified.reason,
-      };
-    }
+
+  // Strict: keep REQUIRES_REVIEW as-is (no uncertain-AI soft-publish).
+  if (policy.mode === "strict") return classified;
+
+  // Balanced: low AI confidence is not suspicious; soft-review categories may publish.
+  const afterUncertainty = softenUncertainAi(classified, moderation, policy, categorySlug);
+  if (afterUncertainty.eligibilityClass === "ALLOWED") return afterUncertainty;
+
+  const always = categorySlugInList(categorySlug, policy.alwaysReviewCategorySlugs);
+  const soft = categorySlugInList(categorySlug, policy.softReviewCategorySlugs);
+  if (!always && (soft || moderation.riskLevel === "medium" || moderation.riskLevel === "low")) {
+    return {
+      eligibilityClass: "ALLOWED",
+      decision: "approved",
+      rejectionCode: null,
+      lifecycleOnInsert: "published",
+      publishStatus: "available",
+      reason: soft
+        ? "Eligible for publication with optional category compliance tips."
+        : classified.reason,
+    };
   }
   return classified;
 }

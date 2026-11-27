@@ -1252,6 +1252,7 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
     subcatForEligibility = { name: sc.name, slug: sc.slug };
   }
 
+  const categoryChallengeAcknowledged = !!(req.body as any)?.categoryChallengeAcknowledged;
   const verification = await evaluateProductVerification({
     title: parsed.data.title,
     description: parsed.data.description,
@@ -1263,6 +1264,7 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
     subcategoryName: subcatForEligibility?.name,
     sellerCountry: seller?.country,
     listingCountry,
+    categoryChallengeAcknowledged,
   });
   const eligibility = verification;
 
@@ -1435,6 +1437,7 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
       allowsPublication: verification.allowsPublication,
       mode: verification.mode,
       categoryRecommendationMandatory: false,
+      challengeAllowed: true,
     },
   });
   } catch (err: any) {
@@ -1625,11 +1628,13 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
   const nextDescription = parsed.data.description ?? existing.description;
   const nextCategoryId = parsed.data.categoryId ?? existing.categoryId;
   const nextSubcategoryId = parsed.data.subcategoryId !== undefined ? parsed.data.subcategoryId : existing.subcategoryId;
+  // Price-only and stock-only updates must NOT re-run AI / eligibility.
   const contentChanged =
     nextTitle !== existing.title ||
     nextDescription !== existing.description ||
     JSON.stringify(updatedImages) !== JSON.stringify(existing.images ?? []) ||
-    nextCategoryId !== existing.categoryId;
+    nextCategoryId !== existing.categoryId ||
+    nextSubcategoryId !== existing.subcategoryId;
 
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, nextCategoryId));
   if (!cat) {
@@ -1655,6 +1660,7 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
 
   let eligibilityPatch: Record<string, unknown> = {};
   if (contentChanged) {
+    const categoryChallengeAcknowledged = !!(req.body as any)?.categoryChallengeAcknowledged;
     const verification = await evaluateProductVerification({
       title: nextTitle,
       description: nextDescription,
@@ -1666,6 +1672,7 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
       subcategoryName: subcat?.name,
       sellerCountry: (req.user as any)?.country,
       listingCountry: updatedCountry,
+      categoryChallengeAcknowledged,
     });
     const eligibility = verification;
     if (

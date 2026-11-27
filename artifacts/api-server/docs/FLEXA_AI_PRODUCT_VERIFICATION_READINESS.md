@@ -1,8 +1,8 @@
 # Flexa AI Product Verification — Production Readiness (Balanced)
 
 **Branch:** `cursor/ai-product-verification-balanced-5a20`  
-**Default Super Admin mode:** Balanced Enforcement (after monitoring calibration)  
-**Principle:** Strict on safety, fraud, prohibited items, and obvious category violations. Flexible on photography, writing quality, minor classification differences, and legitimate seller behavior.
+**Default Super Admin mode:** Balanced Enforcement (intended production default after monitoring calibration)  
+**Principle:** Make selling easier, safer, and more accurate — not more complicated. Strict on safety, fraud, prohibited items, and obvious category violations. Flexible on photography, writing quality, minor classification differences, and legitimate seller behavior.
 
 ---
 
@@ -18,6 +18,19 @@
 | **ANALYSIS_FAILED** | Deterministic checks continue; low-risk may publish via fallback; high-risk held |
 
 Recommendations are **never mandatory** and **never silently rewrite** seller fields.
+
+### Seller-friendly guarantees
+
+| Rule | Behavior |
+|---|---|
+| No permanent reject on AI category alone | Category mismatch → `CORRECTION_REQUIRED` or challenge → publish; never `REJECTED` for category AI |
+| Challenge incorrect AI tips | Seller can confirm category (`categoryChallengeAcknowledged`) and publish |
+| No pro photography required | Any valid product image is enough |
+| No arbitrary description length | Presence only; short copy is an optional tip |
+| No forced rewrite of legitimate descriptions | Soft tips only |
+| Price/stock-only updates | Skip AI / eligibility re-check |
+| Low AI confidence | Not treated as suspicious; low-risk publishes |
+| Human review reserved for | Significant safety, fraud, regulatory, or policy concerns |
 
 ---
 

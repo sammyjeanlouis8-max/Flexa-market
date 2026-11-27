@@ -166,6 +166,8 @@ export function toProductVerification(
     categorySlug?: string | null;
     categoryName?: string | null;
     analysisFailed?: boolean;
+    /** Seller confirmed their category after challenging an AI tip. */
+    categoryChallengeAcknowledged?: boolean;
   } = {},
 ): ProductVerificationResult {
   const policy = opts.policy || DEFAULT_PRODUCT_VERIFICATION_POLICY;
@@ -279,13 +281,33 @@ export function toProductVerification(
   });
 
   if (substantial.mismatch && substantial.confidence >= policy.substantialMismatchConfidence) {
-    if (policy.mode === "monitoring_only") {
+    // Never permanently REJECT solely because of AI category classification.
+    const sellerChallenged = !!opts.categoryChallengeAcknowledged;
+
+    if (policy.mode === "monitoring_only" || sellerChallenged) {
       return {
         ...base,
         verificationDecision: "APPROVED_WITH_SUGGESTIONS",
+        allowsPublication: true,
+        blocksPublication: false,
         suggestions: [
-          ...(substantial.suggested ? [substantial.suggested] : []),
+          ...(substantial.suggested
+            ? [{
+                ...substantial.suggested,
+                optional: true,
+                message: sellerChallenged
+                  ? `${substantial.suggested.message} (You confirmed your category — thanks.)`
+                  : substantial.suggested.message,
+              }]
+            : []),
           ...suggestions,
+          ...(sellerChallenged
+            ? []
+            : [{
+                type: "general" as const,
+                message: "You can keep your category if it is correct — AI tips are optional.",
+                optional: true,
+              }]),
         ],
       };
     }
@@ -299,9 +321,14 @@ export function toProductVerification(
       rejectionCode: "REQUIRES_HUMAN_REVIEW",
       blocksPublication: true,
       allowsPublication: false,
-      reason: substantial.suggested?.message || "Clear product–category mismatch — please correct before publishing.",
+      reason: substantial.suggested?.message || "Clear product–category mismatch — please correct or confirm your category.",
       suggestions: [
         ...(substantial.suggested ? [{ ...substantial.suggested, optional: false }] : []),
+        {
+          type: "general",
+          message: "If the AI tip is wrong, confirm your category to publish — we never permanently reject for category classification alone.",
+          optional: true,
+        },
         ...suggestions,
       ],
     };
@@ -443,6 +470,7 @@ export async function evaluateProductVerification(
     categorySlug: input.categorySlug,
     categoryName: input.categoryName,
     analysisFailed: input.forceAnalysisFailed || eligibility.flags.includes("analysis_failed"),
+    categoryChallengeAcknowledged: input.categoryChallengeAcknowledged,
   });
 }
 

@@ -145,7 +145,7 @@ export function AppDrawer() {
       id: "services",
       heading: "FLEXA SERVICES",
       items: [
-        { icon: "music", label: "Flexa Music", href: "/music", testID: "drawer-flexa-music" },
+        { icon: "music", label: "Flexa Music", href: "/(tabs)/music", testID: "drawer-flexa-music" },
         ...(user
           ? ([{ icon: "zap", label: "My Boosts", href: "/my-boosts", testID: "drawer-my-boosts" }] as DrawerItem[])
           : []),

@@ -401,7 +401,6 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const [deliveryMenuCountry, setDeliveryMenuCountry] = useState<string | null | undefined>(undefined);
   const { user, logout, showLanguageModal, dismissLanguageModal } = useAuth();
   const { t } = useTranslation();
-  const { count: cartCount } = useCart();
   const unread = useUnreadMessageCount();
   const boostAd = useBoostAdTrigger();
   const bs = useBroadcast();
@@ -499,13 +498,13 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
   const profileHref = user ? "/settings" : "/auth/login";
 
-  // 5 fixed bottom tabs — Menu opens from top-left hamburger only (not bottom)
+  // 5 fixed bottom tabs — Cart stays in the top-right header (not bottom)
   const tabs = [
     { href: "/",         icon: Home,           label: t("nav.home"),       key: "home" },
     { href: "/search",   icon: LayoutGrid,     label: t("nav.categories", { defaultValue: "Categories" }), key: "categories" },
     { href: "/messages", icon: MessageCircle,  label: t("nav.messages"),   key: "messages", badge: unread },
-    { href: "/cart",     icon: ShoppingCart,   label: t("nav.cart", { defaultValue: "Cart" }), key: "cart", badge: cartCount },
-    { href: profileHref, icon: User,           label: t("nav.account", { defaultValue: "Account" }), key: "account" },
+    { href: "/music",    icon: Music2,         label: t("nav.music", { defaultValue: "Music" }), key: "music" },
+    { href: profileHref, icon: User,           label: t("nav.account", { defaultValue: "My Account" }), key: "account" },
   ] as const;
 
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
@@ -637,7 +636,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     return location === path || location.startsWith(`${path}/`) || location.startsWith(`${path}?`);
   };
 
-  const moreActive = ["/settings", "/saved", "/my-drafts", "/bouillon", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos", "/wholesale", "/restaurant", "/tv", "/music"].some(p =>
+  const moreActive = ["/settings", "/saved", "/my-drafts", "/bouillon", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos", "/wholesale", "/restaurant", "/tv"].some(p =>
     location.startsWith(p)
   );
   const isHomePage = location === "/";
@@ -757,7 +756,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     );
   }
 
-  // Flexa Music — immersive shell (owns brand chrome + music bottom nav).
+  // Flexa Music — immersive chrome, but keep the shared marketplace bottom nav
+  // so Music can show as the active tab (no second music-only bar).
   const isMusicImmersive = /^\/music(?:\/|$)/.test(location);
   if (isMusicImmersive) {
     return (
@@ -766,12 +766,57 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
           className="app-shell music-immersive-shell flexa-music-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col h-dvh overflow-clip"
           style={{
             paddingTop: "env(safe-area-inset-top, 0px)",
-            paddingBottom: "env(safe-area-inset-bottom, 0px)",
             background: "#121212",
           }}
           data-testid="music-immersive-shell"
         >
-          <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+          <div className="flex-1 min-h-0 overflow-y-auto pb-safe-nav">{children}</div>
+          <nav
+            className="mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50"
+            aria-label="Main navigation"
+            data-testid="mobile-bottom-nav"
+          >
+            <div className="mobile-bottom-nav-row w-full grid grid-cols-5">
+              {tabs.map((tab) => {
+                const t2 = tab as { href: string; icon: typeof Home; label: string; key: string; badge?: number };
+                const active = isActive(t2.href);
+                const showBadge = typeof t2.badge === "number" && t2.badge > 0;
+                return (
+                  <button
+                    key={t2.key}
+                    type="button"
+                    data-testid={`nav-${t2.key}`}
+                    aria-label={t2.label}
+                    onClick={() => handleMobileTab(t2.href)}
+                    className="w-full min-w-0 h-full flex flex-col items-center justify-center gap-0.5"
+                  >
+                    <div className="relative">
+                      <t2.icon
+                        className={`h-5 w-5 transition-colors ${
+                          active ? "text-primary" : "text-muted-foreground"
+                        }`}
+                      />
+                      {showBadge && (
+                        <span
+                          className="absolute -top-1.5 -right-2 bg-red-500 text-white text-xs font-black rounded-full min-w-[16px] h-4 flex items-center justify-center px-1"
+                          data-testid={`badge-${t2.key}`}
+                        >
+                          {(t2.badge as number) > 99 ? "99+" : t2.badge}
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className={`text-xs font-medium transition-colors ${
+                        active ? "text-primary" : "text-muted-foreground"
+                      }`}
+                    >
+                      {t2.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
         </div>
       </DeliveryMenuCountryContext.Provider>
     );
@@ -1042,7 +1087,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isPromoVideosSection || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) || /^\/music(?:\/|$)/.test(location) ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isPromoVideosSection || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) ? "hidden" : ""}`}
         aria-label="Main navigation"
         data-testid="mobile-bottom-nav"
       >

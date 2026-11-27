@@ -124,7 +124,7 @@ export default function GlobalMusicPlayer() {
     const maxX = (vw - cardW) / 2 - CARD_MARGIN;
     const clampedX = Math.max(-maxX, Math.min(maxX, x));
     // y: 0 = default bottom pos; positive = up; clamp so card stays visible
-    const defaultBottom = 64 + 8; // ~bottom-nav + gap
+    const defaultBottom = 56 + 8; // marketplace bottom-nav content row + gap
     const maxUp = vh - cardH - defaultBottom - 8;
     const clampedY = Math.max(0, Math.min(maxUp, y));
     // snap to bottom if within threshold
@@ -237,7 +237,7 @@ export default function GlobalMusicPlayer() {
       ref={cardRef}
       className="fixed left-0 right-0 mx-3 z-[60] rounded-2xl select-none"
       style={{
-        bottom: "calc(4rem + env(safe-area-inset-bottom, 0px) + 8px)",
+        bottom: "calc(56px + max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px)) + 8px)",
         background: "linear-gradient(135deg, rgba(11,48,34,0.96), rgba(15,61,44,0.98))",
         border: isDragging
           ? "1.5px solid rgba(255,107,0,0.7)"

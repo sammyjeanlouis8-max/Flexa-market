@@ -5,16 +5,12 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Compass,
   Heart,
-  Home,
-  Library,
   Loader2,
   Music2,
   Play,
   Plus,
   Search,
-  User,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -265,7 +261,7 @@ export default function MusicHome({
   };
 
   return (
-    <div className="music-view-root" style={{ minHeight: "100vh", paddingBottom: 130 }} data-testid="music-home-redesign">
+    <div className="music-view-root" style={{ minHeight: "100vh", paddingBottom: 96 }} data-testid="music-home-redesign">
       {/* Brand header */}
       <div className="music-topbar sticky top-0 z-30 flex items-center justify-between px-4 py-3">
         <BrandMark />
@@ -663,34 +659,9 @@ export default function MusicHome({
         </>
       )}
 
-      {/* Bottom nav — Home / Explore / Library / Profile */}
-      <nav className="music-bottom-nav md:hidden" aria-label="Flexa Music">
-        {(
-          [
-            ["home", Home, "Home"],
-            ["explore", Compass, "Explore"],
-            ["library", Library, "Library"],
-            ["profile", User, "Profile"],
-          ] as const
-        ).map(([key, Icon, label]) => (
-          <button
-            key={key}
-            type="button"
-            className={`music-bottom-nav-item ${tab === key && !search.trim() ? "active" : ""}`}
-            onClick={() => {
-              setSearch("");
-              onSearch("");
-              setSearchOpen(false);
-              setTab(key);
-              if (key === "explore") setTimeout(() => searchInputRef.current?.focus(), 40);
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
-          >
-            <Icon size={19} fill={tab === key && key === "home" ? "currentColor" : "none"} />
-            <span>{label}</span>
-          </button>
-        ))}
-      </nav>
+      {/* Marketplace bottom nav owns Home/Categories/Messages/Music/Account.
+          In-page Explore / Library / Profile stay reachable via header search
+          and home sections — no second fixed bar. */}
     </div>
   );
 }

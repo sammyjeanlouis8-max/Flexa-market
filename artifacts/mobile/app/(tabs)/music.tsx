@@ -124,6 +124,7 @@ export default function MusicTab() {
 
   return (
     <MusicShell
+      showNav={false}
       headerRight={
         <Pressable onPress={() => router.push("/music/search")} hitSlop={12}>
           <Feather name="search" size={22} color={musicTheme.white} />

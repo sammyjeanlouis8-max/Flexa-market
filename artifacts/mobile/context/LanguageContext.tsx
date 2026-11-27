@@ -328,7 +328,7 @@ const T: Record<Lang, Record<string, string>> = {
       "Identity documents are private. Verified identity is not a government food safety certification.",
     restaurant_paymentNote: "Pay the restaurant directly — Flexa charges no commission.",
     restaurant_stepBasicsBody: "Name, cuisine, location, and business type.",
-    tabHome: "Home", tabSearch: "Search", tabSell: "Sell", tabMessages: "Messages", tabProfile: "Profile",
+    tabHome: "Home", tabSearch: "Search", tabSell: "Sell", tabMessages: "Messages", tabMusic: "Music", tabCategories: "Categories", tabAccount: "My Account", tabCart: "Cart", tabProfile: "Profile",
     back: "Back", loading: "Loading...", cancel: "Cancel", save: "Save", ok: "OK", greeting: "Hello",
     allCategories: "All", noListings: "No listings",
     sponsored: "Sponsored", description: "Description", seller: "Seller", profile: "Profile",
@@ -710,7 +710,7 @@ const T: Record<Lang, Record<string, string>> = {
     restaurant_identityPrivacyBody: "Dokiman idantite yo prive; verifye idantite se pa sètifikasyon leta.",
     restaurant_paymentNote: "Peye restoran an dirèkteman.",
     restaurant_stepBasicsBody: "Non, kwizin, kote.",
-    tabHome: "Akèy", tabSearch: "Chèche", tabSell: "Vann", tabMessages: "Mesaj", tabProfile: "Pwofil",
+    tabHome: "Akèy", tabSearch: "Chèche", tabSell: "Vann", tabMessages: "Mesaj", tabMusic: "Mizik", tabCategories: "Kategori", tabAccount: "Kont Mwen", tabCart: "Panye", tabProfile: "Pwofil",
     back: "Retounen", loading: "Ap chaje...", cancel: "Anile", save: "Sove", ok: "OK", greeting: "Bonjou",
     allCategories: "Tout", noListings: "Pa gen annons",
     sponsored: "Sponsorisé", description: "Deskripsyon", seller: "Vandè", profile: "Pwofil",
@@ -1081,7 +1081,7 @@ const T: Record<Lang, Record<string, string>> = {
     restaurant_identityPrivacyBody: "Documents privés; vérification d'identité ≠ certification officielle.",
     restaurant_paymentNote: "Payez le restaurant directement.",
     restaurant_stepBasicsBody: "Nom, cuisine, lieu.",
-    tabHome: "Accueil", tabSearch: "Rechercher", tabSell: "Vendre", tabMessages: "Messages", tabProfile: "Profil",
+    tabHome: "Accueil", tabSearch: "Rechercher", tabSell: "Vendre", tabMessages: "Messages", tabMusic: "Musique", tabCategories: "Catégories", tabAccount: "Mon compte", tabCart: "Panier", tabProfile: "Profil",
     back: "Retour", loading: "Chargement...", cancel: "Annuler", save: "Enregistrer", ok: "OK", greeting: "Bonjour",
     allCategories: "Tout", noListings: "Aucune annonce",
     sponsored: "Sponsorisé", description: "Description", seller: "Vendeur", profile: "Profil",
@@ -1452,7 +1452,7 @@ const T: Record<Lang, Record<string, string>> = {
     restaurant_identityPrivacyBody: "Documentos privados; identidad verificada ≠ certificación del gobierno.",
     restaurant_paymentNote: "Paga al restaurante directamente.",
     restaurant_stepBasicsBody: "Nombre, cocina, ubicación.",
-    tabHome: "Inicio", tabSearch: "Buscar", tabSell: "Vender", tabMessages: "Mensajes", tabProfile: "Perfil",
+    tabHome: "Inicio", tabSearch: "Buscar", tabSell: "Vender", tabMessages: "Mensajes", tabMusic: "Música", tabCategories: "Categorías", tabAccount: "Mi cuenta", tabCart: "Carrito", tabProfile: "Perfil",
     back: "Atrás", loading: "Cargando...", cancel: "Cancelar", save: "Guardar", ok: "OK", greeting: "Hola",
     allCategories: "Todo", noListings: "Sin anuncios",
     sponsored: "Patrocinado", description: "Descripción", seller: "Vendedor", profile: "Perfil",
@@ -1530,7 +1530,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   pt: {
-    tabHome: "Início", tabSearch: "Pesquisar", tabSell: "Vender", tabMessages: "Mensagens", tabProfile: "Perfil",
+    tabHome: "Início", tabSearch: "Pesquisar", tabSell: "Vender", tabMessages: "Mensagens", tabMusic: "Música", tabCategories: "Categorias", tabAccount: "Minha conta", tabCart: "Carrinho", tabProfile: "Perfil",
     back: "Voltar", loading: "Carregando...", cancel: "Cancelar", save: "Salvar", ok: "OK", greeting: "Olá",
     allCategories: "Tudo", noListings: "Sem anúncios",
     sponsored: "Patrocinado", description: "Descrição", seller: "Vendedor", profile: "Perfil",
@@ -1608,7 +1608,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   de: {
-    tabHome: "Startseite", tabSearch: "Suchen", tabSell: "Verkaufen", tabMessages: "Nachrichten", tabProfile: "Profil",
+    tabHome: "Startseite", tabSearch: "Suchen", tabSell: "Verkaufen", tabMessages: "Nachrichten", tabMusic: "Musik", tabCategories: "Kategorien", tabAccount: "Mein Konto", tabCart: "Warenkorb", tabProfile: "Profil",
     back: "Zurück", loading: "Laden...", cancel: "Abbrechen", save: "Speichern", ok: "OK", greeting: "Hallo",
     allCategories: "Alle", noListings: "Keine Anzeigen",
     sponsored: "Gesponsert", description: "Beschreibung", seller: "Verkäufer", profile: "Profil",
@@ -1686,7 +1686,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   hi: {
-    tabHome: "होम", tabSearch: "खोजें", tabSell: "बेचें", tabMessages: "संदेश", tabProfile: "प्रोफाइल",
+    tabHome: "होम", tabSearch: "खोजें", tabSell: "बेचें", tabMessages: "संदेश", tabMusic: "संगीत", tabCategories: "श्रेणियां", tabAccount: "मेरा खाता", tabCart: "कार्ट", tabProfile: "प्रोफाइल",
     back: "वापस", loading: "लोड हो रहा है...", cancel: "रद्द करें", save: "सहेजें", ok: "ठीक है", greeting: "नमस्ते",
     allCategories: "सभी", noListings: "कोई लिस्टिंग नहीं",
     sponsored: "प्रायोजित", description: "विवरण", seller: "विक्रेता", profile: "प्रोफाइल",
@@ -1764,7 +1764,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   fil: {
-    tabHome: "Tahanan", tabSearch: "Maghanap", tabSell: "Ibenta", tabMessages: "Mga Mensahe", tabProfile: "Profile",
+    tabHome: "Tahanan", tabSearch: "Maghanap", tabSell: "Ibenta", tabMessages: "Mga Mensahe", tabMusic: "Musika", tabCategories: "Mga Kategorya", tabAccount: "Aking Account", tabCart: "Cart", tabProfile: "Profile",
     back: "Bumalik", loading: "Naglo-load...", cancel: "Kanselahin", save: "I-save", ok: "OK", greeting: "Kumusta",
     allCategories: "Lahat", noListings: "Walang listahan",
     sponsored: "Sponsor", description: "Paglalarawan", seller: "Nagbebenta", profile: "Profile",
@@ -1842,7 +1842,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   ha: {
-    tabHome: "Gida", tabSearch: "Bincika", tabSell: "Siyar", tabMessages: "Saƙonni", tabProfile: "Bayani",
+    tabHome: "Gida", tabSearch: "Bincika", tabSell: "Siyar", tabMessages: "Saƙonni", tabMusic: "Kiɗa", tabCategories: "Rukuni", tabAccount: "Asusu Na", tabCart: "Karti", tabProfile: "Bayani",
     back: "Komawa", loading: "Ana lodawa...", cancel: "Soke", save: "Ajiye", ok: "Yawwa", greeting: "Sannu",
     allCategories: "Duka", noListings: "Babu tallace-tallace",
     sponsored: "Mai tallafi", description: "Bayanai", seller: "Mai siyarwa", profile: "Bayani",
@@ -1920,7 +1920,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   zu: {
-    tabHome: "Ikhaya", tabSearch: "Sesha", tabSell: "Thengisa", tabMessages: "Imiyalezo", tabProfile: "Iphrofayili",
+    tabHome: "Ikhaya", tabSearch: "Sesha", tabSell: "Thengisa", tabMessages: "Imiyalezo", tabMusic: "Umculo", tabCategories: "Izigaba", tabAccount: "I-akhawunti Yami", tabCart: "Inqola", tabProfile: "Iphrofayili",
     back: "Emuva", loading: "Iyalayisha...", cancel: "Khansela", save: "Londoloza", ok: "KULUNGILE", greeting: "Sawubona",
     allCategories: "Konke", noListings: "Ayikho imikhangiso",
     sponsored: "Ukukhuthazwa", description: "Incazelo", seller: "Umthengisi", profile: "Iphrofayili",
@@ -1998,7 +1998,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   af: {
-    tabHome: "Tuis", tabSearch: "Soek", tabSell: "Verkoop", tabMessages: "Boodskappe", tabProfile: "Profiel",
+    tabHome: "Tuis", tabSearch: "Soek", tabSell: "Verkoop", tabMessages: "Boodskappe", tabMusic: "Musiek", tabCategories: "Kategorieë", tabAccount: "My rekening", tabCart: "Mandjie", tabProfile: "Profiel",
     back: "Terug", loading: "Laai...", cancel: "Kanselleer", save: "Stoor", ok: "OK", greeting: "Hallo",
     allCategories: "Almal", noListings: "Geen lyste",
     sponsored: "Geborg", description: "Beskrywing", seller: "Verkoper", profile: "Profiel",

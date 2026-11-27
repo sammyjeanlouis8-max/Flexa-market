@@ -60,6 +60,6 @@ Professional contact actions on every Flexa Restaurant business profile (web + m
 
 | Item | Value |
 | --- | --- |
-| PR URL | *(filled after create)* |
-| Commit SHA | *(filled after push)* |
+| PR URL | https://github.com/sammyjeanlouis8-max/Flexa-market/pull/313 |
+| Commit SHA | `a2306fb30e1d5cf9245b833fb1245a34920bc2fd` |
 | Deployment | Pending merge → DigitalOcean |

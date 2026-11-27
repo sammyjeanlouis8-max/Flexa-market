@@ -1,4 +1,5 @@
 import { wholesaleHt } from "../wholesaleLocales";
+import { restaurantHt } from "../restaurantLocales";
 
 export default {
   cardCancellation: {
@@ -118,6 +119,7 @@ export default {
     myAccountSection: "Kont Mwen",
     flexaServicesSection: "Sèvis Flexa",
     flexaWholesale: "Flexa Wholesale",
+    flexaRestaurant: "Flexa Restaurant",
     preferencesSection: "Preferans",
     offersPromos: "Ofri & Pwomosyon",
     flexaPicks: "Flexa Picks",
@@ -145,6 +147,7 @@ export default {
     taglineShort: "Achte · Vann · Livrezon",
   },
   wholesale: wholesaleHt,
+  restaurant: restaurantHt,
   videoFeed: {
     title: "Videyo Pwomosyon",
     filterAll: "Tout",

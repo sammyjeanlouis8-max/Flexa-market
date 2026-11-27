@@ -210,6 +210,19 @@ const WholesaleSellerAvailability    = lazy(() => import("@/pages/wholesale/Whol
 const WholesaleSellerProfile         = lazy(() => import("@/pages/wholesale/WholesaleSellerProfile"));
 const WholesaleDisputes              = lazy(() => import("@/pages/wholesale/WholesaleDisputes"));
 const WholesaleBlocked               = lazy(() => import("@/pages/wholesale/WholesaleBlocked"));
+const FlexaRestaurant                = lazy(() => import("@/pages/FlexaRestaurant"));
+const RestaurantDiscover             = lazy(() => import("@/pages/restaurant/Discover"));
+const RestaurantDetail               = lazy(() => import("@/pages/restaurant/RestaurantDetail"));
+const RestaurantAdd                  = lazy(() => import("@/pages/restaurant/AddRestaurant"));
+const RestaurantOwnerDashboard       = lazy(() => import("@/pages/restaurant/OwnerDashboard"));
+const RestaurantDishModels           = lazy(() => import("@/pages/restaurant/DishModels"));
+const RestaurantDailyMenu            = lazy(() => import("@/pages/restaurant/DailyMenu"));
+const RestaurantOrders               = lazy(() => import("@/pages/restaurant/Orders"));
+const RestaurantReservations         = lazy(() => import("@/pages/restaurant/Reservations"));
+const RestaurantIdentityVerification = lazy(() => import("@/pages/restaurant/IdentityVerification"));
+const RestaurantFoodSafetyQuiz       = lazy(() => import("@/pages/restaurant/FoodSafetyQuiz"));
+const RestaurantMyOrders             = lazy(() => import("@/pages/restaurant/MyOrders"));
+const RestaurantMyReservations       = lazy(() => import("@/pages/restaurant/MyReservations"));
 const WholesaleAdminCategories       = lazy(() => import("@/pages/wholesale/WholesaleAdminCategories"));
 const WholesaleAdminCountries        = lazy(() => import("@/pages/wholesale/WholesaleAdminCountries"));
 const WholesaleAdminChats            = lazy(() => import("@/pages/wholesale/WholesaleAdminChats"));
@@ -501,6 +514,19 @@ function LayoutRoutes() {
           <Route path="/wholesale/help" component={WholesaleHelp} />
           <Route path="/wholesale/products/:id" component={WholesaleProduct} />
           <Route path="/wholesale" component={FlexaWholesale} />
+          <Route path="/restaurant/owner/food-safety" component={RestaurantFoodSafetyQuiz} />
+          <Route path="/restaurant/owner/identity" component={RestaurantIdentityVerification} />
+          <Route path="/restaurant/owner/reservations" component={RestaurantReservations} />
+          <Route path="/restaurant/owner/orders" component={RestaurantOrders} />
+          <Route path="/restaurant/owner/menu" component={RestaurantDailyMenu} />
+          <Route path="/restaurant/owner/dishes" component={RestaurantDishModels} />
+          <Route path="/restaurant/owner" component={RestaurantOwnerDashboard} />
+          <Route path="/restaurant/add" component={RestaurantAdd} />
+          <Route path="/restaurant/my-reservations" component={RestaurantMyReservations} />
+          <Route path="/restaurant/my-orders" component={RestaurantMyOrders} />
+          <Route path="/restaurant/discover" component={RestaurantDiscover} />
+          <Route path="/restaurant/:id" component={RestaurantDetail} />
+          <Route path="/restaurant" component={FlexaRestaurant} />
           <Route path="/tv" component={FlexaTV} />
           <Route path="/music" component={FlexaMusic} />
           <Route path="/music/sponsored-ads" component={MusicSponsoredAds} />

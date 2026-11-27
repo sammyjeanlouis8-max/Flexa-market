@@ -72,6 +72,7 @@ export function AppDrawer() {
       heading: "HOME & DISCOVER",
       items: [
         { icon: "home", label: "Home", href: "/", testID: "drawer-home" },
+        { icon: "coffee", label: "Flexa Restaurant", href: "/restaurant", testID: "drawer-flexa-restaurant" },
         { icon: "grid", label: "Categories", href: "/search", testID: "drawer-categories" },
         { icon: "tag", label: "Offers & Promotions", href: "/offers", testID: "drawer-offers" },
         { icon: "star", label: "Flexa Picks", href: "/search?boosted=true", testID: "drawer-flexa-picks" },

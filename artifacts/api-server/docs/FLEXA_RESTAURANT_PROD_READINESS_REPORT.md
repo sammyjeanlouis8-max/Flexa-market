@@ -16,6 +16,14 @@
 | Country filter could be bypassed via query param by non-staff | High |
 | No dedicated listing routes for Restaurants / Food Trucks / Home Kitchens | Medium |
 
+## Follow-up after audit subagent (same PR)
+
+Addressed remaining TOP-10 items from the production gap audit:
+- Client checkout `idempotencyKey` (stable per submit intent)
+- Owner **Hours & delivery** settings page (`/restaurant/owner/settings`)
+- Dish food-photo upload via existing Wasabi `/api/storage/uploads/request-url`
+- Command palette gated with `canAccessRestaurant`
+
 ## Critical / high issues corrected in this PR
 
 1. **Migrations run before apply loop** (+ smoke test). Also adds `restaurant_order_status_history`.

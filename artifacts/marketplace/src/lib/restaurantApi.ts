@@ -442,6 +442,8 @@ export async function placeRestaurantOrder(
     items: Array<{ dailyMenuItemId: number; quantity: number; notes?: string }>;
     specialInstructions?: string;
     deliveryAddress?: string;
+    /** Stable client key — retries must reuse the same value to prevent duplicate charges/orders. */
+    idempotencyKey?: string;
   },
 ): Promise<Order> {
   const res = await fetch(`/api/restaurants/${restaurantId}/orders`, {
@@ -449,8 +451,78 @@ export async function placeRestaurantOrder(
     headers: authHeaders(),
     body: JSON.stringify(body),
   });
-  const data = await parseJson<{ order: Order }>(res, "Could not place order");
+  const data = await parseJson<{ order: Order; deduped?: boolean }>(res, "Could not place order");
   return data.order;
+}
+
+export async function saveRestaurantHours(
+  restaurantId: number,
+  hours: Array<{
+    weekday: number;
+    isClosed: boolean;
+    openTime: string | null;
+    closeTime: string | null;
+    overnight?: boolean;
+  }>,
+) {
+  const res = await fetch(`/api/restaurants/${restaurantId}/hours`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify({ hours }),
+  });
+  return parseJson<{ hours: unknown[] }>(res, "Could not save hours");
+}
+
+export async function saveRestaurantDelivery(
+  restaurantId: number,
+  body: {
+    fulfillment: "pickup" | "delivery" | "both";
+    deliveryFee?: number;
+    minOrderAmount?: number;
+    estimatedDeliveryMinutes?: number;
+    deliveryZones?: string[];
+    deliveryInstructions?: string;
+  },
+) {
+  const res = await fetch(`/api/restaurants/${restaurantId}/delivery`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  return parseJson(res, "Could not save delivery settings");
+}
+
+/** Upload a food photo via the existing Flexa Market storage (Wasabi) proxy. */
+export async function uploadRestaurantFoodImage(file: File): Promise<string> {
+  const token = localStorage.getItem("flexamarket_token") ?? localStorage.getItem("token");
+  if (!token) throw new Error("Sign in required to upload");
+  if (!file.type.startsWith("image/")) throw new Error("Only image files are allowed");
+  if (file.size > 8 * 1024 * 1024) throw new Error("Image must be under 8 MB");
+  const presignRes = await fetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: file.name || "food.jpg", size: file.size, contentType: file.type }),
+  });
+  if (!presignRes.ok) {
+    const err = await presignRes.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || "Upload URL failed");
+  }
+  const { uploadURL, objectPath } = await presignRes.json();
+  const putRes = await fetch(uploadURL, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type,
+      Authorization: `Bearer ${token}`,
+    },
+    body: file,
+  });
+  if (!putRes.ok) throw new Error("Food image upload failed");
+  const data = await putRes.json().catch(() => ({} as { url?: string }));
+  if (typeof data?.url === "string" && (data.url.startsWith("http") || data.url.startsWith("/api/storage/"))) {
+    return data.url;
+  }
+  const path = String(objectPath || "").replace(/^\/objects/, "");
+  return `/api/storage/objects${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 export async function createRestaurantReservation(

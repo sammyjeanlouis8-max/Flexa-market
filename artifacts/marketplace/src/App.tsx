@@ -218,6 +218,7 @@ const HomeKitchenCategoryPage        = lazy(() => import("@/pages/restaurant/Cat
 const RestaurantDetail               = lazy(() => import("@/pages/restaurant/RestaurantDetail"));
 const RestaurantAdd                  = lazy(() => import("@/pages/restaurant/AddRestaurant"));
 const RestaurantOwnerDashboard       = lazy(() => import("@/pages/restaurant/OwnerDashboard"));
+const RestaurantOwnerSettings        = lazy(() => import("@/pages/restaurant/OwnerSettings"));
 const RestaurantDishModels           = lazy(() => import("@/pages/restaurant/DishModels"));
 const RestaurantDailyMenu            = lazy(() => import("@/pages/restaurant/DailyMenu"));
 const RestaurantOrders               = lazy(() => import("@/pages/restaurant/Orders"));
@@ -526,6 +527,7 @@ function LayoutRoutes() {
           <Route path="/restaurant/owner/orders" component={RestaurantOrders} />
           <Route path="/restaurant/owner/menu" component={RestaurantDailyMenu} />
           <Route path="/restaurant/owner/dishes" component={RestaurantDishModels} />
+          <Route path="/restaurant/owner/settings" component={RestaurantOwnerSettings} />
           <Route path="/restaurant/owner" component={RestaurantOwnerDashboard} />
           <Route path="/restaurant/add" component={RestaurantAdd} />
           <Route path="/restaurant/my-reservations" component={RestaurantMyReservations} />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { RestaurantPageGate } from "@/components/restaurant/RestaurantPageGate";
@@ -20,6 +20,11 @@ import {
 import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
 
+function newIdempotencyKey() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `rest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function RestaurantCheckoutPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -29,6 +34,8 @@ export default function RestaurantCheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
+  /** One key per submit intent — retries reuse it until success clears the cart. */
+  const orderIdempotencyKey = useRef(newIdempotencyKey());
 
   useEffect(() => {
     const c = getRestaurantCart();
@@ -68,6 +75,7 @@ export default function RestaurantCheckoutPage() {
           })),
           specialInstructions: cart.specialInstructions,
           deliveryAddress: cart.fulfillment === "delivery" ? cart.deliveryAddress : undefined,
+          idempotencyKey: orderIdempotencyKey.current,
         });
         messages.push(`${t("restaurant.placeOrder")} #${order.id}`);
       }

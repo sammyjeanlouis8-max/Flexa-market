@@ -92,6 +92,12 @@ export const restaurantEn: RestaurantLocale = {
   foodSafetySubtitle: "Complete the article and quiz before publishing.",
   freeLaunchNote: "Free at launch — Flexa charges no commission and no mandatory subscription.",
   staffPreviewOnly: "Flexa Restaurant is in Super Admin preview and is not publicly available yet.",
+  businessHours: "Hours & delivery",
+  deliverySettings: "Pickup & delivery settings",
+  settingsSaved: "Hours and delivery settings saved.",
+  uploadFoodPhoto: "Upload food photo",
+  photoRequired: "Add at least one food photo before creating an available dish.",
+  photoMissing: "No photo — not shown publicly",
   identityBadgeNote: "Identity verified badge ≠ food safety certification.",
   homeKitchenPrivacy:
     "Home Kitchen — Fresh, homemade meals prepared in a clean and safe kitchen. Address kept private for your safety.",

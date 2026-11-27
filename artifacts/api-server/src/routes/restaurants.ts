@@ -748,7 +748,7 @@ router.patch("/restaurants/:id", requireRestaurantAuthAccess, async (req, res): 
 
 /* ─── Hours + delivery ───────────────────────────────────────────────────── */
 
-router.put("/restaurants/:id/hours", requireAuth, async (req, res): Promise<void> => {
+router.put("/restaurants/:id/hours", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const restaurant = await loadOwnerRestaurant(req.userId!, id);
   if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
@@ -834,7 +834,7 @@ router.get("/restaurants/:id/owner-stats", requireAuth, async (req, res): Promis
   });
 });
 
-router.put("/restaurants/:id/delivery", requireAuth, async (req, res): Promise<void> => {
+router.put("/restaurants/:id/delivery", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const restaurant = await loadOwnerRestaurant(req.userId!, id);
   if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }

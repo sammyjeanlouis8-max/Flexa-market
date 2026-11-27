@@ -29,6 +29,13 @@ export type Restaurant = {
   businessType?: string;
   logoUrl?: string | null;
   coverUrl?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  streetAddress?: string | null;
+  showPublicAddress?: boolean;
+  acceptsReservations?: boolean;
   status: string;
   identityStatus: string;
   foodSafetyCompleted?: boolean;

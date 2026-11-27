@@ -4,7 +4,14 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
-import { fetchRestaurant, saveRestaurantDelivery, saveRestaurantHours, type Restaurant } from "@/lib/restaurantApi";
+import { isValidBusinessPhone } from "@/lib/restaurantContact";
+import {
+  fetchRestaurant,
+  saveRestaurantDelivery,
+  saveRestaurantHours,
+  updateRestaurant,
+  type Restaurant,
+} from "@/lib/restaurantApi";
 import { restaurantTheme as T } from "@/lib/restaurantTheme";
 
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -27,6 +34,9 @@ export default function OwnerSettingsScreen() {
   const [radiusKm, setRadiusKm] = useState("5");
   const [deliverySuspended, setDeliverySuspended] = useState(false);
   const [zones, setZones] = useState("");
+  const [phone, setPhone] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [enableWhatsapp, setEnableWhatsapp] = useState(false);
   const [hours, setHours] = useState(
     WEEKDAYS.map((weekday) => ({ weekday, isClosed: false, openTime: "09:00", closeTime: "21:00" })),
   );
@@ -37,6 +47,9 @@ export default function OwnerSettingsScreen() {
     fetchRestaurant(restaurantId, { token })
       .then((r) => {
         setRestaurant(r);
+        setPhone(r.phone || "");
+        setWhatsapp(r.whatsapp || "");
+        setEnableWhatsapp(Boolean(r.whatsapp));
         if (r.fulfillment === "delivery" || r.fulfillment === "both" || r.fulfillment === "pickup") {
           setFulfillment(r.fulfillment);
         }
@@ -67,9 +80,25 @@ export default function OwnerSettingsScreen() {
 
   async function save() {
     if (!restaurantId || !token) return;
+    if (!isValidBusinessPhone(phone)) {
+      setMsg("Enter a valid public business phone with country code.");
+      return;
+    }
+    if (enableWhatsapp && whatsapp.trim() && !isValidBusinessPhone(whatsapp)) {
+      setMsg("Invalid WhatsApp number.");
+      return;
+    }
     setSaving(true);
     setMsg(null);
     try {
+      await updateRestaurant(
+        restaurantId,
+        {
+          phone: phone.trim(),
+          whatsapp: enableWhatsapp && whatsapp.trim() ? whatsapp.trim() : null,
+        },
+        { token },
+      );
       await saveRestaurantHours(restaurantId, hours, { token });
       await saveRestaurantDelivery(
         restaurantId,
@@ -106,6 +135,17 @@ export default function OwnerSettingsScreen() {
         <>
           <Text style={styles.note}>{t("restaurant_deliveryManagedByBusiness")}</Text>
           <Text style={styles.policy}>{t("restaurant_driverPolicyNote")}</Text>
+
+          <Text style={styles.label}>{t("restaurant_publicContact") || "Public contact"}</Text>
+          <Text style={styles.policy}>
+            Shown for Call / WhatsApp. Never uses private identity-verification phones.
+          </Text>
+          <Field label="Business phone *" value={phone} onChange={setPhone} />
+          <Pressable style={styles.row} onPress={() => setEnableWhatsapp((v) => !v)}>
+            <Text style={{ fontSize: 18 }}>{enableWhatsapp ? "☑" : "☐"}</Text>
+            <Text style={styles.p}>Show WhatsApp on public profile</Text>
+          </Pressable>
+          {enableWhatsapp ? <Field label="WhatsApp number" value={whatsapp} onChange={setWhatsapp} /> : null}
 
           <Text style={styles.label}>{t("restaurant_fulfillment") || "Fulfillment"}</Text>
           <View style={styles.row}>

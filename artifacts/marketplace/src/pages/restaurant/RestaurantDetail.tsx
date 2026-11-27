@@ -10,7 +10,6 @@ import {
   Heart,
   Info,
   MapPin,
-  Phone,
   Plus,
   Share2,
   Shield,
@@ -20,6 +19,7 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import { RestaurantPageGate } from "@/components/restaurant/RestaurantPageGate";
+import { RestaurantContactBar } from "@/components/restaurant/RestaurantContactBar";
 import { RestaurantEmpty, RestaurantNotice } from "@/components/restaurant/RestaurantShell";
 import {
   availabilityLabelKey,
@@ -407,18 +407,22 @@ export default function RestaurantDetail() {
                 </RestaurantNotice>
               )}
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                {restaurant.phone && (
-                  <a href={`tel:${restaurant.phone}`} className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold">
-                    <Phone className="h-3.5 w-3.5" /> {t("restaurant.call", { defaultValue: "Call" })}
-                  </a>
-                )}
-                <Link href="/support" className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold">
-                  {t("restaurant.message", { defaultValue: "Message" })}
-                </Link>
-                <button type="button" className="inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-bold">
-                  {t("restaurant.report", { defaultValue: "Report" })}
-                </button>
+              <div className="mt-4">
+                <RestaurantContactBar
+                  restaurant={restaurant}
+                  onReserve={() => {
+                    setTab("menu");
+                    setMenuDate("tomorrow");
+                    setActionMsg(
+                      t("restaurant.reserveHint", {
+                        defaultValue: "Choose a meal below to reserve for tomorrow.",
+                      }),
+                    );
+                    window.setTimeout(() => {
+                      document.getElementById("restaurant-menu")?.scrollIntoView({ behavior: "smooth" });
+                    }, 50);
+                  }}
+                />
               </div>
             </div>
           </div>
@@ -451,7 +455,7 @@ export default function RestaurantDetail() {
           )}
 
           {tab === "menu" && (
-            <div className="mt-4 space-y-4">
+            <div className="mt-4 space-y-4" id="restaurant-menu">
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"

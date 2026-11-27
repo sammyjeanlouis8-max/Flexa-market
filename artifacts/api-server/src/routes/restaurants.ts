@@ -23,8 +23,11 @@ import {
   restaurantReportsTable,
   restaurantModerationLogsTable,
   restaurantNotificationsTable,
+  conversationsTable,
 } from "@workspace/db";
-import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
+import { requireAuth, requireNotRestricted, requireSuperAdmin } from "../middlewares/auth";
+import { publicDisplayName } from "../lib/publicDisplayName";
+import { isValidBusinessPhone, normalizeDialablePhone } from "../lib/restaurantPhone";
 import {
   assertCountryAllowsPublicOps,
   isCountryPubliclyActive,
@@ -709,6 +712,70 @@ router.get("/restaurants/:id", requireRestaurantAccess, async (req, res): Promis
   res.json({ restaurant: payload });
 });
 
+/** Start (or resume) a Flexa Market chat with the restaurant owner — listingId stays null. */
+router.post("/restaurants/:id/conversations", requireAuth, requireNotRestricted, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [restaurant] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, id)).limit(1);
+  if (!restaurant) { res.status(404).json({ error: "Restaurant not found" }); return; }
+  const isOwner = req.userId === restaurant.ownerId;
+  if (!RESTAURANT_PUBLIC_LISTING_STATUSES.has(restaurant.status) && !isOwner && !isStaff(req.user)) {
+    res.status(404).json({ error: "Restaurant not found" }); return;
+  }
+  const sellerId = restaurant.ownerId;
+  if (Number(req.userId) === Number(sellerId)) {
+    res.status(400).json({ error: "Cannot message your own business" }); return;
+  }
+  const [existing] = await db.select().from(conversationsTable).where(and(
+    eq(conversationsTable.restaurantId, id),
+    eq(conversationsTable.buyerId, req.userId!),
+    eq(conversationsTable.sellerId, sellerId),
+  )).limit(1);
+  const [otherUser] = await db.select().from(usersTable).where(eq(usersTable.id, sellerId)).limit(1);
+  const preview = {
+    listingTitle: restaurant.name,
+    listingImage: restaurant.logoUrl || restaurant.coverUrl || null,
+    listingPrice: 0,
+    listingIsVideoOnly: false,
+    restaurantId: restaurant.id,
+    conversationType: "restaurant" as const,
+  };
+  if (existing) {
+    res.json({
+      id: existing.id,
+      listingId: existing.listingId,
+      restaurantId: existing.restaurantId ?? id,
+      ...preview,
+      otherUserId: sellerId,
+      otherUserName: publicDisplayName(otherUser?.name, ""),
+      otherUserAvatar: otherUser?.avatar ?? null,
+      lastMessage: existing.lastMessage ?? null,
+      lastMessageAt: existing.lastMessageAt?.toISOString() ?? null,
+      unreadCount: 0,
+    });
+    return;
+  }
+  const [conv] = await db.insert(conversationsTable).values({
+    listingId: null,
+    restaurantId: id,
+    buyerId: req.userId!,
+    sellerId,
+    conversationType: "restaurant",
+  }).returning();
+  res.status(201).json({
+    id: conv.id,
+    listingId: null,
+    restaurantId: id,
+    ...preview,
+    otherUserId: sellerId,
+    otherUserName: publicDisplayName(otherUser?.name, ""),
+    otherUserAvatar: otherUser?.avatar ?? null,
+    lastMessage: null,
+    lastMessageAt: null,
+    unreadCount: 0,
+  });
+});
+
 router.get("/restaurants/:id/daily-menu", requireRestaurantAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [restaurant] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, id)).limit(1);
@@ -782,6 +849,13 @@ router.post("/restaurants", requireRestaurantAuthAccess, async (req, res): Promi
     });
     return;
   }
+  if (!isValidBusinessPhone(phone)) {
+    res.status(400).json({ error: "Invalid business phone number", code: "INVALID_PHONE" }); return;
+  }
+  const whatsappRaw = body.whatsapp != null ? String(body.whatsapp).trim() : "";
+  if (whatsappRaw && !isValidBusinessPhone(whatsappRaw)) {
+    res.status(400).json({ error: "Invalid WhatsApp number", code: "INVALID_WHATSAPP" }); return;
+  }
   const contactEmailRaw = body.contactEmail != null ? String(body.contactEmail).trim().slice(0, 160) : "";
   if (contactEmailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmailRaw)) {
     res.status(400).json({ error: "Invalid business email", code: "INVALID_EMAIL" }); return;
@@ -840,8 +914,8 @@ router.post("/restaurants", requireRestaurantAuthAccess, async (req, res): Promi
     logoUrl: body.logoUrl ? String(body.logoUrl) : null,
     coverUrl: body.coverUrl ? String(body.coverUrl) : null,
     cuisineTags,
-    phone: phone || null,
-    whatsapp: body.whatsapp ? String(body.whatsapp).slice(0, 40) : null,
+    phone: normalizeDialablePhone(phone).slice(0, 40) || null,
+    whatsapp: whatsappRaw ? normalizeDialablePhone(whatsappRaw).slice(0, 40) : null,
     country,
     region: region || null,
     city,
@@ -896,11 +970,25 @@ router.patch("/restaurants/:id", requireRestaurantAuthAccess, async (req, res): 
   const body = req.body ?? {};
   const patch: Partial<typeof restaurantsTable.$inferInsert> = { updatedAt: new Date() };
   for (const key of [
-    "name", "description", "logoUrl", "coverUrl", "phone", "whatsapp", "region", "city",
+    "name", "description", "logoUrl", "coverUrl", "region", "city",
     "streetAddress", "postalCode", "timezone", "privateResidentialAddress", "publicPickupAddress",
     "permitsNote",
   ] as const) {
     if (body[key] != null) (patch as any)[key] = String(body[key]);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "phone")) {
+    const phone = body.phone == null ? "" : String(body.phone).trim();
+    if (phone && !isValidBusinessPhone(phone)) {
+      res.status(400).json({ error: "Invalid business phone number", code: "INVALID_PHONE" }); return;
+    }
+    patch.phone = phone ? normalizeDialablePhone(phone).slice(0, 40) : null;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "whatsapp")) {
+    const wa = body.whatsapp == null ? "" : String(body.whatsapp).trim();
+    if (wa && !isValidBusinessPhone(wa)) {
+      res.status(400).json({ error: "Invalid WhatsApp number", code: "INVALID_WHATSAPP" }); return;
+    }
+    patch.whatsapp = wa ? normalizeDialablePhone(wa).slice(0, 40) : null;
   }
   if (Array.isArray(body.cuisineTags)) patch.cuisineTags = body.cuisineTags.map(String).slice(0, 12);
   if (typeof body.showPublicAddress === "boolean") {
@@ -938,6 +1026,16 @@ router.patch("/restaurants/:id", requireRestaurantAuthAccess, async (req, res): 
       res.status(400).json({
         error: "At least one business image (logo or cover) is required before review",
         code: "IMAGE_REQUIRED",
+      });
+      return;
+    }
+    const effectivePhone = Object.prototype.hasOwnProperty.call(patch, "phone")
+      ? (patch.phone as string | null)
+      : row.phone;
+    if (!isValidBusinessPhone(effectivePhone)) {
+      res.status(400).json({
+        error: "A valid public business phone number is required before approval",
+        code: "BUSINESS_PHONE_REQUIRED",
       });
       return;
     }

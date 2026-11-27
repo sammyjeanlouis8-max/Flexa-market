@@ -24,6 +24,9 @@ export default function AddRestaurant() {
     city: "",
     streetAddress: "",
     cuisineTags: "",
+    fulfillment: "pickup",
+    openTime: "08:00",
+    closeTime: "20:00",
   });
 
   const stepMeta = [
@@ -38,9 +41,37 @@ export default function AddRestaurant() {
     setSaving(true);
     setError(null);
     try {
+      const token = localStorage.getItem("flexamarket_token") ?? localStorage.getItem("token");
       const r = await createRestaurant({
-        ...form,
+        name: form.name,
+        businessType: form.businessType,
+        description: form.description,
+        country: form.country,
+        city: form.city,
+        streetAddress: form.streetAddress,
         cuisineTags: form.cuisineTags.split(",").map((s) => s.trim()).filter(Boolean),
+      });
+      const hours = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        isClosed: false,
+        openTime: form.openTime,
+        closeTime: form.closeTime,
+        overnight: false,
+      }));
+      await fetch(`/api/restaurants/${r.id}/hours`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ hours }),
+      });
+      await fetch(`/api/restaurants/${r.id}/delivery`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          fulfillment: form.fulfillment,
+          ownerManagedDelivery: true,
+          deliveryFee: 0,
+          deliveryInstructions: "Restaurant manages its own delivery — not Flexa Market drivers.",
+        }),
       });
       setLocation(`/restaurant/owner?rid=${r.id}`);
     } catch (e) {
@@ -74,7 +105,34 @@ export default function AddRestaurant() {
           <motionFormFields form={form} setForm={setForm} t={t} />
         )}
         {step === 1 && (
-          <p className="mt-4 text-sm text-muted-foreground">{t("restaurant.stepHoursBody")}</p>
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-muted-foreground">{t("restaurant.stepHoursBody")}</p>
+            <RestaurantNotice>
+              Restaurant delivery is managed by the restaurant owner — not Flexa Market drivers.
+            </RestaurantNotice>
+            <label className="block text-sm font-semibold">
+              Fulfillment
+              <select
+                value={form.fulfillment}
+                onChange={(e) => setForm((f) => ({ ...f, fulfillment: e.target.value }))}
+                className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+              >
+                <option value="pickup">{t("restaurant.pickup")}</option>
+                <option value="delivery">{t("restaurant.delivery")}</option>
+                <option value="both">{t("restaurant.bothFulfillment")}</option>
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-sm font-semibold">
+                Opens
+                <input type="time" value={form.openTime} onChange={(e) => setForm((f) => ({ ...f, openTime: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" />
+              </label>
+              <label className="block text-sm font-semibold">
+                Closes
+                <input type="time" value={form.closeTime} onChange={(e) => setForm((f) => ({ ...f, closeTime: e.target.value }))} className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" />
+              </label>
+            </div>
+          </div>
         )}
         {step === 2 && (
           <div className="mt-4 space-y-2">
@@ -121,11 +179,22 @@ function motionFormFields({
   setForm,
   t,
 }: {
-  form: { name: string; businessType: string; description: string; country: string; city: string; streetAddress: string; cuisineTags: string };
+  form: {
+    name: string;
+    businessType: string;
+    description: string;
+    country: string;
+    city: string;
+    streetAddress: string;
+    cuisineTags: string;
+    fulfillment: string;
+    openTime: string;
+    closeTime: string;
+  };
   setForm: Dispatch<SetStateAction<typeof form>>;
   t: (k: string) => string;
 }) {
-  const field = (key: keyof typeof form, label: string, multiline?: boolean) =>
+  const field = (key: "name" | "description" | "city" | "streetAddress" | "cuisineTags", multiline?: boolean) =>
     multiline ? (
       <textarea
         value={form[key]}
@@ -143,14 +212,27 @@ function motionFormFields({
 
   return (
     <div className="mt-4 space-y-3">
+      <label className="block text-sm font-semibold">Business type
+        <select
+          value={form.businessType}
+          onChange={(e) => setForm((f) => ({ ...f, businessType: e.target.value }))}
+          className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+        >
+          <option value="home_kitchen">Home Kitchen / Homemade Food</option>
+          <option value="traditional">Traditional Restaurant</option>
+          <option value="food_truck">Food Truck</option>
+          <option value="catering">Catering Business</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
       <label className="block text-sm font-semibold">{t("restaurant.restaurantDetail")}
-        {field("name", "")}
+        {field("name")}
       </label>
       <label className="block text-sm font-semibold">{t("restaurant.cuisine")}
-        {field("cuisineTags", "")}
+        {field("cuisineTags")}
       </label>
       <label className="block text-sm font-semibold">{t("restaurant.discoverSubtitle")}
-        {field("description", "", true)}
+        {field("description", true)}
       </label>
       <label className="block text-sm font-semibold">Country
         <select
@@ -164,10 +246,10 @@ function motionFormFields({
         </select>
       </label>
       <label className="block text-sm font-semibold">City
-        {field("city", "")}
+        {field("city")}
       </label>
       <label className="block text-sm font-semibold">Address
-        {field("streetAddress", "")}
+        {field("streetAddress")}
       </label>
     </div>
   );

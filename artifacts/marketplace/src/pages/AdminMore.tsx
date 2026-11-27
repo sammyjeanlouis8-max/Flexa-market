@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
-import { ChevronRight, Users, ClipboardList, Crown, AlertTriangle, Shield } from "lucide-react";
+import { ChevronRight, Users, ClipboardList, Crown, AlertTriangle, Shield, UtensilsCrossed } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { isAdminUser, isSuperAdminUser } from "@/lib/adminCountryAccess";
 
@@ -55,6 +55,13 @@ export default function AdminMore() {
       title: t("adminNav.security", { defaultValue: "Security" }),
       desc: t("adminUsers.securityDesc", { defaultValue: "Logs and audit trail" }),
       icon: Shield,
+    },
+    {
+      href: "/admin/restaurants",
+      title: t("adminNav.restaurants", { defaultValue: "Flexa Restaurant" }),
+      desc: t("adminUsers.restaurantsDesc", { defaultValue: "Identity review and restaurant suspension" }),
+      icon: UtensilsCrossed,
+      adminOnly: true,
     },
   ];
 

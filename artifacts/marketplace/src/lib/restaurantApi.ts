@@ -151,11 +151,11 @@ export async function fetchRestaurants(params?: {
   if (params?.nearby) qs.set("nearby", "1");
   if (params?.lat != null) qs.set("lat", String(params.lat));
   if (params?.lng != null) qs.set("lng", String(params.lng));
-  if (params?.mine) qs.set("mine", "1");
   if (params?.status) qs.set("status", params.status);
   if (params?.limit != null) qs.set("limit", String(params.limit));
   if (params?.offset != null) qs.set("offset", String(params.offset));
-  const res = await fetch(`/api/restaurants?${qs.toString()}`, { headers: authHeaders() });
+  const path = params?.mine ? "/api/restaurants/mine" : `/api/restaurants?${qs.toString()}`;
+  const res = await fetch(path, { headers: authHeaders() });
   const data = await parseJson<{ restaurants?: Restaurant[] }>(res, "Failed to load restaurants");
   return data.restaurants ?? [];
 }
@@ -245,16 +245,18 @@ export async function fetchRestaurantOrders(params?: {
   status?: string;
 }): Promise<Order[]> {
   const qs = new URLSearchParams();
-  if (params?.restaurantId != null) qs.set("restaurantId", String(params.restaurantId));
-  if (params?.mine) qs.set("mine", "1");
   if (params?.status) qs.set("status", params.status);
-  const res = await fetch(`/api/restaurants/orders?${qs.toString()}`, { headers: authHeaders() });
+  const path =
+    params?.mine || params?.restaurantId == null
+      ? `/api/restaurants/me/orders`
+      : `/api/restaurants/${params.restaurantId}/orders`;
+  const res = await fetch(`${path}?${qs.toString()}`, { headers: authHeaders() });
   const data = await parseJson<{ orders?: Order[] }>(res, "Failed to load orders");
   return data.orders ?? [];
 }
 
 export async function patchOrderStatus(orderId: number, status: string, rejectionReason?: string): Promise<Order> {
-  const res = await fetch(`/api/restaurants/orders/${orderId}`, {
+  const res = await fetch(`/api/restaurants/me/orders/${orderId}`, {
     method: "PATCH",
     headers: authHeaders(),
     body: JSON.stringify({ status, rejectionReason }),
@@ -269,10 +271,12 @@ export async function fetchReservations(params?: {
   status?: string;
 }): Promise<Reservation[]> {
   const qs = new URLSearchParams();
-  if (params?.restaurantId != null) qs.set("restaurantId", String(params.restaurantId));
-  if (params?.mine) qs.set("mine", "1");
   if (params?.status) qs.set("status", params.status);
-  const res = await fetch(`/api/restaurants/reservations?${qs.toString()}`, { headers: authHeaders() });
+  const path =
+    params?.mine || params?.restaurantId == null
+      ? `/api/restaurants/me/reservations`
+      : `/api/restaurants/${params.restaurantId}/reservations`;
+  const res = await fetch(`${path}?${qs.toString()}`, { headers: authHeaders() });
   const data = await parseJson<{ reservations?: Reservation[] }>(res, "Failed to load reservations");
   return data.reservations ?? [];
 }
@@ -281,7 +285,7 @@ export async function patchReservationStatus(
   reservationId: number,
   status: string,
 ): Promise<Reservation> {
-  const res = await fetch(`/api/restaurants/reservations/${reservationId}`, {
+  const res = await fetch(`/api/restaurants/me/reservations/${reservationId}`, {
     method: "PATCH",
     headers: authHeaders(),
     body: JSON.stringify({ status }),
@@ -313,6 +317,44 @@ export async function submitIdentityVerification(
     body: formData,
   });
   return parseJson(res, "Identity submission failed");
+}
+
+export async function placeRestaurantOrder(
+  restaurantId: number,
+  body: {
+    fulfillment: "pickup" | "delivery";
+    items: Array<{ dailyMenuItemId: number; quantity: number; notes?: string }>;
+    specialInstructions?: string;
+    deliveryAddress?: string;
+  },
+): Promise<Order> {
+  const res = await fetch(`/api/restaurants/${restaurantId}/orders`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<{ order: Order }>(res, "Could not place order");
+  return data.order;
+}
+
+export async function createRestaurantReservation(
+  restaurantId: number,
+  body: {
+    dailyMenuItemId: number;
+    quantity: number;
+    reservationDate?: string;
+    reservationTime?: string;
+    fulfillment?: "pickup" | "delivery";
+    specialInstructions?: string;
+  },
+): Promise<Reservation> {
+  const res = await fetch(`/api/restaurants/${restaurantId}/reservations`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<{ reservation: Reservation }>(res, "Could not create reservation");
+  return data.reservation;
 }
 
 export function formatMoney(amount: number, currency = "USD"): string {

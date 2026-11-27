@@ -3,7 +3,7 @@ import { Link, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { RestaurantPageGate } from "@/components/restaurant/RestaurantPageGate";
 import { RestaurantEmpty, RestaurantNotice, RestaurantShell } from "@/components/restaurant/RestaurantShell";
-import { fetchRestaurants, statusLabelKey, type Restaurant } from "@/lib/restaurantApi";
+import { fetchRestaurants, statusLabelKey, updateRestaurant, type Restaurant } from "@/lib/restaurantApi";
 
 const OWNER_LINKS = [
   { href: "/restaurant/owner/dishes", titleKey: "restaurant.dishModels", bodyKey: "restaurant.dishModelsSubtitle" },
@@ -20,6 +20,7 @@ export default function OwnerDashboard() {
   const rid = Number(new URLSearchParams(search).get("rid"));
   const [mine, setMine] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRestaurants({ mine: true })
@@ -28,6 +29,30 @@ export default function OwnerDashboard() {
   }, []);
 
   const active = mine.find((r) => (rid ? r.id === rid : true)) ?? mine[0];
+
+  async function publish() {
+    if (!active) return;
+    setMsg(null);
+    try {
+      const updated = await updateRestaurant(active.id, { publish: true });
+      setMine((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      setMsg("Published");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Publish failed");
+    }
+  }
+
+  async function toggleVacation() {
+    if (!active) return;
+    const updated = await updateRestaurant(active.id, { vacationMode: !active.vacationMode });
+    setMine((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+  }
+
+  async function toggleClosed() {
+    if (!active) return;
+    const updated = await updateRestaurant(active.id, { temporarilyClosed: !active.temporarilyClosed });
+    setMine((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+  }
 
   return (
     <RestaurantPageGate requireAuth>
@@ -58,6 +83,20 @@ export default function OwnerDashboard() {
               <Link href={`/restaurant/${active.id}`} className="mt-2 inline-block text-sm font-semibold text-[hsl(152,55%,28%)]">
                 {t("restaurant.restaurantDetail")}
               </Link>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {active.status !== "published" && (
+                  <button type="button" onClick={publish} className="rounded-full bg-[hsl(152,55%,28%)] px-3 py-1.5 text-xs font-bold text-white">
+                    Publish
+                  </button>
+                )}
+                <button type="button" onClick={toggleVacation} className="rounded-full border px-3 py-1.5 text-xs font-bold">
+                  {t("restaurant.vacationMode")}
+                </button>
+                <button type="button" onClick={toggleClosed} className="rounded-full border px-3 py-1.5 text-xs font-bold">
+                  {t("restaurant.temporarilyClosed")}
+                </button>
+              </div>
+              {msg && <p className="mt-2 text-sm font-semibold text-[hsl(152,55%,28%)]">{msg}</p>}
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               {OWNER_LINKS.map((l) => (

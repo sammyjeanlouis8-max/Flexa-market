@@ -3785,6 +3785,313 @@ export async function runStartupMigrations(): Promise<void> {
     logger.warn({ err: err?.message }, "Migration: vacuum listing category fix failed (non-fatal)");
   }
 
+
+  // ── Flexa Restaurant module ───────────────────────────────────────────────
+  migrations.push({
+    name: "restaurants.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurants (
+      id SERIAL PRIMARY KEY,
+      owner_id INTEGER NOT NULL REFERENCES users(id),
+      business_type TEXT NOT NULL DEFAULT 'traditional',
+      name TEXT NOT NULL,
+      slug TEXT,
+      description TEXT NOT NULL DEFAULT '',
+      logo_url TEXT,
+      cover_url TEXT,
+      cuisine_tags TEXT[] NOT NULL DEFAULT '{}',
+      phone TEXT,
+      whatsapp TEXT,
+      country TEXT NOT NULL,
+      region TEXT,
+      city TEXT NOT NULL,
+      street_address TEXT NOT NULL DEFAULT '',
+      postal_code TEXT,
+      latitude REAL,
+      longitude REAL,
+      timezone TEXT NOT NULL DEFAULT 'America/Port-au-Prince',
+      private_residential_address TEXT,
+      public_pickup_address TEXT,
+      show_public_address BOOLEAN NOT NULL DEFAULT TRUE,
+      permits_note TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      identity_status TEXT NOT NULL DEFAULT 'unverified',
+      identity_rejection_reason TEXT,
+      food_safety_completed BOOLEAN NOT NULL DEFAULT FALSE,
+      food_safety_article_version TEXT,
+      food_safety_quiz_score INTEGER,
+      food_safety_completed_at TIMESTAMPTZ,
+      terms_accepted_at TIMESTAMPTZ,
+      subscription_plan TEXT NOT NULL DEFAULT 'free',
+      subscription_enforced BOOLEAN NOT NULL DEFAULT FALSE,
+      accepts_reservations BOOLEAN NOT NULL DEFAULT TRUE,
+      accepts_next_day_reservations BOOLEAN NOT NULL DEFAULT TRUE,
+      reservation_deadline_hours INTEGER NOT NULL DEFAULT 12,
+      vacation_mode BOOLEAN NOT NULL DEFAULT FALSE,
+      temporarily_closed BOOLEAN NOT NULL DEFAULT FALSE,
+      avg_rating REAL NOT NULL DEFAULT 0,
+      rating_count INTEGER NOT NULL DEFAULT 0,
+      profile_views INTEGER NOT NULL DEFAULT 0,
+      published_at TIMESTAMPTZ,
+      suspended_at TIMESTAMPTZ,
+      suspension_reason TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurants.indexes",
+    sql: `CREATE INDEX IF NOT EXISTS restaurants_owner_idx ON restaurants(owner_id);
+CREATE INDEX IF NOT EXISTS restaurants_country_idx ON restaurants(country);
+CREATE INDEX IF NOT EXISTS restaurants_status_idx ON restaurants(status);
+CREATE INDEX IF NOT EXISTS restaurants_city_idx ON restaurants(city);
+CREATE INDEX IF NOT EXISTS restaurants_identity_idx ON restaurants(identity_status)`,
+  });
+  migrations.push({
+    name: "restaurant_identity_verifications.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_identity_verifications (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      legal_name TEXT NOT NULL,
+      country_of_residence TEXT NOT NULL,
+      document_issuing_country TEXT NOT NULL,
+      document_type TEXT NOT NULL,
+      document_front_key TEXT NOT NULL,
+      document_back_key TEXT,
+      selfie_key TEXT NOT NULL,
+      privacy_notice_accepted_at TIMESTAMPTZ NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending_review',
+      rejection_reason TEXT,
+      reviewed_by INTEGER REFERENCES users(id),
+      reviewed_at TIMESTAMPTZ,
+      reused_market_kyc BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_opening_hours.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_opening_hours (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+      weekday INTEGER NOT NULL,
+      is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+      open_time TEXT,
+      close_time TEXT,
+      overnight BOOLEAN NOT NULL DEFAULT FALSE,
+      UNIQUE (restaurant_id, weekday)
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_delivery_settings.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_delivery_settings (
+      restaurant_id INTEGER PRIMARY KEY REFERENCES restaurants(id) ON DELETE CASCADE,
+      fulfillment TEXT NOT NULL DEFAULT 'pickup',
+      delivery_fee REAL NOT NULL DEFAULT 0,
+      delivery_zones TEXT[] NOT NULL DEFAULT '{}',
+      min_order_amount REAL NOT NULL DEFAULT 0,
+      estimated_delivery_minutes INTEGER NOT NULL DEFAULT 45,
+      delivery_instructions TEXT NOT NULL DEFAULT '',
+      free_delivery_min REAL,
+      owner_managed_delivery BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_food_safety_assessments.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_food_safety_assessments (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      article_version TEXT NOT NULL,
+      quiz_score INTEGER NOT NULL,
+      quiz_passed BOOLEAN NOT NULL,
+      answers JSONB NOT NULL DEFAULT '{}',
+      terms_accepted_at TIMESTAMPTZ NOT NULL,
+      completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_dish_models.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_dish_models (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      photos TEXT[] NOT NULL DEFAULT '{}',
+      price REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      category TEXT,
+      ingredients TEXT NOT NULL DEFAULT '',
+      allergens TEXT NOT NULL DEFAULT '',
+      prep_minutes INTEGER NOT NULL DEFAULT 20,
+      portion_info TEXT,
+      dietary_tags TEXT[] NOT NULL DEFAULT '{}',
+      default_available BOOLEAN NOT NULL DEFAULT TRUE,
+      is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_daily_menus.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_daily_menus (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+      menu_date TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (restaurant_id, menu_date)
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_daily_menu_items.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_daily_menu_items (
+      id SERIAL PRIMARY KEY,
+      daily_menu_id INTEGER NOT NULL REFERENCES restaurant_daily_menus(id) ON DELETE CASCADE,
+      restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+      dish_model_id INTEGER REFERENCES restaurant_dish_models(id) ON DELETE SET NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      photos TEXT[] NOT NULL DEFAULT '{}',
+      price REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      category TEXT,
+      ingredients TEXT NOT NULL DEFAULT '',
+      allergens TEXT NOT NULL DEFAULT '',
+      available_portions INTEGER,
+      sold_count INTEGER NOT NULL DEFAULT 0,
+      sold_out BOOLEAN NOT NULL DEFAULT FALSE,
+      accepts_reservations BOOLEAN NOT NULL DEFAULT TRUE,
+      available_from TEXT NOT NULL,
+      available_until TEXT NOT NULL,
+      recurring_weekdays INTEGER[] NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_orders.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_orders (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER NOT NULL REFERENCES restaurants(id),
+      customer_id INTEGER NOT NULL REFERENCES users(id),
+      status TEXT NOT NULL DEFAULT 'pending',
+      fulfillment TEXT NOT NULL DEFAULT 'pickup',
+      subtotal REAL NOT NULL DEFAULT 0,
+      delivery_fee REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      special_instructions TEXT NOT NULL DEFAULT '',
+      delivery_address TEXT,
+      idempotency_key TEXT UNIQUE,
+      payment_note TEXT NOT NULL DEFAULT 'Pay restaurant directly — Flexa charges no commission.',
+      rejection_reason TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_order_items.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_order_items (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES restaurant_orders(id) ON DELETE CASCADE,
+      daily_menu_item_id INTEGER REFERENCES restaurant_daily_menu_items(id) ON DELETE SET NULL,
+      dish_model_id INTEGER REFERENCES restaurant_dish_models(id) ON DELETE SET NULL,
+      name TEXT NOT NULL,
+      unit_price REAL NOT NULL,
+      quantity INTEGER NOT NULL,
+      line_total REAL NOT NULL,
+      notes TEXT NOT NULL DEFAULT ''
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_reservations.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_reservations (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER NOT NULL REFERENCES restaurants(id),
+      customer_id INTEGER NOT NULL REFERENCES users(id),
+      daily_menu_item_id INTEGER REFERENCES restaurant_daily_menu_items(id) ON DELETE SET NULL,
+      dish_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      reservation_date TEXT NOT NULL,
+      reservation_time TEXT NOT NULL,
+      fulfillment TEXT NOT NULL DEFAULT 'pickup',
+      special_instructions TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_ratings.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_ratings (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+      customer_id INTEGER NOT NULL REFERENCES users(id),
+      order_id INTEGER NOT NULL REFERENCES restaurant_orders(id) ON DELETE CASCADE,
+      stars INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (order_id)
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_dish_comments.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_dish_comments (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+      dish_model_id INTEGER REFERENCES restaurant_dish_models(id) ON DELETE SET NULL,
+      daily_menu_item_id INTEGER REFERENCES restaurant_daily_menu_items(id) ON DELETE SET NULL,
+      customer_id INTEGER NOT NULL REFERENCES users(id),
+      order_id INTEGER REFERENCES restaurant_orders(id) ON DELETE SET NULL,
+      body TEXT NOT NULL,
+      owner_reply TEXT,
+      owner_replied_at TIMESTAMPTZ,
+      is_hidden BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_reports.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_reports (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER REFERENCES restaurants(id) ON DELETE SET NULL,
+      reporter_id INTEGER NOT NULL REFERENCES users(id),
+      reason TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '',
+      dish_comment_id INTEGER REFERENCES restaurant_dish_comments(id) ON DELETE SET NULL,
+      order_id INTEGER REFERENCES restaurant_orders(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_moderation_logs.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_moderation_logs (
+      id SERIAL PRIMARY KEY,
+      restaurant_id INTEGER REFERENCES restaurants(id) ON DELETE SET NULL,
+      actor_id INTEGER NOT NULL REFERENCES users(id),
+      action TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '',
+      accessed_document_key TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_notifications.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_notifications (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      restaurant_id INTEGER REFERENCES restaurants(id) ON DELETE SET NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      href TEXT,
+      is_read BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+
   logger.info({ applied, failed }, "Startup migrations complete");
 }
 

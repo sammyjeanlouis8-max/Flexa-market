@@ -232,6 +232,7 @@ const MusicSponsoredAds              = lazy(() => import("@/pages/MusicSponsored
 const MusicSponsoredBreakHost        = lazy(() => import("@/components/music/MusicSponsoredBreak"));
 const MusicPublicPlayer              = lazy(() => import("@/pages/MusicPublicPlayer"));
 const AdminMusic                     = lazy(() => import("@/pages/AdminMusic"));
+const AdminRestaurants               = lazy(() => import("@/pages/AdminRestaurants"));
 const AdminTransactions              = lazy(() => import("@/pages/AdminTransactions"));
 const AdminStripeTransactions        = lazy(() => import("@/pages/AdminStripeTransactions"));
 const AdminHaitiTransactions         = lazy(() => import("@/pages/AdminHaitiTransactions"));
@@ -533,6 +534,7 @@ function LayoutRoutes() {
           <Route path="/music/upload" component={FlexaMusicUpload} />
           <Route path="/music/earnings" component={FlexaMusicEarnings} />
           <Route path="/admin/music" component={AdminMusic} />
+          <Route path="/admin/restaurants" component={AdminRestaurants} />
           <Route path="/admin/transactions" component={AdminTransactions} />
           <Route path="/admin/stripe-transactions" component={AdminStripeTransactions} />
           <Route path="/admin/moncash-transactions" component={AdminHaitiTransactions} />

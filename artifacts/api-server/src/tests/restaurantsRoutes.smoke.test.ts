@@ -31,5 +31,17 @@ describe("restaurants routes smoke", () => {
     expect(routes).toContain("ownerManagedDelivery: true");
     expect(routes).toContain("freeLaunch: true");
     expect(routes).toContain("Pay the restaurant directly");
+    expect(routes).toContain("Delivery is arranged and managed by this restaurant.");
+    expect(routes).toContain("platformFees");
+    expect(routes).toContain("commission: 0");
+  });
+
+  it("supports category discovery, menu preview, and food-truck location", () => {
+    expect(routes).toContain("businessType");
+    expect(routes).toContain("menuPreview");
+    expect(routes).toContain('"/restaurants/:id/operating-location"');
+    expect(routes).toContain('"/restaurants/:id/owner-stats"');
+    expect(routes).toContain("Address kept private for your safety");
+    expect(routes).toContain("isHomeKitchenType");
   });
 });

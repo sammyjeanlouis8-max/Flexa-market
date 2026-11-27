@@ -74,18 +74,68 @@ async function notify(userId: number, input: {
   });
 }
 
+const HOME_KITCHEN_TYPES = new Set(["home_kitchen", "home-kitchen", "homekitchen"]);
+
+function isHomeKitchenType(businessType: string | null | undefined) {
+  return HOME_KITCHEN_TYPES.has(String(businessType || "").toLowerCase());
+}
+
+function normalizeBusinessType(raw: string | null | undefined) {
+  const v = String(raw || "traditional").toLowerCase().replace(/[\s-]+/g, "_");
+  const aliases: Record<string, string> = {
+    restaurant: "traditional",
+    restaurants: "traditional",
+    traditional_restaurant: "traditional",
+    home: "home_kitchen",
+    homekitchen: "home_kitchen",
+    truck: "food_truck",
+    foodtruck: "food_truck",
+    bakeries: "bakery",
+    catering_service: "catering",
+  };
+  return aliases[v] || v;
+}
+
+type MenuPreviewShape = {
+  id: number;
+  name: string;
+  photos: string[];
+  price: number;
+  currency: string;
+  availableFrom: string;
+  availableUntil: string;
+  soldOut: boolean;
+  availability: string;
+  orderableNow: boolean;
+  acceptsReservations: boolean;
+};
+
 function shapePublicRestaurant(
   row: typeof restaurantsTable.$inferSelect,
   extras?: {
     openNow?: boolean;
     delivery?: typeof restaurantDeliverySettingsTable.$inferSelect | null;
     hours?: Array<typeof restaurantOpeningHoursTable.$inferSelect>;
+    menuPreview?: MenuPreviewShape[];
+    distanceKm?: number | null;
   },
 ) {
+  const homeKitchen = isHomeKitchenType(row.businessType);
+  // Never expose private residential addresses for home kitchens.
+  const allowPublicAddress = !homeKitchen && row.showPublicAddress;
+  const serviceArea =
+    homeKitchen
+      ? `Serving ${[row.city, row.region || row.country].filter(Boolean).join(", ")}`
+      : null;
+  const publicAddress = allowPublicAddress
+    ? (row.publicPickupAddress || row.streetAddress || null)
+    : (homeKitchen ? null : (row.publicPickupAddress || null));
+  const prepMinutes = extras?.delivery?.estimatedDeliveryMinutes ?? 30;
+
   return {
     id: row.id,
     ownerId: row.ownerId,
-    businessType: row.businessType,
+    businessType: normalizeBusinessType(row.businessType),
     name: row.name,
     slug: row.slug,
     description: row.description,
@@ -97,12 +147,16 @@ function shapePublicRestaurant(
     country: row.country,
     region: row.region,
     city: row.city,
-    streetAddress: row.showPublicAddress ? row.streetAddress : null,
-    publicPickupAddress: row.publicPickupAddress || (row.showPublicAddress ? row.streetAddress : null),
-    showPublicAddress: row.showPublicAddress,
-    postalCode: row.showPublicAddress ? row.postalCode : null,
-    latitude: row.latitude,
-    longitude: row.longitude,
+    streetAddress: allowPublicAddress ? row.streetAddress : null,
+    publicPickupAddress: publicAddress,
+    showPublicAddress: allowPublicAddress,
+    postalCode: allowPublicAddress ? row.postalCode : null,
+    serviceArea,
+    addressPrivacyNote: homeKitchen
+      ? "Home Kitchen — Fresh, homemade meals prepared in a clean and safe kitchen. Address kept private for your safety."
+      : null,
+    latitude: allowPublicAddress || row.businessType === "food_truck" ? row.latitude : (homeKitchen ? null : row.latitude),
+    longitude: allowPublicAddress || row.businessType === "food_truck" ? row.longitude : (homeKitchen ? null : row.longitude),
     timezone: row.timezone,
     status: row.status,
     identityStatus: row.identityStatus,
@@ -120,9 +174,16 @@ function shapePublicRestaurant(
     subscriptionEnforced: false,
     platformFees: { commission: 0, registrationFee: 0, monthlySubscription: 0 },
     openNow: extras?.openNow ?? false,
+    isOpenNow: extras?.openNow ?? false,
     fulfillment: extras?.delivery?.fulfillment ?? "pickup",
     ownerManagedDelivery: extras?.delivery?.ownerManagedDelivery ?? true,
+    deliveryManagedByRestaurant: true,
+    deliveryDisclaimer: "Delivery is arranged and managed by this restaurant.",
     deliveryFee: extras?.delivery?.deliveryFee ?? 0,
+    minOrderAmount: extras?.delivery?.minOrderAmount ?? 0,
+    estimatedPrepMinutes: prepMinutes,
+    estimatedDeliveryMinutes: extras?.delivery?.estimatedDeliveryMinutes ?? null,
+    deliveryZones: extras?.delivery?.deliveryZones ?? [],
     hours: (extras?.hours ?? []).map((h) => ({
       weekday: h.weekday,
       isClosed: h.isClosed,
@@ -130,6 +191,8 @@ function shapePublicRestaurant(
       closeTime: h.closeTime,
       overnight: h.overnight,
     })),
+    menuPreview: extras?.menuPreview ?? undefined,
+    distanceKm: extras?.distanceKm ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -214,22 +277,49 @@ router.get("/restaurants", async (req, res): Promise<void> => {
   const country = String(req.query.country || "").trim();
   const cuisine = String(req.query.cuisine || "").trim();
   const fulfillment = String(req.query.fulfillment || "").trim();
+  const businessTypeRaw = String(req.query.businessType || req.query.type || "").trim();
+  const businessType = businessTypeRaw ? normalizeBusinessType(businessTypeRaw) : "";
   const openNowOnly = req.query.openNow === "1" || req.query.openNow === "true";
+  const topRatedOnly = req.query.topRated === "1" || req.query.topRated === "true";
+  const featuredOnly = req.query.featured === "1" || req.query.featured === "true";
+  const includeMenuPreview = req.query.menuPreview === "1" || req.query.menuPreview === "true";
+  const lat = req.query.lat != null ? Number(req.query.lat) : null;
+  const lng = req.query.lng != null ? Number(req.query.lng) : null;
+  const sortBy = String(req.query.sortBy || "rating");
   const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 24));
   const offset = Math.max(0, Number(req.query.offset) || 0);
 
   const conds = [eq(restaurantsTable.status, "published")];
   if (country) conds.push(sql`lower(${restaurantsTable.country}) = lower(${country})`);
-  if (q) conds.push(or(ilike(restaurantsTable.name, `%${q}%`), ilike(restaurantsTable.description, `%${q}%`))!);
+  if (businessType && businessType !== "all") {
+    conds.push(sql`lower(replace(${restaurantsTable.businessType}, '-', '_')) = ${businessType}`);
+  }
+  if (q) {
+    conds.push(or(
+      ilike(restaurantsTable.name, `%${q}%`),
+      ilike(restaurantsTable.description, `%${q}%`),
+      ilike(restaurantsTable.city, `%${q}%`),
+      sql`EXISTS (
+        SELECT 1 FROM unnest(${restaurantsTable.cuisineTags}) AS tag
+        WHERE tag ILIKE ${`%${q}%`}
+      )`,
+      sql`EXISTS (
+        SELECT 1 FROM restaurant_daily_menu_items dmi
+        WHERE dmi.restaurant_id = ${restaurantsTable.id}
+          AND dmi.name ILIKE ${`%${q}%`}
+      )`,
+    )!);
+  }
   if (cuisine) conds.push(sql`${cuisine} = ANY(${restaurantsTable.cuisineTags})`);
+  if (topRatedOnly || featuredOnly) conds.push(sql`${restaurantsTable.avgRating} >= 4.5`);
 
   const rows = await db
     .select()
     .from(restaurantsTable)
     .where(and(...conds))
     .orderBy(desc(restaurantsTable.avgRating), desc(restaurantsTable.publishedAt))
-    .limit(limit)
-    .offset(offset);
+    .limit(Math.min(200, limit + offset + 40))
+    .offset(0);
 
   const out = [];
   for (const row of rows) {
@@ -242,9 +332,59 @@ router.get("/restaurants", async (req, res): Promise<void> => {
     if (openNowOnly && !openNow) continue;
     if (fulfillment === "pickup" && delivery && delivery.fulfillment === "delivery") continue;
     if (fulfillment === "delivery" && delivery && delivery.fulfillment === "pickup") continue;
-    out.push(shapePublicRestaurant(row, { openNow, delivery: delivery ?? null, hours }));
+
+    let distanceKm: number | null = null;
+    if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) && row.latitude != null && row.longitude != null) {
+      const R = 6371;
+      const dLat = ((row.latitude - lat) * Math.PI) / 180;
+      const dLng = ((row.longitude - lng) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((lat * Math.PI) / 180) * Math.cos((row.latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+      distanceKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
+    }
+
+    let menuPreview: Array<ReturnType<typeof shapeMenuItem>> | undefined;
+    if (includeMenuPreview) {
+      const today = localYmd(row.timezone);
+      const [menu] = await db.select().from(restaurantDailyMenusTable)
+        .where(and(eq(restaurantDailyMenusTable.restaurantId, row.id), eq(restaurantDailyMenusTable.menuDate, today)))
+        .limit(1);
+      if (menu) {
+        const items = await db.select().from(restaurantDailyMenuItemsTable)
+          .where(eq(restaurantDailyMenuItemsTable.dailyMenuId, menu.id))
+          .limit(4);
+        menuPreview = items.map((i) => shapeMenuItem(i, row, today));
+      } else {
+        menuPreview = [];
+      }
+    }
+
+    out.push(shapePublicRestaurant(row, {
+      openNow,
+      delivery: delivery ?? null,
+      hours,
+      menuPreview,
+      distanceKm,
+    }));
   }
-  res.json({ restaurants: out, freeLaunch: true });
+
+  if (sortBy === "distance" && lat != null && lng != null) {
+    out.sort((a, b) => {
+      const da = a.distanceKm ?? Number.POSITIVE_INFINITY;
+      const dbv = b.distanceKm ?? Number.POSITIVE_INFINITY;
+      return da - dbv;
+    });
+  } else if (sortBy === "name") {
+    out.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }
+
+  res.json({
+    restaurants: out.slice(offset, offset + limit),
+    total: out.length,
+    freeLaunch: true,
+    platformFees: { commission: 0, registrationFee: 0, monthlySubscription: 0 },
+  });
 });
 
 router.get("/restaurants/mine", requireAuth, async (req, res): Promise<void> => {
@@ -395,7 +535,8 @@ router.post("/restaurants", requireAuth, async (req, res): Promise<void> => {
   if (name.length < 2 || !country || !city) {
     res.status(400).json({ error: "Name, country, and city are required" }); return;
   }
-  const businessType = String(body.businessType || "traditional");
+  const businessType = normalizeBusinessType(String(body.businessType || "traditional"));
+  const homeKitchen = isHomeKitchenType(businessType);
   const [created] = await db.insert(restaurantsTable).values({
     ownerId: req.userId!,
     businessType,
@@ -414,9 +555,12 @@ router.post("/restaurants", requireAuth, async (req, res): Promise<void> => {
     latitude: body.latitude != null ? Number(body.latitude) : null,
     longitude: body.longitude != null ? Number(body.longitude) : null,
     timezone: String(body.timezone || "America/Port-au-Prince"),
-    privateResidentialAddress: body.privateResidentialAddress ? String(body.privateResidentialAddress) : null,
+    privateResidentialAddress: body.privateResidentialAddress
+      ? String(body.privateResidentialAddress)
+      : (homeKitchen ? String(body.streetAddress || "") : null),
     publicPickupAddress: body.publicPickupAddress ? String(body.publicPickupAddress) : null,
-    showPublicAddress: body.showPublicAddress !== false,
+    // Home kitchens never publish residential street addresses.
+    showPublicAddress: homeKitchen ? false : body.showPublicAddress !== false,
     permitsNote: body.permitsNote ? String(body.permitsNote) : null,
     status: "draft",
   }).returning();
@@ -459,18 +603,25 @@ router.patch("/restaurants/:id", requireAuth, async (req, res): Promise<void> =>
   for (const key of [
     "name", "description", "logoUrl", "coverUrl", "phone", "whatsapp", "region", "city",
     "streetAddress", "postalCode", "timezone", "privateResidentialAddress", "publicPickupAddress",
-    "permitsNote", "businessType",
+    "permitsNote",
   ] as const) {
     if (body[key] != null) (patch as any)[key] = String(body[key]);
   }
   if (Array.isArray(body.cuisineTags)) patch.cuisineTags = body.cuisineTags.map(String).slice(0, 12);
-  if (typeof body.showPublicAddress === "boolean") patch.showPublicAddress = body.showPublicAddress;
+  if (typeof body.showPublicAddress === "boolean") {
+    const nextType = normalizeBusinessType(String(body.businessType || row.businessType));
+    patch.showPublicAddress = isHomeKitchenType(nextType) ? false : body.showPublicAddress;
+  }
   if (typeof body.vacationMode === "boolean") patch.vacationMode = body.vacationMode;
   if (typeof body.temporarilyClosed === "boolean") patch.temporarilyClosed = body.temporarilyClosed;
   if (typeof body.acceptsReservations === "boolean") patch.acceptsReservations = body.acceptsReservations;
   if (typeof body.acceptsNextDayReservations === "boolean") patch.acceptsNextDayReservations = body.acceptsNextDayReservations;
   if (body.latitude != null) patch.latitude = Number(body.latitude);
   if (body.longitude != null) patch.longitude = Number(body.longitude);
+  if (body.businessType != null) {
+    patch.businessType = normalizeBusinessType(String(body.businessType));
+    if (isHomeKitchenType(patch.businessType)) patch.showPublicAddress = false;
+  }
 
   if (body.publish === true) {
     if (row.identityStatus !== "verified") {
@@ -506,6 +657,73 @@ router.put("/restaurants/:id/hours", requireAuth, async (req, res): Promise<void
   if (rows.length) await db.insert(restaurantOpeningHoursTable).values(rows);
   const saved = await db.select().from(restaurantOpeningHoursTable).where(eq(restaurantOpeningHoursTable.restaurantId, id));
   res.json({ hours: saved });
+});
+
+/** Food truck owners publish a current operating location — not continuous private GPS tracking. */
+router.patch("/restaurants/:id/operating-location", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const restaurant = await loadOwnerRestaurant(req.userId!, id);
+  if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
+  if (normalizeBusinessType(restaurant.businessType) !== "food_truck") {
+    res.status(400).json({ error: "Operating location updates are only for food trucks" }); return;
+  }
+  const body = req.body ?? {};
+  const latitude = body.latitude != null ? Number(body.latitude) : null;
+  const longitude = body.longitude != null ? Number(body.longitude) : null;
+  if (latitude != null && (!Number.isFinite(latitude) || Math.abs(latitude) > 90)) {
+    res.status(400).json({ error: "Invalid latitude" }); return;
+  }
+  if (longitude != null && (!Number.isFinite(longitude) || Math.abs(longitude) > 180)) {
+    res.status(400).json({ error: "Invalid longitude" }); return;
+  }
+  const [updated] = await db.update(restaurantsTable).set({
+    publicPickupAddress: body.locationLabel != null ? String(body.locationLabel).slice(0, 240) : restaurant.publicPickupAddress,
+    city: body.city != null ? String(body.city).slice(0, 120) : restaurant.city,
+    latitude: latitude ?? restaurant.latitude,
+    longitude: longitude ?? restaurant.longitude,
+    showPublicAddress: true,
+    updatedAt: new Date(),
+  }).where(eq(restaurantsTable.id, id)).returning();
+  res.json({
+    restaurant: shapePublicRestaurant(updated),
+    note: "Published operating location only — Flexa does not continuously track private GPS.",
+  });
+});
+
+router.get("/restaurants/:id/owner-stats", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const restaurant = await loadOwnerRestaurant(req.userId!, id);
+  if (!restaurant && !isStaff(req.user)) { res.status(404).json({ error: "Not found" }); return; }
+  const orders = await db.select({
+    status: restaurantOrdersTable.status,
+  }).from(restaurantOrdersTable).where(eq(restaurantOrdersTable.restaurantId, id));
+  const reservations = await db.select({
+    status: restaurantReservationsTable.status,
+  }).from(restaurantReservationsTable).where(eq(restaurantReservationsTable.restaurantId, id));
+  const countStatus = (rows: Array<{ status: string }>, statuses: string[]) =>
+    rows.filter((r) => statuses.includes(r.status)).length;
+  res.json({
+    restaurantId: id,
+    orders: {
+      new: countStatus(orders, ["pending"]),
+      preparing: countStatus(orders, ["accepted", "preparing"]),
+      ready: countStatus(orders, ["ready_pickup"]),
+      outForDelivery: countStatus(orders, ["out_for_delivery"]),
+      completed: countStatus(orders, ["completed"]),
+      cancelled: countStatus(orders, ["cancelled", "rejected"]),
+      total: orders.length,
+    },
+    reservations: {
+      pending: countStatus(reservations, ["pending"]),
+      confirmed: countStatus(reservations, ["confirmed", "preparing", "ready"]),
+      total: reservations.length,
+    },
+    avgRating: restaurant?.avgRating ?? 0,
+    ratingCount: restaurant?.ratingCount ?? 0,
+    openNow: false,
+    freeLaunch: true,
+    platformFees: { commission: 0 },
+  });
 });
 
 router.put("/restaurants/:id/delivery", requireAuth, async (req, res): Promise<void> => {

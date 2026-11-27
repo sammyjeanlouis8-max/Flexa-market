@@ -223,6 +223,8 @@ const RestaurantIdentityVerification = lazy(() => import("@/pages/restaurant/Ide
 const RestaurantFoodSafetyQuiz       = lazy(() => import("@/pages/restaurant/FoodSafetyQuiz"));
 const RestaurantMyOrders             = lazy(() => import("@/pages/restaurant/MyOrders"));
 const RestaurantMyReservations       = lazy(() => import("@/pages/restaurant/MyReservations"));
+const RestaurantCart                 = lazy(() => import("@/pages/restaurant/Cart"));
+const RestaurantCheckout             = lazy(() => import("@/pages/restaurant/Checkout"));
 const WholesaleAdminCategories       = lazy(() => import("@/pages/wholesale/WholesaleAdminCategories"));
 const WholesaleAdminCountries        = lazy(() => import("@/pages/wholesale/WholesaleAdminCountries"));
 const WholesaleAdminChats            = lazy(() => import("@/pages/wholesale/WholesaleAdminChats"));
@@ -525,6 +527,8 @@ function LayoutRoutes() {
           <Route path="/restaurant/add" component={RestaurantAdd} />
           <Route path="/restaurant/my-reservations" component={RestaurantMyReservations} />
           <Route path="/restaurant/my-orders" component={RestaurantMyOrders} />
+          <Route path="/restaurant/checkout" component={RestaurantCheckout} />
+          <Route path="/restaurant/cart" component={RestaurantCart} />
           <Route path="/restaurant/discover" component={RestaurantDiscover} />
           <Route path="/restaurant/:id" component={RestaurantDetail} />
           <Route path="/restaurant" component={FlexaRestaurant} />

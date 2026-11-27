@@ -21,7 +21,7 @@ export default function RestaurantHubScreen() {
     try {
       setRows(
         await fetchRestaurants(
-          { country: user?.country, status: "published" },
+          { country: user?.country, status: "published", menuPreview: true },
           { token },
         ),
       );
@@ -38,7 +38,7 @@ export default function RestaurantHubScreen() {
   }, [load]);
 
   return (
-    <RestaurantShell title={t("restaurant_discoverTitle")} subtitle={t("restaurant_hubSubtitle")}>
+    <RestaurantShell title={t("restaurant_hubTitle")} subtitle={t("restaurant_hubSubtitle")}>
       <View style={styles.notice}>
         <Text style={styles.noticeText}>{t("restaurant_freeLaunchNote")}</Text>
       </View>
@@ -47,7 +47,10 @@ export default function RestaurantHubScreen() {
       </View>
       <View style={styles.row}>
         <Pressable style={styles.chip} onPress={() => router.push("/restaurant/discover" as any)}>
-          <Text style={styles.chipText}>{t("restaurant_openNow")}</Text>
+          <Text style={styles.chipText}>{t("restaurant_discoverTitle")}</Text>
+        </Pressable>
+        <Pressable style={styles.chip} onPress={() => router.push("/restaurant/owner" as any)}>
+          <Text style={styles.chipText}>{t("restaurant_tabOwner")}</Text>
         </Pressable>
         <Pressable style={styles.chip} onPress={() => router.push("/restaurant/add" as any)}>
           <Text style={styles.chipText}>{t("restaurant_addRestaurant")}</Text>
@@ -63,7 +66,10 @@ export default function RestaurantHubScreen() {
         rows.slice(0, 8).map((r) => (
           <Pressable key={r.id} style={styles.card} onPress={() => router.push(`/restaurant/${r.id}` as any)}>
             <Text style={styles.cardTitle}>{r.name}</Text>
-            <Text style={styles.muted}>{r.city}, {r.country}</Text>
+            <Text style={styles.muted}>
+              {r.avgRating && r.avgRating > 0 ? `★ ${r.avgRating.toFixed(1)} · ` : ""}
+              {r.serviceArea || `${r.city}, ${r.country}`}
+            </Text>
           </Pressable>
         ))
       )}

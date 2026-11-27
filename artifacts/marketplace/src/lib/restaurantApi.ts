@@ -1,3 +1,18 @@
+export type MenuPreviewItem = {
+  id: number;
+  name: string;
+  description?: string;
+  photos: string[];
+  price: number;
+  currency: string;
+  availableFrom: string;
+  availableUntil: string;
+  soldOut: boolean;
+  availability?: string;
+  orderableNow?: boolean;
+  acceptsReservations?: boolean;
+};
+
 export type Restaurant = {
   id: number;
   ownerId: number;
@@ -13,23 +28,43 @@ export type Restaurant = {
   country: string;
   region: string | null;
   city: string;
-  streetAddress: string;
+  streetAddress: string | null;
   latitude: number | null;
   longitude: number | null;
+  timezone?: string;
   status: string;
   identityStatus: string;
+  identityVerifiedBadge?: boolean;
   foodSafetyCompleted: boolean;
   acceptsReservations: boolean;
+  acceptsNextDayReservations?: boolean;
   vacationMode: boolean;
   temporarilyClosed: boolean;
   avgRating: number;
   ratingCount: number;
   publicPickupAddress?: string | null;
   showPublicAddress?: boolean;
+  serviceArea?: string | null;
+  addressPrivacyNote?: string | null;
   fulfillment?: string;
   deliveryFee?: number;
   minOrderAmount?: number;
+  estimatedPrepMinutes?: number;
+  estimatedDeliveryMinutes?: number | null;
+  deliveryDisclaimer?: string;
+  ownerManagedDelivery?: boolean;
+  openNow?: boolean;
   isOpenNow?: boolean;
+  hours?: Array<{
+    weekday: number;
+    isClosed: boolean;
+    openTime: string | null;
+    closeTime: string | null;
+    overnight: boolean;
+  }>;
+  menuPreview?: MenuPreviewItem[];
+  distanceKm?: number | null;
+  platformFees?: { commission: number; registrationFee?: number; monthlySubscription?: number };
   createdAt: string;
   updatedAt: string;
 };
@@ -63,11 +98,16 @@ export type DailyMenuItem = {
   price: number;
   currency: string;
   category: string | null;
+  ingredients?: string;
+  allergens?: string;
   availablePortions: number | null;
+  soldCount?: number;
   soldOut: boolean;
   acceptsReservations: boolean;
   availableFrom: string;
   availableUntil: string;
+  availability?: string;
+  orderableNow?: boolean;
 };
 
 export type RestaurantOrderItem = {
@@ -134,10 +174,16 @@ export async function fetchRestaurants(params?: {
   q?: string;
   country?: string;
   cuisine?: string;
+  businessType?: string;
+  fulfillment?: "pickup" | "delivery";
   openNow?: boolean;
+  topRated?: boolean;
+  featured?: boolean;
+  menuPreview?: boolean;
   nearby?: boolean;
   lat?: number;
   lng?: number;
+  sortBy?: "rating" | "distance" | "name";
   mine?: boolean;
   status?: string;
   limit?: number;
@@ -147,10 +193,16 @@ export async function fetchRestaurants(params?: {
   if (params?.q) qs.set("q", params.q);
   if (params?.country) qs.set("country", params.country);
   if (params?.cuisine) qs.set("cuisine", params.cuisine);
+  if (params?.businessType && params.businessType !== "all") qs.set("businessType", params.businessType);
+  if (params?.fulfillment) qs.set("fulfillment", params.fulfillment);
   if (params?.openNow) qs.set("openNow", "1");
+  if (params?.topRated) qs.set("topRated", "1");
+  if (params?.featured) qs.set("featured", "1");
+  if (params?.menuPreview) qs.set("menuPreview", "1");
   if (params?.nearby) qs.set("nearby", "1");
   if (params?.lat != null) qs.set("lat", String(params.lat));
   if (params?.lng != null) qs.set("lng", String(params.lng));
+  if (params?.sortBy) qs.set("sortBy", params.sortBy);
   if (params?.status) qs.set("status", params.status);
   if (params?.limit != null) qs.set("limit", String(params.limit));
   if (params?.offset != null) qs.set("offset", String(params.offset));
@@ -158,6 +210,70 @@ export async function fetchRestaurants(params?: {
   const res = await fetch(path, { headers: authHeaders() });
   const data = await parseJson<{ restaurants?: Restaurant[] }>(res, "Failed to load restaurants");
   return data.restaurants ?? [];
+}
+
+export async function fetchOwnerStats(restaurantId: number): Promise<{
+  orders: {
+    new: number;
+    preparing: number;
+    ready: number;
+    outForDelivery: number;
+    completed: number;
+    cancelled: number;
+    total: number;
+  };
+  reservations: { pending: number; confirmed: number; total: number };
+  avgRating: number;
+  ratingCount: number;
+}> {
+  const res = await fetch(`/api/restaurants/${restaurantId}/owner-stats`, { headers: authHeaders() });
+  return parseJson(res, "Failed to load owner stats");
+}
+
+export async function updateFoodTruckLocation(
+  restaurantId: number,
+  body: { locationLabel?: string; city?: string; latitude?: number; longitude?: number },
+): Promise<Restaurant> {
+  const res = await fetch(`/api/restaurants/${restaurantId}/operating-location`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<{ restaurant: Restaurant }>(res, "Could not update location");
+  return data.restaurant;
+}
+
+export const BUSINESS_TYPES = [
+  { id: "all", labelKey: "restaurant.catAll" },
+  { id: "traditional", labelKey: "restaurant.catRestaurants" },
+  { id: "home_kitchen", labelKey: "restaurant.catHomeKitchen" },
+  { id: "food_truck", labelKey: "restaurant.catFoodTruck" },
+  { id: "bakery", labelKey: "restaurant.catBakery" },
+  { id: "catering", labelKey: "restaurant.catCatering" },
+] as const;
+
+export function businessTypeLabelKey(type: string): string {
+  const map: Record<string, string> = {
+    all: "catAll",
+    traditional: "catRestaurants",
+    restaurant: "catRestaurants",
+    home_kitchen: "catHomeKitchen",
+    food_truck: "catFoodTruck",
+    bakery: "catBakery",
+    catering: "catCatering",
+  };
+  return map[type] || "catRestaurants";
+}
+
+export function availabilityLabelKey(availability?: string): string {
+  const map: Record<string, string> = {
+    available_now: "availAvailableNow",
+    available_later_today: "availUpcoming",
+    sold_out: "availSoldOut",
+    finished_today: "availEndedToday",
+    reserve_tomorrow: "availReserveTomorrow",
+  };
+  return map[availability || ""] || "availUnavailable";
 }
 
 export async function fetchRestaurant(id: number): Promise<Restaurant> {

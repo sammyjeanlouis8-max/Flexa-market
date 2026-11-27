@@ -10,7 +10,8 @@ import { requireListingPublicationAccess } from "../middlewares/listingPublicati
 import { CreateListingBody, UpdateListingBody, BoostListingBody } from "@workspace/api-zod";
 import { resolveListingDeliveryMethod } from "../lib/listingDeliveryPolicy";
 import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, type GeoUser } from "../lib/geoRanking";
-import { evaluateProductEligibility, isPubliclyDiscoverable } from "../lib/productEligibility";
+import { isPubliclyDiscoverable } from "../lib/productEligibility";
+import { evaluateProductVerification } from "../lib/productVerification";
 import { isStripeOnlySale } from "../lib/usSellerPayoutPolicy";
 import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
 import { quoteForListing } from "../lib/commission";
@@ -1234,10 +1235,24 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
   let subcatForEligibility: { name: string; slug: string } | null = null;
   if (parsed.data.subcategoryId) {
     const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, parsed.data.subcategoryId));
-    subcatForEligibility = sc ? { name: sc.name, slug: sc.slug } : null;
+    if (!sc) {
+      res.status(400).json({
+        error: "Invalid subcategory.",
+        code: "INVALID_TAXONOMY",
+      });
+      return;
+    }
+    if (sc.parentId != null && sc.parentId !== parsed.data.categoryId) {
+      res.status(400).json({
+        error: "The selected subcategory does not belong to the selected parent category.",
+        code: "SUBCATEGORY_PARENT_MISMATCH",
+      });
+      return;
+    }
+    subcatForEligibility = { name: sc.name, slug: sc.slug };
   }
 
-  const eligibility = await evaluateProductEligibility({
+  const verification = await evaluateProductVerification({
     title: parsed.data.title,
     description: parsed.data.description,
     price: parsed.data.price,
@@ -1249,9 +1264,20 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
     sellerCountry: seller?.country,
     listingCountry,
   });
+  const eligibility = verification;
 
-  if (eligibility.rejectionCode === "VALIDATION_FAILED") {
-    res.status(400).json({ error: eligibility.reason, code: eligibility.rejectionCode });
+  if (
+    eligibility.rejectionCode === "VALIDATION_FAILED"
+    || verification.verificationDecision === "CORRECTION_REQUIRED"
+    || verification.verificationDecision === "REJECTED"
+  ) {
+    res.status(400).json({
+      error: eligibility.reason,
+      code: eligibility.rejectionCode || verification.verificationDecision,
+      verificationDecision: verification.verificationDecision,
+      suggestions: verification.suggestions,
+      categoryRecommendationMandatory: false,
+    });
     return;
   }
 
@@ -1400,7 +1426,17 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
     subcat = sc ? { name: sc.name, slug: sc.slug } : null;
   }
 
-  res.status(201).json(await formatListing(listing, seller, cat, subcat, null, { includeUnapprovedMedia: true }));
+  const formatted = await formatListing(listing, seller, cat, subcat, null, { includeUnapprovedMedia: true });
+  res.status(201).json({
+    ...formatted,
+    verification: {
+      decision: verification.verificationDecision,
+      suggestions: verification.suggestions,
+      allowsPublication: verification.allowsPublication,
+      mode: verification.mode,
+      categoryRecommendationMandatory: false,
+    },
+  });
   } catch (err: any) {
     req.log.error({ err }, "CREATE LISTING ERROR");
     const isSchemaError =
@@ -1596,15 +1632,30 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     nextCategoryId !== existing.categoryId;
 
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, nextCategoryId));
+  if (!cat) {
+    res.status(400).json({ error: "Invalid category", code: "INVALID_TAXONOMY" });
+    return;
+  }
   let subcat: { name: string; slug: string } | null = null;
   if (nextSubcategoryId) {
     const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, nextSubcategoryId));
-    subcat = sc ? { name: sc.name, slug: sc.slug } : null;
+    if (!sc) {
+      res.status(400).json({ error: "Invalid subcategory", code: "INVALID_TAXONOMY" });
+      return;
+    }
+    if (sc.parentId != null && sc.parentId !== nextCategoryId) {
+      res.status(400).json({
+        error: "The selected subcategory does not belong to the selected parent category.",
+        code: "SUBCATEGORY_PARENT_MISMATCH",
+      });
+      return;
+    }
+    subcat = { name: sc.name, slug: sc.slug };
   }
 
   let eligibilityPatch: Record<string, unknown> = {};
   if (contentChanged) {
-    const eligibility = await evaluateProductEligibility({
+    const verification = await evaluateProductVerification({
       title: nextTitle,
       description: nextDescription,
       price: parsed.data.price ?? existing.price,
@@ -1616,8 +1667,19 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
       sellerCountry: (req.user as any)?.country,
       listingCountry: updatedCountry,
     });
-    if (eligibility.rejectionCode === "VALIDATION_FAILED") {
-      res.status(400).json({ error: eligibility.reason, code: eligibility.rejectionCode });
+    const eligibility = verification;
+    if (
+      eligibility.rejectionCode === "VALIDATION_FAILED"
+      || verification.verificationDecision === "CORRECTION_REQUIRED"
+      || verification.verificationDecision === "REJECTED"
+    ) {
+      res.status(400).json({
+        error: eligibility.reason,
+        code: eligibility.rejectionCode || verification.verificationDecision,
+        verificationDecision: verification.verificationDecision,
+        suggestions: verification.suggestions,
+        categoryRecommendationMandatory: false,
+      });
       return;
     }
     eligibilityPatch = {
@@ -1730,7 +1792,7 @@ router.post("/listings/:id/resubmit", requireAuth, requireListingPublicationAcce
     const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, existing.subcategoryId));
     subcat = sc ? { name: sc.name, slug: sc.slug } : null;
   }
-  const eligibility = await evaluateProductEligibility({
+  const verification = await evaluateProductVerification({
     title: existing.title,
     description: existing.description,
     price: existing.price,
@@ -1742,6 +1804,21 @@ router.post("/listings/:id/resubmit", requireAuth, requireListingPublicationAcce
     sellerCountry: (req.user as any)?.country,
     listingCountry: existing.country,
   });
+  const eligibility = verification;
+  if (
+    verification.verificationDecision === "CORRECTION_REQUIRED"
+    || verification.verificationDecision === "REJECTED"
+    || eligibility.rejectionCode === "VALIDATION_FAILED"
+  ) {
+    res.status(400).json({
+      error: eligibility.reason,
+      code: eligibility.rejectionCode || verification.verificationDecision,
+      verificationDecision: verification.verificationDecision,
+      suggestions: verification.suggestions,
+      categoryRecommendationMandatory: false,
+    });
+    return;
+  }
   const [listing] = await db.update(listingsTable).set({
     moderationStatus: eligibility.decision,
     moderationRiskLevel: eligibility.riskLevel,
@@ -1758,7 +1835,17 @@ router.post("/listings/:id/resubmit", requireAuth, requireListingPublicationAcce
     appealResolvedAt: eligibility.decision === "approved" ? new Date() : (existing as any).appealResolvedAt,
   } as any).where(eq(listingsTable.id, id)).returning();
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, listing.sellerId));
-  res.json(await formatListing(listing, seller, cat ?? null, subcat));
+  const formatted = await formatListing(listing, seller, cat ?? null, subcat);
+  res.json({
+    ...formatted,
+    verification: {
+      decision: verification.verificationDecision,
+      suggestions: verification.suggestions,
+      allowsPublication: verification.allowsPublication,
+      mode: verification.mode,
+      categoryRecommendationMandatory: false,
+    },
+  });
 });
 
 router.delete("/listings/:id", requireAuth, async (req, res): Promise<void> => {

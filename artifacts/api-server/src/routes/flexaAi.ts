@@ -167,6 +167,59 @@ router.post("/flexa-ai/support", requireAuth, flexaAiLimiter, async (req, res): 
   await runCapability({ req, res, capability: "support", system: SUPPORT_SYSTEM, messages });
 });
 
+/**
+ * Seller assist — category tips + soft suggestions.
+ * Deterministic first (never blocks publish). Recommendations are never auto-applied.
+ */
+router.post("/flexa-ai/product-assist", requireAuth, flexaAiLimiter, async (req, res): Promise<void> => {
+  const title = clampText(req.body?.title, 200);
+  const description = clampText(req.body?.description, 4000);
+  const categorySlug = clampText(req.body?.categorySlug, 120) || null;
+  const categoryName = clampText(req.body?.categoryName, 120) || null;
+  const imageCount = Array.isArray(req.body?.imageUrls) ? req.body.imageUrls.length : Number(req.body?.imageCount) || 0;
+
+  const {
+    buildSoftSuggestions,
+    suggestCategoriesFromText,
+    detectSubstantialCategoryMismatch,
+  } = await import("../lib/productVerification");
+  const { getProductVerificationPolicy } = await import("../lib/productVerificationPolicy");
+
+  const policy = await getProductVerificationPolicy();
+  const suggestions = [
+    ...suggestCategoriesFromText(title || "item", description || ""),
+    ...buildSoftSuggestions({ title, description, categorySlug, categoryName }),
+  ];
+  // Dedupe by message
+  const seen = new Set<string>();
+  const unique = suggestions.filter((s) => {
+    if (seen.has(s.message)) return false;
+    seen.add(s.message);
+    return true;
+  });
+
+  const mismatch = detectSubstantialCategoryMismatch({
+    title,
+    description,
+    categorySlug,
+    categoryName,
+    confidenceThreshold: policy.substantialMismatchConfidence,
+  });
+
+  res.json({
+    ok: true,
+    analysisSource: "rules",
+    categoryRecommendationMandatory: false,
+    imageCount,
+    mode: policy.mode,
+    substantialMismatch: mismatch.mismatch
+      ? { confidence: mismatch.confidence, suggestion: mismatch.suggested }
+      : null,
+    suggestions: unique.map((s) => ({ ...s, optional: true })),
+    note: "Suggestions are optional. You can keep any reasonable category.",
+  });
+});
+
 /** AI product descriptions for sellers. */
 router.post("/flexa-ai/product-description", requireAuth, flexaAiLimiter, async (req, res): Promise<void> => {
   const title = clampText(req.body?.title, 200);

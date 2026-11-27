@@ -165,6 +165,17 @@ export default function Sell() {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const [aiDescLoading, setAiDescLoading] = useState(false);
+  type AssistSuggestion = {
+    type?: string;
+    message: string;
+    recommendedCategorySlug?: string;
+    recommendedCategoryName?: string;
+    optional?: boolean;
+  };
+  const [assistSuggestions, setAssistSuggestions] = useState<AssistSuggestion[]>([]);
+  const [assistLoading, setAssistLoading] = useState(false);
+  const [assistDismissed, setAssistDismissed] = useState(false);
+  const assistAbortRef = useRef(0);
 
   // ── Edit mode detection ────────────────────────────────────────────────────
   const editId = (() => {
@@ -479,12 +490,68 @@ export default function Sell() {
     return null;
   };
 
+  const runProductAssist = useCallback(async (opts?: { imageCount?: number }) => {
+    if (!token) return;
+    const title = (form.getValues("title") || "").trim();
+    const description = (form.getValues("description") || "").trim();
+    const cat = categories?.find((c: Category) => c.id === selectedCategoryId)
+      ?? categories?.flatMap((c: any) => c.children ?? []).find((c: any) => c.id === selectedCategoryId);
+    const requestId = ++assistAbortRef.current;
+    setAssistLoading(true);
+    try {
+      const data = await apiFetch<{
+        suggestions?: AssistSuggestion[];
+        substantialMismatch?: { suggestion?: AssistSuggestion } | null;
+      }>("/api/flexa-ai/product-assist", {
+        method: "POST",
+        body: JSON.stringify({
+          title,
+          description,
+          categorySlug: (cat as any)?.slug,
+          categoryName: (cat as any)?.name,
+          imageCount: opts?.imageCount ?? uploadedImages.length,
+        }),
+      });
+      if (requestId !== assistAbortRef.current) return;
+      const next = [
+        ...(data?.substantialMismatch?.suggestion ? [data.substantialMismatch.suggestion] : []),
+        ...(Array.isArray(data?.suggestions) ? data.suggestions : []),
+      ].filter((s) => s?.message);
+      setAssistSuggestions(next);
+      setAssistDismissed(false);
+    } catch {
+      /* Assist is optional — never block the sell form. */
+    } finally {
+      if (requestId === assistAbortRef.current) setAssistLoading(false);
+    }
+  }, [token, categories, selectedCategoryId, uploadedImages.length, form, t]);
+
+  const acceptRecommendedCategory = useCallback((slug?: string, name?: string) => {
+    if (!slug || !categories?.length) return;
+    const parent = categories.find((c: any) => c.slug === slug || String(c.name).toLowerCase() === String(name || "").toLowerCase());
+    const child = categories.flatMap((c: any) => (c.children ?? []).map((s: any) => ({ ...s, parent: c }))).find(
+      (s: any) => s.slug === slug || String(s.name).toLowerCase() === String(name || "").toLowerCase(),
+    );
+    if (child?.parent) {
+      form.setValue("categoryId", child.parent.id, { shouldDirty: true, shouldValidate: true });
+      form.setValue("subcategoryId", child.id, { shouldDirty: true });
+      setSelectedCategoryId(child.parent.id);
+    } else if (parent) {
+      form.setValue("categoryId", parent.id, { shouldDirty: true, shouldValidate: true });
+      form.setValue("subcategoryId", null);
+      setSelectedCategoryId(parent.id);
+    }
+    setAssistSuggestions((prev) => prev.filter((s) => s.recommendedCategorySlug !== slug));
+    toast({ title: t("sell.moderation.acceptCategory", { name: name || slug }) });
+  }, [categories, form, t, toast]);
+
   const handleFiles = async (files: FileList | File[]) => {
     setUploadErrorMessage(null);
     const fileArray = Array.from(files);
     const currentCount = uploadedImages.length;
     const remaining = MAX_IMAGES - currentCount;
     const toUpload = fileArray.slice(0, remaining);
+    let uploadedAny = false;
 
     for (let i = 0; i < toUpload.length; i++) {
       const file = toUpload[i];
@@ -510,6 +577,7 @@ export default function Sell() {
         };
         setUploadedImages(prev => prev.length < MAX_IMAGES ? [...prev, newImage] : prev);
         setUploadErrorMessage(null);
+        uploadedAny = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Could not upload the image.";
         setUploadErrorMessage(message);
@@ -518,6 +586,10 @@ export default function Sell() {
         setUploadingSlot(null);
         setUploadingSource(null);
       }
+    }
+    // Start assist analysis automatically after upload — seller can keep editing.
+    if (uploadedAny) {
+      void runProductAssist({ imageCount: Math.min(MAX_IMAGES, currentCount + toUpload.length) });
     }
   };
 
@@ -622,6 +694,12 @@ export default function Sell() {
       publishInFlightRef.current = false;
       publishIdempotencyKeyRef.current = null;
       const l = _listing as any;
+      const softTips = Array.isArray(l?.verification?.suggestions)
+        ? l.verification.suggestions.filter((s: AssistSuggestion) => s?.optional !== false && s?.message)
+        : [];
+      if (softTips.length && (l?.verification?.decision === "APPROVED_WITH_SUGGESTIONS" || l?.verification?.decision === "APPROVED")) {
+        setAssistSuggestions(softTips);
+      }
       // Persist seller shipping origin separately from buyer delivery addresses.
       persistSellerShipFrom();
       if (isEditMode && editId) {
@@ -661,6 +739,12 @@ export default function Sell() {
       const raw: unknown = e?.data?.error ?? e?.message;
       const status: number = e?.status ?? e?.data?.status ?? 0;
       const code: unknown = e?.data?.code ?? e?.code;
+      const verificationDecision = e?.data?.verificationDecision as string | undefined;
+      const serverSuggestions = Array.isArray(e?.data?.suggestions) ? e.data.suggestions as AssistSuggestion[] : [];
+      if (serverSuggestions.length) {
+        setAssistSuggestions(serverSuggestions);
+        setAssistDismissed(false);
+      }
       if (code === "USER_RESTRICTED" || raw === "USER_RESTRICTED") {
         setSubmitRestricted(true);
         setSubmitError(t("sell.accountRestricted"));
@@ -691,8 +775,12 @@ export default function Sell() {
       setSubmitError(description);
       persistDraftNow();
       toast({
-        title: t("errors.submitFailed", { defaultValue: "Submission failed" }),
-        description,
+        title: verificationDecision === "CORRECTION_REQUIRED" || verificationDecision === "REJECTED"
+          ? t("sell.moderation.correctionTitle")
+          : t("errors.submitFailed", { defaultValue: "Submission failed" }),
+        description: verificationDecision === "CORRECTION_REQUIRED"
+          ? t("sell.moderation.correctionKeepData")
+          : description,
         variant: "destructive",
       });
     };
@@ -1757,6 +1845,56 @@ export default function Sell() {
                 <p className="mt-1">{t("sell.uploadRetryHint")}</p>
               </div>
             )}
+            {(assistLoading || (assistSuggestions.length > 0 && !assistDismissed)) && (
+              <div
+                className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2.5 text-sm text-emerald-950"
+                data-testid="sell-assist-suggestions"
+                role="status"
+              >
+                {assistLoading ? (
+                  <p className="flex items-center gap-2 text-xs font-medium text-emerald-800">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {t("sell.moderation.analyzing")}
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-emerald-900">{t("sell.moderation.suggestionsTitle")}</p>
+                        <p className="text-xs text-emerald-800/90 mt-0.5">{t("sell.moderation.suggestionsHint")}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="text-xs text-emerald-800/80 underline shrink-0"
+                        onClick={() => setAssistDismissed(true)}
+                      >
+                        {t("sell.moderation.keepCategory")}
+                      </button>
+                    </div>
+                    <ul className="mt-2 space-y-2">
+                      {assistSuggestions.slice(0, 4).map((s, idx) => (
+                        <li key={`${s.message}-${idx}`} className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="text-xs leading-snug">{s.message}</span>
+                          {s.recommendedCategorySlug && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs shrink-0 border-emerald-300"
+                              onClick={() => acceptRecommendedCategory(s.recommendedCategorySlug, s.recommendedCategoryName)}
+                            >
+                              {t("sell.moderation.acceptCategory", {
+                                name: s.recommendedCategoryName || s.recommendedCategorySlug,
+                              })}
+                            </Button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
@@ -2515,9 +2653,7 @@ export default function Sell() {
                 disabled={isPublishBusy}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-1.5 text-[13px] font-semibold text-white disabled:opacity-65"
               >
-                {submitRestricted
-                  ? t("restriction.contactSupport")
-                  : t("common.tryAgain", { defaultValue: "Try again" })}
+                {submitRestricted ? t("restriction.contactSupport") : t("common.tryAgain", { defaultValue: "Try again" })}
               </button>
             </div>
           )}

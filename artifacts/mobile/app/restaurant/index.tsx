@@ -67,7 +67,7 @@ export default function RestaurantHubScreen() {
           <Pressable key={r.id} style={styles.card} onPress={() => router.push(`/restaurant/${r.id}` as any)}>
             <Text style={styles.cardTitle}>{r.name}</Text>
             <Text style={styles.muted}>
-              {r.avgRating && r.avgRating > 0 ? `★ ${r.avgRating.toFixed(1)} · ` : ""}
+              {(r.avgRating ?? 0) > 0 ? `★ ${(r.avgRating ?? 0).toFixed(1)} · ` : ""}
               {r.serviceArea || `${r.city}, ${r.country}`}
             </Text>
           </Pressable>

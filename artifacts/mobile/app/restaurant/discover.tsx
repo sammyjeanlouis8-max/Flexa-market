@@ -131,7 +131,9 @@ export default function RestaurantDiscoverScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>{r.name}</Text>
                 <Text style={styles.muted}>
-                  {r.avgRating > 0 ? `★ ${r.avgRating.toFixed(1)} (${r.ratingCount})` : r.businessType}
+                  {(r.avgRating ?? 0) > 0
+                    ? `★ ${(r.avgRating ?? 0).toFixed(1)} (${r.ratingCount ?? 0})`
+                    : (r.businessType || "")}
                   {r.cuisineTags?.[0] ? ` · ${r.cuisineTags[0]}` : ""}
                 </Text>
                 <Text style={styles.muted} numberOfLines={1}>

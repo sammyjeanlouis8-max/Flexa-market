@@ -7,6 +7,8 @@ import { listingsTable } from "./listings";
 export const conversationsTable = pgTable("conversations", {
   id: serial("id").primaryKey(),
   listingId: integer("listing_id").references(() => listingsTable.id),
+  /** Flexa Restaurant business chat — optional; listingId stays null. */
+  restaurantId: integer("restaurant_id"),
   buyerId: integer("buyer_id").notNull().references(() => usersTable.id),
   sellerId: integer("seller_id").notNull().references(() => usersTable.id),
   conversationType: text("conversation_type").notNull().default("listing"),
@@ -15,6 +17,7 @@ export const conversationsTable = pgTable("conversations", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   conversationsListingIdx: index("conversations_listing_id_idx").on(t.listingId),
+  conversationsRestaurantIdx: index("conversations_restaurant_id_idx").on(t.restaurantId),
   conversationsBuyerIdx: index("conversations_buyer_id_idx").on(t.buyerId),
   conversationsSellerIdx: index("conversations_seller_id_idx").on(t.sellerId),
   conversationsLastMessageIdx: index("conversations_last_message_at_idx").on(t.lastMessageAt),

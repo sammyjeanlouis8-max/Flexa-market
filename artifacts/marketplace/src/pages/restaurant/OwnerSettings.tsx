@@ -7,8 +7,10 @@ import {
   fetchRestaurant,
   saveRestaurantDelivery,
   saveRestaurantHours,
+  updateRestaurant,
   type Restaurant,
 } from "@/lib/restaurantApi";
+import { isValidBusinessPhone } from "@/lib/restaurantContact";
 
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 
@@ -37,6 +39,9 @@ export default function OwnerSettings() {
   const [deliverySuspended, setDeliverySuspended] = useState(false);
   const [zones, setZones] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [phone, setPhone] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [enableWhatsapp, setEnableWhatsapp] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -45,6 +50,9 @@ export default function OwnerSettings() {
     fetchRestaurant(restaurantId)
       .then((r) => {
         setRestaurant(r);
+        setPhone(r.phone || "");
+        setWhatsapp(r.whatsapp || "");
+        setEnableWhatsapp(Boolean(r.whatsapp));
         if (r.fulfillment === "delivery" || r.fulfillment === "both" || r.fulfillment === "pickup") {
           setFulfillment(r.fulfillment);
         }
@@ -75,9 +83,25 @@ export default function OwnerSettings() {
 
   async function save() {
     if (!restaurantId) return;
+    if (!isValidBusinessPhone(phone)) {
+      setMsg(t("restaurant.invalidBusinessPhone", {
+        defaultValue: "Enter a valid public business phone with country code (8–15 digits).",
+      }));
+      return;
+    }
+    if (enableWhatsapp && whatsapp.trim() && !isValidBusinessPhone(whatsapp)) {
+      setMsg(t("restaurant.invalidWhatsapp", {
+        defaultValue: "Enter a valid WhatsApp number with country code, or disable WhatsApp.",
+      }));
+      return;
+    }
     setSaving(true);
     setMsg(null);
     try {
+      await updateRestaurant(restaurantId, {
+        phone: phone.trim(),
+        whatsapp: enableWhatsapp && whatsapp.trim() ? whatsapp.trim() : null,
+      });
       await saveRestaurantHours(
         restaurantId,
         hours.map((h) => ({
@@ -125,6 +149,55 @@ export default function OwnerSettings() {
                 defaultValue: "Delivery is arranged and managed by this restaurant.",
               })}
             </RestaurantNotice>
+
+            <section className="rounded-2xl border bg-white p-4 dark:bg-[hsl(152,16%,12%)]" data-testid="owner-contact-settings">
+              <h2 className="text-sm font-black uppercase tracking-wide">
+                {t("restaurant.publicContact", { defaultValue: "Public contact" })}
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("restaurant.publicContactHint", {
+                  defaultValue:
+                    "Shown on your business profile for Call / WhatsApp. Never uses private identity-verification phone numbers.",
+                })}
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="text-sm sm:col-span-2">
+                  <span className="mb-1 block font-semibold">
+                    {t("restaurant.businessPhone", { defaultValue: "Business phone" })} *
+                  </span>
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+509 …"
+                    className="w-full rounded-xl border px-3 py-2"
+                    inputMode="tel"
+                    autoComplete="tel"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={enableWhatsapp}
+                    onChange={(e) => setEnableWhatsapp(e.target.checked)}
+                  />
+                  {t("restaurant.enableWhatsapp", { defaultValue: "Show WhatsApp on my public profile" })}
+                </label>
+                {enableWhatsapp ? (
+                  <label className="text-sm sm:col-span-2">
+                    <span className="mb-1 block font-semibold">
+                      {t("restaurant.whatsappNumber", { defaultValue: "WhatsApp number" })}
+                    </span>
+                    <input
+                      value={whatsapp}
+                      onChange={(e) => setWhatsapp(e.target.value)}
+                      placeholder="+509 …"
+                      className="w-full rounded-xl border px-3 py-2"
+                      inputMode="tel"
+                    />
+                  </label>
+                ) : null}
+              </div>
+            </section>
 
             <section className="rounded-2xl border bg-white p-4 dark:bg-[hsl(152,16%,12%)]">
               <h2 className="text-sm font-black uppercase tracking-wide">

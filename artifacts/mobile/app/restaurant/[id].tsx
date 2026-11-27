@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { RestaurantContactBar } from "@/components/restaurant/RestaurantContactBar";
 import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -25,7 +26,7 @@ import {
   type Restaurant,
 } from "@/lib/restaurantApi";
 import { upsertCartLine } from "@/lib/restaurantCart";
-import { isFavorite, toggleFavorite } from "@/lib/restaurantFavorites";
+import { isFavorite } from "@/lib/restaurantFavorites";
 import { restaurantTheme as T } from "@/lib/restaurantTheme";
 
 export default function RestaurantDetailScreen() {
@@ -179,17 +180,15 @@ export default function RestaurantDetailScreen() {
         ) : (
           <>
             <Text style={styles.note}>{t("restaurant_deliveryManagedByBusiness")}</Text>
-            <Text style={styles.note}>{t("restaurant_driverPolicyNote")}</Text>
-            <Pressable
-              style={styles.favBtn}
-              onPress={() => {
-                void toggleFavorite(row.id).then((ids) => setFav(ids.includes(row.id)));
+            <RestaurantContactBar
+              restaurant={row}
+              saved={fav}
+              onSavedChange={setFav}
+              onViewMenu={() => {
+                /* menu is below — keep scroll natural */
               }}
-            >
-              <Text style={styles.favText}>
-                {fav ? t("restaurant_unfavorite") || "★ Saved" : t("restaurant_favorite") || "☆ Save"}
-              </Text>
-            </Pressable>
+              onReserve={() => setMsg(t("restaurant_reserveHint") || "Choose a meal to reserve.")}
+            />
             <Text style={styles.body}>{row.description || t("restaurant_noDescription") || ""}</Text>
             <Text style={styles.section}>{t("restaurant_todayMenu") || "Today's menu"}</Text>
             {items.length === 0 ? (

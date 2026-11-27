@@ -4095,6 +4095,14 @@ ON CONFLICT (country_code) DO NOTHING;
 `,
   });
 
+  migrations.push({
+    name: "conversations.restaurant_id.v1",
+    sql: `
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS restaurant_id INTEGER;
+CREATE INDEX IF NOT EXISTS conversations_restaurant_id_idx ON conversations(restaurant_id);
+`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

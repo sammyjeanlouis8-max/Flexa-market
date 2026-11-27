@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, conversationsTable, messagesTable, usersTable, listingsTable, notificationsTable } from "@workspace/db";
+import { db, conversationsTable, messagesTable, usersTable, listingsTable, notificationsTable, restaurantsTable } from "@workspace/db";
 import { eq, and, or, desc, ne, sql, inArray, count } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { requireAuth, requireNotRestricted } from "../middlewares/auth";
@@ -104,6 +104,12 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
         status: listingsTable.status,
         boostImageUrl: listingsTable.boostImageUrl,
       },
+      restaurant: {
+        id: restaurantsTable.id,
+        name: restaurantsTable.name,
+        logoUrl: restaurantsTable.logoUrl,
+        coverUrl: restaurantsTable.coverUrl,
+      },
       buyer: {
         id: buyerUser.id,
         name: buyerUser.name,
@@ -124,6 +130,7 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
     })
     .from(conversationsTable)
     .leftJoin(listingsTable, eq(conversationsTable.listingId, listingsTable.id))
+    .leftJoin(restaurantsTable, eq(conversationsTable.restaurantId, restaurantsTable.id))
     .leftJoin(buyerUser, eq(conversationsTable.buyerId, buyerUser.id))
     .leftJoin(sellerUser, eq(conversationsTable.sellerId, sellerUser.id))
     .leftJoin(unreadSubquery, eq(conversationsTable.id, unreadSubquery.conversationId))
@@ -135,6 +142,7 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
     const otherUserId = isBuyer ? r.conv.sellerId : r.conv.buyerId;
     const otherUser = isBuyer ? r.seller : r.buyer;
     const isSystemNotifications = r.conv.conversationType === "system_notifications";
+    const isRestaurant = r.conv.conversationType === "restaurant" || r.conv.restaurantId != null;
     return {
       id: r.conv.id,
       listingId: r.conv.listingId,
@@ -142,10 +150,15 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
         ? "💼 Agent Recharge"
         : r.conv.conversationType === "wholesale"
           ? "From Flexa Wholesale"
-          : isSystemNotifications
+          : isRestaurant
+            ? (r.restaurant?.name ?? "Flexa Restaurant")
+            : isSystemNotifications
             ? "Message System"
             : (r.listing?.title ?? "Deleted listing"),
-      listingImage: r.listing?.images?.[0] ?? r.listing?.boostImageUrl ?? null,
+      listingImage: isRestaurant
+        ? (r.restaurant?.logoUrl ?? r.restaurant?.coverUrl ?? null)
+        : (r.listing?.images?.[0] ?? r.listing?.boostImageUrl ?? null),
+      restaurantId: r.conv.restaurantId ?? null,
       listingPrice: r.listing?.price ?? 0,
       listingIsVideoOnly: r.listing?.status === "hidden",
       otherUserId,

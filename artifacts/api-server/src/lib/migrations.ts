@@ -3581,211 +3581,6 @@ export async function runStartupMigrations(): Promise<void> {
     sql: `CREATE INDEX IF NOT EXISTS wholesale_inquiries_status_idx ON wholesale_inquiries(status)`,
   });
 
-  for (const m of migrations) {
-    try {
-      await db.execute(sql.raw(m.sql));
-      applied++;
-    } catch (err: any) {
-      // Ignore "already exists" errors; log real failures as warnings
-      if (!err?.message?.includes("already exists")) {
-        logger.warn({ migration: m.name, err: err?.message }, "Migration warning");
-        failed++;
-      }
-    }
-  }
-
-  // One-time: activate all tracks that were uploaded before auto-approve was enabled
-  try {
-    await db.execute(sql.raw("UPDATE music_tracks SET is_active = TRUE WHERE is_active = FALSE"));
-    logger.info("Migration: activated all pending music tracks");
-  } catch { /* non-fatal */ }
-
-  // Ongoing: backfill name-based referral codes (proper-case + 2 digits, e.g. "Samuel37").
-  // Converts two old formats:
-  //   1. Random FX codes:       ^FX[A-Z0-9]+      (e.g. FXBJU2EZ)
-  //   2. Old all-caps + 3 dig:  ^[A-Z]{2,8}[0-9]{3}$ (e.g. SAMUEL247)
-  // New codes look like Samuel37 — won't match either pattern, so this is idempotent.
-  try {
-    const { rows: oldCodeUsers } = await db.execute(sql.raw(
-      `SELECT id, name, referral_code FROM users
-       WHERE referral_code ~ '^FX[A-Z0-9]+'
-          OR referral_code ~ '^[A-Z]{2,8}[0-9]{3}$'
-       ORDER BY id`
-    ));
-
-    if (oldCodeUsers.length > 0) {
-      logger.info({ count: oldCodeUsers.length }, "Migration: regenerating name-based referral codes");
-
-      // Helper: name → base slug — proper case, e.g. "Samuel" (max 8 chars)
-      const nameBase = (name: string): string => {
-        const raw = String(name ?? "")
-          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-          .replace(/[^a-zA-Z\s]/g, "").trim()
-          .split(/\s+/)[0].slice(0, 8);
-        return raw.length >= 2
-          ? raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
-          : "Fm";
-      };
-
-      // Collect all existing codes so we can avoid collisions in-memory during the loop
-      const { rows: existingRows } = await db.execute(sql.raw(
-        `SELECT referral_code FROM users WHERE referral_code IS NOT NULL`
-      ));
-      const usedCodes = new Set(existingRows.map((r: any) => r.referral_code as string));
-
-      let updated = 0;
-      for (const row of oldCodeUsers as any[]) {
-        const base = nameBase(row.name ?? "");
-        let newCode: string | null = null;
-
-        // Try up to 20 random 2-digit suffixes (10–99) → e.g. "Samuel37"
-        for (let i = 0; i < 20; i++) {
-          const suffix = String(Math.floor(10 + Math.random() * 90));
-          const candidate = base + suffix;
-          if (!usedCodes.has(candidate)) { newCode = candidate; break; }
-        }
-
-        if (!newCode) {
-          // Absolute fallback: base + timestamp fragment
-          newCode = base + Date.now().toString(36).slice(-2);
-          while (usedCodes.has(newCode)) newCode = base + Date.now().toString(36).slice(-3);
-        }
-
-        // Atomic update — only touches this user, only if they still have the old code
-        await db.execute(sql.raw(
-          `UPDATE users SET referral_code = '${newCode}' WHERE id = ${row.id} AND referral_code = '${row.referral_code}'`
-        ));
-        usedCodes.delete(row.referral_code as string);
-        usedCodes.add(newCode);
-        updated++;
-      }
-      logger.info({ updated }, "Migration: name-based referral code backfill complete");
-    }
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "Migration: name-based referral code backfill failed (non-fatal)");
-  }
-
-  // One-time-ish: seed unique video-profile usernames from display names for users
-  // that still lack a handle. Idempotent — only touches username IS NULL rows.
-  try {
-    const { rows: missing } = await db.execute(sql.raw(
-      `SELECT id, name FROM users WHERE username IS NULL ORDER BY id LIMIT 5000`,
-    ));
-    if (missing.length > 0) {
-      const { rows: existing } = await db.execute(sql.raw(
-        `SELECT lower(username) AS u FROM users WHERE username IS NOT NULL`,
-      ));
-      const used = new Set(existing.map((r: any) => String(r.u)));
-      const slug = (name: string, id: number): string => {
-        const base = String(name ?? "")
-          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 20);
-        const root = base.length >= 3 ? base : `user${id}`;
-        let candidate = root.slice(0, 30);
-        if (!used.has(candidate) && candidate.length >= 3) return candidate;
-        for (let i = 0; i < 40; i++) {
-          const suffix = String(10 + Math.floor(Math.random() * 90));
-          candidate = `${root.slice(0, 28)}${suffix}`.slice(0, 30);
-          if (!used.has(candidate)) return candidate;
-        }
-        return `user${id}`;
-      };
-      let seeded = 0;
-      for (const row of missing as any[]) {
-        const candidate = slug(row.name ?? "", row.id);
-        used.add(candidate);
-        await db.execute(sql.raw(
-          `UPDATE users SET username = '${candidate.replace(/'/g, "''")}' WHERE id = ${row.id} AND username IS NULL`,
-        ));
-        seeded++;
-      }
-      logger.info({ seeded }, "Migration: video username backfill complete");
-    }
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "Migration: video username backfill failed (non-fatal)");
-  }
-
-  // Haiti driver apply — distinct national ID + uncertain-doc flag + residential department
-  try {
-    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_national_id text`));
-    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS docs_need_review boolean NOT NULL DEFAULT false`));
-    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS residential_department text`));
-    await db.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS app_data_migrations (
-        name text PRIMARY KEY,
-        applied_at timestamptz NOT NULL DEFAULT NOW()
-      );
-    `));
-    // Mark legacy rows where the same URL was dual-written into selfie + holding-ID.
-    // Keep photos; flag for admin verification of labels.
-    await db.execute(sql.raw(`
-      WITH claimed AS (
-        INSERT INTO app_data_migrations (name)
-        VALUES ('driver_apps_flag_uncertain_photos_v1')
-        ON CONFLICT (name) DO NOTHING
-        RETURNING name
-      )
-      UPDATE driver_applications da
-         SET docs_need_review = true
-        FROM claimed
-       WHERE da.photo_national_id IS NULL
-         AND da.photo_id_selfie IS NOT NULL
-         AND da.face_photo_holding_id IS NOT NULL
-         AND da.photo_id_selfie = da.face_photo_holding_id
-         AND da.docs_need_review = false
-    `));
-    logger.info("Migration: driver application national-id columns + uncertain photo flags");
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "Migration: driver national-id columns failed (non-fatal)");
-  }
-
-  // Data fix: Cordless Mattress Vacuum Cleaner was miscategorized under Electronics >
-  // Accessories & Cables. Retarget to Appliances > Microwaves & Blenders (small-appliances),
-  // the closest existing Appliances subcategory. Matches by title (and legacy id 4 when
-  // title matches) — not a UI exception for listing id.
-  try {
-    await db.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS app_data_migrations (
-        name text PRIMARY KEY,
-        applied_at timestamptz NOT NULL DEFAULT NOW()
-      );
-    `));
-    await db.execute(sql.raw(`
-      WITH claimed AS (
-        INSERT INTO app_data_migrations (name)
-        VALUES ('fix_vacuum_listing_appliances_v1')
-        ON CONFLICT (name) DO NOTHING
-        RETURNING name
-      ),
-      cats AS (
-        SELECT
-          (SELECT id FROM categories WHERE slug = 'appliances' AND parent_id IS NULL LIMIT 1) AS appliances_id,
-          (SELECT c.id FROM categories c
-             JOIN categories p ON p.id = c.parent_id
-            WHERE c.slug = 'small-appliances' AND p.slug = 'appliances'
-            LIMIT 1) AS small_appliances_id
-      )
-      UPDATE listings l
-         SET category_id = cats.appliances_id,
-             subcategory_id = cats.small_appliances_id
-        FROM cats, claimed
-       WHERE cats.appliances_id IS NOT NULL
-         AND cats.small_appliances_id IS NOT NULL
-         AND (
-           (l.id = 4 AND l.title ILIKE '%Vacuum%Cleaner%')
-           OR l.title ILIKE '%Cordless Mattress Vacuum Cleaner%'
-         )
-         AND (
-           l.category_id IS DISTINCT FROM cats.appliances_id
-           OR l.subcategory_id IS DISTINCT FROM cats.small_appliances_id
-         )
-    `));
-    logger.info("Migration: vacuum listing category fix attempted (Appliances > small-appliances)");
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "Migration: vacuum listing category fix failed (non-fatal)");
-  }
-
-
   // ── Flexa Restaurant module ───────────────────────────────────────────────
   migrations.push({
     name: "restaurants.create",
@@ -4091,6 +3886,211 @@ CREATE INDEX IF NOT EXISTS restaurants_identity_idx ON restaurants(identity_stat
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
   });
+
+  for (const m of migrations) {
+    try {
+      await db.execute(sql.raw(m.sql));
+      applied++;
+    } catch (err: any) {
+      // Ignore "already exists" errors; log real failures as warnings
+      if (!err?.message?.includes("already exists")) {
+        logger.warn({ migration: m.name, err: err?.message }, "Migration warning");
+        failed++;
+      }
+    }
+  }
+
+  // One-time: activate all tracks that were uploaded before auto-approve was enabled
+  try {
+    await db.execute(sql.raw("UPDATE music_tracks SET is_active = TRUE WHERE is_active = FALSE"));
+    logger.info("Migration: activated all pending music tracks");
+  } catch { /* non-fatal */ }
+
+  // Ongoing: backfill name-based referral codes (proper-case + 2 digits, e.g. "Samuel37").
+  // Converts two old formats:
+  //   1. Random FX codes:       ^FX[A-Z0-9]+      (e.g. FXBJU2EZ)
+  //   2. Old all-caps + 3 dig:  ^[A-Z]{2,8}[0-9]{3}$ (e.g. SAMUEL247)
+  // New codes look like Samuel37 — won't match either pattern, so this is idempotent.
+  try {
+    const { rows: oldCodeUsers } = await db.execute(sql.raw(
+      `SELECT id, name, referral_code FROM users
+       WHERE referral_code ~ '^FX[A-Z0-9]+'
+          OR referral_code ~ '^[A-Z]{2,8}[0-9]{3}$'
+       ORDER BY id`
+    ));
+
+    if (oldCodeUsers.length > 0) {
+      logger.info({ count: oldCodeUsers.length }, "Migration: regenerating name-based referral codes");
+
+      // Helper: name → base slug — proper case, e.g. "Samuel" (max 8 chars)
+      const nameBase = (name: string): string => {
+        const raw = String(name ?? "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-zA-Z\s]/g, "").trim()
+          .split(/\s+/)[0].slice(0, 8);
+        return raw.length >= 2
+          ? raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
+          : "Fm";
+      };
+
+      // Collect all existing codes so we can avoid collisions in-memory during the loop
+      const { rows: existingRows } = await db.execute(sql.raw(
+        `SELECT referral_code FROM users WHERE referral_code IS NOT NULL`
+      ));
+      const usedCodes = new Set(existingRows.map((r: any) => r.referral_code as string));
+
+      let updated = 0;
+      for (const row of oldCodeUsers as any[]) {
+        const base = nameBase(row.name ?? "");
+        let newCode: string | null = null;
+
+        // Try up to 20 random 2-digit suffixes (10–99) → e.g. "Samuel37"
+        for (let i = 0; i < 20; i++) {
+          const suffix = String(Math.floor(10 + Math.random() * 90));
+          const candidate = base + suffix;
+          if (!usedCodes.has(candidate)) { newCode = candidate; break; }
+        }
+
+        if (!newCode) {
+          // Absolute fallback: base + timestamp fragment
+          newCode = base + Date.now().toString(36).slice(-2);
+          while (usedCodes.has(newCode)) newCode = base + Date.now().toString(36).slice(-3);
+        }
+
+        // Atomic update — only touches this user, only if they still have the old code
+        await db.execute(sql.raw(
+          `UPDATE users SET referral_code = '${newCode}' WHERE id = ${row.id} AND referral_code = '${row.referral_code}'`
+        ));
+        usedCodes.delete(row.referral_code as string);
+        usedCodes.add(newCode);
+        updated++;
+      }
+      logger.info({ updated }, "Migration: name-based referral code backfill complete");
+    }
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: name-based referral code backfill failed (non-fatal)");
+  }
+
+  // One-time-ish: seed unique video-profile usernames from display names for users
+  // that still lack a handle. Idempotent — only touches username IS NULL rows.
+  try {
+    const { rows: missing } = await db.execute(sql.raw(
+      `SELECT id, name FROM users WHERE username IS NULL ORDER BY id LIMIT 5000`,
+    ));
+    if (missing.length > 0) {
+      const { rows: existing } = await db.execute(sql.raw(
+        `SELECT lower(username) AS u FROM users WHERE username IS NOT NULL`,
+      ));
+      const used = new Set(existing.map((r: any) => String(r.u)));
+      const slug = (name: string, id: number): string => {
+        const base = String(name ?? "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 20);
+        const root = base.length >= 3 ? base : `user${id}`;
+        let candidate = root.slice(0, 30);
+        if (!used.has(candidate) && candidate.length >= 3) return candidate;
+        for (let i = 0; i < 40; i++) {
+          const suffix = String(10 + Math.floor(Math.random() * 90));
+          candidate = `${root.slice(0, 28)}${suffix}`.slice(0, 30);
+          if (!used.has(candidate)) return candidate;
+        }
+        return `user${id}`;
+      };
+      let seeded = 0;
+      for (const row of missing as any[]) {
+        const candidate = slug(row.name ?? "", row.id);
+        used.add(candidate);
+        await db.execute(sql.raw(
+          `UPDATE users SET username = '${candidate.replace(/'/g, "''")}' WHERE id = ${row.id} AND username IS NULL`,
+        ));
+        seeded++;
+      }
+      logger.info({ seeded }, "Migration: video username backfill complete");
+    }
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: video username backfill failed (non-fatal)");
+  }
+
+  // Haiti driver apply — distinct national ID + uncertain-doc flag + residential department
+  try {
+    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_national_id text`));
+    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS docs_need_review boolean NOT NULL DEFAULT false`));
+    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS residential_department text`));
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS app_data_migrations (
+        name text PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT NOW()
+      );
+    `));
+    // Mark legacy rows where the same URL was dual-written into selfie + holding-ID.
+    // Keep photos; flag for admin verification of labels.
+    await db.execute(sql.raw(`
+      WITH claimed AS (
+        INSERT INTO app_data_migrations (name)
+        VALUES ('driver_apps_flag_uncertain_photos_v1')
+        ON CONFLICT (name) DO NOTHING
+        RETURNING name
+      )
+      UPDATE driver_applications da
+         SET docs_need_review = true
+        FROM claimed
+       WHERE da.photo_national_id IS NULL
+         AND da.photo_id_selfie IS NOT NULL
+         AND da.face_photo_holding_id IS NOT NULL
+         AND da.photo_id_selfie = da.face_photo_holding_id
+         AND da.docs_need_review = false
+    `));
+    logger.info("Migration: driver application national-id columns + uncertain photo flags");
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: driver national-id columns failed (non-fatal)");
+  }
+
+  // Data fix: Cordless Mattress Vacuum Cleaner was miscategorized under Electronics >
+  // Accessories & Cables. Retarget to Appliances > Microwaves & Blenders (small-appliances),
+  // the closest existing Appliances subcategory. Matches by title (and legacy id 4 when
+  // title matches) — not a UI exception for listing id.
+  try {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS app_data_migrations (
+        name text PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT NOW()
+      );
+    `));
+    await db.execute(sql.raw(`
+      WITH claimed AS (
+        INSERT INTO app_data_migrations (name)
+        VALUES ('fix_vacuum_listing_appliances_v1')
+        ON CONFLICT (name) DO NOTHING
+        RETURNING name
+      ),
+      cats AS (
+        SELECT
+          (SELECT id FROM categories WHERE slug = 'appliances' AND parent_id IS NULL LIMIT 1) AS appliances_id,
+          (SELECT c.id FROM categories c
+             JOIN categories p ON p.id = c.parent_id
+            WHERE c.slug = 'small-appliances' AND p.slug = 'appliances'
+            LIMIT 1) AS small_appliances_id
+      )
+      UPDATE listings l
+         SET category_id = cats.appliances_id,
+             subcategory_id = cats.small_appliances_id
+        FROM cats, claimed
+       WHERE cats.appliances_id IS NOT NULL
+         AND cats.small_appliances_id IS NOT NULL
+         AND (
+           (l.id = 4 AND l.title ILIKE '%Vacuum%Cleaner%')
+           OR l.title ILIKE '%Cordless Mattress Vacuum Cleaner%'
+         )
+         AND (
+           l.category_id IS DISTINCT FROM cats.appliances_id
+           OR l.subcategory_id IS DISTINCT FROM cats.small_appliances_id
+         )
+    `));
+    logger.info("Migration: vacuum listing category fix attempted (Appliances > small-appliances)");
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: vacuum listing category fix failed (non-fatal)");
+  }
+
 
   logger.info({ applied, failed }, "Startup migrations complete");
 }

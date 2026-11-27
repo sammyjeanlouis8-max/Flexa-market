@@ -273,118 +273,123 @@ router.get("/restaurants/identity/document", requireAuth, serveRestaurantIdentit
 /* ─── Discover ───────────────────────────────────────────────────────────── */
 
 router.get("/restaurants", async (req, res): Promise<void> => {
-  const q = String(req.query.q || "").trim();
-  const country = String(req.query.country || "").trim();
-  const cuisine = String(req.query.cuisine || "").trim();
-  const fulfillment = String(req.query.fulfillment || "").trim();
-  const businessTypeRaw = String(req.query.businessType || req.query.type || "").trim();
-  const businessType = businessTypeRaw ? normalizeBusinessType(businessTypeRaw) : "";
-  const openNowOnly = req.query.openNow === "1" || req.query.openNow === "true";
-  const topRatedOnly = req.query.topRated === "1" || req.query.topRated === "true";
-  const featuredOnly = req.query.featured === "1" || req.query.featured === "true";
-  const includeMenuPreview = req.query.menuPreview === "1" || req.query.menuPreview === "true";
-  const lat = req.query.lat != null ? Number(req.query.lat) : null;
-  const lng = req.query.lng != null ? Number(req.query.lng) : null;
-  const sortBy = String(req.query.sortBy || "rating");
-  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 24));
-  const offset = Math.max(0, Number(req.query.offset) || 0);
+  try {
+    const q = String(req.query.q || "").trim();
+    const country = String(req.query.country || "").trim();
+    const cuisine = String(req.query.cuisine || "").trim();
+    const fulfillment = String(req.query.fulfillment || "").trim();
+    const businessTypeRaw = String(req.query.businessType || req.query.type || "").trim();
+    const businessType = businessTypeRaw ? normalizeBusinessType(businessTypeRaw) : "";
+    const openNowOnly = req.query.openNow === "1" || req.query.openNow === "true";
+    const topRatedOnly = req.query.topRated === "1" || req.query.topRated === "true";
+    const featuredOnly = req.query.featured === "1" || req.query.featured === "true";
+    const includeMenuPreview = req.query.menuPreview === "1" || req.query.menuPreview === "true";
+    const lat = req.query.lat != null ? Number(req.query.lat) : null;
+    const lng = req.query.lng != null ? Number(req.query.lng) : null;
+    const sortBy = String(req.query.sortBy || "rating");
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 24));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
 
-  const conds = [eq(restaurantsTable.status, "published")];
-  if (country) conds.push(sql`lower(${restaurantsTable.country}) = lower(${country})`);
-  if (businessType && businessType !== "all") {
-    conds.push(sql`lower(replace(${restaurantsTable.businessType}, '-', '_')) = ${businessType}`);
-  }
-  if (q) {
-    conds.push(or(
-      ilike(restaurantsTable.name, `%${q}%`),
-      ilike(restaurantsTable.description, `%${q}%`),
-      ilike(restaurantsTable.city, `%${q}%`),
-      sql`EXISTS (
-        SELECT 1 FROM unnest(${restaurantsTable.cuisineTags}) AS tag
-        WHERE tag ILIKE ${`%${q}%`}
-      )`,
-      sql`EXISTS (
-        SELECT 1 FROM restaurant_daily_menu_items dmi
-        WHERE dmi.restaurant_id = ${restaurantsTable.id}
-          AND dmi.name ILIKE ${`%${q}%`}
-      )`,
-    )!);
-  }
-  if (cuisine) conds.push(sql`${cuisine} = ANY(${restaurantsTable.cuisineTags})`);
-  if (topRatedOnly || featuredOnly) conds.push(sql`${restaurantsTable.avgRating} >= 4.5`);
-
-  const rows = await db
-    .select()
-    .from(restaurantsTable)
-    .where(and(...conds))
-    .orderBy(desc(restaurantsTable.avgRating), desc(restaurantsTable.publishedAt))
-    .limit(Math.min(200, limit + offset + 40))
-    .offset(0);
-
-  const out = [];
-  for (const row of rows) {
-    const hours = await db.select().from(restaurantOpeningHoursTable).where(eq(restaurantOpeningHoursTable.restaurantId, row.id));
-    const [delivery] = await db.select().from(restaurantDeliverySettingsTable).where(eq(restaurantDeliverySettingsTable.restaurantId, row.id)).limit(1);
-    const openNow = isRestaurantOpenNow(hours, row.timezone, new Date(), {
-      vacationMode: row.vacationMode,
-      temporarilyClosed: row.temporarilyClosed,
-    });
-    if (openNowOnly && !openNow) continue;
-    if (fulfillment === "pickup" && delivery && delivery.fulfillment === "delivery") continue;
-    if (fulfillment === "delivery" && delivery && delivery.fulfillment === "pickup") continue;
-
-    let distanceKm: number | null = null;
-    if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) && row.latitude != null && row.longitude != null) {
-      const R = 6371;
-      const dLat = ((row.latitude - lat) * Math.PI) / 180;
-      const dLng = ((row.longitude - lng) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos((lat * Math.PI) / 180) * Math.cos((row.latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-      distanceKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
+    const conds = [eq(restaurantsTable.status, "published")];
+    if (country) conds.push(sql`lower(${restaurantsTable.country}) = lower(${country})`);
+    if (businessType && businessType !== "all") {
+      conds.push(sql`lower(replace(${restaurantsTable.businessType}, '-', '_')) = ${businessType}`);
     }
+    if (q) {
+      conds.push(or(
+        ilike(restaurantsTable.name, `%${q}%`),
+        ilike(restaurantsTable.description, `%${q}%`),
+        ilike(restaurantsTable.city, `%${q}%`),
+        sql`EXISTS (
+          SELECT 1 FROM unnest(${restaurantsTable.cuisineTags}) AS tag
+          WHERE tag ILIKE ${`%${q}%`}
+        )`,
+        sql`EXISTS (
+          SELECT 1 FROM restaurant_daily_menu_items dmi
+          WHERE dmi.restaurant_id = ${restaurantsTable.id}
+            AND dmi.name ILIKE ${`%${q}%`}
+        )`,
+      )!);
+    }
+    if (cuisine) conds.push(sql`${cuisine} = ANY(${restaurantsTable.cuisineTags})`);
+    if (topRatedOnly || featuredOnly) conds.push(sql`${restaurantsTable.avgRating} >= 4.5`);
 
-    let menuPreview: Array<ReturnType<typeof shapeMenuItem>> | undefined;
-    if (includeMenuPreview) {
-      const today = localYmd(row.timezone);
-      const [menu] = await db.select().from(restaurantDailyMenusTable)
-        .where(and(eq(restaurantDailyMenusTable.restaurantId, row.id), eq(restaurantDailyMenusTable.menuDate, today)))
-        .limit(1);
-      if (menu) {
-        const items = await db.select().from(restaurantDailyMenuItemsTable)
-          .where(eq(restaurantDailyMenuItemsTable.dailyMenuId, menu.id))
-          .limit(4);
-        menuPreview = items.map((i) => shapeMenuItem(i, row, today));
-      } else {
-        menuPreview = [];
+    const rows = await db
+      .select()
+      .from(restaurantsTable)
+      .where(and(...conds))
+      .orderBy(desc(restaurantsTable.avgRating), desc(restaurantsTable.publishedAt))
+      .limit(Math.min(200, limit + offset + 40))
+      .offset(0);
+
+    const out = [];
+    for (const row of rows) {
+      const hours = await db.select().from(restaurantOpeningHoursTable).where(eq(restaurantOpeningHoursTable.restaurantId, row.id));
+      const [delivery] = await db.select().from(restaurantDeliverySettingsTable).where(eq(restaurantDeliverySettingsTable.restaurantId, row.id)).limit(1);
+      const openNow = isRestaurantOpenNow(hours, row.timezone, new Date(), {
+        vacationMode: row.vacationMode,
+        temporarilyClosed: row.temporarilyClosed,
+      });
+      if (openNowOnly && !openNow) continue;
+      if (fulfillment === "pickup" && delivery && delivery.fulfillment === "delivery") continue;
+      if (fulfillment === "delivery" && delivery && delivery.fulfillment === "pickup") continue;
+
+      let distanceKm: number | null = null;
+      if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) && row.latitude != null && row.longitude != null) {
+        const R = 6371;
+        const dLat = ((row.latitude - lat) * Math.PI) / 180;
+        const dLng = ((row.longitude - lng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos((lat * Math.PI) / 180) * Math.cos((row.latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+        distanceKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
       }
+
+      let menuPreview: Array<ReturnType<typeof shapeMenuItem>> | undefined;
+      if (includeMenuPreview) {
+        const today = localYmd(row.timezone);
+        const [menu] = await db.select().from(restaurantDailyMenusTable)
+          .where(and(eq(restaurantDailyMenusTable.restaurantId, row.id), eq(restaurantDailyMenusTable.menuDate, today)))
+          .limit(1);
+        if (menu) {
+          const items = await db.select().from(restaurantDailyMenuItemsTable)
+            .where(eq(restaurantDailyMenuItemsTable.dailyMenuId, menu.id))
+            .limit(4);
+          menuPreview = items.map((i) => shapeMenuItem(i, row, today));
+        } else {
+          menuPreview = [];
+        }
+      }
+
+      out.push(shapePublicRestaurant(row, {
+        openNow,
+        delivery: delivery ?? null,
+        hours,
+        menuPreview,
+        distanceKm,
+      }));
     }
 
-    out.push(shapePublicRestaurant(row, {
-      openNow,
-      delivery: delivery ?? null,
-      hours,
-      menuPreview,
-      distanceKm,
-    }));
-  }
+    if (sortBy === "distance" && lat != null && lng != null) {
+      out.sort((a, b) => {
+        const da = a.distanceKm ?? Number.POSITIVE_INFINITY;
+        const dbv = b.distanceKm ?? Number.POSITIVE_INFINITY;
+        return da - dbv;
+      });
+    } else if (sortBy === "name") {
+      out.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    }
 
-  if (sortBy === "distance" && lat != null && lng != null) {
-    out.sort((a, b) => {
-      const da = a.distanceKm ?? Number.POSITIVE_INFINITY;
-      const dbv = b.distanceKm ?? Number.POSITIVE_INFINITY;
-      return da - dbv;
+    res.json({
+      restaurants: out.slice(offset, offset + limit),
+      total: out.length,
+      freeLaunch: true,
+      platformFees: { commission: 0, registrationFee: 0, monthlySubscription: 0 },
     });
-  } else if (sortBy === "name") {
-    out.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  } catch (err) {
+    req.log?.error?.({ err }, "GET /restaurants failed");
+    res.status(500).json({ error: "Internal server error" });
   }
-
-  res.json({
-    restaurants: out.slice(offset, offset + limit),
-    total: out.length,
-    freeLaunch: true,
-    platformFees: { commission: 0, registrationFee: 0, monthlySubscription: 0 },
-  });
 });
 
 router.get("/restaurants/mine", requireAuth, async (req, res): Promise<void> => {

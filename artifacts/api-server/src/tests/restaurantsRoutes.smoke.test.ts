@@ -45,3 +45,26 @@ describe("restaurants routes smoke", () => {
     expect(routes).toContain("isHomeKitchenType");
   });
 });
+
+describe("restaurant startup migrations", () => {
+  const migrations = readFileSync(resolve(__dirname, "../lib/migrations.ts"), "utf8");
+
+  it("registers restaurant tables before the apply loop", () => {
+    const createPos = migrations.indexOf('name: "restaurants.create"');
+    const loopPos = migrations.indexOf("for (const m of migrations)");
+    expect(createPos).toBeGreaterThan(-1);
+    expect(loopPos).toBeGreaterThan(-1);
+    expect(createPos).toBeLessThan(loopPos);
+    for (const name of [
+      "restaurant_opening_hours.create",
+      "restaurant_delivery_settings.create",
+      "restaurant_daily_menus.create",
+      "restaurant_orders.create",
+      "restaurant_notifications.create",
+    ]) {
+      const pos = migrations.indexOf(`name: "${name}"`);
+      expect(pos).toBeGreaterThan(-1);
+      expect(pos).toBeLessThan(loopPos);
+    }
+  });
+});

@@ -743,15 +743,49 @@ router.get("/restaurants/:id/daily-menu", requireRestaurantAccess, async (req, r
 
 /* ─── Create / update restaurant ─────────────────────────────────────────── */
 
+const ALLOWED_BUSINESS_TYPES = new Set([
+  "traditional",
+  "home_kitchen",
+  "food_truck",
+  "bakery",
+  "catering",
+]);
+
 router.post("/restaurants", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const body = req.body ?? {};
   const name = String(body.name || "").trim().slice(0, 120);
   const country = String(body.country || "").trim();
   const city = String(body.city || "").trim();
+  const region = body.region != null ? String(body.region).trim() : "";
+  const streetAddress = String(body.streetAddress || "").trim();
+  const phone = body.phone != null ? String(body.phone).trim().slice(0, 40) : "";
+  const description = String(body.description || "").trim().slice(0, 4000);
+  const cuisineTags = Array.isArray(body.cuisineTags)
+    ? body.cuisineTags.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 12)
+    : [];
+  const businessType = normalizeBusinessType(String(body.businessType || "traditional"));
   if (name.length < 2 || !country || !city) {
     res.status(400).json({ error: "Name, country, and city are required" }); return;
   }
-  const businessType = normalizeBusinessType(String(body.businessType || "traditional"));
+  if (!ALLOWED_BUSINESS_TYPES.has(businessType)) {
+    res.status(400).json({
+      error: "Invalid business category",
+      code: "INVALID_BUSINESS_TYPE",
+      allowed: [...ALLOWED_BUSINESS_TYPES],
+    });
+    return;
+  }
+  if (!region || !streetAddress || !phone || !description || cuisineTags.length === 0) {
+    res.status(400).json({
+      error: "Region, address, phone, description, and cuisine are required",
+      code: "INCOMPLETE_BUSINESS_INFO",
+    });
+    return;
+  }
+  const contactEmailRaw = body.contactEmail != null ? String(body.contactEmail).trim().slice(0, 160) : "";
+  if (contactEmailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmailRaw)) {
+    res.status(400).json({ error: "Invalid business email", code: "INVALID_EMAIL" }); return;
+  }
   const countryRow = await getRestaurantCountry(country);
   const code = normalizeRestaurantCountryCode(country);
   // United States and Canada: permanently blocked until Super Admin flips status away from suspended AND enables.
@@ -765,12 +799,25 @@ router.post("/restaurants", requireRestaurantAuthAccess, async (req, res): Promi
       return;
     }
   }
+  // Draft registration is allowed in under_review jurisdictions for authorized preview/staff.
+  // Public publish still requires approved + enabled. US/CA remain hard-blocked above.
   if (!isStaff(req.user)) {
-    const gate = assertCountryAllowsPublicOps(countryRow, { businessType });
-    if (!gate.ok) {
-      res.status(403).json({ error: gate.error, code: gate.code, countryPolicy: countryRow });
+    if (countryRow.status === "suspended" || countryRow.status === "not_reviewed") {
+      res.status(403).json({
+        error: `Flexa Restaurant is not available in ${countryRow.countryName}.`,
+        code: countryRow.status === "not_reviewed" ? "COUNTRY_NOT_REVIEWED" : "COUNTRY_DISABLED",
+        countryPolicy: countryRow,
+      });
       return;
     }
+    if (isCountryPubliclyActive(countryRow)) {
+      const gate = assertCountryAllowsPublicOps(countryRow, { businessType });
+      if (!gate.ok) {
+        res.status(403).json({ error: gate.error, code: gate.code, countryPolicy: countryRow });
+        return;
+      }
+    }
+    // under_review / restricted: allow draft creation so owners can submit for admin review.
   } else if (countryRow.status === "not_reviewed" && !isCountryPubliclyActive(countryRow)) {
     // Super Admin must open a regulatory review record before seeding test businesses.
     res.status(403).json({
@@ -781,31 +828,35 @@ router.post("/restaurants", requireRestaurantAuthAccess, async (req, res): Promi
     return;
   }
   const homeKitchen = isHomeKitchenType(businessType);
+  const permitsNoteParts = [
+    body.permitsNote ? String(body.permitsNote) : "",
+    contactEmailRaw ? `contactEmail:${contactEmailRaw}` : "",
+  ].filter(Boolean);
   const [created] = await db.insert(restaurantsTable).values({
     ownerId: req.userId!,
     businessType,
     name,
-    description: String(body.description || "").slice(0, 4000),
+    description,
     logoUrl: body.logoUrl ? String(body.logoUrl) : null,
     coverUrl: body.coverUrl ? String(body.coverUrl) : null,
-    cuisineTags: Array.isArray(body.cuisineTags) ? body.cuisineTags.map(String).slice(0, 12) : [],
-    phone: body.phone ? String(body.phone).slice(0, 40) : null,
+    cuisineTags,
+    phone: phone || null,
     whatsapp: body.whatsapp ? String(body.whatsapp).slice(0, 40) : null,
     country,
-    region: body.region ? String(body.region) : null,
+    region: region || null,
     city,
-    streetAddress: String(body.streetAddress || ""),
+    streetAddress,
     postalCode: body.postalCode ? String(body.postalCode) : null,
     latitude: body.latitude != null ? Number(body.latitude) : null,
     longitude: body.longitude != null ? Number(body.longitude) : null,
     timezone: String(body.timezone || "America/Port-au-Prince"),
     privateResidentialAddress: body.privateResidentialAddress
       ? String(body.privateResidentialAddress)
-      : (homeKitchen ? String(body.streetAddress || "") : null),
+      : (homeKitchen ? streetAddress : null),
     publicPickupAddress: body.publicPickupAddress ? String(body.publicPickupAddress) : null,
     // Home kitchens never publish residential street addresses.
     showPublicAddress: homeKitchen ? false : body.showPublicAddress !== false,
-    permitsNote: body.permitsNote ? String(body.permitsNote) : null,
+    permitsNote: permitsNoteParts.length ? permitsNoteParts.join("\n") : null,
     status: "draft",
   }).returning();
 
@@ -860,6 +911,18 @@ router.patch("/restaurants/:id", requireRestaurantAuthAccess, async (req, res): 
   if (typeof body.temporarilyClosed === "boolean") patch.temporarilyClosed = body.temporarilyClosed;
   if (typeof body.acceptsReservations === "boolean") patch.acceptsReservations = body.acceptsReservations;
   if (typeof body.acceptsNextDayReservations === "boolean") patch.acceptsNextDayReservations = body.acceptsNextDayReservations;
+  if (body.foodResponsibilityAccepted === true && !row.foodResponsibilityAcceptedAt) {
+    patch.foodResponsibilityAcceptedAt = new Date();
+  }
+  if (body.contactEmail != null) {
+    const email = String(body.contactEmail).trim().slice(0, 160);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ error: "Invalid business email", code: "INVALID_EMAIL" }); return;
+    }
+    const prior = String(row.permitsNote || "").split("\n").filter((line) => !line.startsWith("contactEmail:"));
+    if (email) prior.unshift(`contactEmail:${email}`);
+    patch.permitsNote = prior.filter(Boolean).join("\n") || null;
+  }
   if (body.latitude != null) patch.latitude = Number(body.latitude);
   if (body.longitude != null) patch.longitude = Number(body.longitude);
   if (body.businessType != null) {
@@ -869,14 +932,34 @@ router.patch("/restaurants/:id", requireRestaurantAuthAccess, async (req, res): 
 
   // Owners submit for review — only staff can force-publish after country approval.
   if (body.publish === true || body.submit === true) {
-    if (row.identityStatus !== "verified") {
-      res.status(400).json({ error: "Identity verification required before publishing" }); return;
+    const effectiveLogo = (patch.logoUrl as string | null | undefined) ?? row.logoUrl;
+    const effectiveCover = (patch.coverUrl as string | null | undefined) ?? row.coverUrl;
+    if (!effectiveLogo && !effectiveCover) {
+      res.status(400).json({
+        error: "At least one business image (logo or cover) is required before review",
+        code: "IMAGE_REQUIRED",
+      });
+      return;
     }
-    if (!row.foodSafetyCompleted) {
-      res.status(400).json({ error: "Food safety onboarding required before publishing" }); return;
+    if (!row.name || String(row.name).trim().length < 2 || !row.city || !row.country) {
+      res.status(400).json({ error: "Incomplete business profile", code: "INCOMPLETE_PROFILE" }); return;
     }
-    if (!row.foodResponsibilityAcceptedAt) {
-      res.status(400).json({ error: "Food business responsibility acknowledgment required before publishing" }); return;
+    // Soft gate for submit-for-review: identity / food-safety may still be in progress.
+    // Hard publish still requires verified + food safety complete.
+    if (body.publish === true) {
+      if (row.identityStatus !== "verified") {
+        res.status(400).json({ error: "Identity verification required before publishing" }); return;
+      }
+      if (!row.foodSafetyCompleted) {
+        res.status(400).json({ error: "Food safety onboarding required before publishing" }); return;
+      }
+      if (!row.foodResponsibilityAcceptedAt && body.foodResponsibilityAccepted !== true) {
+        res.status(400).json({ error: "Food business responsibility acknowledgment required before publishing" }); return;
+      }
+    } else if (body.submit === true) {
+      if (body.foodResponsibilityAccepted === true && !row.foodResponsibilityAcceptedAt) {
+        patch.foodResponsibilityAcceptedAt = new Date();
+      }
     }
     const publishCountry = await getRestaurantCountry(row.country);
     if (isStaff(req.user) && body.publish === true && body.forcePublish === true) {
@@ -890,6 +973,32 @@ router.patch("/restaurants/:id", requireRestaurantAuthAccess, async (req, res): 
       }
       patch.status = "published";
       patch.publishedAt = new Date();
+    } else if (body.submit === true) {
+      // Draft → Under Review is allowed in preview/pending jurisdictions so admins can approve.
+      // Public publish still requires an approved + enabled country.
+      if (!isStaff(req.user)) {
+        const code = normalizeRestaurantCountryCode(row.country);
+        if (code === "US" || code === "CA") {
+          if (!isCountryPubliclyActive(publishCountry)) {
+            res.status(403).json({
+              error: `Flexa Restaurant is disabled in ${publishCountry.countryName}.`,
+              code: "COUNTRY_DISABLED",
+              countryPolicy: publishCountry,
+            });
+            return;
+          }
+        }
+        if (publishCountry.status === "suspended") {
+          res.status(403).json({
+            error: `Flexa Restaurant is not available in ${publishCountry.countryName}.`,
+            code: "COUNTRY_DISABLED",
+            countryPolicy: publishCountry,
+          });
+          return;
+        }
+      }
+      patch.status = "submitted";
+      patch.publishedAt = null;
     } else {
       const gate = assertCountryAllowsPublicOps(publishCountry, { businessType: row.businessType });
       if (!gate.ok && !isStaff(req.user)) {

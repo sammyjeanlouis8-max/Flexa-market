@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -34,6 +35,7 @@ export default function RestaurantDiscoverScreen() {
   const [openNow, setOpenNow] = useState(false);
   const [rows, setRows] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -76,77 +78,94 @@ export default function RestaurantDiscoverScreen() {
   }, [businessType, t]);
 
   return (
-    <RestaurantShell title={t("restaurant_discoverTitle")} subtitle={t("restaurant_hubSubtitle")}>
-      <View style={styles.searchWrap}>
-        <TextInput
-          value={q}
-          onChangeText={setQ}
-          placeholder={t("restaurant_searchPlaceholder")}
-          placeholderTextColor={T.muted}
-          style={styles.search}
-        />
-      </View>
+    <RestaurantShell title={t("restaurant_discoverTitle")} subtitle={t("restaurant_hubSubtitle")} scroll={false}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load().finally(() => setRefreshing(false));
+            }}
+            tintColor={T.accent}
+          />
+        }
+        contentContainerStyle={{ paddingBottom: 24 }}
+      >
+        <View style={styles.searchWrap}>
+          <TextInput
+            value={q}
+            onChangeText={setQ}
+            placeholder={t("restaurant_searchPlaceholder")}
+            placeholderTextColor={T.muted}
+            style={styles.search}
+          />
+        </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cats}>
-        {CATEGORIES.map((cat) => {
-          const active = businessType === cat.id;
-          return (
-            <Pressable
-              key={cat.id}
-              onPress={() => setBusinessType(cat.id)}
-              style={[styles.cat, active && styles.catActive]}
-            >
-              <Text style={[styles.catText, active && styles.catTextActive]}>{t(cat.labelKey)}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cats}>
+          {CATEGORIES.map((cat) => {
+            const active = businessType === cat.id;
+            return (
+              <Pressable
+                key={cat.id}
+                onPress={() => setBusinessType(cat.id)}
+                style={[styles.cat, active && styles.catActive]}
+              >
+                <Text style={[styles.catText, active && styles.catTextActive]}>{t(cat.labelKey)}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
 
-      <View style={styles.row}>
-        <Pressable style={[styles.chip, openNow && styles.chipOn]} onPress={() => setOpenNow((v) => !v)}>
-          <Text style={[styles.chipText, openNow && styles.chipTextOn]}>{t("restaurant_openNow")}</Text>
-        </Pressable>
-      </View>
-
-      <Text style={styles.section}>{title} ({rows.length})</Text>
-
-      {loading ? (
-        <ActivityIndicator color={T.accent} style={{ marginTop: 24 }} />
-      ) : error ? (
-        <Text style={styles.err}>{error}</Text>
-      ) : rows.length === 0 ? (
-        <Text style={styles.muted}>{t("restaurant_emptyTitle")}</Text>
-      ) : (
-        rows.map((r) => (
-          <Pressable key={r.id} style={styles.card} onPress={() => router.push(`/restaurant/${r.id}` as any)}>
-            <View style={styles.cardRow}>
-              <View style={styles.thumb}>
-                {(r.coverUrl || r.menuPreview?.[0]?.photos?.[0]) ? (
-                  <Image
-                    source={{ uri: (r.coverUrl || r.menuPreview![0].photos[0]) as string }}
-                    style={styles.thumbImg}
-                  />
-                ) : null}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{r.name}</Text>
-                <Text style={styles.muted}>
-                  {(r.avgRating ?? 0) > 0
-                    ? `★ ${(r.avgRating ?? 0).toFixed(1)} (${r.ratingCount ?? 0})`
-                    : (r.businessType || "")}
-                  {r.cuisineTags?.[0] ? ` · ${r.cuisineTags[0]}` : ""}
-                </Text>
-                <Text style={styles.muted} numberOfLines={1}>
-                  {r.serviceArea || r.publicPickupAddress || `${r.city}, ${r.country}`}
-                </Text>
-                <Text style={[styles.badge, (r.openNow || r.isOpenNow) ? styles.badgeOpen : null]}>
-                  {(r.openNow || r.isOpenNow) ? t("restaurant_openNow") : t("restaurant_closed")}
-                </Text>
-              </View>
-            </View>
+        <View style={styles.row}>
+          <Pressable style={[styles.chip, openNow && styles.chipOn]} onPress={() => setOpenNow((v) => !v)}>
+            <Text style={[styles.chipText, openNow && styles.chipTextOn]}>{t("restaurant_openNow")}</Text>
           </Pressable>
-        ))
-      )}
+        </View>
+
+        <Text style={styles.section}>
+          {title} ({rows.length})
+        </Text>
+
+        {loading ? (
+          <ActivityIndicator color={T.accent} style={{ marginTop: 24 }} />
+        ) : error ? (
+          <Text style={styles.err}>{error}</Text>
+        ) : rows.length === 0 ? (
+          <Text style={styles.muted}>{t("restaurant_emptyTitle")}</Text>
+        ) : (
+          rows.map((r) => (
+            <Pressable key={r.id} style={styles.card} onPress={() => router.push(`/restaurant/${r.id}` as any)}>
+              <View style={styles.cardRow}>
+                <View style={styles.thumb}>
+                  {(r.coverUrl || r.menuPreview?.[0]?.photos?.[0]) ? (
+                    <Image
+                      source={{ uri: (r.coverUrl || r.menuPreview![0].photos[0]) as string }}
+                      style={styles.thumbImg}
+                    />
+                  ) : null}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>{r.name}</Text>
+                  <Text style={styles.muted}>
+                    {(r.avgRating ?? 0) > 0
+                      ? `★ ${(r.avgRating ?? 0).toFixed(1)} (${r.ratingCount ?? 0})`
+                      : r.businessType || ""}
+                    {r.cuisineTags?.[0] ? ` · ${r.cuisineTags[0]}` : ""}
+                  </Text>
+                  <Text style={styles.muted} numberOfLines={1}>
+                    {r.serviceArea || r.publicPickupAddress || `${r.city}, ${r.country}`}
+                  </Text>
+                  <Text style={[styles.badge, r.openNow || r.isOpenNow ? styles.badgeOpen : null]}>
+                    {r.openNow || r.isOpenNow ? t("restaurant_openNow") : t("restaurant_closed")}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+          ))
+        )}
+      </ScrollView>
     </RestaurantShell>
   );
 }

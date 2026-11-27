@@ -52,6 +52,22 @@
 vitest: restaurantAccess, restaurantMoney, restaurantCountryPolicy, restaurantsRoutes.smoke, restaurantSchedule
 ```
 
+## Native Android / iOS parity (continued on #308)
+
+See `artifacts/mobile/docs/FLEXA_RESTAURANT_NATIVE_PARITY_REPORT.md`.
+
+| Area | Status |
+| --- | --- |
+| Native screens (no WebView primary) | **PASS** (code) — Expo Router RN screens |
+| Cart → checkout → order confirmation | **PASS** (code) |
+| Owner dashboard / menu / dishes / settings / quiz | **PASS** (code) |
+| My Orders live API | **PASS** (code) |
+| Category listings (restaurants / trucks / kitchens) | **PASS** (code) |
+| Delivery disclosure + driver ban copy (EN/HT/FR/ES) | **PASS** |
+| Native Stripe PaymentSheet | **BLOCKED** — SDK not in repo; server PaymentIntent retained |
+| Emulator / simulator screenshots | **NOT TESTED** |
+| App store submission | **NOT AUTHORIZED** |
+
 ## Deployment stance
 
-Keep `RESTAURANT_PUBLIC_LAUNCH=false`. Do not publicly activate any country without documented regulatory verification and Super Admin approval. No new paid infrastructure.
+Keep `RESTAURANT_PUBLIC_LAUNCH=false`. Do not publicly activate any country without documented regulatory verification and Super Admin approval. No new paid infrastructure. Do not submit Android/iOS builds to public stores without explicit authorization.

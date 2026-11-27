@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
+import { authPathWithNext } from "@/lib/authIntent";
 
 /** Auth gate for owner-only restaurant routes; discover stays public when requireAuth is false. */
 export function RestaurantPageGate({
@@ -15,13 +16,19 @@ export function RestaurantPageGate({
   const { t } = useTranslation();
   const { user, isLoading } = useAuth();
   const [pathname, setLocation] = useLocation();
+  const redirected = useRef(false);
 
   useEffect(() => {
-    if (!requireAuth || isLoading) return;
-    if (!user) {
-      const next = encodeURIComponent(`${pathname}${window.location.search || ""}` || "/restaurant");
-      setLocation(`/auth/login?next=${next}`);
-    }
+    if (!requireAuth || isLoading || user || redirected.current) return;
+    const rawPath = `${window.location.pathname}${window.location.search || ""}`;
+    const intended =
+      rawPath.startsWith("/restaurant")
+        ? rawPath
+        : pathname.startsWith("/restaurant")
+          ? pathname
+          : "/restaurant/owner";
+    redirected.current = true;
+    setLocation(authPathWithNext("/auth/login", intended));
   }, [requireAuth, isLoading, user, pathname, setLocation]);
 
   if (requireAuth && (isLoading || !user)) {

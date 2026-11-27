@@ -52,6 +52,16 @@
 vitest: restaurantAccess, restaurantMoney, restaurantCountryPolicy, restaurantsRoutes.smoke, restaurantSchedule
 ```
 
+## Urgent discovery / registration fix (this turn)
+
+| Issue | Root cause | Fix |
+| --- | --- | --- |
+| Prod `GET /api/restaurants` → 500 | On `main`, restaurant `CREATE TABLE` migrations were registered **after** the startup apply loop, so Neon never created `restaurants` | Already corrected on this branch: restaurant DDL (incl. country availability) is pushed **before** `for (const m of migrations)`. Deploy #308 to production. |
+| Discover showed empty + error together | UI treated failed fetch as zero results | Mutually exclusive loading / error+Retry / empty / results |
+| Add Restaurant Basics showed API text, no fields | React bug: `<motionFormFields />` lowercase tag never mounts as a component | Renamed to `BasicsFormFields` + full multi-step form with draft autosave |
+
+**Production probe (before deploy):** `curl https://flexamarket.com/api/restaurants?country=Haiti` → `500 {"error":"Internal server error"}`; `/api/restaurants/launch` → 200.
+
 ## Native Android / iOS parity (continued on #308)
 
 See `artifacts/mobile/docs/FLEXA_RESTAURANT_NATIVE_PARITY_REPORT.md`.

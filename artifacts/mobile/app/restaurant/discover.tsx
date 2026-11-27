@@ -20,10 +20,8 @@ import { restaurantTheme as T } from "@/lib/restaurantTheme";
 const CATEGORIES = [
   { id: "all", labelKey: "restaurant_catAll" },
   { id: "traditional", labelKey: "restaurant_catRestaurants" },
-  { id: "home_kitchen", labelKey: "restaurant_catHomeKitchen" },
   { id: "food_truck", labelKey: "restaurant_catFoodTruck" },
-  { id: "bakery", labelKey: "restaurant_catBakery" },
-  { id: "catering", labelKey: "restaurant_catCatering" },
+  { id: "home_kitchen", labelKey: "restaurant_catHomeKitchen" },
 ] as const;
 
 export default function RestaurantDiscoverScreen() {
@@ -125,13 +123,24 @@ export default function RestaurantDiscoverScreen() {
         </View>
 
         <Text style={styles.section}>
-          {title} ({rows.length})
+          {title}
+          {!loading && !error ? ` (${rows.length})` : ""}
         </Text>
 
         {loading ? (
           <ActivityIndicator color={T.accent} style={{ marginTop: 24 }} />
         ) : error ? (
-          <Text style={styles.err}>{error}</Text>
+          <View>
+            <Text style={styles.err}>
+              {/403|restricted|disabled|preview|country/i.test(error)
+                ? t("restaurant_countryDisabled") || "Flexa Restaurant is not available for this location."
+                : t("restaurant_loadError")}
+            </Text>
+            <Text style={styles.muted}>{error}</Text>
+            <Pressable style={styles.retry} onPress={() => void load()}>
+              <Text style={styles.retryText}>{t("common_retry") || "Retry"}</Text>
+            </Pressable>
+          </View>
         ) : rows.length === 0 ? (
           <Text style={styles.muted}>{t("restaurant_emptyTitle")}</Text>
         ) : (
@@ -240,5 +249,14 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   badgeOpen: { backgroundColor: "rgba(26,107,71,0.12)", color: T.accent },
-  err: { color: "#b91c1c", marginTop: 12 },
+  err: { color: "#b91c1c", marginTop: 12, fontWeight: "800" },
+  retry: {
+    marginTop: 12,
+    alignSelf: "flex-start",
+    backgroundColor: T.accent,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  retryText: { color: T.white, fontWeight: "900" },
 });

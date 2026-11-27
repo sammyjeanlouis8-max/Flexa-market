@@ -152,7 +152,7 @@ export const restaurantEn: RestaurantLocale = {
   addRestaurantTitle: "Add your restaurant",
   addRestaurantSubtitle: "Multi-step setup — identity and food safety before you publish.",
   stepBasics: "Basics",
-  stepBasicsBody: "Name, cuisine, location, and business type.",
+  stepBasicsBody: "Business identity, location, category, and contact details.",
   stepHours: "Hours & fulfillment",
   stepHoursBody: "Opening hours, pickup address, and delivery zones.",
   stepIdentity: "Identity",

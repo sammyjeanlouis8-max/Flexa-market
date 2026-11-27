@@ -463,50 +463,55 @@ router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<vo
 
     const out = [];
     for (const row of rows) {
-      const hours = await db.select().from(restaurantOpeningHoursTable).where(eq(restaurantOpeningHoursTable.restaurantId, row.id));
-      const [delivery] = await db.select().from(restaurantDeliverySettingsTable).where(eq(restaurantDeliverySettingsTable.restaurantId, row.id)).limit(1);
-      const openNow = isRestaurantOpenNow(hours, row.timezone, new Date(), {
-        vacationMode: row.vacationMode,
-        temporarilyClosed: row.temporarilyClosed,
-      });
-      if (openNowOnly && !openNow) continue;
-      if (fulfillment === "pickup" && delivery && delivery.fulfillment === "delivery") continue;
-      if (fulfillment === "delivery" && delivery && delivery.fulfillment === "pickup") continue;
+      try {
+        const hours = await db.select().from(restaurantOpeningHoursTable).where(eq(restaurantOpeningHoursTable.restaurantId, row.id));
+        const [delivery] = await db.select().from(restaurantDeliverySettingsTable).where(eq(restaurantDeliverySettingsTable.restaurantId, row.id)).limit(1);
+        const openNow = isRestaurantOpenNow(hours, row.timezone, new Date(), {
+          vacationMode: row.vacationMode,
+          temporarilyClosed: row.temporarilyClosed,
+        });
+        if (openNowOnly && !openNow) continue;
+        if (fulfillment === "pickup" && delivery && delivery.fulfillment === "delivery") continue;
+        if (fulfillment === "delivery" && delivery && delivery.fulfillment === "pickup") continue;
 
-      let distanceKm: number | null = null;
-      if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) && row.latitude != null && row.longitude != null) {
-        const R = 6371;
-        const dLat = ((row.latitude - lat) * Math.PI) / 180;
-        const dLng = ((row.longitude - lng) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) ** 2 +
-          Math.cos((lat * Math.PI) / 180) * Math.cos((row.latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-        distanceKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
-      }
-
-      let menuPreview: Array<ReturnType<typeof shapeMenuItem>> | undefined;
-      if (includeMenuPreview) {
-        const today = localYmd(row.timezone);
-        const [menu] = await db.select().from(restaurantDailyMenusTable)
-          .where(and(eq(restaurantDailyMenusTable.restaurantId, row.id), eq(restaurantDailyMenusTable.menuDate, today)))
-          .limit(1);
-        if (menu) {
-          const items = await db.select().from(restaurantDailyMenuItemsTable)
-            .where(eq(restaurantDailyMenuItemsTable.dailyMenuId, menu.id))
-            .limit(4);
-          menuPreview = items.map((i) => shapeMenuItem(i, row, today));
-        } else {
-          menuPreview = [];
+        let distanceKm: number | null = null;
+        if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng) && row.latitude != null && row.longitude != null) {
+          const R = 6371;
+          const dLat = ((row.latitude - lat) * Math.PI) / 180;
+          const dLng = ((row.longitude - lng) * Math.PI) / 180;
+          const a =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos((lat * Math.PI) / 180) * Math.cos((row.latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+          distanceKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
         }
-      }
 
-      out.push(shapePublicRestaurant(row, {
-        openNow,
-        delivery: delivery ?? null,
-        hours,
-        menuPreview,
-        distanceKm,
-      }));
+        let menuPreview: Array<ReturnType<typeof shapeMenuItem>> | undefined;
+        if (includeMenuPreview) {
+          const today = localYmd(row.timezone);
+          const [menu] = await db.select().from(restaurantDailyMenusTable)
+            .where(and(eq(restaurantDailyMenusTable.restaurantId, row.id), eq(restaurantDailyMenusTable.menuDate, today)))
+            .limit(1);
+          if (menu) {
+            const items = await db.select().from(restaurantDailyMenuItemsTable)
+              .where(eq(restaurantDailyMenuItemsTable.dailyMenuId, menu.id))
+              .limit(4);
+            menuPreview = items.map((i) => shapeMenuItem(i, row, today));
+          } else {
+            menuPreview = [];
+          }
+        }
+
+        out.push(shapePublicRestaurant(row, {
+          openNow,
+          delivery: delivery ?? null,
+          hours,
+          menuPreview,
+          distanceKm,
+        }));
+      } catch (rowErr) {
+        // Skip a corrupt/partial row — do not fail the whole discover response.
+        req.log?.warn?.({ err: rowErr, restaurantId: row.id }, "GET /restaurants skipped restaurant row");
+      }
     }
 
     if (sortBy === "distance" && lat != null && lng != null) {
@@ -519,6 +524,7 @@ router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<vo
       out.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     }
 
+    // Successful query with zero eligible restaurants → 200 + empty array (never mask a DB failure).
     res.json({
       restaurants: out.slice(offset, offset + limit),
       total: out.length,
@@ -527,7 +533,15 @@ router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<vo
     });
   } catch (err) {
     req.log?.error?.({ err }, "GET /restaurants failed");
-    res.status(500).json({ error: "Internal server error" });
+    const msg = err instanceof Error ? err.message : String(err);
+    const missingRelation = /relation .* does not exist|undefined_table/i.test(msg);
+    res.status(500).json({
+      error: "Internal server error",
+      code: missingRelation ? "RESTAURANT_SCHEMA_MISSING" : "RESTAURANT_DISCOVER_FAILED",
+      hint: missingRelation
+        ? "Restaurant tables are missing — ensure startup migrations run restaurants.create before serving traffic."
+        : undefined,
+    });
   }
 });
 

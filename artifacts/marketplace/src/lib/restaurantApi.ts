@@ -243,13 +243,12 @@ export async function updateFoodTruckLocation(
   return data.restaurant;
 }
 
+/** Primary discover categories — bakery is a cuisine/subtype, not a top-level category. */
 export const BUSINESS_TYPES = [
   { id: "all", labelKey: "restaurant.catAll" },
   { id: "traditional", labelKey: "restaurant.catRestaurants" },
-  { id: "home_kitchen", labelKey: "restaurant.catHomeKitchen" },
   { id: "food_truck", labelKey: "restaurant.catFoodTruck" },
-  { id: "bakery", labelKey: "restaurant.catBakery" },
-  { id: "catering", labelKey: "restaurant.catCatering" },
+  { id: "home_kitchen", labelKey: "restaurant.catHomeKitchen" },
 ] as const;
 
 export function businessTypeLabelKey(type: string): string {

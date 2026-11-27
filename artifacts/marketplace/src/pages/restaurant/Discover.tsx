@@ -379,19 +379,35 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
         <div className="mb-3 flex items-end justify-between gap-2">
           <h2 className="text-base font-extrabold tracking-tight sm:text-lg">
             {sectionTitle}
-            <span className="ml-1.5 text-sm font-semibold text-muted-foreground">({rows.length})</span>
+            {!loading && !error ? (
+              <span className="ml-1.5 text-sm font-semibold text-muted-foreground">({rows.length})</span>
+            ) : null}
           </h2>
         </div>
 
-        {error && (
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <p className="text-sm text-destructive">{error}</p>
+        {loading ? (
+          <div className="space-y-3">
+            <RestaurantCardSkeleton />
+            <RestaurantCardSkeleton />
+            <RestaurantCardSkeleton />
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-destructive/20 bg-white p-5 shadow-sm">
+            <p className="text-sm font-bold text-destructive">
+              {/403|restricted|disabled|preview|country/i.test(error)
+                ? t("restaurant.accessRestricted", {
+                    defaultValue: "Flexa Restaurant is not available for this location or account.",
+                  })
+                : t("restaurant.loadError", {
+                    defaultValue: "We could not load restaurants. Please try again.",
+                  })}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{error}</p>
             <button
               type="button"
-              className="rounded-full border border-destructive/30 px-3 py-1 text-xs font-bold text-destructive"
+              className="mt-4 rounded-full bg-[hsl(152,55%,28%)] px-4 py-2 text-sm font-bold text-white"
               onClick={() => {
                 setError(null);
-                setDebouncedQ((q) => q);
                 setLoading(true);
                 fetchRestaurants({
                   q: debouncedQ || undefined,
@@ -414,14 +430,6 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
             >
               {t("common.retry", { defaultValue: "Retry" })}
             </button>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="space-y-3">
-            <RestaurantCardSkeleton />
-            <RestaurantCardSkeleton />
-            <RestaurantCardSkeleton />
           </div>
         ) : rows.length === 0 ? (
           <RestaurantEmpty

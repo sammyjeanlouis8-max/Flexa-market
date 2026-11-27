@@ -104,6 +104,11 @@ describe("restaurant startup migrations", () => {
   it("registers country availability regulatory migrations and seeds", () => {
     expect(migrations).toContain('name: "restaurant_country_availability.v1"');
     expect(migrations).toContain("restaurant_country_availability");
+    // Restaurant DDL must be registered BEFORE the apply loop (prod 500 root cause on main).
+    const createIdx = migrations.indexOf('name: "restaurants.create"');
+    const loopIdx = migrations.indexOf("for (const m of migrations)");
+    expect(createIdx).toBeGreaterThan(-1);
+    expect(loopIdx).toBeGreaterThan(createIdx);
     expect(migrations).toContain("restaurant_jurisdiction_availability");
     expect(migrations).toContain("restaurant_compliance_requirements");
     expect(migrations).toContain("restaurant_regulatory_audit_logs");

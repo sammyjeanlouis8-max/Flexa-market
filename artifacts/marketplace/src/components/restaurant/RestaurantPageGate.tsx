@@ -14,12 +14,15 @@ export function RestaurantPageGate({
 }) {
   const { t } = useTranslation();
   const { user, isLoading } = useAuth();
-  const [, setLocation] = useLocation();
+  const [pathname, setLocation] = useLocation();
 
   useEffect(() => {
     if (!requireAuth || isLoading) return;
-    if (!user) setLocation("/auth/login?next=/restaurant");
-  }, [requireAuth, isLoading, user, setLocation]);
+    if (!user) {
+      const next = encodeURIComponent(`${pathname}${window.location.search || ""}` || "/restaurant");
+      setLocation(`/auth/login?next=${next}`);
+    }
+  }, [requireAuth, isLoading, user, pathname, setLocation]);
 
   if (requireAuth && (isLoading || !user)) {
     return (

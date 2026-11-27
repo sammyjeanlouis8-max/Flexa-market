@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import * as Location from "expo-location";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,10 +19,12 @@ import { fetchRestaurants, type Restaurant } from "@/lib/restaurantApi";
 import { restaurantTheme as T } from "@/lib/restaurantTheme";
 
 const CATEGORIES = [
-  { id: "all", labelKey: "restaurant_catAll" },
-  { id: "traditional", labelKey: "restaurant_catRestaurants" },
-  { id: "food_truck", labelKey: "restaurant_catFoodTruck" },
-  { id: "home_kitchen", labelKey: "restaurant_catHomeKitchen" },
+  { id: "all", labelKey: "restaurant_catAll", photo: require("../../assets/restaurant/categories/all.webp") },
+  { id: "traditional", labelKey: "restaurant_catRestaurants", photo: require("../../assets/restaurant/categories/restaurants.webp") },
+  { id: "home_kitchen", labelKey: "restaurant_catHomeKitchen", photo: require("../../assets/restaurant/categories/home-kitchen.webp") },
+  { id: "food_truck", labelKey: "restaurant_catFoodTruck", photo: require("../../assets/restaurant/categories/food-truck.webp") },
+  { id: "bakery", labelKey: "restaurant_catBakery", photo: require("../../assets/restaurant/categories/bakery.webp") },
+  { id: "catering", labelKey: "restaurant_catCatering", photo: require("../../assets/restaurant/categories/catering.webp") },
 ] as const;
 
 export default function RestaurantDiscoverScreen() {
@@ -34,7 +37,29 @@ export default function RestaurantDiscoverScreen() {
   const [rows, setRows] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"auth" | "restricted" | "load" | null>(null);
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted" || cancelled) return;
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (!cancelled) {
+          setLat(pos.coords.latitude);
+          setLng(pos.coords.longitude);
+        }
+      } catch {
+        /* manual country browse still works */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,17 +74,25 @@ export default function RestaurantDiscoverScreen() {
             openNow: openNow || undefined,
             menuPreview: true,
             status: "published",
+            nearby: lat != null && lng != null,
+            radiusKm: lat != null && lng != null ? 40 : undefined,
+            lat: lat ?? undefined,
+            lng: lng ?? undefined,
+            sortBy: lat != null && lng != null ? "distance" : "rating",
           },
           { token },
         ),
       );
     } catch (e: any) {
-      setError(e?.message || t("restaurant_loadError"));
+      const raw = String(e?.message || "");
+      if (/401|unauthorized/i.test(raw)) setError("auth");
+      else if (/403|restricted|disabled|preview|country/i.test(raw)) setError("restricted");
+      else setError("load");
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [token, user?.country, q, businessType, openNow, t]);
+  }, [token, user?.country, q, businessType, openNow, lat, lng]);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -68,12 +101,7 @@ export default function RestaurantDiscoverScreen() {
     return () => clearTimeout(id);
   }, [load]);
 
-  const title = useMemo(() => {
-    if (businessType === "home_kitchen") return t("restaurant_nearYouHomeKitchens");
-    if (businessType === "food_truck") return t("restaurant_nearYouFoodTrucks");
-    if (businessType === "traditional") return t("restaurant_nearYouRestaurants");
-    return t("restaurant_nearYou");
-  }, [businessType, t]);
+  const title = useMemo(() => t("restaurant_nearYou") || "Near You", [t]);
 
   return (
     <RestaurantShell title={t("restaurant_discoverTitle")} subtitle={t("restaurant_hubSubtitle")} scroll={false}>
@@ -110,7 +138,10 @@ export default function RestaurantDiscoverScreen() {
                 onPress={() => setBusinessType(cat.id)}
                 style={[styles.cat, active && styles.catActive]}
               >
-                <Text style={[styles.catText, active && styles.catTextActive]}>{t(cat.labelKey)}</Text>
+                <Image source={cat.photo} style={styles.catPhoto} />
+                <Text style={[styles.catText, active && styles.catTextActive]} numberOfLines={1}>
+                  {t(cat.labelKey)}
+                </Text>
               </Pressable>
             );
           })}
@@ -132,17 +163,18 @@ export default function RestaurantDiscoverScreen() {
         ) : error ? (
           <View>
             <Text style={styles.err}>
-              {/403|restricted|disabled|preview|country/i.test(error)
+              {error === "restricted"
                 ? t("restaurant_countryDisabled") || "Flexa Restaurant is not available for this location."
-                : t("restaurant_loadError")}
+                : error === "auth"
+                  ? "Sign in to browse Flexa Restaurant (staff preview)."
+                  : "Unable to load nearby businesses. Please try again."}
             </Text>
-            <Text style={styles.muted}>{error}</Text>
             <Pressable style={styles.retry} onPress={() => void load()}>
               <Text style={styles.retryText}>{t("common_retry") || "Retry"}</Text>
             </Pressable>
           </View>
         ) : rows.length === 0 ? (
-          <Text style={styles.muted}>{t("restaurant_emptyTitle")}</Text>
+          <Text style={styles.muted}>{t("restaurant_emptyTitle") || "No businesses found near you."}</Text>
         ) : (
           rows.map((r) => (
             <Pressable key={r.id} style={styles.card} onPress={() => router.push(`/restaurant/${r.id}` as any)}>
@@ -191,17 +223,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: T.ink,
   },
-  cats: { gap: 8, paddingBottom: 8 },
+  cats: { gap: 10, paddingBottom: 8 },
   cat: {
+    width: 78,
     backgroundColor: T.white,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: T.line,
+    alignItems: "center",
+    gap: 6,
   },
   catActive: { backgroundColor: T.accent, borderColor: T.accent },
-  catText: { fontSize: 11, fontWeight: "800", color: T.ink },
+  catPhoto: { width: 56, height: 56, borderRadius: 12 },
+  catText: { fontSize: 11, fontWeight: "800", color: T.ink, textAlign: "center" },
   catTextActive: { color: T.white },
   row: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
   chip: {

@@ -50,6 +50,7 @@ import {
   addDaysYmd,
   dishAvailabilityLabel,
   dishIsOrderableNow,
+  getRestaurantAvailabilityStatus,
   isRestaurantOpenNow,
   localYmd,
 } from "../lib/restaurantSchedule";
@@ -193,6 +194,7 @@ function shapePublicRestaurant(
   row: typeof restaurantsTable.$inferSelect,
   extras?: {
     openNow?: boolean;
+    availabilityStatus?: string;
     delivery?: typeof restaurantDeliverySettingsTable.$inferSelect | null;
     hours?: Array<typeof restaurantOpeningHoursTable.$inferSelect>;
     menuPreview?: MenuPreviewShape[];
@@ -254,6 +256,8 @@ function shapePublicRestaurant(
     platformFees: { commission: 0, registrationFee: 0, monthlySubscription: 0 },
     openNow: extras?.openNow ?? false,
     isOpenNow: extras?.openNow ?? false,
+    availabilityStatus: extras?.availabilityStatus
+      ?? (extras?.openNow ? "open" : "closed"),
     fulfillment: extras?.delivery?.fulfillment ?? "pickup",
     ownerManagedDelivery: extras?.delivery?.ownerManagedDelivery ?? true,
     deliveryManagedByRestaurant: true,
@@ -401,7 +405,10 @@ router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<vo
     const includeMenuPreview = req.query.menuPreview === "1" || req.query.menuPreview === "true";
     const lat = req.query.lat != null ? Number(req.query.lat) : null;
     const lng = req.query.lng != null ? Number(req.query.lng) : null;
-    const sortBy = String(req.query.sortBy || "rating");
+    const nearby = req.query.nearby === "1" || req.query.nearby === "true";
+    const radiusKmRaw = req.query.radiusKm != null ? Number(req.query.radiusKm) : (nearby ? 25 : null);
+    const radiusKm = radiusKmRaw != null && Number.isFinite(radiusKmRaw) ? Math.min(200, Math.max(1, radiusKmRaw)) : null;
+    const sortBy = String(req.query.sortBy || ((nearby || (lat != null && lng != null)) ? "distance" : "rating"));
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 24));
     const offset = Math.max(0, Number(req.query.offset) || 0);
 
@@ -466,10 +473,11 @@ router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<vo
       try {
         const hours = await db.select().from(restaurantOpeningHoursTable).where(eq(restaurantOpeningHoursTable.restaurantId, row.id));
         const [delivery] = await db.select().from(restaurantDeliverySettingsTable).where(eq(restaurantDeliverySettingsTable.restaurantId, row.id)).limit(1);
-        const openNow = isRestaurantOpenNow(hours, row.timezone, new Date(), {
+        const availabilityStatus = getRestaurantAvailabilityStatus(hours, row.timezone, new Date(), {
           vacationMode: row.vacationMode,
           temporarilyClosed: row.temporarilyClosed,
         });
+        const openNow = availabilityStatus === "open" || availabilityStatus === "closing_soon";
         if (openNowOnly && !openNow) continue;
         if (fulfillment === "pickup" && delivery && delivery.fulfillment === "delivery") continue;
         if (fulfillment === "delivery" && delivery && delivery.fulfillment === "pickup") continue;
@@ -483,6 +491,10 @@ router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<vo
             Math.sin(dLat / 2) ** 2 +
             Math.cos((lat * Math.PI) / 180) * Math.cos((row.latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
           distanceKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
+        }
+        if (radiusKm != null && lat != null && lng != null) {
+          // Nearby filter: keep businesses without coords after geo-capable ones, but never invent distance.
+          if (distanceKm != null && distanceKm > radiusKm) continue;
         }
 
         let menuPreview: Array<ReturnType<typeof shapeMenuItem>> | undefined;
@@ -503,6 +515,7 @@ router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<vo
 
         out.push(shapePublicRestaurant(row, {
           openNow,
+          availabilityStatus,
           delivery: delivery ?? null,
           hours,
           menuPreview,
@@ -535,11 +548,12 @@ router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<vo
     req.log?.error?.({ err }, "GET /restaurants failed");
     const msg = err instanceof Error ? err.message : String(err);
     const missingRelation = /relation .* does not exist|undefined_table/i.test(msg);
+    // Never expose SQL / stack traces to customers.
     res.status(500).json({
-      error: "Internal server error",
+      error: "Unable to load nearby businesses. Please try again.",
       code: missingRelation ? "RESTAURANT_SCHEMA_MISSING" : "RESTAURANT_DISCOVER_FAILED",
       hint: missingRelation
-        ? "Restaurant tables are missing — ensure startup migrations run restaurants.create before serving traffic."
+        ? "Restaurant schema is not ready — run startup migrations (restaurants.create) before serving traffic."
         : undefined,
     });
   }
@@ -676,11 +690,17 @@ router.get("/restaurants/:id", requireRestaurantAccess, async (req, res): Promis
   await db.update(restaurantsTable).set({ profileViews: sql`${restaurantsTable.profileViews} + 1` }).where(eq(restaurantsTable.id, id));
   const hours = await db.select().from(restaurantOpeningHoursTable).where(eq(restaurantOpeningHoursTable.restaurantId, id));
   const [delivery] = await db.select().from(restaurantDeliverySettingsTable).where(eq(restaurantDeliverySettingsTable.restaurantId, id)).limit(1);
-  const openNow = isRestaurantOpenNow(hours, row.timezone, new Date(), {
+  const availabilityStatus = getRestaurantAvailabilityStatus(hours, row.timezone, new Date(), {
     vacationMode: row.vacationMode,
     temporarilyClosed: row.temporarilyClosed,
   });
-  const payload: Record<string, unknown> = shapePublicRestaurant(row, { openNow, delivery: delivery ?? null, hours });
+  const openNow = availabilityStatus === "open" || availabilityStatus === "closing_soon";
+  const payload: Record<string, unknown> = shapePublicRestaurant(row, {
+    openNow,
+    availabilityStatus,
+    delivery: delivery ?? null,
+    hours,
+  });
   if (isOwner || isStaff(req.user)) {
     payload.privateResidentialAddress = row.privateResidentialAddress;
     payload.streetAddress = row.streetAddress;

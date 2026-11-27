@@ -179,6 +179,11 @@ export async function fetchRestaurants(
     fulfillment?: string;
     mine?: boolean;
     status?: string;
+    nearby?: boolean;
+    radiusKm?: number;
+    lat?: number;
+    lng?: number;
+    sortBy?: "rating" | "distance" | "name";
   },
   opts: AuthOpts,
 ): Promise<Restaurant[]> {
@@ -191,6 +196,11 @@ export async function fetchRestaurants(
   if (params.fulfillment) qs.set("fulfillment", params.fulfillment);
   if (params.mine) qs.set("mine", "1");
   if (params.status) qs.set("status", params.status);
+  if (params.nearby) qs.set("nearby", "1");
+  if (params.radiusKm != null) qs.set("radiusKm", String(params.radiusKm));
+  if (params.lat != null) qs.set("lat", String(params.lat));
+  if (params.lng != null) qs.set("lng", String(params.lng));
+  if (params.sortBy) qs.set("sortBy", params.sortBy);
   const path = params.mine ? `/restaurants/mine` : `/restaurants?${qs.toString()}`;
   const res = await fetch(`${getApiBase()}${path}`, { headers: headers(opts.token), signal: opts.signal });
   const data = await parseJson<{ restaurants?: Restaurant[] }>(res, "Failed to load restaurants");

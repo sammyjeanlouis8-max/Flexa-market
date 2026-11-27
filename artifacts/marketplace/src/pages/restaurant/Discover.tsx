@@ -1,18 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
-import {
-  Bell,
-  ChefHat,
-  Cookie,
-  Filter,
-  MapPin,
-  Search,
-  Store,
-  Truck,
-  UtensilsCrossed,
-  Soup,
-} from "lucide-react";
+import { Filter, MapPin, Search } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { RestaurantEmpty, RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import { RestaurantPageGate } from "@/components/restaurant/RestaurantPageGate";
@@ -24,24 +13,6 @@ import {
 } from "@/lib/restaurantApi";
 import { SUPPORTED_COUNTRIES } from "@/lib/countries";
 import { cn } from "@/lib/utils";
-
-const CATEGORY_ICONS: Record<string, typeof Store> = {
-  all: UtensilsCrossed,
-  traditional: Store,
-  home_kitchen: ChefHat,
-  food_truck: Truck,
-  bakery: Cookie,
-  catering: Soup,
-};
-
-const CATEGORY_COLORS: Record<string, string> = {
-  all: "bg-[hsl(152,55%,28%)] text-white",
-  traditional: "text-red-600",
-  home_kitchen: "text-[hsl(152,55%,32%)]",
-  food_truck: "text-orange-500",
-  bakery: "text-amber-700",
-  catering: "text-[hsl(152,45%,35%)]",
-};
 
 export default function RestaurantDiscover({
   embedded,
@@ -73,13 +44,15 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
   const [pickup, setPickup] = useState(false);
   const [delivery, setDelivery] = useState(false);
   const [topRated, setTopRated] = useState(false);
-  const [sortBy, setSortBy] = useState<"rating" | "distance" | "name">("rating");
+  const [sortBy, setSortBy] = useState<"rating" | "distance" | "name">("distance");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
+  const [geoDenied, setGeoDenied] = useState(false);
   const [rows, setRows] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedQ(q.trim()), 250);
@@ -91,21 +64,42 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
   }, [user?.country, country]);
 
   useEffect(() => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      setGeoDenied(true);
+      return;
+    }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLat(pos.coords.latitude);
         setLng(pos.coords.longitude);
+        setGeoDenied(false);
       },
-      () => undefined,
+      () => setGeoDenied(true),
       { enableHighAccuracy: false, timeout: 8000 },
     );
+  }, []);
+
+  // Refresh availability when returning to the tab/app.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") setReloadToken((n) => n + 1);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     const fulfillment = pickup && !delivery ? "pickup" : delivery && !pickup ? "delivery" : undefined;
+    const effectiveSort =
+      lat != null && lng != null && sortBy === "distance"
+        ? "distance"
+        : sortBy === "name"
+          ? "name"
+          : sortBy === "distance"
+            ? "rating"
+            : sortBy;
     fetchRestaurants({
       q: debouncedQ || undefined,
       country: country || undefined,
@@ -114,9 +108,11 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
       topRated: topRated || undefined,
       fulfillment,
       menuPreview: true,
+      nearby: lat != null && lng != null,
+      radiusKm: lat != null && lng != null ? 40 : undefined,
       lat: lat ?? undefined,
       lng: lng ?? undefined,
-      sortBy: lat != null && lng != null && sortBy === "distance" ? "distance" : sortBy === "name" ? "name" : "rating",
+      sortBy: effectiveSort,
       status: "published",
       limit: 48,
     })
@@ -129,7 +125,15 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
       .catch((err: Error) => {
         if (!cancelled) {
           setRows([]);
-          setError(err.message);
+          // Never show raw Internal server error / SQL to customers.
+          const raw = String(err?.message || "");
+          if (/401|unauthorized/i.test(raw)) {
+            setError("auth");
+          } else if (/403|restricted|disabled|preview|country/i.test(raw)) {
+            setError("restricted");
+          } else {
+            setError("load");
+          }
         }
       })
       .finally(() => {
@@ -138,16 +142,8 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQ, country, businessType, openNow, pickup, delivery, topRated, sortBy, lat, lng]);
+  }, [debouncedQ, country, businessType, openNow, pickup, delivery, topRated, sortBy, lat, lng, reloadToken]);
 
-  const featured = useMemo(
-    () => rows.filter((r) => r.avgRating >= 4.5).slice(0, 8),
-    [rows],
-  );
-  const availableNow = useMemo(
-    () => rows.filter((r) => r.openNow || r.isOpenNow),
-    [rows],
-  );
   const bannerCopy = useMemo(() => {
     if (businessType === "home_kitchen") {
       return {
@@ -165,42 +161,54 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
         }),
       };
     }
+    if (businessType === "bakery") {
+      return {
+        title: t("restaurant.bannerBakeryTitle", { defaultValue: "Bakeries" }),
+        body: t("restaurant.bannerBakeryBody", { defaultValue: "Fresh bread, pastries, and cakes nearby." }),
+      };
+    }
+    if (businessType === "catering") {
+      return {
+        title: t("restaurant.bannerCateringTitle", { defaultValue: "Catering" }),
+        body: t("restaurant.bannerCateringBody", { defaultValue: "Professional buffets for your next event." }),
+      };
+    }
     return {
       title: t("restaurant.bannerAllTitle", { defaultValue: "Discover Local Restaurants" }),
       body: t("restaurant.bannerAllBody", { defaultValue: "Order or reserve meals — zero Flexa commission." }),
     };
   }, [businessType, t]);
 
-  const sectionTitle =
-    businessType === "all"
-      ? t("restaurant.nearYou", { defaultValue: "Restaurants Near You" })
-      : t(`restaurant.${businessTypeLabelSection(businessType)}`, {
-          defaultValue: "Establishments Near You",
-        });
+  const sectionTitle = t("restaurant.nearYouShort", { defaultValue: "Near You" });
+
+  const friendlyError =
+    error === "auth"
+      ? t("restaurant.authRequired", { defaultValue: "Sign in to browse Flexa Restaurant (staff preview)." })
+      : error === "restricted"
+        ? t("restaurant.accessRestricted", {
+            defaultValue: "Flexa Restaurant is not available for this location or account.",
+          })
+        : error
+          ? t("restaurant.loadErrorNearby", {
+              defaultValue: "Unable to load nearby businesses. Please try again.",
+            })
+          : null;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Location + search */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            className="inline-flex max-w-[70%] items-center gap-1.5 text-sm font-semibold text-[hsl(152,40%,22%)]"
-            onClick={() => setShowFilters((v) => !v)}
-          >
-            <MapPin className="h-4 w-4 text-[hsl(152,55%,32%)]" />
-            <span className="truncate">
-              {country || t("restaurant.chooseLocation", { defaultValue: "Choose location" })}
-            </span>
-          </button>
-          <Link
-            href="/restaurant/my-orders"
-            className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white text-[hsl(152,45%,28%)] shadow-sm"
-            aria-label={t("restaurant.notifications", { defaultValue: "Notifications" })}
-          >
-            <Bell className="h-4 w-4" />
-          </Link>
-        </div>
+        <button
+          type="button"
+          className="inline-flex max-w-full items-center gap-1.5 text-sm font-semibold text-[hsl(152,40%,22%)]"
+          onClick={() => setShowFilters((v) => !v)}
+        >
+          <MapPin className="h-4 w-4 text-[hsl(152,55%,32%)]" />
+          <span className="truncate">
+            {country || t("restaurant.chooseLocation", { defaultValue: "Choose location" })}
+            {geoDenied ? ` · ${t("restaurant.locationManual", { defaultValue: "manual location" })}` : ""}
+          </span>
+        </button>
 
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -251,34 +259,36 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
         )}
       </div>
 
-      {/* Categories */}
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" data-testid="restaurant-categories">
+      {/* Photographic categories */}
+      <div className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1 scrollbar-thin" data-testid="restaurant-categories">
         {BUSINESS_TYPES.map((cat) => {
-          const Icon = CATEGORY_ICONS[cat.id] || UtensilsCrossed;
           const active = businessType === cat.id;
           const dedicatedHref =
             cat.id === "traditional" ? "/restaurant/restaurants"
               : cat.id === "food_truck" ? "/restaurant/food-trucks"
                 : cat.id === "home_kitchen" ? "/restaurant/home-kitchens"
-                  : cat.id === "all" ? "/restaurant" : null;
+                  : cat.id === "bakery" ? "/restaurant/bakeries"
+                    : cat.id === "catering" ? "/restaurant/catering"
+                      : cat.id === "all" ? "/restaurant" : null;
           const className = cn(
-            "flex w-[76px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-2 py-2.5 text-center transition",
+            "flex w-[78px] shrink-0 flex-col items-center gap-1.5 rounded-2xl px-1.5 py-2 text-center transition",
             active
-              ? "border-[hsl(152,50%,40%)] bg-[hsl(152,55%,28%)] text-white shadow-md"
-              : "border-black/5 bg-white text-[hsl(152,25%,20%)] shadow-sm",
+              ? "bg-[hsl(152,55%,28%)] text-white shadow-md"
+              : "bg-white text-[hsl(152,25%,20%)] shadow-sm border border-black/5",
           );
           const inner = (
             <>
-              <span
-                className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-xl",
-                  active ? "bg-white/15" : "bg-[hsl(152,30%,96%)]",
-                  !active && CATEGORY_COLORS[cat.id],
-                )}
-              >
-                <Icon className="h-5 w-5" />
+              <span className="relative h-[58px] w-[58px] overflow-hidden rounded-xl bg-[hsl(152,20%,92%)] ring-1 ring-black/5">
+                <img
+                  src={cat.photo}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  width={58}
+                  height={58}
+                />
               </span>
-              <span className="text-[10px] font-bold leading-tight">
+              <span className={cn("text-[11px] font-bold leading-tight", active ? "text-white" : "text-[hsl(152,40%,22%)]")}>
                 {t(cat.labelKey, { defaultValue: cat.id })}
               </span>
             </>
@@ -305,76 +315,12 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
       </div>
 
       {/* Promo banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-[hsl(152,55%,18%)] text-white shadow-md">
-        <div className="absolute inset-0 opacity-30">
-          <div className="h-full w-full bg-[radial-gradient(circle_at_80%_30%,rgba(255,255,255,0.35),transparent_55%)]" />
-        </div>
-        <div className="relative flex items-center gap-3 p-4 sm:p-5">
-          <div className="min-w-0 flex-1">
-            <p className="text-lg font-extrabold tracking-tight sm:text-xl">{bannerCopy.title}</p>
-            <p className="mt-1 text-sm text-white/80">{bannerCopy.body}</p>
-          </div>
-          <span className="hidden h-20 w-20 shrink-0 items-center justify-center rounded-full bg-white/10 sm:flex">
-            <ChefHat className="h-10 w-10" />
-          </span>
-        </div>
+      <div className="relative overflow-hidden rounded-2xl bg-[hsl(152,55%,18%)] px-4 py-4 text-white shadow-md sm:px-5 sm:py-5">
+        <p className="text-lg font-extrabold tracking-tight sm:text-xl">{bannerCopy.title}</p>
+        <p className="mt-1 text-sm text-white/80">{bannerCopy.body}</p>
       </div>
 
-      {/* Featured strip */}
-      {featured.length > 0 && businessType === "all" && (
-        <section>
-          <div className="mb-2 flex items-end justify-between">
-            <h2 className="text-base font-extrabold tracking-tight">{t("restaurant.featured", { defaultValue: "Featured" })}</h2>
-            <span className="text-xs font-semibold text-[hsl(152,55%,28%)]">{featured.length}</span>
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-1">
-            {featured.map((r) => (
-              <Link
-                key={r.id}
-                href={`/restaurant/${r.id}`}
-                className="w-[220px] shrink-0 overflow-hidden rounded-2xl border border-black/5 bg-white shadow-sm"
-              >
-                <div className="h-28 bg-[hsl(152,25%,92%)]">
-                  {(r.coverUrl || r.menuPreview?.[0]?.photos?.[0]) && (
-                    <img
-                      src={r.coverUrl || r.menuPreview![0].photos[0]}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  )}
-                </div>
-                <div className="p-3">
-                  <p className="truncate text-sm font-extrabold">{r.name}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {r.avgRating > 0 ? `★ ${r.avgRating.toFixed(1)}` : typeLabel(r.businessType, t)}
-                    {r.cuisineTags?.[0] ? ` · ${r.cuisineTags[0]}` : ""}
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Available now */}
-      {availableNow.length > 0 && businessType === "all" && !openNow && (
-        <section>
-          <div className="mb-2 flex items-end justify-between">
-            <h2 className="text-base font-extrabold tracking-tight">{t("restaurant.availableNowSection", { defaultValue: "Available Now" })}</h2>
-            <button type="button" className="text-xs font-bold text-[hsl(152,55%,28%)]" onClick={() => setOpenNow(true)}>
-              {t("restaurant.seeAll", { defaultValue: "See all" })} ({availableNow.length})
-            </button>
-          </div>
-          <div className="space-y-3">
-            {availableNow.slice(0, 3).map((r) => (
-              <RestaurantCard key={`open-${r.id}`} restaurant={r} compact />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Main list */}
+      {/* Main list — Near You */}
       <section>
         <div className="mb-3 flex items-end justify-between gap-2">
           <h2 className="text-base font-extrabold tracking-tight sm:text-lg">
@@ -383,6 +329,14 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
               <span className="ml-1.5 text-sm font-semibold text-muted-foreground">({rows.length})</span>
             ) : null}
           </h2>
+          <Link
+            href={`/restaurant/map${country ? `?country=${encodeURIComponent(country)}` : ""}`}
+            className="inline-flex items-center gap-1 text-xs font-bold text-[hsl(152,55%,28%)]"
+            data-testid="restaurant-view-map"
+          >
+            <MapPin className="h-3.5 w-3.5" />
+            {t("restaurant.viewMap", { defaultValue: "View Map" })}
+          </Link>
         </div>
 
         {loading ? (
@@ -392,53 +346,35 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
             <RestaurantCardSkeleton />
           </div>
         ) : error ? (
-          <div className="rounded-2xl border border-destructive/20 bg-white p-5 shadow-sm">
-            <p className="text-sm font-bold text-destructive">
-              {/403|restricted|disabled|preview|country/i.test(error)
-                ? t("restaurant.accessRestricted", {
-                    defaultValue: "Flexa Restaurant is not available for this location or account.",
-                  })
-                : t("restaurant.loadError", {
-                    defaultValue: "We could not load restaurants. Please try again.",
-                  })}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">{error}</p>
+          <div className="rounded-2xl border border-destructive/15 bg-white p-5 shadow-sm" data-testid="restaurant-discover-error">
+            <p className="text-sm font-bold text-[hsl(0,55%,40%)]">{friendlyError}</p>
             <button
               type="button"
               className="mt-4 rounded-full bg-[hsl(152,55%,28%)] px-4 py-2 text-sm font-bold text-white"
-              onClick={() => {
-                setError(null);
-                setLoading(true);
-                fetchRestaurants({
-                  q: debouncedQ || undefined,
-                  country: country || undefined,
-                  businessType: businessType === "all" ? undefined : businessType,
-                  openNow: openNow || undefined,
-                  topRated: topRated || undefined,
-                  fulfillment: pickup && !delivery ? "pickup" : delivery && !pickup ? "delivery" : undefined,
-                  menuPreview: true,
-                  lat: lat ?? undefined,
-                  lng: lng ?? undefined,
-                  sortBy: lat != null && lng != null && sortBy === "distance" ? "distance" : sortBy === "name" ? "name" : "rating",
-                  status: "published",
-                  limit: 48,
-                })
-                  .then((list) => { setRows(list); setError(null); })
-                  .catch((err: Error) => { setRows([]); setError(err.message); })
-                  .finally(() => setLoading(false));
-              }}
+              onClick={() => setReloadToken((n) => n + 1)}
             >
               {t("common.retry", { defaultValue: "Retry" })}
             </button>
           </div>
         ) : rows.length === 0 ? (
           <RestaurantEmpty
-            title={t("restaurant.emptyTitle")}
-            body={t("restaurant.emptyBody")}
+            title={t("restaurant.emptyNearbyTitle", { defaultValue: "No businesses found near you." })}
+            body={t("restaurant.emptyNearbyBody", {
+              defaultValue: "Try another location, expand your search, or add your kitchen.",
+            })}
             action={
-              <Link href="/restaurant/add" className="rounded-full bg-[hsl(152,55%,28%)] px-4 py-2 text-sm font-bold text-white">
-                {t("restaurant.addRestaurant")}
-              </Link>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-full border border-[hsl(152,40%,70%)] px-4 py-2 text-sm font-bold text-[hsl(152,55%,28%)]"
+                  onClick={() => setShowFilters(true)}
+                >
+                  {t("restaurant.changeLocation", { defaultValue: "Change location" })}
+                </button>
+                <Link href="/restaurant/add" className="rounded-full bg-[hsl(152,55%,28%)] px-4 py-2 text-sm font-bold text-white">
+                  {t("restaurant.addRestaurant")}
+                </Link>
+              </div>
             }
           />
         ) : (
@@ -480,18 +416,3 @@ function FilterChip({
   );
 }
 
-function businessTypeLabelSection(type: string) {
-  const map: Record<string, string> = {
-    traditional: "nearYouRestaurants",
-    home_kitchen: "nearYouHomeKitchens",
-    food_truck: "nearYouFoodTrucks",
-    bakery: "nearYouBakeries",
-    catering: "nearYouCatering",
-  };
-  return map[type] || "nearYou";
-}
-
-function typeLabel(type: string, t: (k: string, o?: Record<string, unknown>) => string) {
-  const key = BUSINESS_TYPES.find((b) => b.id === type)?.labelKey || "restaurant.catRestaurants";
-  return t(key);
-}

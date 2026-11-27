@@ -215,6 +215,9 @@ const RestaurantDiscover             = lazy(() => import("@/pages/restaurant/Dis
 const RestaurantCategoryPage         = lazy(() => import("@/pages/restaurant/CategoryDiscover").then((m) => ({ default: m.RestaurantCategoryPage })));
 const FoodTruckCategoryPage          = lazy(() => import("@/pages/restaurant/CategoryDiscover").then((m) => ({ default: m.FoodTruckCategoryPage })));
 const HomeKitchenCategoryPage        = lazy(() => import("@/pages/restaurant/CategoryDiscover").then((m) => ({ default: m.HomeKitchenCategoryPage })));
+const BakeryCategoryPage             = lazy(() => import("@/pages/restaurant/CategoryDiscover").then((m) => ({ default: m.BakeryCategoryPage })));
+const CateringCategoryPage           = lazy(() => import("@/pages/restaurant/CategoryDiscover").then((m) => ({ default: m.CateringCategoryPage })));
+const RestaurantMapPage              = lazy(() => import("@/pages/restaurant/RestaurantMap"));
 const RestaurantDetail               = lazy(() => import("@/pages/restaurant/RestaurantDetail"));
 const RestaurantAdd                  = lazy(() => import("@/pages/restaurant/AddRestaurant"));
 const RestaurantOwnerDashboard       = lazy(() => import("@/pages/restaurant/OwnerDashboard"));
@@ -536,9 +539,12 @@ function LayoutRoutes() {
           <Route path="/restaurant/checkout" component={RestaurantCheckout} />
           <Route path="/restaurant/cart" component={RestaurantCart} />
           <Route path="/restaurant/discover" component={RestaurantDiscover} />
+          <Route path="/restaurant/map" component={RestaurantMapPage} />
           <Route path="/restaurant/restaurants" component={RestaurantCategoryPage} />
           <Route path="/restaurant/food-trucks" component={FoodTruckCategoryPage} />
           <Route path="/restaurant/home-kitchens" component={HomeKitchenCategoryPage} />
+          <Route path="/restaurant/bakeries" component={BakeryCategoryPage} />
+          <Route path="/restaurant/catering" component={CateringCategoryPage} />
           <Route path="/restaurant/:id" component={RestaurantDetail} />
           <Route path="/restaurant" component={FlexaRestaurant} />
           <Route path="/tv" component={FlexaTV} />

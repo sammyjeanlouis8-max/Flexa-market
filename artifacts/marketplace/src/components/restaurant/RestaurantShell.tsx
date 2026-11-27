@@ -7,32 +7,38 @@ import { cn } from "@/lib/utils";
 const TABS = [
   {
     href: "/restaurant",
-    labelKey: "restaurant.tabDiscover",
-    fallback: "Discover",
+    labelKey: "restaurant.tabHome",
+    fallback: "Home",
     icon: LayoutGrid,
     match: (p: string) =>
       p === "/restaurant"
       || p.startsWith("/restaurant/discover")
       || p.startsWith("/restaurant/search")
+      || p.startsWith("/restaurant/map")
+      || p.startsWith("/restaurant/restaurants")
+      || p.startsWith("/restaurant/food-trucks")
+      || p.startsWith("/restaurant/home-kitchens")
+      || p.startsWith("/restaurant/bakeries")
+      || p.startsWith("/restaurant/catering")
       || /^\/restaurant\/\d+/.test(p),
   },
   {
     href: "/restaurant/my-orders",
-    labelKey: "restaurant.tabMyOrders",
-    fallback: "My orders",
+    labelKey: "restaurant.tabOrders",
+    fallback: "Orders",
     icon: ShoppingBag,
     match: (p: string) => p.startsWith("/restaurant/my-orders"),
   },
   {
     href: "/restaurant/my-reservations",
-    labelKey: "restaurant.tabMyReservations",
-    fallback: "My reservations",
+    labelKey: "restaurant.tabReservations",
+    fallback: "Reservations",
     icon: CalendarClock,
     match: (p: string) => p.startsWith("/restaurant/my-reservations"),
   },
   {
     href: "/restaurant/owner",
-    labelKey: "restaurant.tabOwner",
+    labelKey: "restaurant.tabMyRestaurant",
     fallback: "My restaurant",
     icon: UtensilsCrossed,
     match: (p: string) =>

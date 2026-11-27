@@ -18,6 +18,7 @@ import { apiPatch } from "@/lib/api";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { cn } from "@/lib/utils";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
+import { canAccessRestaurant } from "@/lib/restaurantAccess";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function DarkModeToggle({ className }: { className?: string }) {
@@ -245,6 +246,7 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
   const isApprovedDriver = driverStatus === "approved";
   const canSeeSellerTools = !!user;
   const canSeeWholesale = canAccessWholesale(user);
+  const canSeeRestaurant = canAccessRestaurant(user);
 
   const applyLabel =
     driverStatus === "approved" ? t("nav.driverApproved") :
@@ -269,13 +271,15 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
               accent: "emerald" as const,
             } as NavItem]
           : []),
-        {
-          icon: UtensilsCrossed,
-          label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
-          href: "/restaurant",
-          testId: "drawer-flexa-restaurant",
-          accent: "emerald" as const,
-        } as NavItem,
+        ...(canSeeRestaurant
+          ? [{
+              icon: UtensilsCrossed,
+              label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
+              href: "/restaurant",
+              testId: "drawer-flexa-restaurant",
+              accent: "emerald" as const,
+            } as NavItem]
+          : []),
         { icon: LayoutGrid, label: t("nav.categories", { defaultValue: "Categories" }), href: "/search", testId: "drawer-categories" },
         { icon: Tag, label: t("nav.offersPromos", { defaultValue: "Offers & Promotions" }), href: "/offers", testId: "drawer-offers" },
         { icon: Sparkles, label: t("nav.flexaPicks", { defaultValue: "Flexa Picks" }), href: "/search?boosted=true", testId: "drawer-flexa-picks" },

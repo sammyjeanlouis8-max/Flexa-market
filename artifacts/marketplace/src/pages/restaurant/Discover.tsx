@@ -256,18 +256,19 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
         {BUSINESS_TYPES.map((cat) => {
           const Icon = CATEGORY_ICONS[cat.id] || UtensilsCrossed;
           const active = businessType === cat.id;
-          return (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setBusinessType(cat.id)}
-              className={cn(
-                "flex w-[76px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-2 py-2.5 text-center transition",
-                active
-                  ? "border-[hsl(152,50%,40%)] bg-[hsl(152,55%,28%)] text-white shadow-md"
-                  : "border-black/5 bg-white text-[hsl(152,25%,20%)] shadow-sm",
-              )}
-            >
+          const dedicatedHref =
+            cat.id === "traditional" ? "/restaurant/restaurants"
+              : cat.id === "food_truck" ? "/restaurant/food-trucks"
+                : cat.id === "home_kitchen" ? "/restaurant/home-kitchens"
+                  : cat.id === "all" ? "/restaurant" : null;
+          const className = cn(
+            "flex w-[76px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-2 py-2.5 text-center transition",
+            active
+              ? "border-[hsl(152,50%,40%)] bg-[hsl(152,55%,28%)] text-white shadow-md"
+              : "border-black/5 bg-white text-[hsl(152,25%,20%)] shadow-sm",
+          );
+          const inner = (
+            <>
               <span
                 className={cn(
                   "flex h-10 w-10 items-center justify-center rounded-xl",
@@ -280,6 +281,24 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
               <span className="text-[10px] font-bold leading-tight">
                 {t(cat.labelKey, { defaultValue: cat.id })}
               </span>
+            </>
+          );
+          if (dedicatedHref) {
+            return (
+              <Link key={cat.id} href={dedicatedHref} className={className} data-testid={`restaurant-cat-${cat.id}`}>
+                {inner}
+              </Link>
+            );
+          }
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setBusinessType(cat.id)}
+              className={className}
+              data-testid={`restaurant-cat-${cat.id}`}
+            >
+              {inner}
             </button>
           );
         })}
@@ -364,7 +383,39 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
           </h2>
         </div>
 
-        {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
+        {error && (
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <p className="text-sm text-destructive">{error}</p>
+            <button
+              type="button"
+              className="rounded-full border border-destructive/30 px-3 py-1 text-xs font-bold text-destructive"
+              onClick={() => {
+                setError(null);
+                setDebouncedQ((q) => q);
+                setLoading(true);
+                fetchRestaurants({
+                  q: debouncedQ || undefined,
+                  country: country || undefined,
+                  businessType: businessType === "all" ? undefined : businessType,
+                  openNow: openNow || undefined,
+                  topRated: topRated || undefined,
+                  fulfillment: pickup && !delivery ? "pickup" : delivery && !pickup ? "delivery" : undefined,
+                  menuPreview: true,
+                  lat: lat ?? undefined,
+                  lng: lng ?? undefined,
+                  sortBy: lat != null && lng != null && sortBy === "distance" ? "distance" : sortBy === "name" ? "name" : "rating",
+                  status: "published",
+                  limit: 48,
+                })
+                  .then((list) => { setRows(list); setError(null); })
+                  .catch((err: Error) => { setRows([]); setError(err.message); })
+                  .finally(() => setLoading(false));
+              }}
+            >
+              {t("common.retry", { defaultValue: "Retry" })}
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <div className="space-y-3">

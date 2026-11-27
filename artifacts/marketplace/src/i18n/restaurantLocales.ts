@@ -91,6 +91,7 @@ export const restaurantEn: RestaurantLocale = {
   foodSafetyQuiz: "Food safety quiz",
   foodSafetySubtitle: "Complete the article and quiz before publishing.",
   freeLaunchNote: "Free at launch — Flexa charges no commission and no mandatory subscription.",
+  staffPreviewOnly: "Flexa Restaurant is in Super Admin preview and is not publicly available yet.",
   identityBadgeNote: "Identity verified badge ≠ food safety certification.",
   homeKitchenPrivacy:
     "Home Kitchen — Fresh, homemade meals prepared in a clean and safe kitchen. Address kept private for your safety.",
@@ -246,6 +247,7 @@ export const restaurantHt: RestaurantLocale = {
   identityPrivacyBody:
     "Dokiman idantite yo stored prive epi ekip Flexa revize yo sèlman. Badj verifye idantite montre operatè a pase revizyon ID — li pa yon sètifikasyon sekirite manje leta.",
   freeLaunchNote: "Gratis nan lansman — Flexa pa pran komisyon ni abònman obligatwa.",
+  staffPreviewOnly: "Flexa Restaurant nan preview Super Admin epi li poko disponib pou piblik la.",
   identityBadgeNote: "Badj idantite verifye ≠ sètifikasyon sekirite manje.",
 };
 
@@ -285,6 +287,7 @@ export const restaurantFr: RestaurantLocale = {
   identityPrivacyBody:
     "Les pièces d'identité sont stockées en privé et vues uniquement par l'équipe Flexa. Le badge « identité vérifiée » n'est pas une certification sanitaire officielle.",
   freeLaunchNote: "Gratuit au lancement — aucune commission ni abonnement obligatoire.",
+  staffPreviewOnly: "Flexa Restaurant est en prévisualisation Super Admin et n’est pas encore public.",
   identityBadgeNote: "Identité vérifiée ≠ certification sécurité alimentaire.",
 };
 
@@ -324,5 +327,6 @@ export const restaurantEs: RestaurantLocale = {
   identityPrivacyBody:
     "Los documentos de identidad se guardan en privado y solo los revisa Flexa. La insignia de identidad verificada no es una certificación sanitaria del gobierno.",
   freeLaunchNote: "Gratis en el lanzamiento — sin comisión ni suscripción obligatoria.",
+  staffPreviewOnly: "Flexa Restaurant está en vista previa de Super Admin y aún no es público.",
   identityBadgeNote: "Identidad verificada ≠ certificación de seguridad alimentaria.",
 };

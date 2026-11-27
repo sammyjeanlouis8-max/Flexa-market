@@ -108,6 +108,28 @@ export default function AdminRestaurants() {
     }
   }
 
+  async function decideApplication(id: number, decision: string) {
+    const note =
+      decision === "rejected" || decision === "additional_info_required"
+        ? window.prompt("Note for the owner (required):")?.trim()
+        : undefined;
+    if ((decision === "rejected" || decision === "additional_info_required") && !note) return;
+    setBusy(`app-${id}-${decision}`);
+    try {
+      const res = await fetch(`/api/admin/restaurants/${id}/application`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ decision, note }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Application update failed");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!isAdminUser(user as any)) {
     return (
       <div className="mx-auto max-w-lg p-6">
@@ -193,23 +215,61 @@ export default function AdminRestaurants() {
           </h2>
           <ul className="mt-3 space-y-2">
             {restaurants.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2">
+              <li key={r.id} className="flex flex-col gap-2 rounded-xl border border-border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{r.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {r.city}, {r.country} · {r.status} · ID: {r.identityStatus}
                   </p>
                 </div>
-                {r.status !== "suspended" && (
-                  <button
-                    type="button"
-                    disabled={busy === `suspend-${r.id}`}
-                    onClick={() => suspend(r.id)}
-                    className="shrink-0 rounded-full border px-3 py-1 text-xs font-bold"
-                  >
-                    Suspend
-                  </button>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {["submitted", "under_review", "additional_info_required", "draft"].includes(r.status) && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        onClick={() => decideApplication(r.id, "under_review")}
+                        className="rounded-full border px-3 py-1 text-xs font-bold"
+                      >
+                        Review
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        onClick={() => decideApplication(r.id, "published")}
+                        className="rounded-full bg-[hsl(152,55%,28%)] px-3 py-1 text-xs font-bold text-white"
+                      >
+                        Approve & publish
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        onClick={() => decideApplication(r.id, "additional_info_required")}
+                        className="rounded-full border px-3 py-1 text-xs font-bold"
+                      >
+                        Need info
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        onClick={() => decideApplication(r.id, "rejected")}
+                        className="rounded-full border border-destructive/40 px-3 py-1 text-xs font-bold text-destructive"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                  {r.status !== "suspended" && (
+                    <button
+                      type="button"
+                      disabled={busy === `suspend-${r.id}`}
+                      onClick={() => suspend(r.id)}
+                      className="shrink-0 rounded-full border px-3 py-1 text-xs font-bold"
+                    >
+                      Suspend
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

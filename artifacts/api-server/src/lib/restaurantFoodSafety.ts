@@ -1,8 +1,8 @@
 /** Food safety article + quiz for Flexa Restaurant onboarding. */
 
-export const FOOD_SAFETY_ARTICLE_VERSION = "restaurant-food-safety-v1";
+export const FOOD_SAFETY_ARTICLE_VERSION = "restaurant-food-safety-v2-business-delivery";
 
-export const FOOD_SAFETY_PASS_SCORE = 4;
+export const FOOD_SAFETY_PASS_SCORE = 5;
 
 export type FoodSafetyQuestion = {
   id: string;
@@ -47,7 +47,16 @@ export const FOOD_SAFETY_ARTICLE_SECTIONS = [
     titleKey: "restaurant.safety.suspensionTitle",
     bodyKey: "restaurant.safety.suspensionBody",
   },
+  {
+    id: "businessDelivery",
+    titleKey: "restaurant.safety.businessDeliveryTitle",
+    bodyKey: "restaurant.safety.businessDeliveryBody",
+  },
 ] as const;
+
+/** Explicit business responsibility acknowledgment shown during onboarding / checkout. */
+export const FOOD_BUSINESS_RESPONSIBILITY_ACK =
+  "I acknowledge that my business is fully responsible for food preparation, hygiene, safe packaging, allergen disclosure, temperature control, food transportation, delivery personnel, applicable licenses and permits, and customer delivery complaints. Flexa Driver never transports Flexa Restaurant food orders.";
 
 export const FOOD_SAFETY_QUESTIONS: FoodSafetyQuestion[] = [
   {
@@ -102,6 +111,17 @@ export const FOOD_SAFETY_QUESTIONS: FoodSafetyQuestion[] = [
       { id: "b", label: "Serious hygiene or food safety complaints under investigation" },
       { id: "c", label: "Temporarily closing for vacation" },
       { id: "d", label: "Changing a dish photo" },
+    ],
+    correctChoiceId: "b",
+  },
+  {
+    id: "q6",
+    prompt: "Who delivers Flexa Restaurant food orders?",
+    choices: [
+      { id: "a", label: "Flexa Driver always delivers restaurant food" },
+      { id: "b", label: "The business delivers or the customer picks up — Flexa Driver never transports restaurant food" },
+      { id: "c", label: "Any marketplace courier can accept the job" },
+      { id: "d", label: "Only Super Admin drivers" },
     ],
     correctChoiceId: "b",
   },

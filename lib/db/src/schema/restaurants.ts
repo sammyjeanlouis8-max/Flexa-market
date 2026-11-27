@@ -54,6 +54,8 @@ export const restaurantsTable = pgTable("restaurants", {
   foodSafetyQuizScore: integer("food_safety_quiz_score"),
   foodSafetyCompletedAt: timestamp("food_safety_completed_at", { withTimezone: true }),
   termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  /** Owner acknowledged food prep / delivery / permit responsibility (not Flexa Driver). */
+  foodResponsibilityAcceptedAt: timestamp("food_responsibility_accepted_at", { withTimezone: true }),
   /** Future paid plan hook — always free while this is false / null. */
   subscriptionPlan: text("subscription_plan").notNull().default("free"),
   subscriptionEnforced: boolean("subscription_enforced").notNull().default(false),
@@ -124,12 +126,23 @@ export const restaurantDeliverySettingsTable = pgTable("restaurant_delivery_sett
   /** pickup | delivery | both */
   fulfillment: text("fulfillment").notNull().default("pickup"),
   deliveryFee: real("delivery_fee").notNull().default(0),
+  /** Integer minor units (preferred). Legacy float columns kept for back-compat. */
+  deliveryFeeMinor: integer("delivery_fee_minor").notNull().default(0),
   deliveryZones: text("delivery_zones").array().notNull().default([]),
+  /** Delivery radius in kilometers (business-managed). */
+  deliveryRadiusKm: real("delivery_radius_km").notNull().default(5),
   minOrderAmount: real("min_order_amount").notNull().default(0),
+  minOrderAmountMinor: integer("min_order_amount_minor").notNull().default(0),
+  estimatedPrepMinutes: integer("estimated_prep_minutes").notNull().default(30),
   estimatedDeliveryMinutes: integer("estimated_delivery_minutes").notNull().default(45),
   deliveryInstructions: text("delivery_instructions").notNull().default(""),
   freeDeliveryMin: real("free_delivery_min"),
-  /** Owner-managed delivery — never Flexa Market drivers. */
+  freeDeliveryMinMinor: integer("free_delivery_min_minor"),
+  pickupAvailable: boolean("pickup_available").notNull().default(true),
+  deliveryAvailable: boolean("delivery_available").notNull().default(false),
+  /** Temporary suspension of delivery only (pickup may remain). */
+  deliverySuspended: boolean("delivery_suspended").notNull().default(false),
+  /** Owner-managed delivery — never Flexa Market / Flexa Driver. */
   ownerManagedDelivery: boolean("owner_managed_delivery").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -155,6 +168,7 @@ export const restaurantDishModelsTable = pgTable("restaurant_dish_models", {
   description: text("description").notNull().default(""),
   photos: text("photos").array().notNull().default([]),
   price: real("price").notNull(),
+  priceMinor: integer("price_minor").notNull().default(0),
   currency: text("currency").notNull().default("USD"),
   category: text("category"),
   ingredients: text("ingredients").notNull().default(""),
@@ -169,6 +183,35 @@ export const restaurantDishModelsTable = pgTable("restaurant_dish_models", {
 }, (t) => ({
   restaurantIdx: index("restaurant_dish_models_restaurant_idx").on(t.restaurantId),
 }));
+
+/** Size / topping / extra groups for a dish model. */
+export const restaurantDishOptionGroupsTable = pgTable("restaurant_dish_option_groups", {
+  id: serial("id").primaryKey(),
+  dishModelId: integer("dish_model_id").notNull().references(() => restaurantDishModelsTable.id, { onDelete: "cascade" }),
+  restaurantId: integer("restaurant_id").notNull().references(() => restaurantsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** size | variant | topping | extra | other */
+  kind: text("kind").notNull().default("extra"),
+  required: boolean("required").notNull().default(false),
+  minSelect: integer("min_select").notNull().default(0),
+  maxSelect: integer("max_select").notNull().default(1),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  dishIdx: index("restaurant_dish_option_groups_dish_idx").on(t.dishModelId),
+}));
+
+export const restaurantDishOptionsTable = pgTable("restaurant_dish_options", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull().references(() => restaurantDishOptionGroupsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  priceDelta: real("price_delta").notNull().default(0),
+  priceDeltaMinor: integer("price_delta_minor").notNull().default(0),
+  soldOut: boolean("sold_out").notNull().default(false),
+  allergens: text("allergens").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isDeleted: boolean("is_deleted").notNull().default(false),
+});
 
 export const restaurantDailyMenusTable = pgTable("restaurant_daily_menus", {
   id: serial("id").primaryKey(),
@@ -189,6 +232,7 @@ export const restaurantDailyMenuItemsTable = pgTable("restaurant_daily_menu_item
   description: text("description").notNull().default(""),
   photos: text("photos").array().notNull().default([]),
   price: real("price").notNull(),
+  priceMinor: integer("price_minor").notNull().default(0),
   currency: text("currency").notNull().default("USD"),
   category: text("category"),
   ingredients: text("ingredients").notNull().default(""),
@@ -213,18 +257,34 @@ export const restaurantOrdersTable = pgTable("restaurant_orders", {
   id: serial("id").primaryKey(),
   restaurantId: integer("restaurant_id").notNull().references(() => restaurantsTable.id),
   customerId: integer("customer_id").notNull().references(() => usersTable.id),
-  /** pending | accepted | rejected | preparing | ready_pickup | out_for_delivery | completed | cancelled */
-  status: text("status").notNull().default("pending"),
+  /**
+   * pending_payment | order_placed | confirmed | preparing | ready_for_pickup |
+   * out_for_delivery | delivered | completed | rejected | canceled | refund_pending | refunded
+   */
+  status: text("status").notNull().default("pending_payment"),
   fulfillment: text("fulfillment").notNull().default("pickup"),
   subtotal: real("subtotal").notNull().default(0),
   deliveryFee: real("delivery_fee").notNull().default(0),
   total: real("total").notNull().default(0),
+  subtotalMinor: integer("subtotal_minor").notNull().default(0),
+  deliveryFeeMinor: integer("delivery_fee_minor").notNull().default(0),
+  totalMinor: integer("total_minor").notNull().default(0),
   currency: text("currency").notNull().default("USD"),
   specialInstructions: text("special_instructions").notNull().default(""),
   deliveryAddress: text("delivery_address"),
   idempotencyKey: text("idempotency_key"),
-  /** Payment stays between customer and restaurant during free launch. */
-  paymentNote: text("payment_note").notNull().default("Pay restaurant directly — Flexa charges no commission."),
+  /** Stripe PaymentIntent id when checkout is used. */
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  /** pending | requires_payment | paid | failed | refunded | partially_refunded */
+  paymentStatus: text("payment_status").notNull().default("pending"),
+  /** Customer confirmation PIN for pickup / business-managed delivery (never Flexa Driver). */
+  confirmationPin: text("confirmation_pin"),
+  pinConfirmedAt: timestamp("pin_confirmed_at", { withTimezone: true }),
+  estimatedPrepMinutes: integer("estimated_prep_minutes"),
+  /** Always business-managed — Flexa Driver must never transport these orders. */
+  usesFlexaDrivers: boolean("uses_flexa_drivers").notNull().default(false),
+  platformCommissionMinor: integer("platform_commission_minor").notNull().default(0),
+  paymentNote: text("payment_note").notNull().default("Delivery is managed directly by this business. Flexa charges no commission at launch."),
   rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -233,6 +293,7 @@ export const restaurantOrdersTable = pgTable("restaurant_orders", {
   customerIdx: index("restaurant_orders_customer_idx").on(t.customerId),
   statusIdx: index("restaurant_orders_status_idx").on(t.status),
   idempotencyIdx: uniqueIndex("restaurant_orders_idempotency").on(t.idempotencyKey),
+  stripePiIdx: index("restaurant_orders_stripe_pi_idx").on(t.stripePaymentIntentId),
 }));
 
 export const restaurantOrderItemsTable = pgTable("restaurant_order_items", {
@@ -242,9 +303,13 @@ export const restaurantOrderItemsTable = pgTable("restaurant_order_items", {
   dishModelId: integer("dish_model_id").references(() => restaurantDishModelsTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   unitPrice: real("unit_price").notNull(),
+  unitPriceMinor: integer("unit_price_minor").notNull().default(0),
   quantity: integer("quantity").notNull(),
   lineTotal: real("line_total").notNull(),
+  lineTotalMinor: integer("line_total_minor").notNull().default(0),
   notes: text("notes").notNull().default(""),
+  /** Selected options snapshot: [{groupId, optionId, name, priceDeltaMinor}] */
+  customizations: jsonb("customizations").$type<Array<Record<string, unknown>>>().notNull().default([]),
 });
 
 export const restaurantReservationsTable = pgTable("restaurant_reservations", {

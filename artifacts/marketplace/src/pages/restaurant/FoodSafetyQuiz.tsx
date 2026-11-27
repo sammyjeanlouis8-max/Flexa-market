@@ -69,6 +69,7 @@ const ARTICLE_FALLBACK: QuizSection[] = [
   { id: "allergens", titleKey: "restaurant.safety.allergensTitle", bodyKey: "restaurant.safety.allergensBody" },
   { id: "permits", titleKey: "restaurant.safety.permitsTitle", bodyKey: "restaurant.safety.permitsBody" },
   { id: "suspension", titleKey: "restaurant.safety.suspensionTitle", bodyKey: "restaurant.safety.suspensionBody" },
+  { id: "businessDelivery", titleKey: "restaurant.safety.businessDeliveryTitle", bodyKey: "restaurant.safety.businessDeliveryBody" },
 ];
 
 export default function FoodSafetyQuiz() {
@@ -81,6 +82,7 @@ export default function FoodSafetyQuiz() {
   const [questions, setQuestions] = useState<QuizQ[]>(FALLBACK_QUESTIONS);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [terms, setTerms] = useState(false);
+  const [responsibility, setResponsibility] = useState(false);
   const [readDone, setReadDone] = useState(false);
   const [incorrect, setIncorrect] = useState<string[]>([]);
   const [result, setResult] = useState<string | null>(null);
@@ -104,7 +106,7 @@ export default function FoodSafetyQuiz() {
   }, []);
 
   async function onSubmit() {
-    if (!restaurantId || !terms || !readDone) return;
+    if (!restaurantId || !terms || !responsibility || !readDone) return;
     setSubmitting(true);
     setResult(null);
     try {
@@ -112,6 +114,7 @@ export default function FoodSafetyQuiz() {
         articleVersion,
         answers,
         termsAccepted: true,
+        foodResponsibilityAccepted: true,
       }) as { passed: boolean; score: number; incorrect?: string[] };
       setIncorrect(res.incorrect ?? []);
       setResult(
@@ -155,7 +158,9 @@ export default function FoodSafetyQuiz() {
                               ? "Disclose ingredients and allergens accurately. Never hide major allergens."
                               : s.id === "permits"
                                 ? "Follow local food-business permits and regulations where you operate."
-                                : "Unsafe food, hygiene failures, fraud, or serious complaints may lead to suspension.",
+                                : s.id === "businessDelivery"
+                                  ? "You—not Flexa Driver—prepare, package, transport, and deliver food. Customers may pick up or you deliver with your own staff. Confirm handoff with the order PIN."
+                                  : "Unsafe food, hygiene failures, fraud, or serious complaints may lead to suspension.",
                 })}
               </p>
             </article>
@@ -193,9 +198,18 @@ export default function FoodSafetyQuiz() {
             <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-1" />
             <span>I accept the Flexa Restaurant food safety and platform rules.</span>
           </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" checked={responsibility} onChange={(e) => setResponsibility(e.target.checked)} className="mt-1" />
+            <span>
+              {t("restaurant.foodResponsibilityAck", {
+                defaultValue:
+                  "I acknowledge my business is responsible for food prep, hygiene, packaging, allergens, temperature control, transportation, delivery staff, permits, and delivery complaints. Flexa Driver does not deliver restaurant food.",
+              })}
+            </span>
+          </label>
           <button
             type="button"
-            disabled={submitting || !terms || !readDone || !restaurantId}
+            disabled={submitting || !terms || !responsibility || !readDone || !restaurantId}
             onClick={onSubmit}
             className="rounded-full bg-[hsl(152,55%,28%)] px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
           >

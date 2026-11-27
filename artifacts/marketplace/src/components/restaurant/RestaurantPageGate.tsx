@@ -8,7 +8,7 @@ import { canAccessRestaurant, RESTAURANT_PUBLIC_LAUNCH } from "@/lib/restaurantA
 
 /**
  * Flexa Restaurant access gate.
- * While RESTAURANT_PUBLIC_LAUNCH is false, only Super Admin / Admin / Moderator may enter.
+ * While RESTAURANT_PUBLIC_LAUNCH is false, only Super Admin may enter.
  * Owner routes also require authentication.
  */
 export function RestaurantPageGate({
@@ -57,7 +57,7 @@ export function RestaurantPageGate({
     return (
       <div className="mx-auto max-w-lg px-4 py-10 text-sm text-muted-foreground" data-testid="restaurant-staff-only">
         {t("restaurant.staffPreviewOnly", {
-          defaultValue: "Flexa Restaurant is in Super Admin preview and is not publicly available yet.",
+          defaultValue: "Flexa Restaurant is in Super Admin preview only and is not publicly available yet.",
         })}
       </div>
     );

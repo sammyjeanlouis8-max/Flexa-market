@@ -26,9 +26,11 @@ import {
   businessTypeLabelKey,
   createRestaurantReservation,
   fetchDailyMenu,
+  fetchDishOptions,
   fetchRestaurant,
   formatMoney,
   type DailyMenuItem,
+  type DishOptionGroup,
   type Restaurant,
 } from "@/lib/restaurantApi";
 import { cartTotals, getRestaurantCart, upsertCartLine, type RestaurantCartState } from "@/lib/restaurantCart";
@@ -54,6 +56,11 @@ export default function RestaurantDetail() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [cart, setCart] = useState<RestaurantCartState | null>(null);
+  const [customizeItem, setCustomizeItem] = useState<DailyMenuItem | null>(null);
+  const [optionGroups, setOptionGroups] = useState<DishOptionGroup[]>([]);
+  const [selectedOptions, setSelectedOptions] = useState<Record<number, number[]>>({});
+  const [customizeNotes, setCustomizeNotes] = useState("");
+
 
   useEffect(() => {
     setCart(getRestaurantCart());
@@ -118,7 +125,53 @@ export default function RestaurantDetail() {
     restaurant?.deliveryFee || 0,
   );
 
-  function addToCart(item: DailyMenuItem, mode: "order" | "reserve") {
+  async function openCustomize(item: DailyMenuItem, mode: "order" | "reserve") {
+    if (!restaurant) return;
+    if (mode === "order" && !item.orderableNow) {
+      setActionMsg(t("restaurant.notOrderableNow", { defaultValue: "This meal is not available to order right now." }));
+      return;
+    }
+    if (!item.dishModelId) {
+      addToCart(item, mode);
+      return;
+    }
+    try {
+      const groups = await fetchDishOptions(restaurant.id, item.dishModelId);
+      if (!groups.length) {
+        addToCart(item, mode);
+        return;
+      }
+      setCustomizeItem(item);
+      setOptionGroups(groups);
+      const initial: Record<number, number[]> = {};
+      for (const g of groups) {
+        initial[g.id] = g.required && g.options[0] && !g.options[0].soldOut ? [g.options[0].id] : [];
+      }
+      setSelectedOptions(initial);
+    } catch {
+      addToCart(item, mode);
+    }
+  }
+
+  function toggleOption(group: DishOptionGroup, optionId: number) {
+    setSelectedOptions((prev) => {
+      const cur = prev[group.id] || [];
+      const multi = group.maxSelect > 1;
+      if (multi) {
+        const has = cur.includes(optionId);
+        let next = has ? cur.filter((id) => id !== optionId) : [...cur, optionId];
+        if (next.length > group.maxSelect) next = next.slice(-group.maxSelect);
+        return { ...prev, [group.id]: next };
+      }
+      return { ...prev, [group.id]: cur.includes(optionId) ? [] : [optionId] };
+    });
+  }
+
+  function addToCart(
+    item: DailyMenuItem,
+    mode: "order" | "reserve",
+    extras?: { optionIds?: number[]; optionLabels?: string[]; priceDelta?: number; notes?: string },
+  ) {
     if (!restaurant) return;
     if (mode === "order" && !item.orderableNow) {
       setActionMsg(t("restaurant.notOrderableNow", { defaultValue: "This meal is not available to order right now." }));
@@ -129,21 +182,54 @@ export default function RestaurantDetail() {
       {
         dailyMenuItemId: item.id,
         name: item.name,
-        price: item.price,
+        price: item.price + (extras?.priceDelta || 0),
         currency: item.currency,
         quantity: 1,
         photo: item.photos?.[0] || null,
         availableFrom: item.availableFrom,
         availableUntil: item.availableUntil,
+        optionIds: extras?.optionIds,
+        optionLabels: extras?.optionLabels,
+        notes: extras?.notes,
         mode,
       },
     );
     setCart(next);
+    setCustomizeItem(null);
+    setCustomizeNotes("");
     setActionMsg(
       mode === "reserve"
         ? t("restaurant.addedReserve", { defaultValue: "Added for reservation." })
         : t("restaurant.addedCart", { defaultValue: "Added to cart." }),
     );
+  }
+
+  function confirmCustomize() {
+    if (!customizeItem) return;
+    for (const g of optionGroups) {
+      const picked = selectedOptions[g.id] || [];
+      if (g.required && picked.length < Math.max(1, g.minSelect)) {
+        setActionMsg(t("restaurant.selectRequiredOptions", { defaultValue: `Select required options for ${g.name}` }));
+        return;
+      }
+      if (picked.length < g.minSelect) {
+        setActionMsg(t("restaurant.selectMinOptions", { defaultValue: `Select at least ${g.minSelect} for ${g.name}` }));
+        return;
+      }
+    }
+    const optionIds: number[] = [];
+    const optionLabels: string[] = [];
+    let priceDelta = 0;
+    for (const g of optionGroups) {
+      for (const oid of selectedOptions[g.id] || []) {
+        const opt = g.options.find((o) => o.id === oid);
+        if (!opt || opt.soldOut) continue;
+        optionIds.push(oid);
+        optionLabels.push(opt.name);
+        priceDelta += Number(opt.priceDelta) || 0;
+      }
+    }
+    addToCart(customizeItem, "order", { optionIds, optionLabels, priceDelta, notes: customizeNotes.trim() || undefined });
   }
 
   async function quickReserve(item: DailyMenuItem) {
@@ -452,7 +538,7 @@ export default function RestaurantDetail() {
                           {item.orderableNow && menuDate === "today" ? (
                             <button
                               type="button"
-                              onClick={() => addToCart(item, "order")}
+                              onClick={() => void openCustomize(item, "order")}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[hsl(152,55%,28%)] text-white"
                               aria-label={t("restaurant.addToCart", { defaultValue: "Add to cart" })}
                             >
@@ -463,7 +549,7 @@ export default function RestaurantDetail() {
                               type="button"
                               disabled={busyId === item.id}
                               onClick={() => {
-                                addToCart(item, "reserve");
+                                void openCustomize(item, "reserve");
                                 void quickReserve(item);
                               }}
                               className="inline-flex items-center gap-1 rounded-full border border-[hsl(152,40%,70%)] bg-[hsl(152,45%,96%)] px-3 py-1.5 text-[11px] font-bold text-[hsl(152,55%,28%)] disabled:opacity-60"
@@ -543,6 +629,68 @@ export default function RestaurantDetail() {
             </button>
           </div>
         </div>
+
+        {customizeItem && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
+            <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-xl">
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-extrabold">{customizeItem.name}</p>
+                  <p className="text-sm text-[hsl(152,55%,28%)]">{formatMoney(customizeItem.price, customizeItem.currency)}</p>
+                </div>
+                <button type="button" onClick={() => setCustomizeItem(null)} className="text-sm font-bold text-muted-foreground">
+                  {t("common.close", { defaultValue: "Close" })}
+                </button>
+              </div>
+              {customizeItem.allergens ? (
+                <p className="mb-2 text-xs text-muted-foreground">
+                  {t("restaurant.allergens")}: {customizeItem.allergens}
+                </p>
+              ) : null}
+              <div className="space-y-3">
+                {optionGroups.map((g) => (
+                  <fieldset key={g.id} className="rounded-xl border p-3">
+                    <legend className="px-1 text-sm font-bold">
+                      {g.name}{g.required ? " *" : ""}
+                    </legend>
+                    <div className="mt-1 space-y-1">
+                      {g.options.map((o) => (
+                        <label key={o.id} className={cn("flex items-center gap-2 text-sm", o.soldOut && "opacity-40")}>
+                          <input
+                            type={g.maxSelect > 1 ? "checkbox" : "radio"}
+                            name={`group-${g.id}`}
+                            disabled={o.soldOut}
+                            checked={(selectedOptions[g.id] || []).includes(o.id)}
+                            onChange={() => toggleOption(g, o.id)}
+                          />
+                          <span className="flex-1">{o.name}</span>
+                          {o.priceDelta ? (
+                            <span className="text-xs font-semibold">+{formatMoney(o.priceDelta, customizeItem.currency)}</span>
+                          ) : null}
+                          {o.soldOut ? <span className="text-[10px] uppercase">{t("restaurant.availSoldOut")}</span> : null}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                ))}
+              </div>
+              <textarea
+                className="mt-3 w-full rounded-xl border px-3 py-2 text-sm"
+                rows={2}
+                value={customizeNotes}
+                placeholder={t("restaurant.orderNotesPlaceholder")}
+                onChange={(e) => setCustomizeNotes(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={confirmCustomize}
+                className="mt-3 w-full rounded-2xl bg-[hsl(152,55%,28%)] py-3 text-sm font-extrabold text-white"
+              >
+                {t("restaurant.addToCart")}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </RestaurantPageGate>
   );

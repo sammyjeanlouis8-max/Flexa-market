@@ -32,16 +32,24 @@ describe("restaurants routes smoke", () => {
     expect(routes).toContain("requireRestaurantAccess");
     expect(routes).toContain("requireRestaurantAuthAccess");
     expect(routes).toContain("publicLaunch: RESTAURANT_PUBLIC_LAUNCH");
+    expect(routes).toContain("usesFlexaDrivers: false");
+    expect(routes).toContain("confirm-pin");
+    expect(routes).toContain("foodResponsibilityAccepted");
     expect(routes).toContain("At least one food image is required");
   });
 
   it("keeps delivery owner-managed and free launch flags", () => {
     expect(routes).toContain("ownerManagedDelivery: true");
     expect(routes).toContain("freeLaunch: true");
-    expect(routes).toContain("Pay the restaurant directly");
-    expect(routes).toContain("Delivery is arranged and managed by this restaurant.");
+    expect(routes).toContain("Delivery is managed directly by this business.");
     expect(routes).toContain("platformFees");
     expect(routes).toContain("commission: 0");
+  });
+
+  it("blocks Flexa Driver for restaurant food", () => {
+    const delivery = readFileSync(resolve(__dirname, "../routes/delivery.ts"), "utf8");
+    expect(delivery).toContain("Flexa Driver cannot transport Flexa Restaurant food orders");
+    expect(delivery).toContain("restaurantOrderId");
   });
 
   it("supports category discovery, menu preview, and food-truck location", () => {
@@ -74,5 +82,14 @@ describe("restaurant startup migrations", () => {
       expect(pos).toBeGreaterThan(-1);
       expect(pos).toBeLessThan(loopPos);
     }
+  });
+
+  it("registers money, options, PIN, and responsibility migrations", () => {
+    expect(migrations).toContain('name: "restaurant_money_and_options.v1"');
+    expect(migrations).toContain('name: "restaurant_money_backfill.v1"');
+    expect(migrations).toContain('name: "restaurant_food_responsibility.ack"');
+    expect(migrations).toContain("confirmation_pin");
+    expect(migrations).toContain("restaurant_dish_option_groups");
+    expect(migrations).toContain("food_responsibility_accepted_at");
   });
 });

@@ -143,12 +143,29 @@ export default function AddRestaurant() {
           </div>
         )}
         {step === 3 && (
-          <Link href="/restaurant/owner/food-safety" className="mt-4 inline-block text-sm font-semibold text-[hsl(152,55%,28%)]">
-            {t("restaurant.foodSafetyQuiz")}
-          </Link>
+          <div className="mt-4 space-y-3">
+            <RestaurantNotice>
+              {t("restaurant.foodResponsibilityAck")}
+            </RestaurantNotice>
+            <RestaurantNotice>
+              {t("restaurant.deliveryManagedByBusiness", {
+                defaultValue: "Delivery is managed directly by this business.",
+              })}
+            </RestaurantNotice>
+            <Link href="/restaurant/owner/food-safety" className="inline-block text-sm font-semibold text-[hsl(152,55%,28%)]">
+              {t("restaurant.foodSafetyQuiz")}
+            </Link>
+          </div>
         )}
         {step === 4 && (
-          <p className="mt-4 text-sm">{t("restaurant.stepPublishBody")}</p>
+          <div className="mt-4 space-y-2">
+            <p className="text-sm">{t("restaurant.stepPublishBody")}</p>
+            <RestaurantNotice>
+              {t("restaurant.driverPolicyNote", {
+                defaultValue: "Flexa Driver never transports Flexa Restaurant food orders.",
+              })}
+            </RestaurantNotice>
+          </div>
         )}
 
         {error && <p className="mt-2 text-sm text-destructive">{error}</p>}

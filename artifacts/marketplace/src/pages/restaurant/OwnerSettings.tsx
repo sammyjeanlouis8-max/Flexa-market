@@ -31,6 +31,10 @@ export default function OwnerSettings() {
   const [deliveryFee, setDeliveryFee] = useState("0");
   const [minOrder, setMinOrder] = useState("0");
   const [eta, setEta] = useState("45");
+  const [prep, setPrep] = useState("30");
+  const [radiusKm, setRadiusKm] = useState("5");
+  const [freeDeliveryMin, setFreeDeliveryMin] = useState("");
+  const [deliverySuspended, setDeliverySuspended] = useState(false);
   const [zones, setZones] = useState("");
   const [instructions, setInstructions] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
@@ -47,6 +51,10 @@ export default function OwnerSettings() {
         if (r.deliveryFee != null) setDeliveryFee(String(r.deliveryFee));
         if (r.minOrderAmount != null) setMinOrder(String(r.minOrderAmount));
         if (r.estimatedDeliveryMinutes != null) setEta(String(r.estimatedDeliveryMinutes));
+        if (r.estimatedPrepMinutes != null) setPrep(String(r.estimatedPrepMinutes));
+        if ((r as any).deliveryRadiusKm != null) setRadiusKm(String((r as any).deliveryRadiusKm));
+        if ((r as any).freeDeliveryMin != null) setFreeDeliveryMin(String((r as any).freeDeliveryMin));
+        if ((r as any).deliverySuspended != null) setDeliverySuspended(!!(r as any).deliverySuspended);
         if (r.deliveryZones?.length) setZones(r.deliveryZones.join(", "));
         if (r.hours?.length) {
           setHours(
@@ -84,10 +92,16 @@ export default function OwnerSettings() {
         deliveryFee: Number(deliveryFee) || 0,
         minOrderAmount: Number(minOrder) || 0,
         estimatedDeliveryMinutes: Number(eta) || 45,
+        estimatedPrepMinutes: Number(prep) || 30,
+        deliveryRadiusKm: Number(radiusKm) || 5,
+        freeDeliveryMin: freeDeliveryMin === "" ? undefined : Number(freeDeliveryMin),
+        deliverySuspended,
+        deliveryAvailable: fulfillment !== "pickup" && !deliverySuspended,
+        pickupAvailable: fulfillment !== "delivery",
         deliveryZones: zones.split(",").map((z) => z.trim()).filter(Boolean),
         deliveryInstructions:
-          instructions || "Restaurant manages its own delivery — not Flexa Market drivers.",
-      });
+          instructions || t("restaurant.deliveryManagedByBusiness", { defaultValue: "Delivery is managed directly by this business." }),
+      } as any);
       setMsg(t("restaurant.settingsSaved", { defaultValue: "Hours and delivery settings saved." }));
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Save failed");
@@ -190,8 +204,24 @@ export default function OwnerSettings() {
                   <input value={minOrder} onChange={(e) => setMinOrder(e.target.value)} className="w-full rounded-xl border px-3 py-2" />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block font-semibold">{t("restaurant.etaMinutes", { defaultValue: "Est. minutes" })}</span>
+                  <span className="mb-1 block font-semibold">{t("restaurant.etaMinutes", { defaultValue: "Est. delivery minutes" })}</span>
                   <input value={eta} onChange={(e) => setEta(e.target.value)} className="w-full rounded-xl border px-3 py-2" />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block font-semibold">{t("restaurant.estimatedPrepMinutes", { defaultValue: "Est. prep minutes" })}</span>
+                  <input value={prep} onChange={(e) => setPrep(e.target.value)} className="w-full rounded-xl border px-3 py-2" />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block font-semibold">{t("restaurant.deliveryRadiusKm", { defaultValue: "Delivery radius (km)" })}</span>
+                  <input value={radiusKm} onChange={(e) => setRadiusKm(e.target.value)} className="w-full rounded-xl border px-3 py-2" />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block font-semibold">{t("restaurant.freeDeliveryMin", { defaultValue: "Free delivery from" })}</span>
+                  <input value={freeDeliveryMin} onChange={(e) => setFreeDeliveryMin(e.target.value)} className="w-full rounded-xl border px-3 py-2" placeholder="optional" />
+                </label>
+                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                  <input type="checkbox" checked={deliverySuspended} onChange={(e) => setDeliverySuspended(e.target.checked)} />
+                  {t("restaurant.deliverySuspended", { defaultValue: "Temporarily suspend delivery" })}
                 </label>
                 <label className="text-sm sm:col-span-2">
                   <span className="mb-1 block font-semibold">{t("restaurant.deliveryZones", { defaultValue: "Service areas (comma-separated)" })}</span>

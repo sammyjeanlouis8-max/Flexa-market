@@ -47,10 +47,18 @@ import {
 import {
   RESTAURANT_PUBLIC_LAUNCH,
   RESTAURANT_PUBLIC_LISTING_STATUSES,
+  RESTAURANT_FULFILLMENT_DISCLAIMER,
+  RESTAURANT_DRIVER_POLICY,
   canAccessRestaurantModule,
   canAccessRestaurantStaff,
   canTransitionRestaurantOrder,
+  normalizeRestaurantOrderStatus,
 } from "../lib/restaurantAccess";
+import { toMinorUnits, fromMinorUnits } from "../lib/restaurantMoney";
+import {
+  createRestaurantPaymentIntent,
+  refundRestaurantOrder,
+} from "../lib/restaurantStripe";
 
 const router = Router();
 
@@ -76,7 +84,7 @@ async function requireRestaurantAccess(
       next();
       return;
     }
-    res.status(403).json({ error: "Flexa Restaurant preview is Admin / Moderator only" });
+    res.status(403).json({ error: "Flexa Restaurant preview is Super Admin only" });
   });
 }
 
@@ -90,7 +98,7 @@ async function requireRestaurantAuthAccess(
       next();
       return;
     }
-    res.status(403).json({ error: "Flexa Restaurant preview is Admin / Moderator only" });
+    res.status(403).json({ error: "Flexa Restaurant preview is Super Admin only" });
   });
 }
 
@@ -233,10 +241,26 @@ function shapePublicRestaurant(
     fulfillment: extras?.delivery?.fulfillment ?? "pickup",
     ownerManagedDelivery: extras?.delivery?.ownerManagedDelivery ?? true,
     deliveryManagedByRestaurant: true,
-    deliveryDisclaimer: "Delivery is arranged and managed by this restaurant.",
-    deliveryFee: extras?.delivery?.deliveryFee ?? 0,
-    minOrderAmount: extras?.delivery?.minOrderAmount ?? 0,
-    estimatedPrepMinutes: prepMinutes,
+    deliveryDisclaimer: RESTAURANT_FULFILLMENT_DISCLAIMER,
+    driverPolicy: RESTAURANT_DRIVER_POLICY,
+    usesFlexaDrivers: false,
+    deliveryFee: extras?.delivery
+      ? fromMinorUnits(extras.delivery.deliveryFeeMinor || toMinorUnits(extras.delivery.deliveryFee || 0))
+      : 0,
+    deliveryFeeMinor: extras?.delivery?.deliveryFeeMinor ?? toMinorUnits(extras?.delivery?.deliveryFee ?? 0),
+    minOrderAmount: extras?.delivery
+      ? fromMinorUnits(extras.delivery.minOrderAmountMinor || toMinorUnits(extras.delivery.minOrderAmount || 0))
+      : 0,
+    minOrderAmountMinor: extras?.delivery?.minOrderAmountMinor ?? 0,
+    deliveryRadiusKm: extras?.delivery?.deliveryRadiusKm ?? null,
+    freeDeliveryMin: extras?.delivery?.freeDeliveryMin ?? null,
+    freeDeliveryMinMinor: extras?.delivery?.freeDeliveryMinMinor ?? null,
+    pickupAvailable: extras?.delivery?.pickupAvailable ?? true,
+    deliveryAvailable: extras?.delivery
+      ? !!(extras.delivery.deliveryAvailable && !extras.delivery.deliverySuspended)
+      : false,
+    deliverySuspended: extras?.delivery?.deliverySuspended ?? false,
+    estimatedPrepMinutes: extras?.delivery?.estimatedPrepMinutes ?? prepMinutes,
     estimatedDeliveryMinutes: extras?.delivery?.estimatedDeliveryMinutes ?? null,
     deliveryZones: extras?.delivery?.deliveryZones ?? [],
     hours: (extras?.hours ?? []).map((h) => ({
@@ -312,8 +336,11 @@ router.get("/restaurants/launch", (_req, res) => {
     subscriptionEnforcementEnabled: false,
     ownerManagedDeliveryOnly: true,
     usesFlexaDrivers: false,
+    flexaDriverForbidden: true,
+    fulfillmentDisclaimer: RESTAURANT_FULFILLMENT_DISCLAIMER,
+    driverPolicy: RESTAURANT_DRIVER_POLICY,
     privacyNotice: PRIVACY_NOTICE,
-    access: RESTAURANT_PUBLIC_LAUNCH ? "public" : "staff_preview",
+    access: RESTAURANT_PUBLIC_LAUNCH ? "public" : "super_admin_preview",
   });
 });
 
@@ -486,12 +513,16 @@ router.patch("/restaurants/me/orders/:orderId", requireRestaurantAuthAccess, asy
   const isCustomer = order.customerId === req.userId;
   if (!isOwner && !isCustomer && !isStaff(req.user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const status = String(req.body?.status || "");
+  const status = normalizeRestaurantOrderStatus(String(req.body?.status || ""));
+  if (req.body?.assignFlexaDriver || req.body?.driverId) {
+    res.status(400).json({ error: "Flexa Driver cannot transport Flexa Restaurant food orders", policy: RESTAURANT_DRIVER_POLICY });
+    return;
+  }
   const ownerStatuses = [
-    "accepted", "confirmed", "rejected", "preparing",
-    "ready", "ready_for_pickup", "ready_pickup", "out_for_delivery", "delivered", "completed",
+    "confirmed", "rejected", "preparing",
+    "ready_for_pickup", "out_for_delivery", "delivered", "completed", "refund_pending",
   ];
-  const customerStatuses = ["cancelled", "canceled"];
+  const customerStatuses = ["canceled", "cancelled"];
   if (isOwner && !ownerStatuses.includes(status) && !isStaff(req.user)) {
     res.status(400).json({ error: "Invalid status" }); return;
   }
@@ -504,6 +535,7 @@ router.patch("/restaurants/me/orders/:orderId", requireRestaurantAuthAccess, asy
 
   const [updated] = await db.update(restaurantOrdersTable).set({
     status,
+    usesFlexaDrivers: false,
     rejectionReason: status === "rejected" ? String(req.body?.rejectionReason || "") : order.rejectionReason,
     updatedAt: new Date(),
   }).where(eq(restaurantOrdersTable.id, orderId)).returning();
@@ -514,6 +546,17 @@ router.patch("/restaurants/me/orders/:orderId", requireRestaurantAuthAccess, asy
     actorId: req.userId!,
     note: status === "rejected" ? String(req.body?.rejectionReason || "") : "",
   });
+  // Notify the other party on every status change.
+  const notifyUserId = isOwner ? order.customerId : restaurant?.ownerId;
+  if (notifyUserId) {
+    await notify(notifyUserId, {
+      restaurantId: order.restaurantId,
+      type: "order_status",
+      title: `Order #${orderId} → ${status}`,
+      body: `Status updated to ${status}. ${RESTAURANT_FULFILLMENT_DISCLAIMER}`,
+      href: isOwner ? "/restaurant/my-orders" : "/restaurant/owner/orders",
+    });
+  }
 
   const notifyUser = isOwner ? order.customerId : restaurant!.ownerId;
   await notify(notifyUser, {
@@ -843,14 +886,28 @@ router.put("/restaurants/:id/delivery", requireRestaurantAuthAccess, async (req,
   if (!["pickup", "delivery", "both"].includes(fulfillment)) {
     res.status(400).json({ error: "Invalid fulfillment" }); return;
   }
+  const currency = "USD";
+  const deliveryFee = Math.max(0, Number(body.deliveryFee) || 0);
+  const minOrderAmount = Math.max(0, Number(body.minOrderAmount) || 0);
+  const freeDeliveryMin = body.freeDeliveryMin != null ? Math.max(0, Number(body.freeDeliveryMin)) : null;
+  const pickupAvailable = body.pickupAvailable != null ? !!body.pickupAvailable : fulfillment !== "delivery";
+  const deliveryAvailable = body.deliveryAvailable != null ? !!body.deliveryAvailable : fulfillment !== "pickup";
   const values = {
     fulfillment,
-    deliveryFee: Math.max(0, Number(body.deliveryFee) || 0),
+    deliveryFee,
+    deliveryFeeMinor: body.deliveryFeeMinor != null ? Math.max(0, Math.floor(Number(body.deliveryFeeMinor))) : toMinorUnits(deliveryFee, currency),
     deliveryZones: Array.isArray(body.deliveryZones) ? body.deliveryZones.map(String) : [],
-    minOrderAmount: Math.max(0, Number(body.minOrderAmount) || 0),
+    deliveryRadiusKm: Math.max(0.1, Number(body.deliveryRadiusKm) || 5),
+    minOrderAmount,
+    minOrderAmountMinor: body.minOrderAmountMinor != null ? Math.max(0, Math.floor(Number(body.minOrderAmountMinor))) : toMinorUnits(minOrderAmount, currency),
+    estimatedPrepMinutes: Math.max(5, Number(body.estimatedPrepMinutes) || 30),
     estimatedDeliveryMinutes: Math.max(5, Number(body.estimatedDeliveryMinutes) || 45),
-    deliveryInstructions: String(body.deliveryInstructions || ""),
-    freeDeliveryMin: body.freeDeliveryMin != null ? Number(body.freeDeliveryMin) : null,
+    deliveryInstructions: String(body.deliveryInstructions || RESTAURANT_FULFILLMENT_DISCLAIMER),
+    freeDeliveryMin,
+    freeDeliveryMinMinor: freeDeliveryMin != null ? toMinorUnits(freeDeliveryMin, currency) : null,
+    pickupAvailable,
+    deliveryAvailable,
+    deliverySuspended: !!body.deliverySuspended,
     ownerManagedDelivery: true,
     updatedAt: new Date(),
   };
@@ -858,7 +915,10 @@ router.put("/restaurants/:id/delivery", requireRestaurantAuthAccess, async (req,
     .onConflictDoUpdate({ target: restaurantDeliverySettingsTable.restaurantId, set: values });
   res.json({
     delivery: values,
-    note: "Restaurant deliveries are managed by the restaurant owner — not Flexa Market drivers.",
+    disclaimer: RESTAURANT_FULFILLMENT_DISCLAIMER,
+    driverPolicy: RESTAURANT_DRIVER_POLICY,
+    usesFlexaDrivers: false,
+    note: RESTAURANT_DRIVER_POLICY,
   });
 });
 
@@ -971,6 +1031,9 @@ router.post("/restaurants/:id/food-safety", requireAuth, async (req, res): Promi
   if (req.body?.termsAccepted !== true) {
     res.status(400).json({ error: "You must accept the restaurant safety rules" }); return;
   }
+  if (req.body?.foodResponsibilityAccepted !== true) {
+    res.status(400).json({ error: "You must acknowledge food preparation and delivery responsibility" }); return;
+  }
   const graded = gradeFoodSafetyQuiz(answers);
   await db.insert(restaurantFoodSafetyAssessmentsTable).values({
     restaurantId: id,
@@ -993,6 +1056,7 @@ router.post("/restaurants/:id/food-safety", requireAuth, async (req, res): Promi
       foodSafetyQuizScore: graded.score,
       foodSafetyCompletedAt: new Date(),
       termsAcceptedAt: new Date(),
+      foodResponsibilityAcceptedAt: new Date(),
       status: nextStatus,
     }).where(eq(restaurantsTable.id, id));
   }
@@ -1031,13 +1095,15 @@ router.post("/restaurants/:id/dish-models", requireRestaurantAuthAccess, async (
   if (defaultAvailable && photos.length < 1) {
     res.status(400).json({ error: "At least one food image is required before a dish can be available" }); return;
   }
+  const currency = String(body.currency || "USD");
   const [dish] = await db.insert(restaurantDishModelsTable).values({
     restaurantId: id,
     name,
     description: String(body.description || ""),
     photos,
     price,
-    currency: String(body.currency || "USD"),
+    priceMinor: body.priceMinor != null ? Math.max(0, Math.floor(Number(body.priceMinor))) : toMinorUnits(price, currency),
+    currency,
     category: body.category ? String(body.category) : null,
     ingredients: String(body.ingredients || ""),
     allergens: String(body.allergens || ""),
@@ -1159,7 +1225,7 @@ router.post("/restaurants/:id/daily-menu/items", requireAuth, async (req, res): 
   });
 });
 
-/* ─── Orders (no platform payment / commission) ──────────────────────────── */
+/* ─── Orders (business-managed delivery; Stripe optional; never Flexa Driver) ─ */
 
 router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
@@ -1174,6 +1240,14 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
     res.status(400).json({ error: "Owners cannot order from their own restaurant" }); return;
   }
   const body = req.body ?? {};
+  // Hard ban: Flexa Driver must never be attached to restaurant food orders.
+  if (body.assignFlexaDriver || body.useFlexaDrivers || body.driverId || body.deliveryJobId) {
+    res.status(400).json({
+      error: "Flexa Driver cannot transport Flexa Restaurant food orders",
+      policy: RESTAURANT_DRIVER_POLICY,
+    });
+    return;
+  }
   const idempotencyKey = body.idempotencyKey ? String(body.idempotencyKey).slice(0, 80) : null;
   if (idempotencyKey) {
     const [existing] = await db.select().from(restaurantOrdersTable)
@@ -1184,27 +1258,33 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
   const fulfillment = String(body.fulfillment || "pickup");
   const [delivery] = await db.select().from(restaurantDeliverySettingsTable)
     .where(eq(restaurantDeliverySettingsTable.restaurantId, id)).limit(1);
-  if (fulfillment === "delivery" && delivery?.fulfillment === "pickup") {
-    res.status(400).json({ error: "This restaurant is pickup only" }); return;
+  if (fulfillment === "delivery") {
+    if (delivery?.fulfillment === "pickup" || delivery?.deliveryAvailable === false || delivery?.deliverySuspended) {
+      res.status(400).json({ error: "This business is pickup only right now" }); return;
+    }
   }
-  if (fulfillment === "pickup" && delivery?.fulfillment === "delivery") {
-    res.status(400).json({ error: "This restaurant is delivery only" }); return;
+  if (fulfillment === "pickup" && (delivery?.fulfillment === "delivery" || delivery?.pickupAvailable === false)) {
+    res.status(400).json({ error: "This business is delivery only" }); return;
   }
 
   const lines = Array.isArray(body.items) ? body.items : [];
   if (!lines.length) { res.status(400).json({ error: "Cart is empty" }); return; }
+  const currency = "USD";
 
   try {
     const order = await db.transaction(async (tx: any) => {
-      let subtotal = 0;
+      let subtotalMinor = 0;
       const prepared: Array<{
         dailyMenuItemId: number;
         dishModelId: number | null;
         name: string;
         unitPrice: number;
+        unitPriceMinor: number;
         quantity: number;
         lineTotal: number;
+        lineTotalMinor: number;
         notes: string;
+        customizations: Array<Record<string, unknown>>;
       }> = [];
 
       for (const line of lines.slice(0, 30)) {
@@ -1219,6 +1299,7 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
           throw new Error("NOT_AVAILABLE");
         }
         if (item.soldOut) throw new Error("SOLD_OUT");
+        if (!(item.photos ?? []).length) throw new Error("NO_PHOTO");
         if (item.availablePortions != null) {
           const left = item.availablePortions - item.soldCount;
           if (left < qty) throw new Error("INSUFFICIENT");
@@ -1229,37 +1310,78 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
             updatedAt: new Date(),
           }).where(eq(restaurantDailyMenuItemsTable.id, item.id));
         }
-        const lineTotal = item.price * qty;
-        subtotal += lineTotal;
+        // Never trust client prices — always recompute from DB (+ selected option deltas).
+        let unitMinor = item.priceMinor || toMinorUnits(item.price, item.currency || currency);
+        const customizations: Array<Record<string, unknown>> = [];
+        const selected = Array.isArray(line.optionIds) ? line.optionIds.map(Number) : [];
+        if (selected.length && item.dishModelId) {
+          const { rows: optRows } = await tx.execute(sql`
+            SELECT o.id, o.name, o.price_delta_minor, o.sold_out, g.id AS group_id, g.name AS group_name
+            FROM restaurant_dish_options o
+            JOIN restaurant_dish_option_groups g ON g.id = o.group_id
+            WHERE o.id = ANY(${selected})
+              AND g.dish_model_id = ${item.dishModelId}
+              AND o.is_deleted = FALSE
+          `);
+          for (const o of optRows as any[]) {
+            if (o.sold_out) throw new Error("OPTION_SOLD_OUT");
+            const delta = Number(o.price_delta_minor) || 0;
+            unitMinor += delta;
+            customizations.push({
+              optionId: o.id,
+              groupId: o.group_id,
+              name: o.name,
+              groupName: o.group_name,
+              priceDeltaMinor: delta,
+            });
+          }
+        }
+        const lineTotalMinor = unitMinor * qty;
+        subtotalMinor += lineTotalMinor;
         prepared.push({
           dailyMenuItemId: item.id,
           dishModelId: item.dishModelId,
           name: item.name,
-          unitPrice: item.price,
+          unitPrice: fromMinorUnits(unitMinor, currency),
+          unitPriceMinor: unitMinor,
           quantity: qty,
-          lineTotal,
-          notes: String(line.notes || ""),
+          lineTotal: fromMinorUnits(lineTotalMinor, currency),
+          lineTotalMinor,
+          notes: String(line.notes || "").slice(0, 500),
+          customizations,
         });
       }
 
-      const deliveryFee = fulfillment === "delivery" ? Number(delivery?.deliveryFee || 0) : 0;
-      if (fulfillment === "delivery" && delivery && subtotal < Number(delivery.minOrderAmount || 0)) {
-        throw new Error("MIN_ORDER");
+      let deliveryFeeMinor = 0;
+      if (fulfillment === "delivery") {
+        deliveryFeeMinor = delivery?.deliveryFeeMinor || toMinorUnits(Number(delivery?.deliveryFee || 0), currency);
+        const minMinor = delivery?.minOrderAmountMinor || toMinorUnits(Number(delivery?.minOrderAmount || 0), currency);
+        if (subtotalMinor < minMinor) throw new Error("MIN_ORDER");
+        const freeMin = delivery?.freeDeliveryMinMinor;
+        if (freeMin != null && subtotalMinor >= freeMin) deliveryFeeMinor = 0;
       }
+      const totalMinor = subtotalMinor + deliveryFeeMinor;
 
       const [created] = await tx.insert(restaurantOrdersTable).values({
         restaurantId: id,
         customerId: req.userId!,
-        status: "pending",
+        status: "pending_payment",
         fulfillment,
-        subtotal,
-        deliveryFee,
-        total: subtotal + deliveryFee,
-        currency: "USD",
+        subtotal: fromMinorUnits(subtotalMinor, currency),
+        deliveryFee: fromMinorUnits(deliveryFeeMinor, currency),
+        total: fromMinorUnits(totalMinor, currency),
+        subtotalMinor,
+        deliveryFeeMinor,
+        totalMinor,
+        currency,
         specialInstructions: String(body.specialInstructions || "").slice(0, 1000),
         deliveryAddress: fulfillment === "delivery" ? String(body.deliveryAddress || "") : null,
         idempotencyKey,
-        paymentNote: "Pay restaurant directly — Flexa charges no commission.",
+        paymentStatus: "requires_payment",
+        usesFlexaDrivers: false,
+        platformCommissionMinor: 0,
+        estimatedPrepMinutes: delivery?.estimatedPrepMinutes ?? 30,
+        paymentNote: RESTAURANT_FULFILLMENT_DISCLAIMER,
       }).returning();
 
       await tx.insert(restaurantOrderItemsTable).values(
@@ -1268,16 +1390,42 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
       return created;
     });
 
+    const payment = await createRestaurantPaymentIntent({
+      orderId: order.id,
+      totalMinor: order.totalMinor,
+      currency: order.currency,
+      customerId: req.userId!,
+      restaurantId: id,
+      idempotencyKey,
+    });
+
     await notify(restaurant.ownerId, {
       restaurantId: id,
       type: "new_order",
       title: "New restaurant order",
-      body: `Order #${order.id} — pay arrangements are between you and the customer.`,
+      body: `Order #${order.id} — ${RESTAURANT_FULFILLMENT_DISCLAIMER}`,
       href: `/restaurant/owner/orders`,
     });
+    await notify(req.userId!, {
+      restaurantId: id,
+      type: "order_placed_pending_payment",
+      title: `Order #${order.id}`,
+      body: "Complete payment to confirm. Delivery is managed directly by this business.",
+      href: "/restaurant/my-orders",
+    });
+
+    const [fresh] = await db.select().from(restaurantOrdersTable).where(eq(restaurantOrdersTable.id, order.id)).limit(1);
     res.status(201).json({
-      order,
-      payment: { platformCommission: 0, message: "Pay the restaurant directly. Flexa Market charges no commission." },
+      order: fresh ?? order,
+      payment: {
+        platformCommission: 0,
+        platformCommissionMinor: 0,
+        clientSecret: payment.clientSecret,
+        paymentIntentId: payment.paymentIntentId,
+        confirmationPinIssued: true,
+        message: RESTAURANT_FULFILLMENT_DISCLAIMER,
+        driverPolicy: RESTAURANT_DRIVER_POLICY,
+      },
     });
   } catch (err: any) {
     const code = String(err?.message || err);
@@ -1287,6 +1435,8 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
       SOLD_OUT: [409, "Dish is sold out"],
       INSUFFICIENT: [409, "Not enough portions left"],
       MIN_ORDER: [400, "Below minimum order for delivery"],
+      NO_PHOTO: [409, "Dish is missing a required food photo"],
+      OPTION_SOLD_OUT: [409, "A selected option is sold out"],
     };
     const hit = map[code];
     if (hit) { res.status(hit[0]).json({ error: hit[1] }); return; }
@@ -1294,7 +1444,7 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
   }
 });
 
-router.get("/restaurants/:id/orders", requireAuth, async (req, res): Promise<void> => {
+router.get("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const restaurant = await loadOwnerRestaurant(req.userId!, id);
   if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
@@ -1302,10 +1452,198 @@ router.get("/restaurants/:id/orders", requireAuth, async (req, res): Promise<voi
     .where(eq(restaurantOrdersTable.restaurantId, id))
     .orderBy(desc(restaurantOrdersTable.createdAt))
     .limit(100);
-  res.json({ orders });
+  res.json({
+    orders,
+    usesFlexaDrivers: false,
+    disclaimer: RESTAURANT_FULFILLMENT_DISCLAIMER,
+  });
 });
 
+/** Customer confirms pickup/delivery with the business-issued PIN (never Flexa Driver). */
+router.post("/restaurants/me/orders/:orderId/confirm-pin", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
+  const orderId = Number(req.params.orderId);
+  const pin = String(req.body?.pin || "").trim();
+  const [order] = await db.select().from(restaurantOrdersTable).where(eq(restaurantOrdersTable.id, orderId)).limit(1);
+  if (!order) { res.status(404).json({ error: "Not found" }); return; }
+  const [restaurant] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, order.restaurantId)).limit(1);
+  const isOwner = restaurant?.ownerId === req.userId;
+  const isCustomer = order.customerId === req.userId;
+  if (!isOwner && !isCustomer && !isStaff(req.user)) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+  if (!order.confirmationPin || order.confirmationPin !== pin) {
+    res.status(403).json({ error: "Invalid confirmation PIN" }); return;
+  }
+  if (!["ready_for_pickup", "out_for_delivery", "delivered"].includes(order.status) && !isOwner) {
+    res.status(409).json({ error: "Order is not ready for confirmation" }); return;
+  }
+  const nextStatus = order.fulfillment === "delivery" ? "delivered" : "completed";
+  const [updated] = await db.update(restaurantOrdersTable).set({
+    status: nextStatus,
+    pinConfirmedAt: new Date(),
+    usesFlexaDrivers: false,
+    updatedAt: new Date(),
+  }).where(eq(restaurantOrdersTable.id, orderId)).returning();
+  await appendOrderStatusHistory({
+    orderId,
+    fromStatus: order.status,
+    toStatus: nextStatus,
+    actorId: req.userId!,
+    note: "confirmation_pin",
+  });
+  await notify(order.customerId, {
+    restaurantId: order.restaurantId,
+    type: "order_confirmed_pin",
+    title: `Order #${orderId} confirmed`,
+    body: RESTAURANT_FULFILLMENT_DISCLAIMER,
+    href: "/restaurant/my-orders",
+  });
+  if (restaurant) {
+    await notify(restaurant.ownerId, {
+      restaurantId: order.restaurantId,
+      type: "order_confirmed_pin",
+      title: `Order #${orderId} PIN confirmed`,
+      body: nextStatus,
+      href: "/restaurant/owner/orders",
+    });
+  }
+  res.json({ order: updated, disclaimer: RESTAURANT_FULFILLMENT_DISCLAIMER });
+});
 
+router.post("/restaurants/me/orders/:orderId/refund", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
+  const orderId = Number(req.params.orderId);
+  const [order] = await db.select().from(restaurantOrdersTable).where(eq(restaurantOrdersTable.id, orderId)).limit(1);
+  if (!order) { res.status(404).json({ error: "Not found" }); return; }
+  const [restaurant] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, order.restaurantId)).limit(1);
+  const isOwner = restaurant?.ownerId === req.userId;
+  if (!isOwner && !isStaff(req.user)) {
+    res.status(403).json({ error: "Only the business owner or Super Admin may refund" }); return;
+  }
+  const result = await refundRestaurantOrder(orderId, req.userId!, String(req.body?.reason || ""));
+  if (!result.ok) {
+    res.status(400).json({ error: result.error || "Refund failed" }); return;
+  }
+  const [fresh] = await db.select().from(restaurantOrdersTable).where(eq(restaurantOrdersTable.id, orderId)).limit(1);
+  res.json({ order: fresh, ok: true });
+});
+
+/* ─── Dish option groups (sizes / toppings / extras) ─────────────────────── */
+
+router.get("/restaurants/:id/dish-models/:dishId/options", requireRestaurantAccess, async (req, res): Promise<void> => {
+  const restaurantId = Number(req.params.id);
+  const dishId = Number(req.params.dishId);
+  const { rows: groups } = await db.execute(sql`
+    SELECT id, name, kind, required, min_select, max_select, sort_order
+    FROM restaurant_dish_option_groups
+    WHERE dish_model_id = ${dishId} AND restaurant_id = ${restaurantId}
+    ORDER BY sort_order ASC, id ASC
+  `);
+  const groupIds = (groups as any[]).map((g) => g.id);
+  let options: any[] = [];
+  if (groupIds.length) {
+    const { rows } = await db.execute(sql`
+      SELECT id, group_id, name, price_delta, price_delta_minor, sold_out, allergens, sort_order
+      FROM restaurant_dish_options
+      WHERE group_id = ANY(${groupIds}) AND is_deleted = FALSE
+      ORDER BY sort_order ASC, id ASC
+    `);
+    options = rows as any[];
+  }
+  res.json({
+    groups: (groups as any[]).map((g) => ({
+      id: g.id,
+      name: g.name,
+      kind: g.kind,
+      required: g.required,
+      minSelect: g.min_select,
+      maxSelect: g.max_select,
+      sortOrder: g.sort_order,
+      options: options
+        .filter((o) => o.group_id === g.id)
+        .map((o) => ({
+          id: o.id,
+          name: o.name,
+          priceDelta: Number(o.price_delta) || 0,
+          priceDeltaMinor: Number(o.price_delta_minor) || 0,
+          soldOut: !!o.sold_out,
+          allergens: o.allergens || "",
+        })),
+    })),
+  });
+});
+
+router.post("/restaurants/:id/dish-models/:dishId/option-groups", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
+  const restaurantId = Number(req.params.id);
+  const dishId = Number(req.params.dishId);
+  const restaurant = await loadOwnerRestaurant(req.userId!, restaurantId);
+  if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
+  const [dish] = await db.select().from(restaurantDishModelsTable)
+    .where(and(eq(restaurantDishModelsTable.id, dishId), eq(restaurantDishModelsTable.restaurantId, restaurantId)))
+    .limit(1);
+  if (!dish) { res.status(404).json({ error: "Dish not found" }); return; }
+  const body = req.body ?? {};
+  const name = String(body.name || "").trim();
+  if (name.length < 1) { res.status(400).json({ error: "Name required" }); return; }
+  const { rows } = await db.execute(sql`
+    INSERT INTO restaurant_dish_option_groups (dish_model_id, restaurant_id, name, kind, required, min_select, max_select, sort_order)
+    VALUES (
+      ${dishId}, ${restaurantId}, ${name},
+      ${String(body.kind || "extra")},
+      ${!!body.required},
+      ${Math.max(0, Number(body.minSelect) || 0)},
+      ${Math.max(1, Number(body.maxSelect) || 1)},
+      ${Math.max(0, Number(body.sortOrder) || 0)}
+    )
+    RETURNING id, name, kind, required, min_select, max_select, sort_order
+  `);
+  const g = (rows as any[])[0];
+  res.status(201).json({
+    group: {
+      id: g.id,
+      name: g.name,
+      kind: g.kind,
+      required: g.required,
+      minSelect: g.min_select,
+      maxSelect: g.max_select,
+      sortOrder: g.sort_order,
+    },
+  });
+});
+
+router.post("/restaurants/:id/option-groups/:groupId/options", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
+  const restaurantId = Number(req.params.id);
+  const groupId = Number(req.params.groupId);
+  const restaurant = await loadOwnerRestaurant(req.userId!, restaurantId);
+  if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
+  const { rows: groups } = await db.execute(sql`
+    SELECT id FROM restaurant_dish_option_groups WHERE id = ${groupId} AND restaurant_id = ${restaurantId} LIMIT 1
+  `);
+  if (!(groups as any[]).length) { res.status(404).json({ error: "Group not found" }); return; }
+  const body = req.body ?? {};
+  const name = String(body.name || "").trim();
+  const delta = Number(body.priceDelta) || 0;
+  const deltaMinor = body.priceDeltaMinor != null ? Math.floor(Number(body.priceDeltaMinor)) : toMinorUnits(delta);
+  if (!name) { res.status(400).json({ error: "Name required" }); return; }
+  const { rows } = await db.execute(sql`
+    INSERT INTO restaurant_dish_options (group_id, name, price_delta, price_delta_minor, sold_out, allergens, sort_order)
+    VALUES (
+      ${groupId}, ${name}, ${delta}, ${deltaMinor},
+      ${!!body.soldOut}, ${String(body.allergens || "")}, ${Math.max(0, Number(body.sortOrder) || 0)}
+    )
+    RETURNING id, name, price_delta, price_delta_minor, sold_out, allergens
+  `);
+  const o = (rows as any[])[0];
+  res.status(201).json({
+    option: {
+      id: o.id,
+      name: o.name,
+      priceDelta: Number(o.price_delta) || 0,
+      priceDeltaMinor: Number(o.price_delta_minor) || 0,
+      soldOut: !!o.sold_out,
+      allergens: o.allergens || "",
+    },
+  });
+});
 
 /* ─── Reservations ───────────────────────────────────────────────────────── */
 

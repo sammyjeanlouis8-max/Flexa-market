@@ -1,24 +1,23 @@
 /**
  * Flexa Restaurant public launch gate.
- * Keep in sync with marketplace `RESTAURANT_PUBLIC_LAUNCH`.
- * false = Super Admin / Admin / Moderator only until explicit public approval.
+ * Keep in sync with marketplace + mobile `RESTAURANT_PUBLIC_LAUNCH`.
  *
- * Intentionally avoids importing auth middleware (SESSION_SECRET side effects)
- * so unit tests can load this module in isolation.
+ * While false: Super Admin ONLY (not regular Admin / Moderator).
+ * Intentionally avoids importing auth middleware (SESSION_SECRET side effects).
  */
 export const RESTAURANT_PUBLIC_LAUNCH = false;
 
 function roleOf(user: { role?: string | null } | null | undefined): string {
-  return String(user?.role || "").trim().toLowerCase().replace(/[\s-]+/g, "");
+  return String(user?.role || "").trim().toLowerCase().replace(/[\s-_]+/g, "");
 }
 
+/** Super Admin only — used when public launch is false. */
 export function canAccessRestaurantStaff(
   user: { isSuperAdmin?: boolean; isAdmin?: boolean; role?: string | null } | null | undefined,
 ): boolean {
   if (!user) return false;
-  if (user.isSuperAdmin || user.isAdmin) return true;
-  const role = roleOf(user);
-  return role === "superadmin" || role === "admin" || role === "moderator";
+  if (user.isSuperAdmin) return true;
+  return roleOf(user) === "superadmin";
 }
 
 export function canAccessRestaurantModule(
@@ -45,20 +44,25 @@ export type RestaurantApplicationStatus = (typeof RESTAURANT_APPLICATION_STATUSE
 /** Statuses that may appear in public discover listings. */
 export const RESTAURANT_PUBLIC_LISTING_STATUSES = new Set(["published", "approved"]);
 
-/** Order lifecycle (server-enforced). Owner-managed delivery — no Flexa driver steps yet. */
+/**
+ * Business-managed order lifecycle.
+ * No Flexa Driver steps — restaurant owns prep + delivery/pickup confirmation.
+ */
 export const RESTAURANT_ORDER_TRANSITIONS: Record<string, string[]> = {
-  pending_payment: ["pending", "placed", "cancelled", "canceled"],
-  pending: ["accepted", "confirmed", "rejected", "cancelled", "canceled"],
-  placed: ["accepted", "confirmed", "rejected", "cancelled", "canceled"],
-  accepted: ["confirmed", "preparing", "ready", "ready_for_pickup", "cancelled", "canceled"],
-  confirmed: ["preparing", "ready", "ready_for_pickup", "cancelled", "canceled"],
-  preparing: ["ready", "ready_for_pickup", "cancelled", "canceled"],
-  ready: ["ready_for_pickup", "out_for_delivery", "completed", "delivered"],
-  ready_for_pickup: ["completed", "delivered", "out_for_delivery"],
-  out_for_delivery: ["delivered", "completed"],
+  pending_payment: ["order_placed", "canceled", "cancelled"],
+  order_placed: ["confirmed", "rejected", "canceled", "cancelled"],
+  pending: ["order_placed", "confirmed", "rejected", "canceled", "cancelled"],
+  placed: ["confirmed", "rejected", "canceled", "cancelled"],
+  accepted: ["confirmed", "preparing", "canceled", "cancelled"],
+  confirmed: ["preparing", "rejected", "canceled", "cancelled"],
+  preparing: ["ready_for_pickup", "out_for_delivery", "canceled", "cancelled"],
+  ready: ["ready_for_pickup", "out_for_delivery"],
+  ready_pickup: ["ready_for_pickup", "completed"],
+  ready_for_pickup: ["completed", "out_for_delivery"],
+  out_for_delivery: ["delivered"],
   delivered: ["completed", "refund_pending"],
   completed: ["refund_pending"],
-  rejected: [],
+  rejected: ["refund_pending", "refunded"],
   cancelled: ["refund_pending", "refunded"],
   canceled: ["refund_pending", "refunded"],
   refund_pending: ["refunded"],
@@ -70,3 +74,23 @@ export function canTransitionRestaurantOrder(from: string, to: string): boolean 
   if (!allowed) return false;
   return allowed.includes(to);
 }
+
+/** Normalize legacy aliases to the canonical status set. */
+export function normalizeRestaurantOrderStatus(status: string): string {
+  const s = String(status || "").trim().toLowerCase();
+  const map: Record<string, string> = {
+    pending: "order_placed",
+    placed: "order_placed",
+    accepted: "confirmed",
+    ready: "ready_for_pickup",
+    ready_pickup: "ready_for_pickup",
+    cancelled: "canceled",
+  };
+  return map[s] || s;
+}
+
+export const RESTAURANT_FULFILLMENT_DISCLAIMER =
+  "Delivery is managed directly by this business.";
+
+export const RESTAURANT_DRIVER_POLICY =
+  "Flexa Driver never transports Flexa Restaurant food orders. The business is fully responsible for preparation, packaging, temperature control, and delivery or pickup.";

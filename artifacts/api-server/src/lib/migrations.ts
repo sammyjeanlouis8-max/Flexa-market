@@ -3906,6 +3906,83 @@ CREATE INDEX IF NOT EXISTS restaurants_identity_idx ON restaurants(identity_stat
 CREATE INDEX IF NOT EXISTS restaurant_order_status_history_created_idx ON restaurant_order_status_history(created_at DESC)`,
   });
 
+
+  migrations.push({
+    name: "restaurant_money_and_options.v1",
+    sql: `
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS delivery_fee_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS delivery_radius_km REAL NOT NULL DEFAULT 5;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS min_order_amount_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS estimated_prep_minutes INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS free_delivery_min_minor INTEGER;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS pickup_available BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS delivery_available BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS delivery_suspended BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE restaurant_dish_models ADD COLUMN IF NOT EXISTS price_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_daily_menu_items ADD COLUMN IF NOT EXISTS price_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS subtotal_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS delivery_fee_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS total_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS confirmation_pin TEXT;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS pin_confirmed_at TIMESTAMPTZ;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS estimated_prep_minutes INTEGER;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS uses_flexa_drivers BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS platform_commission_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_order_items ADD COLUMN IF NOT EXISTS unit_price_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_order_items ADD COLUMN IF NOT EXISTS line_total_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_order_items ADD COLUMN IF NOT EXISTS customizations JSONB NOT NULL DEFAULT '[]'::jsonb;
+CREATE TABLE IF NOT EXISTS restaurant_dish_option_groups (
+  id SERIAL PRIMARY KEY,
+  dish_model_id INTEGER NOT NULL REFERENCES restaurant_dish_models(id) ON DELETE CASCADE,
+  restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'extra',
+  required BOOLEAN NOT NULL DEFAULT FALSE,
+  min_select INTEGER NOT NULL DEFAULT 0,
+  max_select INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS restaurant_dish_options (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES restaurant_dish_option_groups(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  price_delta REAL NOT NULL DEFAULT 0,
+  price_delta_minor INTEGER NOT NULL DEFAULT 0,
+  sold_out BOOLEAN NOT NULL DEFAULT FALSE,
+  allergens TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS restaurant_dish_option_groups_dish_idx ON restaurant_dish_option_groups(dish_model_id);
+CREATE INDEX IF NOT EXISTS restaurant_orders_stripe_pi_idx ON restaurant_orders(stripe_payment_intent_id);
+`
+  });
+  migrations.push({
+    name: "restaurant_money_backfill.v1",
+    sql: `
+UPDATE restaurant_dish_models SET price_minor = ROUND(price * 100)::INTEGER WHERE price_minor = 0 AND price IS NOT NULL;
+UPDATE restaurant_daily_menu_items SET price_minor = ROUND(price * 100)::INTEGER WHERE price_minor = 0 AND price IS NOT NULL;
+UPDATE restaurant_orders SET subtotal_minor = ROUND(subtotal * 100)::INTEGER WHERE subtotal_minor = 0;
+UPDATE restaurant_orders SET delivery_fee_minor = ROUND(delivery_fee * 100)::INTEGER WHERE delivery_fee_minor = 0;
+UPDATE restaurant_orders SET total_minor = ROUND(total * 100)::INTEGER WHERE total_minor = 0;
+UPDATE restaurant_order_items SET unit_price_minor = ROUND(unit_price * 100)::INTEGER WHERE unit_price_minor = 0;
+UPDATE restaurant_order_items SET line_total_minor = ROUND(line_total * 100)::INTEGER WHERE line_total_minor = 0;
+UPDATE restaurant_delivery_settings SET delivery_fee_minor = ROUND(delivery_fee * 100)::INTEGER WHERE delivery_fee_minor = 0;
+UPDATE restaurant_delivery_settings SET min_order_amount_minor = ROUND(min_order_amount * 100)::INTEGER WHERE min_order_amount_minor = 0;
+UPDATE restaurant_delivery_settings SET free_delivery_min_minor = ROUND(free_delivery_min * 100)::INTEGER WHERE free_delivery_min IS NOT NULL AND free_delivery_min_minor IS NULL;
+UPDATE restaurant_delivery_settings SET delivery_available = (fulfillment IN ('delivery','both')) WHERE TRUE;
+UPDATE restaurant_delivery_settings SET pickup_available = (fulfillment IN ('pickup','both')) WHERE TRUE;
+UPDATE restaurant_orders SET uses_flexa_drivers = FALSE WHERE uses_flexa_drivers IS DISTINCT FROM FALSE;
+`
+  });
+  migrations.push({
+    name: "restaurant_food_responsibility.ack",
+    sql: `ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS food_responsibility_accepted_at TIMESTAMPTZ`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

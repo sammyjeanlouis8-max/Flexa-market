@@ -3,10 +3,29 @@ import { useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { RestaurantPageGate } from "@/components/restaurant/RestaurantPageGate";
 import { RestaurantEmpty, RestaurantShell } from "@/components/restaurant/RestaurantShell";
-import { fetchRestaurantOrders, formatMoney, patchOrderStatus, statusLabelKey, type Order } from "@/lib/restaurantApi";
+import {
+  confirmRestaurantOrderPin,
+  fetchRestaurantOrders,
+  formatMoney,
+  patchOrderStatus,
+  refundRestaurantOrder,
+  statusLabelKey,
+  type Order,
+} from "@/lib/restaurantApi";
 import { cn } from "@/lib/utils";
 
-const FILTERS = ["all", "pending", "preparing", "ready_pickup", "out_for_delivery", "completed", "cancelled"] as const;
+const FILTERS = [
+  "all",
+  "pending_payment",
+  "order_placed",
+  "confirmed",
+  "preparing",
+  "ready_for_pickup",
+  "out_for_delivery",
+  "delivered",
+  "completed",
+  "canceled",
+] as const;
 
 export default function RestaurantOrders() {
   const { t } = useTranslation();
@@ -15,6 +34,8 @@ export default function RestaurantOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
+  const [pinDraft, setPinDraft] = useState<Record<number, string>>({});
+  const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRestaurantOrders({ restaurantId: restaurantId || undefined })
@@ -24,18 +45,48 @@ export default function RestaurantOrders() {
 
   const visible = useMemo(() => {
     if (filter === "all") return orders;
-    if (filter === "preparing") return orders.filter((o) => ["accepted", "preparing"].includes(o.status));
     return orders.filter((o) => o.status === filter);
   }, [orders, filter]);
 
   async function setStatus(id: number, status: string) {
-    const updated = await patchOrderStatus(id, status);
-    setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
+    setMsg(null);
+    try {
+      const updated = await patchOrderStatus(id, status);
+      setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Update failed");
+    }
+  }
+
+  async function confirmPin(id: number) {
+    setMsg(null);
+    try {
+      const updated = await confirmRestaurantOrderPin(id, pinDraft[id] || "");
+      setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
+      setPinDraft((d) => ({ ...d, [id]: "" }));
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "PIN failed");
+    }
+  }
+
+  async function refund(id: number) {
+    setMsg(null);
+    try {
+      const updated = await refundRestaurantOrder(id, "Owner refund");
+      setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Refund failed");
+    }
   }
 
   return (
     <RestaurantPageGate requireAuth>
       <RestaurantShell title={t("restaurant.orders")} subtitle={t("restaurant.ownerDashboardSubtitle")}>
+        <p className="mb-3 text-xs text-muted-foreground">
+          {t("restaurant.deliveryManagedByBusiness", {
+            defaultValue: "Delivery is managed directly by this business.",
+          })}
+        </p>
         <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1">
           {FILTERS.map((f) => (
             <button
@@ -47,10 +98,14 @@ export default function RestaurantOrders() {
                 filter === f ? "bg-[hsl(152,55%,28%)] text-white" : "border bg-white",
               )}
             >
-              {f === "all" ? t("restaurant.catAll", { defaultValue: "All" }) : t(`restaurant.${statusLabelKey("order", f === "preparing" ? "preparing" : f)}`, { defaultValue: f })}
+              {f === "all"
+                ? t("restaurant.catAll", { defaultValue: "All" })
+                : t(`restaurant.${statusLabelKey("order", f)}`, { defaultValue: f.replace(/_/g, " ") })}
             </button>
           ))}
         </div>
+
+        {msg && <p className="mb-2 text-sm text-destructive">{msg}</p>}
 
         {loading ? (
           <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
@@ -66,7 +121,7 @@ export default function RestaurantOrders() {
                     <p className="text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleString()}</p>
                   </div>
                   <span className="rounded-full bg-[hsl(152,45%,94%)] px-2 py-0.5 text-[10px] font-bold uppercase text-[hsl(152,55%,25%)]">
-                    {t(`restaurant.${statusLabelKey("order", o.status)}`)}
+                    {t(`restaurant.${statusLabelKey("order", o.status)}`, { defaultValue: o.status })}
                   </span>
                 </div>
                 <p className="mt-2 text-sm font-semibold">
@@ -83,23 +138,42 @@ export default function RestaurantOrders() {
                   </ul>
                 )}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {o.status === "pending" && (
+                  {["order_placed", "pending"].includes(o.status) && (
                     <>
-                      <Action onClick={() => setStatus(o.id, "accepted")} label={t("restaurant.accept", { defaultValue: "Accept" })} primary />
+                      <Action onClick={() => setStatus(o.id, "confirmed")} label={t("restaurant.accept", { defaultValue: "Confirm" })} primary />
                       <Action onClick={() => setStatus(o.id, "rejected")} label={t("restaurant.reject", { defaultValue: "Reject" })} danger />
                     </>
                   )}
-                  {["accepted", "preparing"].includes(o.status) && (
+                  {["confirmed", "preparing"].includes(o.status) && (
                     <>
                       <Action onClick={() => setStatus(o.id, "preparing")} label={t("restaurant.orderPreparing")} />
-                      <Action onClick={() => setStatus(o.id, "ready_pickup")} label={t("restaurant.orderReadyPickup")} primary />
+                      <Action onClick={() => setStatus(o.id, "ready_for_pickup")} label={t("restaurant.orderReadyPickup")} primary />
                       {o.fulfillment === "delivery" && (
                         <Action onClick={() => setStatus(o.id, "out_for_delivery")} label={t("restaurant.orderOutForDelivery")} />
                       )}
                     </>
                   )}
-                  {["ready_pickup", "out_for_delivery"].includes(o.status) && (
+                  {["ready_for_pickup", "out_for_delivery"].includes(o.status) && (
+                    <div className="flex w-full flex-wrap items-center gap-2">
+                      <input
+                        value={pinDraft[o.id] || ""}
+                        onChange={(e) => setPinDraft((d) => ({ ...d, [o.id]: e.target.value }))}
+                        placeholder={t("restaurant.confirmPin", { defaultValue: "Customer PIN" })}
+                        className="w-28 rounded-full border px-3 py-1.5 text-xs"
+                        inputMode="numeric"
+                      />
+                      <Action onClick={() => confirmPin(o.id)} label={t("restaurant.confirmWithPin", { defaultValue: "Confirm PIN" })} primary />
+                      <Action
+                        onClick={() => setStatus(o.id, o.fulfillment === "delivery" ? "delivered" : "completed")}
+                        label={t("restaurant.orderCompleted")}
+                      />
+                    </div>
+                  )}
+                  {o.status === "delivered" && (
                     <Action onClick={() => setStatus(o.id, "completed")} label={t("restaurant.orderCompleted")} primary />
+                  )}
+                  {["rejected", "canceled", "completed", "delivered"].includes(o.status) && (
+                    <Action onClick={() => refund(o.id)} label={t("restaurant.orderRefundPending", { defaultValue: "Refund" })} danger />
                   )}
                 </div>
               </li>

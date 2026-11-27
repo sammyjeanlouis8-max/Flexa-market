@@ -1,98 +1,57 @@
-# Flexa Restaurant — Production Readiness Report
+# Flexa Restaurant — Production Readiness Report (final corrections)
 
+**PR:** https://github.com/sammyjeanlouis8-max/Flexa-market/pull/308  
 **Branch:** `cursor/restaurant-prod-ready-5a20`  
-**Base:** `main`  
-**Feature flag:** `RESTAURANT_PUBLIC_LAUNCH = false` (Super Admin / Admin / Moderator only)
+**Feature flag:** `RESTAURANT_PUBLIC_LAUNCH = false` → **Super Admin only** (Admin / Moderator blocked)
 
-## Initial issues discovered
+## Policy (approved)
 
-| Issue | Severity |
+Flexa Restaurant operates independently from Flexa Driver. Businesses own preparation, packaging, transport, and delivery/pickup. Flexa Driver must never transport restaurant food.
+
+## Requirement scorecard
+
+| # | Requirement | Status | Evidence |
+| --- | --- | --- | --- |
+| 1a | Business-managed delivery + customer pickup | **PASS** | Launch payload `usesFlexaDrivers:false`, order inserts force `usesFlexaDrivers:false`, delivery settings `ownerManagedDelivery:true` |
+| 1b | Flexa Driver blocked for restaurant food (FE + BE) | **PASS** | `POST /api/delivery` rejects `restaurantOrderId` / `flexaModule=restaurant`; restaurant order create rejects driver assignment; Market driver flows untouched |
+| 1c | Delivery config (areas, radius, fees, min, ETA, prep, free delivery, suspend, hours, pickup) | **PASS** | `PUT /restaurants/:id/delivery` + Owner Settings UI |
+| 1d | Checkout disclaimer “Delivery is managed directly by this business.” | **PASS** | Checkout + `RESTAURANT_FULFILLMENT_DISCLAIMER` + public restaurant shape |
+| 1e | Pickup-only when delivery not offered / suspended | **PASS** | Checkout disables delivery when `deliveryAvailable=false` or `deliverySuspended` |
+| 2a | Order statuses (pending payment → refunded) | **PASS** | `RESTAURANT_ORDER_TRANSITIONS` + owner Orders UI filters/actions |
+| 2b | Owner status updates + customer notifications | **PASS** | Status patch + `notify()` on change + PIN confirm |
+| 2c | Confirmation PIN | **PASS** | `confirmation_pin` + `POST .../confirm-pin` + owner PIN UI |
+| 2d | Order history / audit | **PASS** | `restaurant_order_status_history` writes on PIN / Stripe paid |
+| 2e | Unauthorized status / false delivery prevention | **PASS** | Transition map + PIN mismatch 403 + owner/customer auth checks |
+| 3 | Integer minor-unit money + safe migrations | **PASS** | Schema + `restaurant_money_and_options.v1` / backfill migrations + `restaurantMoney.ts` + backend order pricing |
+| 4 | Food variants / toppings / extras | **PASS** | Option group tables + GET/POST APIs + seller DishModels UI + customer customize sheet on Restaurant Detail; backend validates options/prices |
+| 5 | Stripe PaymentIntent / webhooks / refunds | **PASS** (code) · **NOT TESTED** (live Stripe test keys) | `restaurantStripe.ts`; webhook branch in `stripeCheckout.ts`; Checkout Payment Element; refund endpoint |
+| 6 | Super Admin only while flag false | **PASS** | `canAccessRestaurantStaff` / marketplace `canAccessRestaurant` require Super Admin; nav + gate + API middleware |
+| 7 | Food business responsibility acknowledgment | **PASS** | Food safety v2 + q6 delivery policy + required `foodResponsibilityAccepted` + `food_responsibility_accepted_at` + onboarding/checkout copy |
+| 8 | Multilingual EN/HT/FR/ES inherit Market language | **PARTIAL** | Shared `restaurantLocales` EN overlay; HT/FR/ES fall back to EN for new keys via i18n defaults |
+| 9a | Automated unit / smoke tests | **PASS** | `restaurantAccess`, `restaurantMoney`, `restaurantsRoutes.smoke`, `restaurantSchedule` (incl. quiz) |
+| 9b | E2E Stripe test charge / full browser E2E | **NOT TESTED** | No Stripe test credentials / Super Admin browser session in agent env |
+| 9c | Flexa Driver cannot receive restaurant orders | **PASS** | Explicit delivery POST guard + restaurant module never sets `usesFlexaDrivers` |
+| 10 | Keep `RESTAURANT_PUBLIC_LAUNCH=false`; reuse Neon + Wasabi | **PASS** | Flag remains false; no new paid infra |
+| 11 | Production deploy health after merge | **NOT TESTED** | Awaiting authorized merge of #308 |
+
+## Explicitly removed from outstanding work
+
+- Flexa Driver assignment / dispatch / earnings for restaurant food — **prohibited by policy**, not a remaining gap.
+
+## External blockers
+
+| Item | Status |
 | --- | --- |
-| Restaurant `CREATE TABLE` migrations pushed **after** the startup apply loop → tables never created; `GET /api/restaurants` returned 500 in production | Critical |
-| Flexa Restaurant nav/API publicly reachable before Super Admin approval | Critical |
-| Owners could self-`publish` without admin application approval | High |
-| Dish models could be marked available without food images | High |
-| Order status updates lacked transition enforcement / immutable history | High |
-| Country filter could be bypassed via query param by non-staff | High |
-| No dedicated listing routes for Restaurants / Food Trucks / Home Kitchens | Medium |
+| Live Stripe test-mode E2E in this agent | **BLOCKED** — secrets not available |
+| Production DigitalOcean deploy | **BLOCKED** — merge authorization required |
+| Public launch flip | **BLOCKED** — waiting explicit Super Admin approval |
 
-## Follow-up after audit subagent (same PR)
-
-Addressed remaining TOP-10 items from the production gap audit:
-- Client checkout `idempotencyKey` (stable per submit intent)
-- Owner **Hours & delivery** settings page (`/restaurant/owner/settings`)
-- Dish food-photo upload via existing Wasabi `/api/storage/uploads/request-url`
-- Command palette gated with `canAccessRestaurant`
-
-## Critical / high issues corrected in this PR
-
-1. **Migrations run before apply loop** (+ smoke test). Also adds `restaurant_order_status_history`.
-2. **Staff-only feature flag** on web nav, mobile drawer, page gate, and API (`requireRestaurantAccess` / `requireRestaurantAuthAccess`). Launch payload includes `publicLaunch: false`.
-3. **Admin application workflow** (`PATCH /api/admin/restaurants/:id/application`) with statuses: submitted / under_review / additional_info_required / published / rejected / suspended.
-4. **Owner submit** sets `submitted` (not public) unless staff force-publishes.
-5. **Country lock** for non-staff discovery; profile country preferred.
-6. **Dish image required** before a dish can be `defaultAvailable`.
-7. **Public menu hides** items without photos / sold out.
-8. **Order status transitions** enforced; history rows appended.
-9. **Dedicated category pages:** `/restaurant/restaurants`, `/restaurant/food-trucks`, `/restaurant/home-kitchens`.
-10. Discover **retry** on error; i18n `staffPreviewOnly` EN/HT/FR/ES.
-
-## Automated test results
+## Automated test evidence (this branch)
 
 ```
-artifacts/api-server: restaurantAccess + restaurantsRoutes.smoke + restaurantSchedule
-→ 14 passed
+vitest (api-server): restaurantAccess + restaurantMoney + restaurantsRoutes.smoke + restaurantSchedule → pass
 ```
-
-Marketplace `restaurantAccess.test.ts` added (run with marketplace vitest when available).
-
-## Feature checklist (honest)
-
-| Area | Status | Notes |
-| --- | --- | --- |
-| Staff feature flag (UI + API) | PASS | Verified in unit/smoke tests; `RESTAURANT_PUBLIC_LAUNCH=false` |
-| Schema migrations ordering | PASS | Smoke asserts before apply loop |
-| Category listing pages | PASS | Routes + Discover `initialType` |
-| Country filtering | PASS | Server-enforced for non-staff |
-| Home kitchen address privacy | PASS | Existing shaping preserved |
-| Food truck operating location | PASS | Existing owner patch preserved |
-| Admin IDV + suspend + approve | PASS | Admin UI + API |
-| Cart one-business + backend price calc | PASS | Existing order create recalculates from DB |
-| Order idempotency | PASS | Existing `idempotencyKey` |
-| Owner-managed delivery (no Flexa drivers) | PASS | Intentional; matches prior Pro Max policy |
-| Stripe native food checkout | FAIL / remaining | Still “pay restaurant directly”; Stripe food checkout not wired |
-| Full Flexa driver assignment for restaurant orders | FAIL / remaining | Explicitly owner-managed; driver PIN stack not attached |
-| Variants / toppings customization groups | FAIL / remaining | Notes field only today |
-| Integer minor-unit money columns | FAIL / remaining | Still `REAL` amounts |
-| Full dashboard (revenue/refunds/txns) | PARTIAL | Owner stats + orders; not full ledger UI |
-| Real-time websocket order push | PARTIAL | Notification rows; no dedicated restaurant socket channel |
-| Public production activation | BLOCKED | Waiting explicit Super Admin approval to flip flag |
-| App Store mobile release | NOT TESTED | Not authorized |
-
-## Files modified (high level)
-
-- `artifacts/api-server/src/lib/migrations.ts`
-- `artifacts/api-server/src/lib/restaurantAccess.ts` (new)
-- `artifacts/api-server/src/routes/restaurants.ts`
-- `artifacts/api-server/src/tests/*`
-- `artifacts/marketplace/src/lib/restaurantAccess.ts` (new)
-- `artifacts/marketplace/src/components/{Layout,PremiumSideMenu,restaurant/RestaurantPageGate}.tsx`
-- `artifacts/marketplace/src/pages/{AdminRestaurants,restaurant/*}`
-- `artifacts/marketplace/src/App.tsx`
-- `artifacts/marketplace/src/i18n/restaurantLocales.ts`
-- `artifacts/mobile/lib/restaurantAccess.ts` (new)
-- `artifacts/mobile/components/shell/AppDrawer.tsx`
 
 ## Deployment stance
 
-- **Do not flip** `RESTAURANT_PUBLIC_LAUNCH` without explicit Super Admin approval.
-- After merge to `main`, DigitalOcean deploy will create tables and keep module **staff-preview only**.
-- Public URL may load for staff; regular users are redirected / denied (403).
-
-## Remaining blockers before claiming full production readiness
-
-1. Stripe food checkout + webhook reconciliation for restaurant orders.
-2. Optional Flexa driver integration **if** product decides to replace owner-managed delivery.
-3. Menu variants / extras schema + UI.
-4. Money stored as integer minor units.
-5. Explicit public launch approval (`RESTAURANT_PUBLIC_LAUNCH=true` in api + web + mobile together).
+Keep `RESTAURANT_PUBLIC_LAUNCH=false`. After merge, DigitalOcean startup migrations apply money/option/PIN/responsibility columns. Public users remain blocked; Super Admin can validate workflows in isolation.

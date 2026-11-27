@@ -3722,6 +3722,15 @@ router.post("/delivery", requireAuth, async (req, res): Promise<void> => {
     country, sellerNote, feeUsd, feeLocal, distanceKm, tipUsd, speedTier,
   } = req.body;
 
+  // Flexa Restaurant food orders are business-managed — Flexa Driver must never transport them.
+  if (req.body?.restaurantOrderId || req.body?.flexaModule === "restaurant" || req.body?.module === "restaurant") {
+    res.status(400).json({
+      error: "Flexa Driver cannot transport Flexa Restaurant food orders",
+      policy: "Restaurants, Food Trucks, and Home Kitchens manage their own food delivery or pickup.",
+    });
+    return;
+  }
+
   if (!deliveryMethod || !country || !deliveryAddress) {
     res.status(400).json({ error: "Missing required fields" });
     return;

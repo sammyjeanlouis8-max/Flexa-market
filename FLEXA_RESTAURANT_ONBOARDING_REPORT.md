@@ -138,9 +138,9 @@ Do not treat placeholders as evidence. Capture on staging after merge with a sta
 
 | Item | Value |
 | --- | --- |
-| PR URL | *(filled after ManagePullRequest)* |
-| Commit SHA | *(filled after commit)* |
-| Deployment | Pending merge to `main` → DigitalOcean `deploy.yml`. Staging validation required before treating as live. |
+| PR URL | https://github.com/sammyjeanlouis8-max/Flexa-market/pull/312 |
+| Commit SHA | `9444cbf4f867223d0ed6b3fcfb019dd3d6ad4005` |
+| Deployment | Pending merge of #312 to `main` → DigitalOcean `deploy.yml`. Staging validation required before treating as live. |
 | Remaining blockers | Authenticated screenshot/E2E suite; holiday-hours UI; public launch still gated; contact-system follow-up queued separately |
 
 ---

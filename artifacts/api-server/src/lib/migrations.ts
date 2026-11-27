@@ -3581,211 +3581,6 @@ export async function runStartupMigrations(): Promise<void> {
     sql: `CREATE INDEX IF NOT EXISTS wholesale_inquiries_status_idx ON wholesale_inquiries(status)`,
   });
 
-  for (const m of migrations) {
-    try {
-      await db.execute(sql.raw(m.sql));
-      applied++;
-    } catch (err: any) {
-      // Ignore "already exists" errors; log real failures as warnings
-      if (!err?.message?.includes("already exists")) {
-        logger.warn({ migration: m.name, err: err?.message }, "Migration warning");
-        failed++;
-      }
-    }
-  }
-
-  // One-time: activate all tracks that were uploaded before auto-approve was enabled
-  try {
-    await db.execute(sql.raw("UPDATE music_tracks SET is_active = TRUE WHERE is_active = FALSE"));
-    logger.info("Migration: activated all pending music tracks");
-  } catch { /* non-fatal */ }
-
-  // Ongoing: backfill name-based referral codes (proper-case + 2 digits, e.g. "Samuel37").
-  // Converts two old formats:
-  //   1. Random FX codes:       ^FX[A-Z0-9]+      (e.g. FXBJU2EZ)
-  //   2. Old all-caps + 3 dig:  ^[A-Z]{2,8}[0-9]{3}$ (e.g. SAMUEL247)
-  // New codes look like Samuel37 — won't match either pattern, so this is idempotent.
-  try {
-    const { rows: oldCodeUsers } = await db.execute(sql.raw(
-      `SELECT id, name, referral_code FROM users
-       WHERE referral_code ~ '^FX[A-Z0-9]+'
-          OR referral_code ~ '^[A-Z]{2,8}[0-9]{3}$'
-       ORDER BY id`
-    ));
-
-    if (oldCodeUsers.length > 0) {
-      logger.info({ count: oldCodeUsers.length }, "Migration: regenerating name-based referral codes");
-
-      // Helper: name → base slug — proper case, e.g. "Samuel" (max 8 chars)
-      const nameBase = (name: string): string => {
-        const raw = String(name ?? "")
-          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-          .replace(/[^a-zA-Z\s]/g, "").trim()
-          .split(/\s+/)[0].slice(0, 8);
-        return raw.length >= 2
-          ? raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
-          : "Fm";
-      };
-
-      // Collect all existing codes so we can avoid collisions in-memory during the loop
-      const { rows: existingRows } = await db.execute(sql.raw(
-        `SELECT referral_code FROM users WHERE referral_code IS NOT NULL`
-      ));
-      const usedCodes = new Set(existingRows.map((r: any) => r.referral_code as string));
-
-      let updated = 0;
-      for (const row of oldCodeUsers as any[]) {
-        const base = nameBase(row.name ?? "");
-        let newCode: string | null = null;
-
-        // Try up to 20 random 2-digit suffixes (10–99) → e.g. "Samuel37"
-        for (let i = 0; i < 20; i++) {
-          const suffix = String(Math.floor(10 + Math.random() * 90));
-          const candidate = base + suffix;
-          if (!usedCodes.has(candidate)) { newCode = candidate; break; }
-        }
-
-        if (!newCode) {
-          // Absolute fallback: base + timestamp fragment
-          newCode = base + Date.now().toString(36).slice(-2);
-          while (usedCodes.has(newCode)) newCode = base + Date.now().toString(36).slice(-3);
-        }
-
-        // Atomic update — only touches this user, only if they still have the old code
-        await db.execute(sql.raw(
-          `UPDATE users SET referral_code = '${newCode}' WHERE id = ${row.id} AND referral_code = '${row.referral_code}'`
-        ));
-        usedCodes.delete(row.referral_code as string);
-        usedCodes.add(newCode);
-        updated++;
-      }
-      logger.info({ updated }, "Migration: name-based referral code backfill complete");
-    }
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "Migration: name-based referral code backfill failed (non-fatal)");
-  }
-
-  // One-time-ish: seed unique video-profile usernames from display names for users
-  // that still lack a handle. Idempotent — only touches username IS NULL rows.
-  try {
-    const { rows: missing } = await db.execute(sql.raw(
-      `SELECT id, name FROM users WHERE username IS NULL ORDER BY id LIMIT 5000`,
-    ));
-    if (missing.length > 0) {
-      const { rows: existing } = await db.execute(sql.raw(
-        `SELECT lower(username) AS u FROM users WHERE username IS NOT NULL`,
-      ));
-      const used = new Set(existing.map((r: any) => String(r.u)));
-      const slug = (name: string, id: number): string => {
-        const base = String(name ?? "")
-          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 20);
-        const root = base.length >= 3 ? base : `user${id}`;
-        let candidate = root.slice(0, 30);
-        if (!used.has(candidate) && candidate.length >= 3) return candidate;
-        for (let i = 0; i < 40; i++) {
-          const suffix = String(10 + Math.floor(Math.random() * 90));
-          candidate = `${root.slice(0, 28)}${suffix}`.slice(0, 30);
-          if (!used.has(candidate)) return candidate;
-        }
-        return `user${id}`;
-      };
-      let seeded = 0;
-      for (const row of missing as any[]) {
-        const candidate = slug(row.name ?? "", row.id);
-        used.add(candidate);
-        await db.execute(sql.raw(
-          `UPDATE users SET username = '${candidate.replace(/'/g, "''")}' WHERE id = ${row.id} AND username IS NULL`,
-        ));
-        seeded++;
-      }
-      logger.info({ seeded }, "Migration: video username backfill complete");
-    }
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "Migration: video username backfill failed (non-fatal)");
-  }
-
-  // Haiti driver apply — distinct national ID + uncertain-doc flag + residential department
-  try {
-    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_national_id text`));
-    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS docs_need_review boolean NOT NULL DEFAULT false`));
-    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS residential_department text`));
-    await db.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS app_data_migrations (
-        name text PRIMARY KEY,
-        applied_at timestamptz NOT NULL DEFAULT NOW()
-      );
-    `));
-    // Mark legacy rows where the same URL was dual-written into selfie + holding-ID.
-    // Keep photos; flag for admin verification of labels.
-    await db.execute(sql.raw(`
-      WITH claimed AS (
-        INSERT INTO app_data_migrations (name)
-        VALUES ('driver_apps_flag_uncertain_photos_v1')
-        ON CONFLICT (name) DO NOTHING
-        RETURNING name
-      )
-      UPDATE driver_applications da
-         SET docs_need_review = true
-        FROM claimed
-       WHERE da.photo_national_id IS NULL
-         AND da.photo_id_selfie IS NOT NULL
-         AND da.face_photo_holding_id IS NOT NULL
-         AND da.photo_id_selfie = da.face_photo_holding_id
-         AND da.docs_need_review = false
-    `));
-    logger.info("Migration: driver application national-id columns + uncertain photo flags");
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "Migration: driver national-id columns failed (non-fatal)");
-  }
-
-  // Data fix: Cordless Mattress Vacuum Cleaner was miscategorized under Electronics >
-  // Accessories & Cables. Retarget to Appliances > Microwaves & Blenders (small-appliances),
-  // the closest existing Appliances subcategory. Matches by title (and legacy id 4 when
-  // title matches) — not a UI exception for listing id.
-  try {
-    await db.execute(sql.raw(`
-      CREATE TABLE IF NOT EXISTS app_data_migrations (
-        name text PRIMARY KEY,
-        applied_at timestamptz NOT NULL DEFAULT NOW()
-      );
-    `));
-    await db.execute(sql.raw(`
-      WITH claimed AS (
-        INSERT INTO app_data_migrations (name)
-        VALUES ('fix_vacuum_listing_appliances_v1')
-        ON CONFLICT (name) DO NOTHING
-        RETURNING name
-      ),
-      cats AS (
-        SELECT
-          (SELECT id FROM categories WHERE slug = 'appliances' AND parent_id IS NULL LIMIT 1) AS appliances_id,
-          (SELECT c.id FROM categories c
-             JOIN categories p ON p.id = c.parent_id
-            WHERE c.slug = 'small-appliances' AND p.slug = 'appliances'
-            LIMIT 1) AS small_appliances_id
-      )
-      UPDATE listings l
-         SET category_id = cats.appliances_id,
-             subcategory_id = cats.small_appliances_id
-        FROM cats, claimed
-       WHERE cats.appliances_id IS NOT NULL
-         AND cats.small_appliances_id IS NOT NULL
-         AND (
-           (l.id = 4 AND l.title ILIKE '%Vacuum%Cleaner%')
-           OR l.title ILIKE '%Cordless Mattress Vacuum Cleaner%'
-         )
-         AND (
-           l.category_id IS DISTINCT FROM cats.appliances_id
-           OR l.subcategory_id IS DISTINCT FROM cats.small_appliances_id
-         )
-    `));
-    logger.info("Migration: vacuum listing category fix attempted (Appliances > small-appliances)");
-  } catch (err: any) {
-    logger.warn({ err: err?.message }, "Migration: vacuum listing category fix failed (non-fatal)");
-  }
-
-
   // ── Flexa Restaurant module ───────────────────────────────────────────────
   migrations.push({
     name: "restaurants.create",
@@ -4091,6 +3886,419 @@ CREATE INDEX IF NOT EXISTS restaurants_identity_idx ON restaurants(identity_stat
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
   });
+
+
+  migrations.push({
+    name: "restaurant_order_status_history.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_order_status_history (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES restaurant_orders(id) ON DELETE CASCADE,
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      actor_id INTEGER NOT NULL REFERENCES users(id),
+      note TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_order_status_history.indexes",
+    sql: `CREATE INDEX IF NOT EXISTS restaurant_order_status_history_order_idx ON restaurant_order_status_history(order_id);
+CREATE INDEX IF NOT EXISTS restaurant_order_status_history_created_idx ON restaurant_order_status_history(created_at DESC)`,
+  });
+
+
+  migrations.push({
+    name: "restaurant_money_and_options.v1",
+    sql: `
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS delivery_fee_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS delivery_radius_km REAL NOT NULL DEFAULT 5;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS min_order_amount_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS estimated_prep_minutes INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS free_delivery_min_minor INTEGER;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS pickup_available BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS delivery_available BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS delivery_suspended BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE restaurant_dish_models ADD COLUMN IF NOT EXISTS price_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_daily_menu_items ADD COLUMN IF NOT EXISTS price_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS subtotal_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS delivery_fee_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS total_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS confirmation_pin TEXT;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS pin_confirmed_at TIMESTAMPTZ;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS estimated_prep_minutes INTEGER;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS uses_flexa_drivers BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS platform_commission_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_order_items ADD COLUMN IF NOT EXISTS unit_price_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_order_items ADD COLUMN IF NOT EXISTS line_total_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_order_items ADD COLUMN IF NOT EXISTS customizations JSONB NOT NULL DEFAULT '[]'::jsonb;
+CREATE TABLE IF NOT EXISTS restaurant_dish_option_groups (
+  id SERIAL PRIMARY KEY,
+  dish_model_id INTEGER NOT NULL REFERENCES restaurant_dish_models(id) ON DELETE CASCADE,
+  restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'extra',
+  required BOOLEAN NOT NULL DEFAULT FALSE,
+  min_select INTEGER NOT NULL DEFAULT 0,
+  max_select INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS restaurant_dish_options (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES restaurant_dish_option_groups(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  price_delta REAL NOT NULL DEFAULT 0,
+  price_delta_minor INTEGER NOT NULL DEFAULT 0,
+  sold_out BOOLEAN NOT NULL DEFAULT FALSE,
+  allergens TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS restaurant_dish_option_groups_dish_idx ON restaurant_dish_option_groups(dish_model_id);
+CREATE INDEX IF NOT EXISTS restaurant_orders_stripe_pi_idx ON restaurant_orders(stripe_payment_intent_id);
+`
+  });
+  migrations.push({
+    name: "restaurant_money_backfill.v1",
+    sql: `
+UPDATE restaurant_dish_models SET price_minor = ROUND(price * 100)::INTEGER WHERE price_minor = 0 AND price IS NOT NULL;
+UPDATE restaurant_daily_menu_items SET price_minor = ROUND(price * 100)::INTEGER WHERE price_minor = 0 AND price IS NOT NULL;
+UPDATE restaurant_orders SET subtotal_minor = ROUND(subtotal * 100)::INTEGER WHERE subtotal_minor = 0;
+UPDATE restaurant_orders SET delivery_fee_minor = ROUND(delivery_fee * 100)::INTEGER WHERE delivery_fee_minor = 0;
+UPDATE restaurant_orders SET total_minor = ROUND(total * 100)::INTEGER WHERE total_minor = 0;
+UPDATE restaurant_order_items SET unit_price_minor = ROUND(unit_price * 100)::INTEGER WHERE unit_price_minor = 0;
+UPDATE restaurant_order_items SET line_total_minor = ROUND(line_total * 100)::INTEGER WHERE line_total_minor = 0;
+UPDATE restaurant_delivery_settings SET delivery_fee_minor = ROUND(delivery_fee * 100)::INTEGER WHERE delivery_fee_minor = 0;
+UPDATE restaurant_delivery_settings SET min_order_amount_minor = ROUND(min_order_amount * 100)::INTEGER WHERE min_order_amount_minor = 0;
+UPDATE restaurant_delivery_settings SET free_delivery_min_minor = ROUND(free_delivery_min * 100)::INTEGER WHERE free_delivery_min IS NOT NULL AND free_delivery_min_minor IS NULL;
+UPDATE restaurant_delivery_settings SET delivery_available = (fulfillment IN ('delivery','both')) WHERE TRUE;
+UPDATE restaurant_delivery_settings SET pickup_available = (fulfillment IN ('pickup','both')) WHERE TRUE;
+UPDATE restaurant_orders SET uses_flexa_drivers = FALSE WHERE uses_flexa_drivers IS DISTINCT FROM FALSE;
+`
+  });
+  migrations.push({
+    name: "restaurant_food_responsibility.ack",
+    sql: `ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS food_responsibility_accepted_at TIMESTAMPTZ`,
+  });
+
+  migrations.push({
+    name: "restaurant_country_availability.v1",
+    sql: `
+CREATE TABLE IF NOT EXISTS restaurant_country_availability (
+  id SERIAL PRIMARY KEY,
+  country_code TEXT NOT NULL,
+  country_name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'not_reviewed',
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  restaurants_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  food_trucks_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  home_kitchens_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  catering_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  required_licenses_note TEXT NOT NULL DEFAULT '',
+  food_safety_requirements_note TEXT NOT NULL DEFAULT '',
+  regulatory_review_notes TEXT NOT NULL DEFAULT '',
+  approval_document_url TEXT,
+  approved_at TIMESTAMPTZ,
+  suspended_at TIMESTAMPTZ,
+  suspension_reason TEXT,
+  updated_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS restaurant_country_availability_code ON restaurant_country_availability(country_code);
+
+CREATE TABLE IF NOT EXISTS restaurant_jurisdiction_availability (
+  id SERIAL PRIMARY KEY,
+  country_code TEXT NOT NULL,
+  level TEXT NOT NULL DEFAULT 'region',
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'not_reviewed',
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  restaurants_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  food_trucks_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  home_kitchens_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  required_licenses_note TEXT NOT NULL DEFAULT '',
+  regulatory_review_notes TEXT NOT NULL DEFAULT '',
+  approved_at TIMESTAMPTZ,
+  suspended_at TIMESTAMPTZ,
+  suspension_reason TEXT,
+  updated_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS restaurant_jurisdiction_country_idx ON restaurant_jurisdiction_availability(country_code);
+CREATE UNIQUE INDEX IF NOT EXISTS restaurant_jurisdiction_unique ON restaurant_jurisdiction_availability(country_code, level, name);
+
+CREATE TABLE IF NOT EXISTS restaurant_compliance_requirements (
+  id SERIAL PRIMARY KEY,
+  country_code TEXT NOT NULL,
+  business_type TEXT NOT NULL DEFAULT '*',
+  requirement_key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  required BOOLEAN NOT NULL DEFAULT TRUE,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS restaurant_compliance_req_country_idx ON restaurant_compliance_requirements(country_code);
+
+CREATE TABLE IF NOT EXISTS restaurant_compliance_documents (
+  id SERIAL PRIMARY KEY,
+  restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+  requirement_key TEXT NOT NULL,
+  document_label TEXT NOT NULL DEFAULT '',
+  storage_key TEXT NOT NULL,
+  expires_at TIMESTAMPTZ,
+  verified_at TIMESTAMPTZ,
+  verified_by INTEGER REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS restaurant_compliance_docs_restaurant_idx ON restaurant_compliance_documents(restaurant_id);
+
+CREATE TABLE IF NOT EXISTS restaurant_regulatory_audit_logs (
+  id SERIAL PRIMARY KEY,
+  actor_id INTEGER NOT NULL REFERENCES users(id),
+  action TEXT NOT NULL,
+  country_code TEXT,
+  jurisdiction_id INTEGER,
+  restaurant_id INTEGER,
+  details TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS restaurant_regulatory_audit_actor_idx ON restaurant_regulatory_audit_logs(actor_id);
+CREATE INDEX IF NOT EXISTS restaurant_regulatory_audit_country_idx ON restaurant_regulatory_audit_logs(country_code);
+
+INSERT INTO restaurant_country_availability (
+  country_code, country_name, status, enabled,
+  restaurants_enabled, food_trucks_enabled, home_kitchens_enabled, catering_enabled,
+  required_licenses_note, food_safety_requirements_note, regulatory_review_notes, suspension_reason
+) VALUES
+  ('US', 'United States', 'suspended', FALSE, FALSE, FALSE, FALSE, FALSE,
+   'US food-service licensing varies by state/locality. Not authorized for Flexa Restaurant.',
+   'Not reviewed for Flexa Restaurant public operation.',
+   'Default disabled — no regulatory approval recorded.',
+   'Default policy: United States is disabled for Flexa Restaurant.'),
+  ('CA', 'Canada', 'suspended', FALSE, FALSE, FALSE, FALSE, FALSE,
+   'Canadian food-service licensing varies by province. Not authorized for Flexa Restaurant.',
+   'Not reviewed for Flexa Restaurant public operation.',
+   'Default disabled — no regulatory approval recorded.',
+   'Default policy: Canada is disabled for Flexa Restaurant.'),
+  ('HT', 'Haiti', 'under_review', FALSE, FALSE, FALSE, FALSE, FALSE,
+   'Pending verification of applicable Haitian food-service / home-kitchen requirements.',
+   'Pending local regulatory verification before public activation.',
+   'Intended initial market — pending documented regulatory approval. Not publicly activated.',
+   NULL)
+ON CONFLICT (country_code) DO NOTHING;
+`,
+  });
+
+  for (const m of migrations) {
+    try {
+      await db.execute(sql.raw(m.sql));
+      applied++;
+    } catch (err: any) {
+      // Ignore "already exists" errors; log real failures as warnings
+      if (!err?.message?.includes("already exists")) {
+        logger.warn({ migration: m.name, err: err?.message }, "Migration warning");
+        failed++;
+      }
+    }
+  }
+
+  // One-time: activate all tracks that were uploaded before auto-approve was enabled
+  try {
+    await db.execute(sql.raw("UPDATE music_tracks SET is_active = TRUE WHERE is_active = FALSE"));
+    logger.info("Migration: activated all pending music tracks");
+  } catch { /* non-fatal */ }
+
+  // Ongoing: backfill name-based referral codes (proper-case + 2 digits, e.g. "Samuel37").
+  // Converts two old formats:
+  //   1. Random FX codes:       ^FX[A-Z0-9]+      (e.g. FXBJU2EZ)
+  //   2. Old all-caps + 3 dig:  ^[A-Z]{2,8}[0-9]{3}$ (e.g. SAMUEL247)
+  // New codes look like Samuel37 — won't match either pattern, so this is idempotent.
+  try {
+    const { rows: oldCodeUsers } = await db.execute(sql.raw(
+      `SELECT id, name, referral_code FROM users
+       WHERE referral_code ~ '^FX[A-Z0-9]+'
+          OR referral_code ~ '^[A-Z]{2,8}[0-9]{3}$'
+       ORDER BY id`
+    ));
+
+    if (oldCodeUsers.length > 0) {
+      logger.info({ count: oldCodeUsers.length }, "Migration: regenerating name-based referral codes");
+
+      // Helper: name → base slug — proper case, e.g. "Samuel" (max 8 chars)
+      const nameBase = (name: string): string => {
+        const raw = String(name ?? "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-zA-Z\s]/g, "").trim()
+          .split(/\s+/)[0].slice(0, 8);
+        return raw.length >= 2
+          ? raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
+          : "Fm";
+      };
+
+      // Collect all existing codes so we can avoid collisions in-memory during the loop
+      const { rows: existingRows } = await db.execute(sql.raw(
+        `SELECT referral_code FROM users WHERE referral_code IS NOT NULL`
+      ));
+      const usedCodes = new Set(existingRows.map((r: any) => r.referral_code as string));
+
+      let updated = 0;
+      for (const row of oldCodeUsers as any[]) {
+        const base = nameBase(row.name ?? "");
+        let newCode: string | null = null;
+
+        // Try up to 20 random 2-digit suffixes (10–99) → e.g. "Samuel37"
+        for (let i = 0; i < 20; i++) {
+          const suffix = String(Math.floor(10 + Math.random() * 90));
+          const candidate = base + suffix;
+          if (!usedCodes.has(candidate)) { newCode = candidate; break; }
+        }
+
+        if (!newCode) {
+          // Absolute fallback: base + timestamp fragment
+          newCode = base + Date.now().toString(36).slice(-2);
+          while (usedCodes.has(newCode)) newCode = base + Date.now().toString(36).slice(-3);
+        }
+
+        // Atomic update — only touches this user, only if they still have the old code
+        await db.execute(sql.raw(
+          `UPDATE users SET referral_code = '${newCode}' WHERE id = ${row.id} AND referral_code = '${row.referral_code}'`
+        ));
+        usedCodes.delete(row.referral_code as string);
+        usedCodes.add(newCode);
+        updated++;
+      }
+      logger.info({ updated }, "Migration: name-based referral code backfill complete");
+    }
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: name-based referral code backfill failed (non-fatal)");
+  }
+
+  // One-time-ish: seed unique video-profile usernames from display names for users
+  // that still lack a handle. Idempotent — only touches username IS NULL rows.
+  try {
+    const { rows: missing } = await db.execute(sql.raw(
+      `SELECT id, name FROM users WHERE username IS NULL ORDER BY id LIMIT 5000`,
+    ));
+    if (missing.length > 0) {
+      const { rows: existing } = await db.execute(sql.raw(
+        `SELECT lower(username) AS u FROM users WHERE username IS NOT NULL`,
+      ));
+      const used = new Set(existing.map((r: any) => String(r.u)));
+      const slug = (name: string, id: number): string => {
+        const base = String(name ?? "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 20);
+        const root = base.length >= 3 ? base : `user${id}`;
+        let candidate = root.slice(0, 30);
+        if (!used.has(candidate) && candidate.length >= 3) return candidate;
+        for (let i = 0; i < 40; i++) {
+          const suffix = String(10 + Math.floor(Math.random() * 90));
+          candidate = `${root.slice(0, 28)}${suffix}`.slice(0, 30);
+          if (!used.has(candidate)) return candidate;
+        }
+        return `user${id}`;
+      };
+      let seeded = 0;
+      for (const row of missing as any[]) {
+        const candidate = slug(row.name ?? "", row.id);
+        used.add(candidate);
+        await db.execute(sql.raw(
+          `UPDATE users SET username = '${candidate.replace(/'/g, "''")}' WHERE id = ${row.id} AND username IS NULL`,
+        ));
+        seeded++;
+      }
+      logger.info({ seeded }, "Migration: video username backfill complete");
+    }
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: video username backfill failed (non-fatal)");
+  }
+
+  // Haiti driver apply — distinct national ID + uncertain-doc flag + residential department
+  try {
+    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_national_id text`));
+    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS docs_need_review boolean NOT NULL DEFAULT false`));
+    await db.execute(sql.raw(`ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS residential_department text`));
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS app_data_migrations (
+        name text PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT NOW()
+      );
+    `));
+    // Mark legacy rows where the same URL was dual-written into selfie + holding-ID.
+    // Keep photos; flag for admin verification of labels.
+    await db.execute(sql.raw(`
+      WITH claimed AS (
+        INSERT INTO app_data_migrations (name)
+        VALUES ('driver_apps_flag_uncertain_photos_v1')
+        ON CONFLICT (name) DO NOTHING
+        RETURNING name
+      )
+      UPDATE driver_applications da
+         SET docs_need_review = true
+        FROM claimed
+       WHERE da.photo_national_id IS NULL
+         AND da.photo_id_selfie IS NOT NULL
+         AND da.face_photo_holding_id IS NOT NULL
+         AND da.photo_id_selfie = da.face_photo_holding_id
+         AND da.docs_need_review = false
+    `));
+    logger.info("Migration: driver application national-id columns + uncertain photo flags");
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: driver national-id columns failed (non-fatal)");
+  }
+
+  // Data fix: Cordless Mattress Vacuum Cleaner was miscategorized under Electronics >
+  // Accessories & Cables. Retarget to Appliances > Microwaves & Blenders (small-appliances),
+  // the closest existing Appliances subcategory. Matches by title (and legacy id 4 when
+  // title matches) — not a UI exception for listing id.
+  try {
+    await db.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS app_data_migrations (
+        name text PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT NOW()
+      );
+    `));
+    await db.execute(sql.raw(`
+      WITH claimed AS (
+        INSERT INTO app_data_migrations (name)
+        VALUES ('fix_vacuum_listing_appliances_v1')
+        ON CONFLICT (name) DO NOTHING
+        RETURNING name
+      ),
+      cats AS (
+        SELECT
+          (SELECT id FROM categories WHERE slug = 'appliances' AND parent_id IS NULL LIMIT 1) AS appliances_id,
+          (SELECT c.id FROM categories c
+             JOIN categories p ON p.id = c.parent_id
+            WHERE c.slug = 'small-appliances' AND p.slug = 'appliances'
+            LIMIT 1) AS small_appliances_id
+      )
+      UPDATE listings l
+         SET category_id = cats.appliances_id,
+             subcategory_id = cats.small_appliances_id
+        FROM cats, claimed
+       WHERE cats.appliances_id IS NOT NULL
+         AND cats.small_appliances_id IS NOT NULL
+         AND (
+           (l.id = 4 AND l.title ILIKE '%Vacuum%Cleaner%')
+           OR l.title ILIKE '%Cordless Mattress Vacuum Cleaner%'
+         )
+         AND (
+           l.category_id IS DISTINCT FROM cats.appliances_id
+           OR l.subcategory_id IS DISTINCT FROM cats.small_appliances_id
+         )
+    `));
+    logger.info("Migration: vacuum listing category fix attempted (Appliances > small-appliances)");
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: vacuum listing category fix failed (non-fatal)");
+  }
+
 
   logger.info({ applied, failed }, "Startup migrations complete");
 }

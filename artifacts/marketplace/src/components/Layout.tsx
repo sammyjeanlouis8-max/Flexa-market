@@ -42,6 +42,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import AdminShell from "@/components/admin/AdminShell";
 import { cn } from "@/lib/utils";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
+import { canAccessRestaurant } from "@/lib/restaurantAccess";
 import { useGetCategories } from "@workspace/api-client-react";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
@@ -514,6 +515,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const showDelivery = !!user && canShowFMDeliveryLinks(deliveryMenuCountry === undefined ? user.country : deliveryMenuCountry);
   const canSeeLoan = !isNativeMobileApp() && !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
   const canSeeWholesale = canAccessWholesale(user);
+  const canSeeRestaurant = canAccessRestaurant(user);
 
   type SidebarItem = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; key: string; highlight?: boolean; adminHighlight?: boolean; badge?: number };
   type SidebarSection = { heading?: string; highlight?: boolean; items: SidebarItem[] };
@@ -539,13 +541,15 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               highlight: true,
             }]
           : []),
-        {
-          href: "/restaurant",
-          icon: UtensilsCrossed,
-          label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
-          key: "flexa-restaurant",
-          highlight: true,
-        },
+        ...(canSeeRestaurant
+          ? [{
+              href: "/restaurant",
+              icon: UtensilsCrossed,
+              label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
+              key: "flexa-restaurant",
+              highlight: true,
+            }]
+          : []),
         { href: "/search", icon: Search, label: t("nav.categories", { defaultValue: "Categories" }), key: "search" },
         { href: "/sell", icon: Plus, label: t("nav.sell"), key: "sell", highlight: true },
         { href: "/messages", icon: MessageCircle, label: t("nav.messages"), key: "messages", badge: unread },

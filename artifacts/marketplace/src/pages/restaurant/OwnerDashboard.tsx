@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
-import { Bell, CalendarClock, ChefHat, LayoutGrid, ShoppingBag, UtensilsCrossed } from "lucide-react";
+import { Bell, CalendarClock, ChefHat, Clock3, LayoutGrid, ShoppingBag, UtensilsCrossed } from "lucide-react";
 import { RestaurantPageGate } from "@/components/restaurant/RestaurantPageGate";
 import { RestaurantEmpty, RestaurantNotice, RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import {
@@ -23,6 +23,7 @@ const OWNER_LINKS = [
   { href: "/restaurant/owner/reservations", titleKey: "restaurant.reservations", bodyKey: "restaurant.myReservationsSubtitle", icon: CalendarClock },
   { href: "/restaurant/owner/menu", titleKey: "restaurant.dailyMenu", bodyKey: "restaurant.dailyMenuSubtitle", icon: LayoutGrid },
   { href: "/restaurant/owner/dishes", titleKey: "restaurant.dishModels", bodyKey: "restaurant.dishModelsSubtitle", icon: ChefHat },
+  { href: "/restaurant/owner/settings", titleKey: "restaurant.businessHours", bodyKey: "restaurant.deliverySettings", icon: Clock3 },
   { href: "/restaurant/owner/identity", titleKey: "restaurant.identityVerification", bodyKey: "restaurant.identityVerificationSubtitle", icon: UtensilsCrossed },
   { href: "/restaurant/owner/food-safety", titleKey: "restaurant.foodSafetyQuiz", bodyKey: "restaurant.foodSafetySubtitle", icon: UtensilsCrossed },
 ] as const;

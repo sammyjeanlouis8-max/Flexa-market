@@ -212,9 +212,13 @@ const WholesaleDisputes              = lazy(() => import("@/pages/wholesale/Whol
 const WholesaleBlocked               = lazy(() => import("@/pages/wholesale/WholesaleBlocked"));
 const FlexaRestaurant                = lazy(() => import("@/pages/FlexaRestaurant"));
 const RestaurantDiscover             = lazy(() => import("@/pages/restaurant/Discover"));
+const RestaurantCategoryPage         = lazy(() => import("@/pages/restaurant/CategoryDiscover").then((m) => ({ default: m.RestaurantCategoryPage })));
+const FoodTruckCategoryPage          = lazy(() => import("@/pages/restaurant/CategoryDiscover").then((m) => ({ default: m.FoodTruckCategoryPage })));
+const HomeKitchenCategoryPage        = lazy(() => import("@/pages/restaurant/CategoryDiscover").then((m) => ({ default: m.HomeKitchenCategoryPage })));
 const RestaurantDetail               = lazy(() => import("@/pages/restaurant/RestaurantDetail"));
 const RestaurantAdd                  = lazy(() => import("@/pages/restaurant/AddRestaurant"));
 const RestaurantOwnerDashboard       = lazy(() => import("@/pages/restaurant/OwnerDashboard"));
+const RestaurantOwnerSettings        = lazy(() => import("@/pages/restaurant/OwnerSettings"));
 const RestaurantDishModels           = lazy(() => import("@/pages/restaurant/DishModels"));
 const RestaurantDailyMenu            = lazy(() => import("@/pages/restaurant/DailyMenu"));
 const RestaurantOrders               = lazy(() => import("@/pages/restaurant/Orders"));
@@ -235,6 +239,7 @@ const MusicSponsoredBreakHost        = lazy(() => import("@/components/music/Mus
 const MusicPublicPlayer              = lazy(() => import("@/pages/MusicPublicPlayer"));
 const AdminMusic                     = lazy(() => import("@/pages/AdminMusic"));
 const AdminRestaurants               = lazy(() => import("@/pages/AdminRestaurants"));
+const AdminRestaurantCountries       = lazy(() => import("@/pages/AdminRestaurantCountries"));
 const AdminTransactions              = lazy(() => import("@/pages/AdminTransactions"));
 const AdminStripeTransactions        = lazy(() => import("@/pages/AdminStripeTransactions"));
 const AdminHaitiTransactions         = lazy(() => import("@/pages/AdminHaitiTransactions"));
@@ -523,6 +528,7 @@ function LayoutRoutes() {
           <Route path="/restaurant/owner/orders" component={RestaurantOrders} />
           <Route path="/restaurant/owner/menu" component={RestaurantDailyMenu} />
           <Route path="/restaurant/owner/dishes" component={RestaurantDishModels} />
+          <Route path="/restaurant/owner/settings" component={RestaurantOwnerSettings} />
           <Route path="/restaurant/owner" component={RestaurantOwnerDashboard} />
           <Route path="/restaurant/add" component={RestaurantAdd} />
           <Route path="/restaurant/my-reservations" component={RestaurantMyReservations} />
@@ -530,6 +536,9 @@ function LayoutRoutes() {
           <Route path="/restaurant/checkout" component={RestaurantCheckout} />
           <Route path="/restaurant/cart" component={RestaurantCart} />
           <Route path="/restaurant/discover" component={RestaurantDiscover} />
+          <Route path="/restaurant/restaurants" component={RestaurantCategoryPage} />
+          <Route path="/restaurant/food-trucks" component={FoodTruckCategoryPage} />
+          <Route path="/restaurant/home-kitchens" component={HomeKitchenCategoryPage} />
           <Route path="/restaurant/:id" component={RestaurantDetail} />
           <Route path="/restaurant" component={FlexaRestaurant} />
           <Route path="/tv" component={FlexaTV} />
@@ -538,6 +547,7 @@ function LayoutRoutes() {
           <Route path="/music/upload" component={FlexaMusicUpload} />
           <Route path="/music/earnings" component={FlexaMusicEarnings} />
           <Route path="/admin/music" component={AdminMusic} />
+          <Route path="/admin/restaurants/countries" component={AdminRestaurantCountries} />
           <Route path="/admin/restaurants" component={AdminRestaurants} />
           <Route path="/admin/transactions" component={AdminTransactions} />
           <Route path="/admin/stripe-transactions" component={AdminStripeTransactions} />

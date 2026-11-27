@@ -56,12 +56,13 @@ describe("restaurantSchedule", () => {
 });
 
 describe("food safety quiz", () => {
-  it("passes at 4/5", () => {
+  it("passes at 5/6 with one miss", () => {
     const answers: Record<string, string> = {};
     for (const q of FOOD_SAFETY_QUESTIONS) answers[q.id] = q.correctChoiceId;
     answers.q5 = "a";
     const graded = gradeFoodSafetyQuiz(answers);
-    expect(graded.score).toBe(4);
+    expect(FOOD_SAFETY_QUESTIONS.length).toBe(6);
+    expect(graded.score).toBe(5);
     expect(graded.passed).toBe(true);
   });
 });

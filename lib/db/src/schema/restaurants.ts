@@ -54,6 +54,8 @@ export const restaurantsTable = pgTable("restaurants", {
   foodSafetyQuizScore: integer("food_safety_quiz_score"),
   foodSafetyCompletedAt: timestamp("food_safety_completed_at", { withTimezone: true }),
   termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  /** Owner acknowledged food prep / delivery / permit responsibility (not Flexa Driver). */
+  foodResponsibilityAcceptedAt: timestamp("food_responsibility_accepted_at", { withTimezone: true }),
   /** Future paid plan hook — always free while this is false / null. */
   subscriptionPlan: text("subscription_plan").notNull().default("free"),
   subscriptionEnforced: boolean("subscription_enforced").notNull().default(false),
@@ -124,12 +126,23 @@ export const restaurantDeliverySettingsTable = pgTable("restaurant_delivery_sett
   /** pickup | delivery | both */
   fulfillment: text("fulfillment").notNull().default("pickup"),
   deliveryFee: real("delivery_fee").notNull().default(0),
+  /** Integer minor units (preferred). Legacy float columns kept for back-compat. */
+  deliveryFeeMinor: integer("delivery_fee_minor").notNull().default(0),
   deliveryZones: text("delivery_zones").array().notNull().default([]),
+  /** Delivery radius in kilometers (business-managed). */
+  deliveryRadiusKm: real("delivery_radius_km").notNull().default(5),
   minOrderAmount: real("min_order_amount").notNull().default(0),
+  minOrderAmountMinor: integer("min_order_amount_minor").notNull().default(0),
+  estimatedPrepMinutes: integer("estimated_prep_minutes").notNull().default(30),
   estimatedDeliveryMinutes: integer("estimated_delivery_minutes").notNull().default(45),
   deliveryInstructions: text("delivery_instructions").notNull().default(""),
   freeDeliveryMin: real("free_delivery_min"),
-  /** Owner-managed delivery — never Flexa Market drivers. */
+  freeDeliveryMinMinor: integer("free_delivery_min_minor"),
+  pickupAvailable: boolean("pickup_available").notNull().default(true),
+  deliveryAvailable: boolean("delivery_available").notNull().default(false),
+  /** Temporary suspension of delivery only (pickup may remain). */
+  deliverySuspended: boolean("delivery_suspended").notNull().default(false),
+  /** Owner-managed delivery — never Flexa Market / Flexa Driver. */
   ownerManagedDelivery: boolean("owner_managed_delivery").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -155,6 +168,7 @@ export const restaurantDishModelsTable = pgTable("restaurant_dish_models", {
   description: text("description").notNull().default(""),
   photos: text("photos").array().notNull().default([]),
   price: real("price").notNull(),
+  priceMinor: integer("price_minor").notNull().default(0),
   currency: text("currency").notNull().default("USD"),
   category: text("category"),
   ingredients: text("ingredients").notNull().default(""),
@@ -169,6 +183,35 @@ export const restaurantDishModelsTable = pgTable("restaurant_dish_models", {
 }, (t) => ({
   restaurantIdx: index("restaurant_dish_models_restaurant_idx").on(t.restaurantId),
 }));
+
+/** Size / topping / extra groups for a dish model. */
+export const restaurantDishOptionGroupsTable = pgTable("restaurant_dish_option_groups", {
+  id: serial("id").primaryKey(),
+  dishModelId: integer("dish_model_id").notNull().references(() => restaurantDishModelsTable.id, { onDelete: "cascade" }),
+  restaurantId: integer("restaurant_id").notNull().references(() => restaurantsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** size | variant | topping | extra | other */
+  kind: text("kind").notNull().default("extra"),
+  required: boolean("required").notNull().default(false),
+  minSelect: integer("min_select").notNull().default(0),
+  maxSelect: integer("max_select").notNull().default(1),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  dishIdx: index("restaurant_dish_option_groups_dish_idx").on(t.dishModelId),
+}));
+
+export const restaurantDishOptionsTable = pgTable("restaurant_dish_options", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull().references(() => restaurantDishOptionGroupsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  priceDelta: real("price_delta").notNull().default(0),
+  priceDeltaMinor: integer("price_delta_minor").notNull().default(0),
+  soldOut: boolean("sold_out").notNull().default(false),
+  allergens: text("allergens").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isDeleted: boolean("is_deleted").notNull().default(false),
+});
 
 export const restaurantDailyMenusTable = pgTable("restaurant_daily_menus", {
   id: serial("id").primaryKey(),
@@ -189,6 +232,7 @@ export const restaurantDailyMenuItemsTable = pgTable("restaurant_daily_menu_item
   description: text("description").notNull().default(""),
   photos: text("photos").array().notNull().default([]),
   price: real("price").notNull(),
+  priceMinor: integer("price_minor").notNull().default(0),
   currency: text("currency").notNull().default("USD"),
   category: text("category"),
   ingredients: text("ingredients").notNull().default(""),
@@ -213,18 +257,34 @@ export const restaurantOrdersTable = pgTable("restaurant_orders", {
   id: serial("id").primaryKey(),
   restaurantId: integer("restaurant_id").notNull().references(() => restaurantsTable.id),
   customerId: integer("customer_id").notNull().references(() => usersTable.id),
-  /** pending | accepted | rejected | preparing | ready_pickup | out_for_delivery | completed | cancelled */
-  status: text("status").notNull().default("pending"),
+  /**
+   * pending_payment | order_placed | confirmed | preparing | ready_for_pickup |
+   * out_for_delivery | delivered | completed | rejected | canceled | refund_pending | refunded
+   */
+  status: text("status").notNull().default("pending_payment"),
   fulfillment: text("fulfillment").notNull().default("pickup"),
   subtotal: real("subtotal").notNull().default(0),
   deliveryFee: real("delivery_fee").notNull().default(0),
   total: real("total").notNull().default(0),
+  subtotalMinor: integer("subtotal_minor").notNull().default(0),
+  deliveryFeeMinor: integer("delivery_fee_minor").notNull().default(0),
+  totalMinor: integer("total_minor").notNull().default(0),
   currency: text("currency").notNull().default("USD"),
   specialInstructions: text("special_instructions").notNull().default(""),
   deliveryAddress: text("delivery_address"),
   idempotencyKey: text("idempotency_key"),
-  /** Payment stays between customer and restaurant during free launch. */
-  paymentNote: text("payment_note").notNull().default("Pay restaurant directly — Flexa charges no commission."),
+  /** Stripe PaymentIntent id when checkout is used. */
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  /** pending | requires_payment | paid | failed | refunded | partially_refunded */
+  paymentStatus: text("payment_status").notNull().default("pending"),
+  /** Customer confirmation PIN for pickup / business-managed delivery (never Flexa Driver). */
+  confirmationPin: text("confirmation_pin"),
+  pinConfirmedAt: timestamp("pin_confirmed_at", { withTimezone: true }),
+  estimatedPrepMinutes: integer("estimated_prep_minutes"),
+  /** Always business-managed — Flexa Driver must never transport these orders. */
+  usesFlexaDrivers: boolean("uses_flexa_drivers").notNull().default(false),
+  platformCommissionMinor: integer("platform_commission_minor").notNull().default(0),
+  paymentNote: text("payment_note").notNull().default("Delivery is managed directly by this business. Flexa charges no commission at launch."),
   rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -233,6 +293,7 @@ export const restaurantOrdersTable = pgTable("restaurant_orders", {
   customerIdx: index("restaurant_orders_customer_idx").on(t.customerId),
   statusIdx: index("restaurant_orders_status_idx").on(t.status),
   idempotencyIdx: uniqueIndex("restaurant_orders_idempotency").on(t.idempotencyKey),
+  stripePiIdx: index("restaurant_orders_stripe_pi_idx").on(t.stripePaymentIntentId),
 }));
 
 export const restaurantOrderItemsTable = pgTable("restaurant_order_items", {
@@ -242,9 +303,13 @@ export const restaurantOrderItemsTable = pgTable("restaurant_order_items", {
   dishModelId: integer("dish_model_id").references(() => restaurantDishModelsTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   unitPrice: real("unit_price").notNull(),
+  unitPriceMinor: integer("unit_price_minor").notNull().default(0),
   quantity: integer("quantity").notNull(),
   lineTotal: real("line_total").notNull(),
+  lineTotalMinor: integer("line_total_minor").notNull().default(0),
   notes: text("notes").notNull().default(""),
+  /** Selected options snapshot: [{groupId, optionId, name, priceDeltaMinor}] */
+  customizations: jsonb("customizations").$type<Array<Record<string, unknown>>>().notNull().default([]),
 });
 
 export const restaurantReservationsTable = pgTable("restaurant_reservations", {
@@ -338,4 +403,105 @@ export const restaurantNotificationsTable = pgTable("restaurant_notifications", 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   userIdx: index("restaurant_notifications_user_idx").on(t.userId),
+}));
+
+/**
+ * Super Admin–managed country availability for Flexa Restaurant.
+ * Default-deny: a country is never public until status=approved AND enabled=true.
+ */
+export const restaurantCountryAvailabilityTable = pgTable("restaurant_country_availability", {
+  id: serial("id").primaryKey(),
+  countryCode: text("country_code").notNull(),
+  countryName: text("country_name").notNull(),
+  /** not_reviewed | under_review | approved | restricted | suspended */
+  status: text("status").notNull().default("not_reviewed"),
+  enabled: boolean("enabled").notNull().default(false),
+  restaurantsEnabled: boolean("restaurants_enabled").notNull().default(false),
+  foodTrucksEnabled: boolean("food_trucks_enabled").notNull().default(false),
+  homeKitchensEnabled: boolean("home_kitchens_enabled").notNull().default(false),
+  cateringEnabled: boolean("catering_enabled").notNull().default(false),
+  requiredLicensesNote: text("required_licenses_note").notNull().default(""),
+  foodSafetyRequirementsNote: text("food_safety_requirements_note").notNull().default(""),
+  regulatoryReviewNotes: text("regulatory_review_notes").notNull().default(""),
+  approvalDocumentUrl: text("approval_document_url"),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  suspensionReason: text("suspension_reason"),
+  updatedBy: integer("updated_by").references(() => usersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  countryUnique: uniqueIndex("restaurant_country_availability_code").on(t.countryCode),
+}));
+
+/** Region / municipality overlays within a country (default inherit country). */
+export const restaurantJurisdictionAvailabilityTable = pgTable("restaurant_jurisdiction_availability", {
+  id: serial("id").primaryKey(),
+  countryCode: text("country_code").notNull(),
+  /** state | province | region | municipality */
+  level: text("level").notNull().default("region"),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("not_reviewed"),
+  enabled: boolean("enabled").notNull().default(false),
+  restaurantsEnabled: boolean("restaurants_enabled").notNull().default(false),
+  foodTrucksEnabled: boolean("food_trucks_enabled").notNull().default(false),
+  homeKitchensEnabled: boolean("home_kitchens_enabled").notNull().default(false),
+  requiredLicensesNote: text("required_licenses_note").notNull().default(""),
+  regulatoryReviewNotes: text("regulatory_review_notes").notNull().default(""),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  suspensionReason: text("suspension_reason"),
+  updatedBy: integer("updated_by").references(() => usersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  countryIdx: index("restaurant_jurisdiction_country_idx").on(t.countryCode),
+  uniqueName: uniqueIndex("restaurant_jurisdiction_unique").on(t.countryCode, t.level, t.name),
+}));
+
+/** Required permit types by country + business category (configurable). */
+export const restaurantComplianceRequirementTable = pgTable("restaurant_compliance_requirements", {
+  id: serial("id").primaryKey(),
+  countryCode: text("country_code").notNull(),
+  /** traditional | food_truck | home_kitchen | catering | * */
+  businessType: text("business_type").notNull().default("*"),
+  /** identity | business_registration | food_service_permit | health_permit | food_truck_permit | home_kitchen_auth | insurance | food_safety_cert | allergen_disclosure | tax_registration | other */
+  requirementKey: text("requirement_key").notNull(),
+  label: text("label").notNull(),
+  required: boolean("required").notNull().default(true),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  countryIdx: index("restaurant_compliance_req_country_idx").on(t.countryCode),
+}));
+
+/** Uploaded compliance docs per business (private Wasabi keys). */
+export const restaurantComplianceDocumentsTable = pgTable("restaurant_compliance_documents", {
+  id: serial("id").primaryKey(),
+  restaurantId: integer("restaurant_id").notNull().references(() => restaurantsTable.id, { onDelete: "cascade" }),
+  requirementKey: text("requirement_key").notNull(),
+  documentLabel: text("document_label").notNull().default(""),
+  storageKey: text("storage_key").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  verifiedBy: integer("verified_by").references(() => usersTable.id),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  restaurantIdx: index("restaurant_compliance_docs_restaurant_idx").on(t.restaurantId),
+}));
+
+export const restaurantRegulatoryAuditLogTable = pgTable("restaurant_regulatory_audit_logs", {
+  id: serial("id").primaryKey(),
+  actorId: integer("actor_id").notNull().references(() => usersTable.id),
+  action: text("action").notNull(),
+  countryCode: text("country_code"),
+  jurisdictionId: integer("jurisdiction_id"),
+  restaurantId: integer("restaurant_id"),
+  details: text("details").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  actorIdx: index("restaurant_regulatory_audit_actor_idx").on(t.actorId),
+  countryIdx: index("restaurant_regulatory_audit_country_idx").on(t.countryCode),
 }));

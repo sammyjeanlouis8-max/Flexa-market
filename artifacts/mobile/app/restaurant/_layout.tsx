@@ -1,5 +1,10 @@
 import { Stack } from "expo-router";
+import { RestaurantGate } from "@/components/restaurant/RestaurantGate";
 
 export default function RestaurantLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <RestaurantGate>
+      <Stack screenOptions={{ headerShown: false }} />
+    </RestaurantGate>
+  );
 }

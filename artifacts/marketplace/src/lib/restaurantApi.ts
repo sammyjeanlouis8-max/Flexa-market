@@ -243,13 +243,12 @@ export async function updateFoodTruckLocation(
   return data.restaurant;
 }
 
+/** Primary discover categories — bakery is a cuisine/subtype, not a top-level category. */
 export const BUSINESS_TYPES = [
   { id: "all", labelKey: "restaurant.catAll" },
   { id: "traditional", labelKey: "restaurant.catRestaurants" },
-  { id: "home_kitchen", labelKey: "restaurant.catHomeKitchen" },
   { id: "food_truck", labelKey: "restaurant.catFoodTruck" },
-  { id: "bakery", labelKey: "restaurant.catBakery" },
-  { id: "catering", labelKey: "restaurant.catCatering" },
+  { id: "home_kitchen", labelKey: "restaurant.catHomeKitchen" },
 ] as const;
 
 export function businessTypeLabelKey(type: string): string {
@@ -412,7 +411,12 @@ export async function patchReservationStatus(
 
 export async function submitFoodSafetyQuiz(
   restaurantId: number,
-  body: { articleVersion: string; answers: Record<string, string>; termsAccepted: boolean },
+  body: {
+    articleVersion: string;
+    answers: Record<string, string>;
+    termsAccepted: boolean;
+    foodResponsibilityAccepted?: boolean;
+  },
 ): Promise<{ passed: boolean; score: number }> {
   const res = await fetch(`/api/restaurants/${restaurantId}/food-safety`, {
     method: "POST",
@@ -435,22 +439,199 @@ export async function submitIdentityVerification(
   return parseJson(res, "Identity submission failed");
 }
 
+export type PlaceOrderResult = {
+  order: Order;
+  payment?: {
+    clientSecret?: string | null;
+    paymentIntentId?: string | null;
+    confirmationPinIssued?: boolean;
+    message?: string;
+    driverPolicy?: string;
+    platformCommission?: number;
+  };
+  deduped?: boolean;
+};
+
 export async function placeRestaurantOrder(
   restaurantId: number,
   body: {
     fulfillment: "pickup" | "delivery";
-    items: Array<{ dailyMenuItemId: number; quantity: number; notes?: string }>;
+    items: Array<{
+      dailyMenuItemId: number;
+      quantity: number;
+      notes?: string;
+      optionIds?: number[];
+    }>;
     specialInstructions?: string;
     deliveryAddress?: string;
+    /** Stable client key — retries must reuse the same value to prevent duplicate charges/orders. */
+    idempotencyKey?: string;
   },
-): Promise<Order> {
+): Promise<PlaceOrderResult> {
   const res = await fetch(`/api/restaurants/${restaurantId}/orders`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(body),
   });
-  const data = await parseJson<{ order: Order }>(res, "Could not place order");
+  return parseJson<PlaceOrderResult>(res, "Could not place order");
+}
+
+export async function confirmRestaurantOrderPin(orderId: number, pin: string): Promise<Order> {
+  const res = await fetch(`/api/restaurants/me/orders/${orderId}/confirm-pin`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ pin }),
+  });
+  const data = await parseJson<{ order: Order }>(res, "Invalid confirmation PIN");
   return data.order;
+}
+
+export async function refundRestaurantOrder(orderId: number, reason?: string): Promise<Order> {
+  const res = await fetch(`/api/restaurants/me/orders/${orderId}/refund`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ reason }),
+  });
+  const data = await parseJson<{ order: Order }>(res, "Refund failed");
+  return data.order;
+}
+
+export type DishOptionGroup = {
+  id: number;
+  name: string;
+  kind: string;
+  required: boolean;
+  minSelect: number;
+  maxSelect: number;
+  options: Array<{
+    id: number;
+    name: string;
+    priceDelta: number;
+    priceDeltaMinor: number;
+    soldOut: boolean;
+    allergens: string;
+  }>;
+};
+
+export async function fetchDishOptions(restaurantId: number, dishId: number): Promise<DishOptionGroup[]> {
+  const res = await fetch(`/api/restaurants/${restaurantId}/dish-models/${dishId}/options`, {
+    headers: authHeaders(),
+  });
+  const data = await parseJson<{ groups?: DishOptionGroup[] }>(res, "Failed to load options");
+  return data.groups ?? [];
+}
+
+export async function createDishOptionGroup(
+  restaurantId: number,
+  dishId: number,
+  body: {
+    name: string;
+    kind?: string;
+    required?: boolean;
+    minSelect?: number;
+    maxSelect?: number;
+  },
+): Promise<{ id: number }> {
+  const res = await fetch(`/api/restaurants/${restaurantId}/dish-models/${dishId}/option-groups`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  return parseJson(res, "Could not create option group");
+}
+
+export async function createDishOption(
+  restaurantId: number,
+  groupId: number,
+  body: {
+    name: string;
+    priceDelta?: number;
+    soldOut?: boolean;
+    allergens?: string;
+  },
+): Promise<{ id: number }> {
+  const res = await fetch(`/api/restaurants/${restaurantId}/option-groups/${groupId}/options`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  return parseJson(res, "Could not create option");
+}
+
+export async function saveRestaurantHours(
+  restaurantId: number,
+  hours: Array<{
+    weekday: number;
+    isClosed: boolean;
+    openTime: string | null;
+    closeTime: string | null;
+    overnight?: boolean;
+  }>,
+) {
+  const res = await fetch(`/api/restaurants/${restaurantId}/hours`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify({ hours }),
+  });
+  return parseJson<{ hours: unknown[] }>(res, "Could not save hours");
+}
+
+export async function saveRestaurantDelivery(
+  restaurantId: number,
+  body: {
+    fulfillment: "pickup" | "delivery" | "both";
+    deliveryFee?: number;
+    minOrderAmount?: number;
+    estimatedDeliveryMinutes?: number;
+    estimatedPrepMinutes?: number;
+    deliveryRadiusKm?: number;
+    freeDeliveryMin?: number;
+    deliverySuspended?: boolean;
+    deliveryAvailable?: boolean;
+    pickupAvailable?: boolean;
+    deliveryZones?: string[];
+    deliveryInstructions?: string;
+  },
+) {
+  const res = await fetch(`/api/restaurants/${restaurantId}/delivery`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  return parseJson(res, "Could not save delivery settings");
+}
+
+/** Upload a food photo via the existing Flexa Market storage (Wasabi) proxy. */
+export async function uploadRestaurantFoodImage(file: File): Promise<string> {
+  const token = localStorage.getItem("flexamarket_token") ?? localStorage.getItem("token");
+  if (!token) throw new Error("Sign in required to upload");
+  if (!file.type.startsWith("image/")) throw new Error("Only image files are allowed");
+  if (file.size > 8 * 1024 * 1024) throw new Error("Image must be under 8 MB");
+  const presignRes = await fetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: file.name || "food.jpg", size: file.size, contentType: file.type }),
+  });
+  if (!presignRes.ok) {
+    const err = await presignRes.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || "Upload URL failed");
+  }
+  const { uploadURL, objectPath } = await presignRes.json();
+  const putRes = await fetch(uploadURL, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type,
+      Authorization: `Bearer ${token}`,
+    },
+    body: file,
+  });
+  if (!putRes.ok) throw new Error("Food image upload failed");
+  const data = await putRes.json().catch(() => ({} as { url?: string }));
+  if (typeof data?.url === "string" && (data.url.startsWith("http") || data.url.startsWith("/api/storage/"))) {
+    return data.url;
+  }
+  const path = String(objectPath || "").replace(/^\/objects/, "");
+  return `/api/storage/objects${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 export async function createRestaurantReservation(
@@ -498,14 +679,22 @@ export function statusLabelKey(kind: "restaurant" | "identity" | "order" | "rese
       rejected: "identityRejected",
     },
     order: {
+      pending_payment: "orderPendingPayment",
       pending: "orderPending",
+      order_placed: "orderPlacedStatus",
+      confirmed: "orderConfirmed",
       accepted: "orderAccepted",
       rejected: "orderRejected",
       preparing: "orderPreparing",
       ready_pickup: "orderReadyPickup",
+      ready_for_pickup: "orderReadyPickup",
       out_for_delivery: "orderOutForDelivery",
+      delivered: "orderDelivered",
       completed: "orderCompleted",
+      canceled: "orderCancelled",
       cancelled: "orderCancelled",
+      refund_pending: "orderRefundPending",
+      refunded: "orderRefunded",
     },
     reservation: {
       pending: "reservationPending",

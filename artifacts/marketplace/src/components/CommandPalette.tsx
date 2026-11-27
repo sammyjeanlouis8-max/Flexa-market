@@ -18,6 +18,7 @@ import {
   HelpCircle,
   Sparkles,
   Calculator,
+  UtensilsCrossed,
   Warehouse,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -34,6 +35,7 @@ import {
 import { useAuth } from "@/contexts/auth";
 import { prefetchRoute } from "@/lib/prefetchRoutes";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
+import { canAccessRestaurant } from "@/lib/restaurantAccess";
 
 type CommandEntry = {
   href: string;
@@ -41,6 +43,7 @@ type CommandEntry = {
   icon: ComponentType<{ className?: string }>;
   keywords?: string;
   superAdminOnly?: boolean;
+  restaurantStaffOnly?: boolean;
   auth?: boolean;
 };
 
@@ -79,6 +82,13 @@ export function CommandPalette() {
       { href: "/subscription", label: t("nav.subscription", { defaultValue: "Subscription" }), icon: Crown, auth: true },
       { href: "/videos", label: t("nav.videos", { defaultValue: "Videos" }), icon: Film },
       { href: "/wholesale", label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), icon: Warehouse, keywords: "wholesale bulk b2b", superAdminOnly: true },
+      {
+        href: "/restaurant",
+        label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
+        icon: UtensilsCrossed,
+        keywords: "food restaurant kitchen truck",
+        restaurantStaffOnly: true,
+      },
       { href: "/tv", label: "Flexa TV", icon: Tv },
       { href: "/music", label: "Flexa Music", icon: Music2 },
       { href: "/chatbot", label: "FlexaBot AI", icon: Sparkles },
@@ -89,6 +99,7 @@ export function CommandPalette() {
     return base.filter((e) => {
       if (e.auth && !user) return false;
       if (e.superAdminOnly && !canAccessWholesale(user)) return false;
+      if (e.restaurantStaffOnly && !canAccessRestaurant(user)) return false;
       return true;
     });
   }, [t, user]);

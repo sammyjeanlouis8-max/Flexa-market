@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
 import { BadgeCheck, Ban, ChevronLeft, UtensilsCrossed } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
-import { isAdminUser } from "@/lib/adminCountryAccess";
+import { isSuperAdminUser } from "@/lib/adminCountryAccess";
 
 type PendingIdv = {
   id: number;
@@ -69,7 +69,7 @@ export default function AdminRestaurants() {
   }, []);
 
   useEffect(() => {
-    if (isAdminUser(user as any)) void load();
+    if (isSuperAdminUser(user as any)) void load();
   }, [user, load]);
 
   async function decide(idvId: number, decision: "verified" | "rejected", reason?: string) {
@@ -108,10 +108,32 @@ export default function AdminRestaurants() {
     }
   }
 
-  if (!isAdminUser(user as any)) {
+  async function decideApplication(id: number, decision: string) {
+    const note =
+      decision === "rejected" || decision === "additional_info_required"
+        ? window.prompt("Note for the owner (required):")?.trim()
+        : undefined;
+    if ((decision === "rejected" || decision === "additional_info_required") && !note) return;
+    setBusy(`app-${id}-${decision}`);
+    try {
+      const res = await fetch(`/api/admin/restaurants/${id}/application`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ decision, note }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Application update failed");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!isSuperAdminUser(user as any)) {
     return (
       <div className="mx-auto max-w-lg p-6">
-        <p className="text-sm text-muted-foreground">Admin access required.</p>
+        <p className="text-sm text-muted-foreground">Super Admin access required.</p>
       </div>
     );
   }
@@ -128,8 +150,16 @@ export default function AdminRestaurants() {
       <p className="mt-1 text-sm text-muted-foreground">
         Identity verification review and restaurant suspension. Verified badge = identity only, not food-safety certification.
       </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link
+          href="/admin/restaurants/countries"
+          className="rounded-full bg-[hsl(152,55%,28%)] px-3 py-1.5 text-xs font-bold text-white"
+        >
+          Country Availability
+        </Link>
+      </div>
       <p className="mt-2 rounded-xl border border-[hsl(152,40%,80%)] bg-[hsl(152,45%,96%)] px-3 py-2 text-xs text-[hsl(152,55%,22%)]">
-        Free launch: no commission. Documents are private — open via authorized short-lived links only.
+        Free launch: no commission. Documents are private — open via authorized short-lived links only. US/CA disabled by default; Haiti pending regulatory approval.
       </p>
 
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
@@ -193,23 +223,61 @@ export default function AdminRestaurants() {
           </h2>
           <ul className="mt-3 space-y-2">
             {restaurants.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2">
+              <li key={r.id} className="flex flex-col gap-2 rounded-xl border border-border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="truncate font-semibold">{r.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {r.city}, {r.country} · {r.status} · ID: {r.identityStatus}
                   </p>
                 </div>
-                {r.status !== "suspended" && (
-                  <button
-                    type="button"
-                    disabled={busy === `suspend-${r.id}`}
-                    onClick={() => suspend(r.id)}
-                    className="shrink-0 rounded-full border px-3 py-1 text-xs font-bold"
-                  >
-                    Suspend
-                  </button>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {["submitted", "under_review", "additional_info_required", "draft"].includes(r.status) && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        onClick={() => decideApplication(r.id, "under_review")}
+                        className="rounded-full border px-3 py-1 text-xs font-bold"
+                      >
+                        Review
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        onClick={() => decideApplication(r.id, "published")}
+                        className="rounded-full bg-[hsl(152,55%,28%)] px-3 py-1 text-xs font-bold text-white"
+                      >
+                        Approve & publish
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        onClick={() => decideApplication(r.id, "additional_info_required")}
+                        className="rounded-full border px-3 py-1 text-xs font-bold"
+                      >
+                        Need info
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        onClick={() => decideApplication(r.id, "rejected")}
+                        className="rounded-full border border-destructive/40 px-3 py-1 text-xs font-bold text-destructive"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                  {r.status !== "suspended" && (
+                    <button
+                      type="button"
+                      disabled={busy === `suspend-${r.id}`}
+                      onClick={() => suspend(r.id)}
+                      className="shrink-0 rounded-full border px-3 py-1 text-xs font-bold"
+                    >
+                      Suspend
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

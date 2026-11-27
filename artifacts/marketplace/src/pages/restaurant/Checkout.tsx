@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { RestaurantPageGate } from "@/components/restaurant/RestaurantPageGate";
+import { RestaurantStripePay } from "@/components/restaurant/RestaurantStripePay";
 import { RestaurantEmpty, RestaurantNotice, RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import {
   createRestaurantReservation,
@@ -17,8 +18,14 @@ import {
   setCartMeta,
   type RestaurantCartState,
 } from "@/lib/restaurantCart";
+import { fetchStripeConfig } from "@/lib/stripeBrowser";
 import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
+
+function newIdempotencyKey() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `rest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export default function RestaurantCheckoutPage() {
   const { t } = useTranslation();
@@ -29,6 +36,11 @@ export default function RestaurantCheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [publishableKey, setPublishableKey] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<number | null>(null);
+  /** One key per submit intent — retries reuse it until success clears the cart. */
+  const orderIdempotencyKey = useRef(newIdempotencyKey());
 
   useEffect(() => {
     const c = getRestaurantCart();
@@ -59,17 +71,33 @@ export default function RestaurantCheckoutPage() {
       const messages: string[] = [];
 
       if (orderLines.length) {
-        const order = await placeRestaurantOrder(cart.restaurantId, {
+        const result = await placeRestaurantOrder(cart.restaurantId, {
           fulfillment: cart.fulfillment,
           items: orderLines.map((l) => ({
             dailyMenuItemId: l.dailyMenuItemId,
             quantity: l.quantity,
             notes: l.notes,
+            optionIds: l.optionIds,
           })),
           specialInstructions: cart.specialInstructions,
           deliveryAddress: cart.fulfillment === "delivery" ? cart.deliveryAddress : undefined,
+          idempotencyKey: orderIdempotencyKey.current,
         });
-        messages.push(`${t("restaurant.placeOrder")} #${order.id}`);
+        messages.push(`${t("restaurant.placeOrder")} #${result.order.id}`);
+        setOrderId(result.order.id);
+        if (result.payment?.clientSecret) {
+          const token = localStorage.getItem("flexamarket_token") ?? localStorage.getItem("token");
+          const cfg = await fetchStripeConfig({
+            country: restaurant?.country || user.country,
+            token,
+          });
+          setPublishableKey(cfg.publishableKey);
+          setClientSecret(result.payment.clientSecret);
+          setCart(null);
+          clearRestaurantCart();
+          setDoneMsg(messages.join(" · "));
+          return;
+        }
       }
 
       for (const line of reserveLines) {
@@ -98,9 +126,35 @@ export default function RestaurantCheckoutPage() {
       <RestaurantPageGate requireAuth>
         <RestaurantShell title={t("restaurant.checkout", { defaultValue: "Checkout" })}>
           <div className="rounded-2xl border border-[hsl(152,40%,80%)] bg-white p-5 text-center shadow-sm">
-            <p className="text-lg font-extrabold text-[hsl(152,55%,22%)]">{t("restaurant.orderPlaced", { defaultValue: "Request sent" })}</p>
+            <p className="text-lg font-extrabold text-[hsl(152,55%,22%)]">
+              {clientSecret
+                ? t("restaurant.completePayment", { defaultValue: "Complete payment" })
+                : t("restaurant.orderPlaced", { defaultValue: "Request sent" })}
+            </p>
             <p className="mt-2 text-sm text-muted-foreground">{doneMsg}</p>
-            <RestaurantNotice>{t("restaurant.paymentNote")}</RestaurantNotice>
+            <RestaurantNotice>
+              {t("restaurant.deliveryManagedByBusiness", {
+                defaultValue: "Delivery is managed directly by this business.",
+              })}
+            </RestaurantNotice>
+            {clientSecret && publishableKey ? (
+              <div className="mt-4 text-left">
+                <RestaurantStripePay
+                  clientSecret={clientSecret}
+                  publishableKey={publishableKey}
+                  onPaid={() => {
+                    setClientSecret(null);
+                    setDoneMsg(
+                      orderId
+                        ? `${t("restaurant.orderPlacedStatus", { defaultValue: "Order placed" })} #${orderId}`
+                        : t("restaurant.paymentReceived", { defaultValue: "Payment received" }),
+                    );
+                  }}
+                />
+              </div>
+            ) : (
+              <RestaurantNotice>{t("restaurant.paymentNote")}</RestaurantNotice>
+            )}
             <div className="mt-4 flex justify-center gap-2">
               <Link href="/restaurant/my-orders" className="rounded-full bg-[hsl(152,55%,28%)] px-4 py-2 text-sm font-bold text-white">
                 {t("restaurant.myOrdersTitle")}
@@ -129,8 +183,15 @@ export default function RestaurantCheckoutPage() {
     );
   }
 
-  const canDelivery = restaurant?.fulfillment === "delivery" || restaurant?.fulfillment === "both";
-  const canPickup = restaurant?.fulfillment === "pickup" || restaurant?.fulfillment === "both" || !restaurant?.fulfillment;
+  const canDelivery =
+    (restaurant?.fulfillment === "delivery" || restaurant?.fulfillment === "both")
+    && (restaurant as any)?.deliveryAvailable !== false
+    && !(restaurant as any)?.deliverySuspended;
+  const canPickup =
+    restaurant?.fulfillment === "pickup"
+    || restaurant?.fulfillment === "both"
+    || !restaurant?.fulfillment
+    || (restaurant as any)?.pickupAvailable !== false;
 
   return (
     <RestaurantPageGate requireAuth>
@@ -139,15 +200,16 @@ export default function RestaurantCheckoutPage() {
         subtitle={cart.restaurantName}
       >
         <RestaurantNotice>{t("restaurant.paymentNote")}</RestaurantNotice>
-        {(canDelivery) && (
-          <div className="mt-3">
-            <RestaurantNotice>
-              {t("restaurant.deliveryDisclaimer", {
-                defaultValue: "Delivery is arranged and managed by this restaurant.",
-              })}
-            </RestaurantNotice>
-          </div>
-        )}
+        <RestaurantNotice>
+          {t("restaurant.deliveryManagedByBusiness", {
+            defaultValue: "Delivery is managed directly by this business.",
+          })}
+        </RestaurantNotice>
+        <RestaurantNotice>
+          {t("restaurant.driverPolicyNote", {
+            defaultValue: "Flexa Driver never transports Flexa Restaurant food orders.",
+          })}
+        </RestaurantNotice>
 
         <div className="mt-4 space-y-4">
           <div className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
@@ -196,9 +258,10 @@ export default function RestaurantCheckoutPage() {
             </p>
             <ul className="space-y-2">
               {cart.lines.map((line) => (
-                <li key={`${line.mode}-${line.dailyMenuItemId}`} className="flex justify-between text-sm">
+                <li key={`${line.mode}-${line.dailyMenuItemId}-${(line.optionIds || []).join("-")}`} className="flex justify-between text-sm">
                   <span>
                     {line.quantity} × {line.name}
+                    {line.optionLabels?.length ? ` (${line.optionLabels.join(", ")})` : ""}
                     {line.mode === "reserve" ? ` (${t("restaurant.reserve")})` : ""}
                   </span>
                   <span className="font-semibold">{formatMoney(line.price * line.quantity, line.currency)}</span>

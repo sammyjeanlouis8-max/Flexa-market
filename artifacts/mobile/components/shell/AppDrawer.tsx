@@ -14,6 +14,7 @@ import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigationChrome } from "@/context/NavigationContext";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
+import { canAccessRestaurant } from "@/lib/restaurantAccess";
 import { fetchWalletBalance } from "@/lib/walletApi";
 
 type IconName = React.ComponentProps<typeof Feather>["name"];
@@ -72,7 +73,9 @@ export function AppDrawer() {
       heading: "HOME & DISCOVER",
       items: [
         { icon: "home", label: "Home", href: "/", testID: "drawer-home" },
-        { icon: "coffee", label: "Flexa Restaurant", href: "/restaurant", testID: "drawer-flexa-restaurant" },
+        ...(canAccessRestaurant(user)
+          ? [{ icon: "coffee" as const, label: "Flexa Restaurant", href: "/restaurant", testID: "drawer-flexa-restaurant" }]
+          : []),
         { icon: "grid", label: "Categories", href: "/search", testID: "drawer-categories" },
         { icon: "tag", label: "Offers & Promotions", href: "/offers", testID: "drawer-offers" },
         { icon: "star", label: "Flexa Picks", href: "/search?boosted=true", testID: "drawer-flexa-picks" },

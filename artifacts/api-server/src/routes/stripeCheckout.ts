@@ -1539,6 +1539,12 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session): Promise<
 }
 
 async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent): Promise<void> {
+  // Flexa Restaurant food orders (business-managed delivery — never Flexa Driver).
+  if (pi.metadata?.flexaModule === "restaurant") {
+    const { markRestaurantOrderPaidFromStripe } = await import("../lib/restaurantStripe");
+    await markRestaurantOrderPaidFromStripe(pi.id, pi.amount_received || pi.amount, pi.currency);
+    return;
+  }
   await db.transaction(async tx => {
     const [locked] = await tx.select().from(transactionsTable)
       .where(eq(transactionsTable.stripePaymentIntentId, pi.id))
@@ -1566,6 +1572,11 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent): Promise<v
 }
 
 async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent): Promise<void> {
+  if (pi.metadata?.flexaModule === "restaurant") {
+    const { markRestaurantOrderPaymentFailed } = await import("../lib/restaurantStripe");
+    await markRestaurantOrderPaymentFailed(pi.id);
+    return;
+  }
   await db.transaction(async tx => {
     const [locked] = await tx.select().from(transactionsTable)
       .where(eq(transactionsTable.stripePaymentIntentId, pi.id))

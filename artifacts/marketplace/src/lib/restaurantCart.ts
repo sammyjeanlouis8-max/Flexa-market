@@ -13,6 +13,9 @@ export type RestaurantCartLine = {
   availableFrom?: string;
   availableUntil?: string;
   notes?: string;
+  /** Selected dish option ids (sizes / toppings / extras). */
+  optionIds?: number[];
+  optionLabels?: string[];
   /** order = available now; reserve = tomorrow / advance reservation */
   mode: "order" | "reserve";
 };
@@ -77,8 +80,12 @@ export function upsertCartLine(
           updatedAt: new Date().toISOString(),
         };
 
+  const optionKey = (ids?: number[]) => (ids || []).slice().sort((a, b) => a - b).join(",");
   const idx = base.lines.findIndex(
-    (l) => l.dailyMenuItemId === line.dailyMenuItemId && l.mode === line.mode,
+    (l) =>
+      l.dailyMenuItemId === line.dailyMenuItemId
+      && l.mode === line.mode
+      && optionKey(l.optionIds) === optionKey(line.optionIds),
   );
   const lines = [...base.lines];
   if (line.quantity <= 0) {

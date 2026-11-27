@@ -91,6 +91,23 @@ export const restaurantEn: RestaurantLocale = {
   foodSafetyQuiz: "Food safety quiz",
   foodSafetySubtitle: "Complete the article and quiz before publishing.",
   freeLaunchNote: "Free at launch — Flexa charges no commission and no mandatory subscription.",
+  staffPreviewOnly: "Flexa Restaurant is in Super Admin preview only and is not publicly available yet.",
+  businessHours: "Hours & delivery",
+  deliverySettings: "Pickup & delivery settings",
+  settingsSaved: "Hours and delivery settings saved.",
+  uploadFoodPhoto: "Upload food photo",
+  photoRequired: "Add at least one food photo before creating an available dish.",
+  photoMissing: "No photo — not shown publicly",
+  deliveryManagedByBusiness: "Delivery is managed directly by this business.",
+  driverPolicyNote: "Flexa Driver never transports Flexa Restaurant food orders.",
+  deliveryRadiusKm: "Delivery radius (km)",
+  deliverySuspended: "Temporarily suspend delivery",
+  freeDeliveryMin: "Free delivery from",
+  estimatedPrepMinutes: "Estimated preparation (minutes)",
+  confirmWithPin: "Confirm with PIN",
+  foodResponsibilityAck: "I acknowledge my business is responsible for food prep, hygiene, packaging, allergens, temperature control, transportation, delivery staff, permits, and delivery complaints. Flexa Driver does not deliver restaurant food.",
+  "safety.businessDeliveryTitle": "Business-managed delivery",
+  "safety.businessDeliveryBody": "You—not Flexa Driver—prepare, package, transport, and deliver food. Customers may pick up or you deliver with your own staff. Confirm handoff with the order PIN.",
   identityBadgeNote: "Identity verified badge ≠ food safety certification.",
   homeKitchenPrivacy:
     "Home Kitchen — Fresh, homemade meals prepared in a clean and safe kitchen. Address kept private for your safety.",
@@ -106,13 +123,25 @@ export const restaurantEn: RestaurantLocale = {
   identityVerified: "Identity verified",
   identityRejected: "Identity rejected",
   orderPending: "Pending",
+  orderPendingPayment: "Pending payment",
+  orderPlacedStatus: "Order placed",
+  orderConfirmed: "Confirmed",
   orderAccepted: "Accepted",
   orderRejected: "Rejected",
   orderPreparing: "Preparing",
   orderReadyPickup: "Ready for pickup",
   orderOutForDelivery: "Out for delivery",
+  orderDelivered: "Delivered",
   orderCompleted: "Completed",
-  orderCancelled: "Cancelled",
+  orderCancelled: "Canceled",
+  orderRefundPending: "Refund pending",
+  orderRefunded: "Refunded",
+  confirmPin: "Customer PIN",
+  completePayment: "Complete payment",
+  paymentReceived: "Payment received",
+  customize: "Sizes & toppings",
+  allergens: "Allergens",
+
   reservationPending: "Pending",
   reservationConfirmed: "Confirmed",
   reservationRejected: "Rejected",
@@ -123,7 +152,7 @@ export const restaurantEn: RestaurantLocale = {
   addRestaurantTitle: "Add your restaurant",
   addRestaurantSubtitle: "Multi-step setup — identity and food safety before you publish.",
   stepBasics: "Basics",
-  stepBasicsBody: "Name, cuisine, location, and business type.",
+  stepBasicsBody: "Business identity, location, category, and contact details.",
   stepHours: "Hours & fulfillment",
   stepHoursBody: "Opening hours, pickup address, and delivery zones.",
   stepIdentity: "Identity",
@@ -246,6 +275,7 @@ export const restaurantHt: RestaurantLocale = {
   identityPrivacyBody:
     "Dokiman idantite yo stored prive epi ekip Flexa revize yo sèlman. Badj verifye idantite montre operatè a pase revizyon ID — li pa yon sètifikasyon sekirite manje leta.",
   freeLaunchNote: "Gratis nan lansman — Flexa pa pran komisyon ni abònman obligatwa.",
+  staffPreviewOnly: "Flexa Restaurant nan preview Super Admin epi li poko disponib pou piblik la.",
   identityBadgeNote: "Badj idantite verifye ≠ sètifikasyon sekirite manje.",
 };
 
@@ -285,6 +315,7 @@ export const restaurantFr: RestaurantLocale = {
   identityPrivacyBody:
     "Les pièces d'identité sont stockées en privé et vues uniquement par l'équipe Flexa. Le badge « identité vérifiée » n'est pas une certification sanitaire officielle.",
   freeLaunchNote: "Gratuit au lancement — aucune commission ni abonnement obligatoire.",
+  staffPreviewOnly: "Flexa Restaurant est en prévisualisation Super Admin et n’est pas encore public.",
   identityBadgeNote: "Identité vérifiée ≠ certification sécurité alimentaire.",
 };
 
@@ -324,5 +355,6 @@ export const restaurantEs: RestaurantLocale = {
   identityPrivacyBody:
     "Los documentos de identidad se guardan en privado y solo los revisa Flexa. La insignia de identidad verificada no es una certificación sanitaria del gobierno.",
   freeLaunchNote: "Gratis en el lanzamiento — sin comisión ni suscripción obligatoria.",
+  staffPreviewOnly: "Flexa Restaurant está en vista previa de Super Admin y aún no es público.",
   identityBadgeNote: "Identidad verificada ≠ certificación de seguridad alimentaria.",
 };

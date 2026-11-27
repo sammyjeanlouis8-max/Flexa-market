@@ -36,6 +36,7 @@ export default {
     more: "Higit Pa",
     menu: "Menu",
     account: "Aking Account",
+    music: "Musika",
     discover: "Tuklasin",
     videos: "Mga Video",
     saved: "Naka-save",

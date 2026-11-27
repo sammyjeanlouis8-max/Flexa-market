@@ -36,6 +36,7 @@ export default {
     more: "もっと",
     menu: "メニュー",
     account: "マイアカウント",
+    music: "ミュージック",
     discover: "探索",
     videos: "動画",
     saved: "保存済み",

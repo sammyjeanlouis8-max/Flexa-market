@@ -149,6 +149,7 @@ export default {
     driverSuspended: "⚠️ Account Suspended",
   
     cart: "Cart",
+    music: "Music",
     categories: "Categories",
     all: "All",
     helpCenter: "Help Center",

@@ -484,7 +484,7 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
     <div
       className="music-mini-player fixed left-0 right-0 mx-3 z-40 rounded-2xl select-none"
       style={{
-        bottom: "calc(4rem + env(safe-area-inset-bottom, 0px) + 8px)",
+        bottom: "calc(56px + max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px)) + 8px)",
         background: "linear-gradient(135deg, rgba(11,48,34,0.96), rgba(15,61,44,0.98))",
         border: "1px solid rgba(255,107,0,0.22)",
         boxShadow: "0 8px 28px rgba(0,0,0,0.45)",
@@ -1746,30 +1746,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
         />
       )}
 
-      {/* ── SoundCloud-style mobile navigation ── */}
-      <nav className="music-bottom-nav md:hidden" aria-label={t("music.title")}>
-        <button className="music-bottom-nav-item active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-          <Home size={19} fill="currentColor" />
-          <span>{t("nav.home")}</span>
-        </button>
-        <button className="music-bottom-nav-item" onClick={() => searchInputRef.current?.focus()}>
-          <Search size={19} />
-          <span>{t("nav.search")}</span>
-        </button>
-        {artistToolsAvailable && (
-          <button className="music-upload-fab" onClick={onUpload} aria-label={t("music.uploadFirstSong")}>
-            <Plus size={25} />
-          </button>
-        )}
-        <button className="music-bottom-nav-item" onClick={() => setShowNotifications(true)}>
-          <MessageCircle size={19} />
-          <span>{t("nav.messages")}</span>
-        </button>
-        <button className="music-bottom-nav-item" onClick={() => document.getElementById("music-library")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-          <Library size={19} />
-          <span>{t("music.library")}</span>
-        </button>
-      </nav>
+      {/* Marketplace bottom nav replaces the old music-only bar. */}
     </div>
   );
 }

@@ -36,6 +36,7 @@ export default {
     more: "Mehr",
     menu: "Menü",
     account: "Mein Konto",
+    music: "Musik",
     discover: "Entdecken",
     videos: "Videos",
     saved: "Gespeichert",

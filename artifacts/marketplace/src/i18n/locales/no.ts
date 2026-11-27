@@ -36,6 +36,7 @@ export default {
     more: "Mer",
     menu: "Meny",
     account: "Min konto",
+    music: "Musikk",
     discover: "Utforsk",
     videos: "Videoer",
     saved: "Lagret",

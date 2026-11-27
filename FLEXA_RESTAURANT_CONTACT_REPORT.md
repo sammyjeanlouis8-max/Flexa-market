@@ -10,6 +10,19 @@
 
 Professional contact actions on every Flexa Restaurant business profile (web + mobile): Call, Message, WhatsApp (when configured), Directions (when public location exists), Save, View Menu & Order, and Reserve a Table when supported.
 
+## Critical review follow-up (2026-11-27)
+
+| Fix | Status |
+| --- | --- |
+| Rebase onto main after #312 merge | DONE |
+| iOS `Linking.canOpenURL(tel:)` silent failure | FIXED — openURL directly |
+| Submit clearing phone after validating old value | FIXED — validate effective stored phone |
+| WhatsApp clear (`null`) ignored | FIXED — `'whatsapp' in body` |
+| Home Kitchen directions leak via coords | FIXED — pickup-only gate |
+| Conversations on draft businesses | FIXED — public status + requireNotRestricted |
+| `tel:` opened with `target=_blank` | FIXED |
+| Owner settings `+509 ` seed blocking hours save | FIXED |
+
 ---
 
 ## Requirement matrix

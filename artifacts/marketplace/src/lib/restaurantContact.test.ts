@@ -15,12 +15,14 @@ describe("restaurantContact", () => {
     assert.equal(buildTelHref("12"), null);
   });
 
-  it("hides directions for private home kitchens without public pickup", () => {
+  it("hides directions for home kitchens without public pickup (even if coords exist)", () => {
     assert.equal(
       restaurantHasPublicLocation({
         businessType: "home_kitchen",
-        showPublicAddress: false,
+        showPublicAddress: true,
         streetAddress: "12 Private St",
+        latitude: 18.5,
+        longitude: -72.3,
         publicPickupAddress: null,
       }),
       false,

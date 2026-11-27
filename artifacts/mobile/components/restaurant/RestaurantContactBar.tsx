@@ -57,8 +57,12 @@ export function RestaurantContactBar({
 
   async function openUrl(url: string | null) {
     if (!url) return;
-    const can = await Linking.canOpenURL(url);
-    if (can) await Linking.openURL(url);
+    // Do not gate on canOpenURL — iOS returns false for tel:/whatsapp without LSApplicationQueriesSchemes.
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setError(t("restaurant_openLinkFailed") || "Could not open this link on your device.");
+    }
   }
 
   async function startMessage() {
@@ -70,7 +74,7 @@ export function RestaurantContactBar({
       setError("Messaging unavailable");
       return;
     }
-    if (user?.id === restaurant.ownerId) {
+    if (Number(user?.id) === Number(restaurant.ownerId)) {
       setError("You cannot message your own business.");
       return;
     }

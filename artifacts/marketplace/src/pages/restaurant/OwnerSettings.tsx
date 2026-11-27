@@ -50,7 +50,7 @@ export default function OwnerSettings() {
     fetchRestaurant(restaurantId)
       .then((r) => {
         setRestaurant(r);
-        setPhone(r.phone || suggestDialCodeForCountry(r.country) + " ");
+        setPhone(r.phone || "");
         setWhatsapp(r.whatsapp || "");
         setEnableWhatsapp(Boolean(r.whatsapp));
         if (r.fulfillment === "delivery" || r.fulfillment === "both" || r.fulfillment === "pickup") {

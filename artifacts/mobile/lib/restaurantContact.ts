@@ -52,7 +52,7 @@ export function restaurantHasPublicLocation(r: {
   streetAddress?: string | null;
 }): boolean {
   const homeKitchen = String(r.businessType || "").toLowerCase() === "home_kitchen";
-  if (homeKitchen && r.showPublicAddress === false) {
+  if (homeKitchen) {
     return Boolean(String(r.publicPickupAddress || "").trim());
   }
   if (r.latitude != null && r.longitude != null) return true;

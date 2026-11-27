@@ -12,6 +12,7 @@ import {
 import { useAuth } from "@/contexts/auth";
 import { SUPPORTED_COUNTRIES } from "@/lib/countries";
 import { isRestaurantCountryHardDisabled, restaurantRegistrationCountries } from "@/lib/restaurantCountryPolicy";
+import { isValidBusinessPhone } from "@/lib/restaurantContact";
 
 const REGISTRATION_COUNTRIES = restaurantRegistrationCountries(SUPPORTED_COUNTRIES);
 
@@ -256,6 +257,11 @@ export default function AddRestaurant() {
     if (!form.cuisineTags.trim()) e.cuisineTags = t("restaurant.fieldRequired", { defaultValue: "Required" });
     if (!form.description.trim()) e.description = t("restaurant.fieldRequired", { defaultValue: "Required" });
     if (!form.phone.trim()) e.phone = t("restaurant.fieldRequired", { defaultValue: "Required" });
+    else if (!isValidBusinessPhone(form.phone)) {
+      e.phone = t("restaurant.invalidBusinessPhone", {
+        defaultValue: "Enter a valid public business phone with country code (8–15 digits).",
+      });
+    }
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       e.email = t("restaurant.invalidEmail", { defaultValue: "Enter a valid email" });
     }
@@ -275,6 +281,16 @@ export default function AddRestaurant() {
     if (!form.streetAddress.trim()) e.streetAddress = t("restaurant.fieldRequired", { defaultValue: "Required" });
     if (!form.publicPickupAddress.trim() && form.businessType !== "home_kitchen") {
       e.publicPickupAddress = t("restaurant.fieldRequired", { defaultValue: "Required" });
+    }
+    if (form.phone.trim() && !isValidBusinessPhone(form.phone)) {
+      e.phone = t("restaurant.invalidBusinessPhone", {
+        defaultValue: "Enter a valid public business phone with country code (8–15 digits).",
+      });
+    }
+    if (form.whatsapp.trim() && !isValidBusinessPhone(form.whatsapp)) {
+      e.whatsapp = t("restaurant.invalidWhatsapp", {
+        defaultValue: "Enter a valid WhatsApp number with country code, or leave blank.",
+      });
     }
     return e;
   }
@@ -1124,6 +1140,8 @@ function LocationStep({
       <Field
         label={t("restaurant.whatsappOptional", { defaultValue: "WhatsApp number (optional)" })}
         value={form.whatsapp}
+        error={fieldErr("whatsapp")}
+        onBlur={() => markTouched("whatsapp")}
         onChange={(v) => setForm((f) => ({ ...f, whatsapp: v }))}
       />
 

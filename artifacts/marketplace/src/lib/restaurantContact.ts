@@ -74,8 +74,8 @@ export function restaurantHasPublicLocation(r: {
   addressPrivacyNote?: string | null;
 }): boolean {
   const homeKitchen = String(r.businessType || "").toLowerCase() === "home_kitchen";
-  if (homeKitchen && r.showPublicAddress === false) {
-    // Only allow directions to an explicit public pickup / meeting point, never private home.
+  // Home kitchens: never use private street/coords — only an explicit public pickup point.
+  if (homeKitchen) {
     return Boolean(String(r.publicPickupAddress || "").trim());
   }
   if (r.latitude != null && r.longitude != null) return true;

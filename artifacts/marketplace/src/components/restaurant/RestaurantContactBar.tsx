@@ -75,7 +75,7 @@ export function RestaurantContactBar({ restaurant, onReserve, className }: Props
       setError(t("restaurant.messageUnavailable", { defaultValue: "Messaging is unavailable for this business." }));
       return;
     }
-    if (user.id === restaurant.ownerId) {
+    if (Number(user.id) === Number(restaurant.ownerId)) {
       setError(t("restaurant.cannotMessageSelf", { defaultValue: "You cannot message your own business." }));
       return;
     }
@@ -119,7 +119,7 @@ export function RestaurantContactBar({ restaurant, onReserve, className }: Props
       label: t("restaurant.call", { defaultValue: "Call" }),
       icon: <Phone className="h-5 w-5" />,
       href: telHref || undefined,
-      external: true,
+      external: false,
       hidden: !telHref,
     },
     {

@@ -10,7 +10,7 @@ import {
   updateRestaurant,
   type Restaurant,
 } from "@/lib/restaurantApi";
-import { isValidBusinessPhone, suggestDialCodeForCountry } from "@/lib/restaurantContact";
+import { isValidBusinessPhone } from "@/lib/restaurantContact";
 
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 

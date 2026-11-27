@@ -24,7 +24,23 @@ import {
   restaurantModerationLogsTable,
   restaurantNotificationsTable,
 } from "@workspace/db";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
+import {
+  assertCountryAllowsPublicOps,
+  isCountryPubliclyActive,
+  normalizeRestaurantCountryCode,
+} from "../lib/restaurantCountryPolicy";
+import {
+  getRestaurantCountry,
+  hasBlockingExpiredOrMissingPermits,
+  listComplianceRequirements,
+  listJurisdictions,
+  listRegulatoryAuditLogs,
+  listRestaurantCountries,
+  upsertComplianceRequirement,
+  upsertJurisdiction,
+  upsertRestaurantCountry,
+} from "../lib/restaurantCountryStore";
 import {
   FOOD_SAFETY_ARTICLE_VERSION,
   gradeFoodSafetyQuiz,
@@ -325,7 +341,8 @@ function shapeMenuItem(
 
 /* ─── Launch / privacy ───────────────────────────────────────────────────── */
 
-router.get("/restaurants/launch", (_req, res) => {
+router.get("/restaurants/launch", async (_req, res) => {
+  const countries = await listRestaurantCountries();
   res.json({
     native: true,
     freeLaunch: true,
@@ -341,6 +358,21 @@ router.get("/restaurants/launch", (_req, res) => {
     driverPolicy: RESTAURANT_DRIVER_POLICY,
     privacyNotice: PRIVACY_NOTICE,
     access: RESTAURANT_PUBLIC_LAUNCH ? "public" : "super_admin_preview",
+    countryPolicy: {
+      defaultDeny: true,
+      legalDisclaimer:
+        "Country availability reflects Flexa operational authorization only and does not eliminate legal responsibilities of Flexa Technology LLC or food businesses.",
+      countries: countries.map((c) => ({
+        countryCode: c.countryCode,
+        countryName: c.countryName,
+        status: c.status,
+        enabled: c.enabled,
+        publiclyActive: isCountryPubliclyActive(c),
+        restaurantsEnabled: c.restaurantsEnabled,
+        foodTrucksEnabled: c.foodTrucksEnabled,
+        homeKitchensEnabled: c.homeKitchensEnabled,
+      })),
+    },
   });
 });
 
@@ -385,6 +417,14 @@ router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<vo
     if (queryCountry && profileCountry && !staff && queryCountry.toLowerCase() !== profileCountry.toLowerCase()) {
       res.status(403).json({ error: "Cannot browse restaurants outside your selected country" });
       return;
+    }
+    if (country && !staff) {
+      const countryRow = await getRestaurantCountry(country);
+      const gate = assertCountryAllowsPublicOps(countryRow);
+      if (!gate.ok) {
+        res.status(403).json({ error: gate.error, code: gate.code, countryPolicy: countryRow, restaurants: [] });
+        return;
+      }
     }
 
     const conds = [
@@ -678,6 +718,34 @@ router.post("/restaurants", requireRestaurantAuthAccess, async (req, res): Promi
     res.status(400).json({ error: "Name, country, and city are required" }); return;
   }
   const businessType = normalizeBusinessType(String(body.businessType || "traditional"));
+  const countryRow = await getRestaurantCountry(country);
+  const code = normalizeRestaurantCountryCode(country);
+  // United States and Canada: permanently blocked until Super Admin flips status away from suspended AND enables.
+  if (code === "US" || code === "CA") {
+    if (!isCountryPubliclyActive(countryRow)) {
+      res.status(403).json({
+        error: `Flexa Restaurant is disabled in ${countryRow.countryName}.`,
+        code: "COUNTRY_DISABLED",
+        countryPolicy: countryRow,
+      });
+      return;
+    }
+  }
+  if (!isStaff(req.user)) {
+    const gate = assertCountryAllowsPublicOps(countryRow, { businessType });
+    if (!gate.ok) {
+      res.status(403).json({ error: gate.error, code: gate.code, countryPolicy: countryRow });
+      return;
+    }
+  } else if (countryRow.status === "not_reviewed" && !isCountryPubliclyActive(countryRow)) {
+    // Super Admin must open a regulatory review record before seeding test businesses.
+    res.status(403).json({
+      error: `No regulatory review record for ${countryRow.countryName}. Configure Country Availability first.`,
+      code: "COUNTRY_NOT_REVIEWED",
+      countryPolicy: countryRow,
+    });
+    return;
+  }
   const homeKitchen = isHomeKitchenType(businessType);
   const [created] = await db.insert(restaurantsTable).values({
     ownerId: req.userId!,
@@ -765,7 +833,7 @@ router.patch("/restaurants/:id", requireRestaurantAuthAccess, async (req, res): 
     if (isHomeKitchenType(patch.businessType)) patch.showPublicAddress = false;
   }
 
-  // Owners submit for review — only staff/admin can publish to public listings.
+  // Owners submit for review — only staff can force-publish after country approval.
   if (body.publish === true || body.submit === true) {
     if (row.identityStatus !== "verified") {
       res.status(400).json({ error: "Identity verification required before publishing" }); return;
@@ -773,10 +841,27 @@ router.patch("/restaurants/:id", requireRestaurantAuthAccess, async (req, res): 
     if (!row.foodSafetyCompleted) {
       res.status(400).json({ error: "Food safety onboarding required before publishing" }); return;
     }
+    if (!row.foodResponsibilityAcceptedAt) {
+      res.status(400).json({ error: "Food business responsibility acknowledgment required before publishing" }); return;
+    }
+    const publishCountry = await getRestaurantCountry(row.country);
     if (isStaff(req.user) && body.publish === true && body.forcePublish === true) {
+      if (!isCountryPubliclyActive(publishCountry)) {
+        res.status(403).json({
+          error: "Cannot publish publicly until the country is Approved and enabled in Country Availability.",
+          code: "COUNTRY_NOT_APPROVED",
+          countryPolicy: publishCountry,
+        });
+        return;
+      }
       patch.status = "published";
       patch.publishedAt = new Date();
     } else {
+      const gate = assertCountryAllowsPublicOps(publishCountry, { businessType: row.businessType });
+      if (!gate.ok && !isStaff(req.user)) {
+        res.status(403).json({ error: gate.error, code: gate.code, countryPolicy: publishCountry });
+        return;
+      }
       patch.status = "submitted";
       patch.publishedAt = null;
     }
@@ -1238,6 +1323,31 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
   }
   if (restaurant.ownerId === req.userId) {
     res.status(400).json({ error: "Owners cannot order from their own restaurant" }); return;
+  }
+  const orderCountry = await getRestaurantCountry(restaurant.country);
+  if (!isStaff(req.user)) {
+    const gate = assertCountryAllowsPublicOps(orderCountry, { businessType: restaurant.businessType });
+    if (!gate.ok) {
+      res.status(403).json({ error: gate.error, code: gate.code, countryPolicy: orderCountry });
+      return;
+    }
+  } else if (!isCountryPubliclyActive(orderCountry) && normalizeRestaurantCountryCode(restaurant.country) !== "HT") {
+    // Super Admin isolated testing allowed for Haiti pending; other non-approved markets blocked for new orders.
+    if (orderCountry.status === "suspended" || normalizeRestaurantCountryCode(restaurant.country) === "US" || normalizeRestaurantCountryCode(restaurant.country) === "CA") {
+      res.status(403).json({
+        error: `New orders are blocked in ${orderCountry.countryName}.`,
+        code: "COUNTRY_DISABLED",
+        countryPolicy: orderCountry,
+      });
+      return;
+    }
+  }
+  if (await hasBlockingExpiredOrMissingPermits(restaurant.id, restaurant.country, restaurant.businessType)) {
+    res.status(403).json({
+      error: "This business cannot accept new orders because a mandatory permit is missing or expired.",
+      code: "PERMIT_EXPIRED",
+    });
+    return;
   }
   const body = req.body ?? {};
   // Hard ban: Flexa Driver must never be attached to restaurant food orders.
@@ -1802,12 +1912,104 @@ router.post("/restaurants/:id/reports", requireAuth, async (req, res): Promise<v
   res.status(201).json({ report: { id: report.id, status: report.status } });
 });
 
-router.get("/admin/restaurants", requireAuth, requireAdmin, async (_req, res) => {
+/* ─── Super Admin: Country Availability & compliance ─────────────────────── */
+
+router.get("/admin/restaurants/countries", requireAuth, requireSuperAdmin, async (_req, res) => {
+  const countries = await listRestaurantCountries();
+  res.json({
+    defaultDeny: true,
+    legalDisclaimer:
+      "Operational country flags do not eliminate legal responsibilities of Flexa Technology LLC or food businesses.",
+    countries,
+  });
+});
+
+router.put("/admin/restaurants/countries/:countryCode", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
+  const countryCode = String(req.params.countryCode || "");
+  const body = req.body ?? {};
+  // Never auto-approve: explicit status + enabled required from Super Admin.
+  if (body.status === "approved" && body.enabled === true && !String(body.regulatoryReviewNotes || "").trim() && !body.approvalDocumentUrl) {
+    res.status(400).json({
+      error: "Documented regulatory review notes or an approval document URL is required before public activation.",
+    });
+    return;
+  }
+  const row = await upsertRestaurantCountry({
+    countryCode,
+    countryName: body.countryName ? String(body.countryName) : undefined,
+    status: body.status,
+    enabled: body.enabled,
+    restaurantsEnabled: body.restaurantsEnabled,
+    foodTrucksEnabled: body.foodTrucksEnabled,
+    homeKitchensEnabled: body.homeKitchensEnabled,
+    cateringEnabled: body.cateringEnabled,
+    requiredLicensesNote: body.requiredLicensesNote != null ? String(body.requiredLicensesNote) : undefined,
+    foodSafetyRequirementsNote: body.foodSafetyRequirementsNote != null ? String(body.foodSafetyRequirementsNote) : undefined,
+    regulatoryReviewNotes: body.regulatoryReviewNotes != null ? String(body.regulatoryReviewNotes) : undefined,
+    approvalDocumentUrl: body.approvalDocumentUrl != null ? String(body.approvalDocumentUrl) : undefined,
+    suspensionReason: body.suspensionReason != null ? String(body.suspensionReason) : undefined,
+  } as any, req.userId!);
+  res.json({ country: row });
+});
+
+router.get("/admin/restaurants/countries/:countryCode/jurisdictions", requireAuth, requireSuperAdmin, async (req, res) => {
+  const rows = await listJurisdictions(String(req.params.countryCode || ""));
+  res.json({ jurisdictions: rows });
+});
+
+router.put("/admin/restaurants/countries/:countryCode/jurisdictions", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
+  const body = req.body ?? {};
+  if (!body.name || !body.level) {
+    res.status(400).json({ error: "level and name are required" }); return;
+  }
+  const jurisdictions = await upsertJurisdiction({
+    countryCode: String(req.params.countryCode || ""),
+    level: String(body.level),
+    name: String(body.name),
+    status: body.status ? String(body.status) : undefined,
+    enabled: body.enabled,
+    restaurantsEnabled: body.restaurantsEnabled,
+    foodTrucksEnabled: body.foodTrucksEnabled,
+    homeKitchensEnabled: body.homeKitchensEnabled,
+    requiredLicensesNote: body.requiredLicensesNote != null ? String(body.requiredLicensesNote) : undefined,
+    regulatoryReviewNotes: body.regulatoryReviewNotes != null ? String(body.regulatoryReviewNotes) : undefined,
+    suspensionReason: body.suspensionReason != null ? String(body.suspensionReason) : null,
+  }, req.userId!);
+  res.json({ jurisdictions });
+});
+
+router.get("/admin/restaurants/countries/:countryCode/requirements", requireAuth, requireSuperAdmin, async (req, res) => {
+  const requirements = await listComplianceRequirements(String(req.params.countryCode || ""));
+  res.json({ requirements });
+});
+
+router.post("/admin/restaurants/countries/:countryCode/requirements", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
+  const body = req.body ?? {};
+  if (!body.requirementKey || !body.label) {
+    res.status(400).json({ error: "requirementKey and label are required" }); return;
+  }
+  const row = await upsertComplianceRequirement({
+    countryCode: String(req.params.countryCode || ""),
+    businessType: body.businessType ? String(body.businessType) : "*",
+    requirementKey: String(body.requirementKey),
+    label: String(body.label),
+    required: body.required !== false,
+    notes: body.notes != null ? String(body.notes) : "",
+  }, req.userId!);
+  res.status(201).json({ requirement: row });
+});
+
+router.get("/admin/restaurants/regulatory-audit", requireAuth, requireSuperAdmin, async (req, res) => {
+  const logs = await listRegulatoryAuditLogs(Number(req.query.limit) || 100);
+  res.json({ logs });
+});
+
+router.get("/admin/restaurants", requireAuth, requireSuperAdmin, async (_req, res) => {
   const rows = await db.select().from(restaurantsTable).orderBy(desc(restaurantsTable.updatedAt)).limit(200);
   res.json({ restaurants: rows.map((r: typeof restaurantsTable.$inferSelect) => shapePublicRestaurant(r)) });
 });
 
-router.get("/admin/restaurants/identity/pending", requireAuth, requireAdmin, async (_req, res) => {
+router.get("/admin/restaurants/identity/pending", requireAuth, requireSuperAdmin, async (_req, res) => {
   const rows = await db.select().from(restaurantIdentityVerificationsTable)
     .where(eq(restaurantIdentityVerificationsTable.status, "pending_review"))
     .orderBy(desc(restaurantIdentityVerificationsTable.createdAt))
@@ -1831,7 +2033,7 @@ router.get("/admin/restaurants/identity/pending", requireAuth, requireAdmin, asy
   });
 });
 
-router.patch("/admin/restaurants/identity/:idvId/decide", requireAuth, requireAdmin, async (req, res): Promise<void> => {
+router.patch("/admin/restaurants/identity/:idvId/decide", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
   const idvId = Number(req.params.idvId);
   const decision = String(req.body?.decision || "");
   if (!["verified", "rejected"].includes(decision)) {
@@ -1866,7 +2068,7 @@ router.patch("/admin/restaurants/identity/:idvId/decide", requireAuth, requireAd
   res.json({ ok: true });
 });
 
-router.patch("/admin/restaurants/:id/application", requireAuth, requireAdmin, async (req, res): Promise<void> => {
+router.patch("/admin/restaurants/:id/application", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const decision = String(req.body?.decision || "").trim().toLowerCase();
   const allowed = new Set([
@@ -1888,6 +2090,15 @@ router.patch("/admin/restaurants/:id/application", requireAuth, requireAdmin, as
     }
     if (!row.foodSafetyCompleted) {
       res.status(400).json({ error: "Food safety onboarding required before approval" }); return;
+    }
+    const countryRow = await getRestaurantCountry(row.country);
+    if (!isCountryPubliclyActive(countryRow)) {
+      res.status(403).json({
+        error: "Business country must be Approved and enabled before public activation.",
+        code: "COUNTRY_NOT_APPROVED",
+        countryPolicy: countryRow,
+      });
+      return;
     }
   }
   const note = String(req.body?.note || req.body?.reason || "").slice(0, 1000);
@@ -1924,7 +2135,7 @@ router.patch("/admin/restaurants/:id/application", requireAuth, requireAdmin, as
   res.json({ restaurant: shapePublicRestaurant(updated) });
 });
 
-router.patch("/admin/restaurants/:id/suspend", requireAuth, requireAdmin, async (req, res): Promise<void> => {
+router.patch("/admin/restaurants/:id/suspend", requireAuth, requireSuperAdmin, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const reason = String(req.body?.reason || "Under investigation").slice(0, 1000);
   const [updated] = await db.update(restaurantsTable).set({

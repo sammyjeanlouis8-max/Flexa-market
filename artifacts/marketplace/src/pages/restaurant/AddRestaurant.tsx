@@ -6,6 +6,9 @@ import { RestaurantNotice, RestaurantShell } from "@/components/restaurant/Resta
 import { createRestaurant } from "@/lib/restaurantApi";
 import { useAuth } from "@/contexts/auth";
 import { SUPPORTED_COUNTRIES } from "@/lib/countries";
+import { isRestaurantCountryHardDisabled, restaurantRegistrationCountries } from "@/lib/restaurantCountryPolicy";
+
+const REGISTRATION_COUNTRIES = restaurantRegistrationCountries(SUPPORTED_COUNTRIES);
 
 const STEPS = ["basics", "hours", "identity", "safety", "publish"] as const;
 
@@ -20,7 +23,7 @@ export default function AddRestaurant() {
     name: "",
     businessType: "traditional",
     description: "",
-    country: user?.country ?? "",
+    country: user?.country && !isRestaurantCountryHardDisabled(user.country) ? user.country : "Haiti",
     city: "",
     streetAddress: "",
     cuisineTags: "",
@@ -257,9 +260,10 @@ function motionFormFields({
           onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
           className="mt-1 w-full rounded-xl border border-border bg-white px-3 py-2 text-sm"
         >
-          {SUPPORTED_COUNTRIES.map((c) => (
+          {REGISTRATION_COUNTRIES.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
+          {/* United States and Canada are omitted — Flexa Restaurant is disabled there by default policy. */}
         </select>
       </label>
       <label className="block text-sm font-semibold">City

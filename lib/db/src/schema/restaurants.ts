@@ -404,3 +404,104 @@ export const restaurantNotificationsTable = pgTable("restaurant_notifications", 
 }, (t) => ({
   userIdx: index("restaurant_notifications_user_idx").on(t.userId),
 }));
+
+/**
+ * Super Admin–managed country availability for Flexa Restaurant.
+ * Default-deny: a country is never public until status=approved AND enabled=true.
+ */
+export const restaurantCountryAvailabilityTable = pgTable("restaurant_country_availability", {
+  id: serial("id").primaryKey(),
+  countryCode: text("country_code").notNull(),
+  countryName: text("country_name").notNull(),
+  /** not_reviewed | under_review | approved | restricted | suspended */
+  status: text("status").notNull().default("not_reviewed"),
+  enabled: boolean("enabled").notNull().default(false),
+  restaurantsEnabled: boolean("restaurants_enabled").notNull().default(false),
+  foodTrucksEnabled: boolean("food_trucks_enabled").notNull().default(false),
+  homeKitchensEnabled: boolean("home_kitchens_enabled").notNull().default(false),
+  cateringEnabled: boolean("catering_enabled").notNull().default(false),
+  requiredLicensesNote: text("required_licenses_note").notNull().default(""),
+  foodSafetyRequirementsNote: text("food_safety_requirements_note").notNull().default(""),
+  regulatoryReviewNotes: text("regulatory_review_notes").notNull().default(""),
+  approvalDocumentUrl: text("approval_document_url"),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  suspensionReason: text("suspension_reason"),
+  updatedBy: integer("updated_by").references(() => usersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  countryUnique: uniqueIndex("restaurant_country_availability_code").on(t.countryCode),
+}));
+
+/** Region / municipality overlays within a country (default inherit country). */
+export const restaurantJurisdictionAvailabilityTable = pgTable("restaurant_jurisdiction_availability", {
+  id: serial("id").primaryKey(),
+  countryCode: text("country_code").notNull(),
+  /** state | province | region | municipality */
+  level: text("level").notNull().default("region"),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("not_reviewed"),
+  enabled: boolean("enabled").notNull().default(false),
+  restaurantsEnabled: boolean("restaurants_enabled").notNull().default(false),
+  foodTrucksEnabled: boolean("food_trucks_enabled").notNull().default(false),
+  homeKitchensEnabled: boolean("home_kitchens_enabled").notNull().default(false),
+  requiredLicensesNote: text("required_licenses_note").notNull().default(""),
+  regulatoryReviewNotes: text("regulatory_review_notes").notNull().default(""),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  suspensionReason: text("suspension_reason"),
+  updatedBy: integer("updated_by").references(() => usersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  countryIdx: index("restaurant_jurisdiction_country_idx").on(t.countryCode),
+  uniqueName: uniqueIndex("restaurant_jurisdiction_unique").on(t.countryCode, t.level, t.name),
+}));
+
+/** Required permit types by country + business category (configurable). */
+export const restaurantComplianceRequirementTable = pgTable("restaurant_compliance_requirements", {
+  id: serial("id").primaryKey(),
+  countryCode: text("country_code").notNull(),
+  /** traditional | food_truck | home_kitchen | catering | * */
+  businessType: text("business_type").notNull().default("*"),
+  /** identity | business_registration | food_service_permit | health_permit | food_truck_permit | home_kitchen_auth | insurance | food_safety_cert | allergen_disclosure | tax_registration | other */
+  requirementKey: text("requirement_key").notNull(),
+  label: text("label").notNull(),
+  required: boolean("required").notNull().default(true),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  countryIdx: index("restaurant_compliance_req_country_idx").on(t.countryCode),
+}));
+
+/** Uploaded compliance docs per business (private Wasabi keys). */
+export const restaurantComplianceDocumentsTable = pgTable("restaurant_compliance_documents", {
+  id: serial("id").primaryKey(),
+  restaurantId: integer("restaurant_id").notNull().references(() => restaurantsTable.id, { onDelete: "cascade" }),
+  requirementKey: text("requirement_key").notNull(),
+  documentLabel: text("document_label").notNull().default(""),
+  storageKey: text("storage_key").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  verifiedBy: integer("verified_by").references(() => usersTable.id),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  restaurantIdx: index("restaurant_compliance_docs_restaurant_idx").on(t.restaurantId),
+}));
+
+export const restaurantRegulatoryAuditLogTable = pgTable("restaurant_regulatory_audit_logs", {
+  id: serial("id").primaryKey(),
+  actorId: integer("actor_id").notNull().references(() => usersTable.id),
+  action: text("action").notNull(),
+  countryCode: text("country_code"),
+  jurisdictionId: integer("jurisdiction_id"),
+  restaurantId: integer("restaurant_id"),
+  details: text("details").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  actorIdx: index("restaurant_regulatory_audit_actor_idx").on(t.actorId),
+  countryIdx: index("restaurant_regulatory_audit_country_idx").on(t.countryCode),
+}));

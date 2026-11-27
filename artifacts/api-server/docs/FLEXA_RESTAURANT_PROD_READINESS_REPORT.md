@@ -1,57 +1,57 @@
-# Flexa Restaurant — Production Readiness Report (final corrections)
+# Flexa Restaurant — Production Readiness Report
 
 **PR:** https://github.com/sammyjeanlouis8-max/Flexa-market/pull/308  
 **Branch:** `cursor/restaurant-prod-ready-5a20`  
-**Feature flag:** `RESTAURANT_PUBLIC_LAUNCH = false` → **Super Admin only** (Admin / Moderator blocked)
+**Feature flag:** `RESTAURANT_PUBLIC_LAUNCH = false` → **Super Admin only**
 
-## Policy (approved)
+## Final business policy
 
-Flexa Restaurant operates independently from Flexa Driver. Businesses own preparation, packaging, transport, and delivery/pickup. Flexa Driver must never transport restaurant food.
+1. Flexa Restaurant stays unavailable in every jurisdiction until regulatory requirements are verified and Super Admin explicitly enables the country (`status=approved` + `enabled=true`).
+2. Restaurants / Food Trucks / Home Kitchens manage their own food delivery/pickup.
+3. Flexa Driver must never transport restaurant food.
+4. Operational country flags do **not** eliminate legal responsibilities of Flexa Technology LLC or food businesses.
 
 ## Requirement scorecard
 
-| # | Requirement | Status | Evidence |
-| --- | --- | --- | --- |
-| 1a | Business-managed delivery + customer pickup | **PASS** | Launch payload `usesFlexaDrivers:false`, order inserts force `usesFlexaDrivers:false`, delivery settings `ownerManagedDelivery:true` |
-| 1b | Flexa Driver blocked for restaurant food (FE + BE) | **PASS** | `POST /api/delivery` rejects `restaurantOrderId` / `flexaModule=restaurant`; restaurant order create rejects driver assignment; Market driver flows untouched |
-| 1c | Delivery config (areas, radius, fees, min, ETA, prep, free delivery, suspend, hours, pickup) | **PASS** | `PUT /restaurants/:id/delivery` + Owner Settings UI |
-| 1d | Checkout disclaimer “Delivery is managed directly by this business.” | **PASS** | Checkout + `RESTAURANT_FULFILLMENT_DISCLAIMER` + public restaurant shape |
-| 1e | Pickup-only when delivery not offered / suspended | **PASS** | Checkout disables delivery when `deliveryAvailable=false` or `deliverySuspended` |
-| 2a | Order statuses (pending payment → refunded) | **PASS** | `RESTAURANT_ORDER_TRANSITIONS` + owner Orders UI filters/actions |
-| 2b | Owner status updates + customer notifications | **PASS** | Status patch + `notify()` on change + PIN confirm |
-| 2c | Confirmation PIN | **PASS** | `confirmation_pin` + `POST .../confirm-pin` + owner PIN UI |
-| 2d | Order history / audit | **PASS** | `restaurant_order_status_history` writes on PIN / Stripe paid |
-| 2e | Unauthorized status / false delivery prevention | **PASS** | Transition map + PIN mismatch 403 + owner/customer auth checks |
-| 3 | Integer minor-unit money + safe migrations | **PASS** | Schema + `restaurant_money_and_options.v1` / backfill migrations + `restaurantMoney.ts` + backend order pricing |
-| 4 | Food variants / toppings / extras | **PASS** | Option group tables + GET/POST APIs + seller DishModels UI + customer customize sheet on Restaurant Detail; backend validates options/prices |
-| 5 | Stripe PaymentIntent / webhooks / refunds | **PASS** (code) · **NOT TESTED** (live Stripe test keys) | `restaurantStripe.ts`; webhook branch in `stripeCheckout.ts`; Checkout Payment Element; refund endpoint |
-| 6 | Super Admin only while flag false | **PASS** | `canAccessRestaurantStaff` / marketplace `canAccessRestaurant` require Super Admin; nav + gate + API middleware |
-| 7 | Food business responsibility acknowledgment | **PASS** | Food safety v2 + q6 delivery policy + required `foodResponsibilityAccepted` + `food_responsibility_accepted_at` + onboarding/checkout copy |
-| 8 | Multilingual EN/HT/FR/ES inherit Market language | **PARTIAL** | Shared `restaurantLocales` EN overlay; HT/FR/ES fall back to EN for new keys via i18n defaults |
-| 9a | Automated unit / smoke tests | **PASS** | `restaurantAccess`, `restaurantMoney`, `restaurantsRoutes.smoke`, `restaurantSchedule` (incl. quiz) |
-| 9b | E2E Stripe test charge / full browser E2E | **NOT TESTED** | No Stripe test credentials / Super Admin browser session in agent env |
-| 9c | Flexa Driver cannot receive restaurant orders | **PASS** | Explicit delivery POST guard + restaurant module never sets `usesFlexaDrivers` |
-| 10 | Keep `RESTAURANT_PUBLIC_LAUNCH=false`; reuse Neon + Wasabi | **PASS** | Flag remains false; no new paid infra |
-| 11 | Production deploy health after merge | **NOT TESTED** | Awaiting authorized merge of #308 |
+| Requirement | Status | Evidence |
+| --- | --- | --- |
+| Default-deny country allowlist | **PASS** | `restaurantCountryPolicy.ts` + DB seed US/CA suspended, HT under_review, others not_reviewed |
+| United States disabled | **PASS** | Seed + create/order/discover gates reject US when not approved |
+| Canada disabled | **PASS** | Same as US |
+| Haiti pending (not publicly active) | **PASS** | `under_review`, `enabled=false`; no public activation without Super Admin |
+| Never auto-activate new countries | **PASS** | Upsert requires explicit Super Admin action; approve needs review notes or document URL |
+| Super Admin Country Availability UI | **PASS** | `/admin/restaurants/countries` + APIs under `requireSuperAdmin` |
+| Jurisdictions (state/province/region/municipality) | **PASS** | `restaurant_jurisdiction_availability` + admin upsert |
+| Category toggles (restaurant/truck/home kitchen) | **PASS** | Per-country boolean flags + `isBusinessCategoryEnabled` |
+| Licenses / food safety / review notes / docs / suspend / audit | **PASS** | Country fields + requirements + regulatory audit log |
+| Compliance statuses | **PASS** | not_reviewed / under_review / approved / restricted / suspended |
+| Hide nav / search / registration / orders in restricted markets | **PASS** | Super Admin preview gate + country gates on discover/create/publish/orders; US/CA omitted from registration dropdown |
+| Validate business country (not profile-only bypass) | **PASS** | Discover blocks country≠profile for non-staff; create/orders use restaurant.country |
+| Preserve existing orders when suspended | **PASS** | New orders blocked; existing order/refund/PIN endpoints remain for owners/customers/staff |
+| Business-managed delivery + pickup only | **PASS** | Prior #308 delivery policy retained |
+| Flexa Driver food ban | **PASS** | `POST /api/delivery` guard + order field bans |
+| Food responsibility acknowledgment | **PASS** | Quiz + `food_responsibility_accepted_at` + publish check |
+| Stripe / minor units / options / PIN | **PASS** (code) | Prior commit `52898f1f` + this branch |
+| Live Stripe E2E | **NOT TESTED** | No Stripe test secrets in agent |
+| Screenshots of all workflows | **NOT TESTED** | No authenticated Super Admin browser session |
+| Production deploy health | **NOT TESTED** | Awaiting authorized merge |
+| Legal compliance claim | **NOT CLAIMED** | Haiti remains under_review; no jurisdiction marked approved in seed |
 
-## Explicitly removed from outstanding work
+## Country configuration (seed)
 
-- Flexa Driver assignment / dispatch / earnings for restaurant food — **prohibited by policy**, not a remaining gap.
+| Code | Name | Status | Enabled | Public |
+| --- | --- | --- | --- | --- |
+| US | United States | suspended | false | no |
+| CA | Canada | suspended | false | no |
+| HT | Haiti | under_review | false | no |
+| * | All others | not_reviewed (default-deny) | false | no |
 
-## External blockers
-
-| Item | Status |
-| --- | --- |
-| Live Stripe test-mode E2E in this agent | **BLOCKED** — secrets not available |
-| Production DigitalOcean deploy | **BLOCKED** — merge authorization required |
-| Public launch flip | **BLOCKED** — waiting explicit Super Admin approval |
-
-## Automated test evidence (this branch)
+## Automated tests
 
 ```
-vitest (api-server): restaurantAccess + restaurantMoney + restaurantsRoutes.smoke + restaurantSchedule → pass
+vitest: restaurantAccess, restaurantMoney, restaurantCountryPolicy, restaurantsRoutes.smoke, restaurantSchedule
 ```
 
 ## Deployment stance
 
-Keep `RESTAURANT_PUBLIC_LAUNCH=false`. After merge, DigitalOcean startup migrations apply money/option/PIN/responsibility columns. Public users remain blocked; Super Admin can validate workflows in isolation.
+Keep `RESTAURANT_PUBLIC_LAUNCH=false`. Do not publicly activate any country without documented regulatory verification and Super Admin approval. No new paid infrastructure.

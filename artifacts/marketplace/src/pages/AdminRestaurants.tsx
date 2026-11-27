@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
 import { BadgeCheck, Ban, ChevronLeft, UtensilsCrossed } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
-import { isAdminUser } from "@/lib/adminCountryAccess";
+import { isSuperAdminUser } from "@/lib/adminCountryAccess";
 
 type PendingIdv = {
   id: number;
@@ -69,7 +69,7 @@ export default function AdminRestaurants() {
   }, []);
 
   useEffect(() => {
-    if (isAdminUser(user as any)) void load();
+    if (isSuperAdminUser(user as any)) void load();
   }, [user, load]);
 
   async function decide(idvId: number, decision: "verified" | "rejected", reason?: string) {
@@ -130,10 +130,10 @@ export default function AdminRestaurants() {
     }
   }
 
-  if (!isAdminUser(user as any)) {
+  if (!isSuperAdminUser(user as any)) {
     return (
       <div className="mx-auto max-w-lg p-6">
-        <p className="text-sm text-muted-foreground">Admin access required.</p>
+        <p className="text-sm text-muted-foreground">Super Admin access required.</p>
       </div>
     );
   }
@@ -150,8 +150,16 @@ export default function AdminRestaurants() {
       <p className="mt-1 text-sm text-muted-foreground">
         Identity verification review and restaurant suspension. Verified badge = identity only, not food-safety certification.
       </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link
+          href="/admin/restaurants/countries"
+          className="rounded-full bg-[hsl(152,55%,28%)] px-3 py-1.5 text-xs font-bold text-white"
+        >
+          Country Availability
+        </Link>
+      </div>
       <p className="mt-2 rounded-xl border border-[hsl(152,40%,80%)] bg-[hsl(152,45%,96%)] px-3 py-2 text-xs text-[hsl(152,55%,22%)]">
-        Free launch: no commission. Documents are private — open via authorized short-lived links only.
+        Free launch: no commission. Documents are private — open via authorized short-lived links only. US/CA disabled by default; Haiti pending regulatory approval.
       </p>
 
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}

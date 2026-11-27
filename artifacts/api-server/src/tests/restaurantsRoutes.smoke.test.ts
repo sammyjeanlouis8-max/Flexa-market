@@ -52,6 +52,14 @@ describe("restaurants routes smoke", () => {
     expect(delivery).toContain("restaurantOrderId");
   });
 
+  it("exposes Super Admin country availability APIs", () => {
+    expect(routes).toContain('"/admin/restaurants/countries"');
+    expect(routes).toContain('"/admin/restaurants/countries/:countryCode"');
+    expect(routes).toContain("requireSuperAdmin");
+    expect(routes).toContain("COUNTRY_DISABLED");
+    expect(routes).toContain("countryPolicy");
+  });
+
   it("supports category discovery, menu preview, and food-truck location", () => {
     expect(routes).toContain("businessType");
     expect(routes).toContain("menuPreview");
@@ -91,5 +99,16 @@ describe("restaurant startup migrations", () => {
     expect(migrations).toContain("confirmation_pin");
     expect(migrations).toContain("restaurant_dish_option_groups");
     expect(migrations).toContain("food_responsibility_accepted_at");
+  });
+
+  it("registers country availability regulatory migrations and seeds", () => {
+    expect(migrations).toContain('name: "restaurant_country_availability.v1"');
+    expect(migrations).toContain("restaurant_country_availability");
+    expect(migrations).toContain("restaurant_jurisdiction_availability");
+    expect(migrations).toContain("restaurant_compliance_requirements");
+    expect(migrations).toContain("restaurant_regulatory_audit_logs");
+    expect(migrations).toContain("('US', 'United States', 'suspended'");
+    expect(migrations).toContain("('CA', 'Canada', 'suspended'");
+    expect(migrations).toContain("('HT', 'Haiti', 'under_review'");
   });
 });

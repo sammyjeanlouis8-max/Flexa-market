@@ -3983,6 +3983,118 @@ UPDATE restaurant_orders SET uses_flexa_drivers = FALSE WHERE uses_flexa_drivers
     sql: `ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS food_responsibility_accepted_at TIMESTAMPTZ`,
   });
 
+  migrations.push({
+    name: "restaurant_country_availability.v1",
+    sql: `
+CREATE TABLE IF NOT EXISTS restaurant_country_availability (
+  id SERIAL PRIMARY KEY,
+  country_code TEXT NOT NULL,
+  country_name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'not_reviewed',
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  restaurants_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  food_trucks_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  home_kitchens_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  catering_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  required_licenses_note TEXT NOT NULL DEFAULT '',
+  food_safety_requirements_note TEXT NOT NULL DEFAULT '',
+  regulatory_review_notes TEXT NOT NULL DEFAULT '',
+  approval_document_url TEXT,
+  approved_at TIMESTAMPTZ,
+  suspended_at TIMESTAMPTZ,
+  suspension_reason TEXT,
+  updated_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS restaurant_country_availability_code ON restaurant_country_availability(country_code);
+
+CREATE TABLE IF NOT EXISTS restaurant_jurisdiction_availability (
+  id SERIAL PRIMARY KEY,
+  country_code TEXT NOT NULL,
+  level TEXT NOT NULL DEFAULT 'region',
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'not_reviewed',
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  restaurants_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  food_trucks_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  home_kitchens_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  required_licenses_note TEXT NOT NULL DEFAULT '',
+  regulatory_review_notes TEXT NOT NULL DEFAULT '',
+  approved_at TIMESTAMPTZ,
+  suspended_at TIMESTAMPTZ,
+  suspension_reason TEXT,
+  updated_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS restaurant_jurisdiction_country_idx ON restaurant_jurisdiction_availability(country_code);
+CREATE UNIQUE INDEX IF NOT EXISTS restaurant_jurisdiction_unique ON restaurant_jurisdiction_availability(country_code, level, name);
+
+CREATE TABLE IF NOT EXISTS restaurant_compliance_requirements (
+  id SERIAL PRIMARY KEY,
+  country_code TEXT NOT NULL,
+  business_type TEXT NOT NULL DEFAULT '*',
+  requirement_key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  required BOOLEAN NOT NULL DEFAULT TRUE,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS restaurant_compliance_req_country_idx ON restaurant_compliance_requirements(country_code);
+
+CREATE TABLE IF NOT EXISTS restaurant_compliance_documents (
+  id SERIAL PRIMARY KEY,
+  restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+  requirement_key TEXT NOT NULL,
+  document_label TEXT NOT NULL DEFAULT '',
+  storage_key TEXT NOT NULL,
+  expires_at TIMESTAMPTZ,
+  verified_at TIMESTAMPTZ,
+  verified_by INTEGER REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS restaurant_compliance_docs_restaurant_idx ON restaurant_compliance_documents(restaurant_id);
+
+CREATE TABLE IF NOT EXISTS restaurant_regulatory_audit_logs (
+  id SERIAL PRIMARY KEY,
+  actor_id INTEGER NOT NULL REFERENCES users(id),
+  action TEXT NOT NULL,
+  country_code TEXT,
+  jurisdiction_id INTEGER,
+  restaurant_id INTEGER,
+  details TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS restaurant_regulatory_audit_actor_idx ON restaurant_regulatory_audit_logs(actor_id);
+CREATE INDEX IF NOT EXISTS restaurant_regulatory_audit_country_idx ON restaurant_regulatory_audit_logs(country_code);
+
+INSERT INTO restaurant_country_availability (
+  country_code, country_name, status, enabled,
+  restaurants_enabled, food_trucks_enabled, home_kitchens_enabled, catering_enabled,
+  required_licenses_note, food_safety_requirements_note, regulatory_review_notes, suspension_reason
+) VALUES
+  ('US', 'United States', 'suspended', FALSE, FALSE, FALSE, FALSE, FALSE,
+   'US food-service licensing varies by state/locality. Not authorized for Flexa Restaurant.',
+   'Not reviewed for Flexa Restaurant public operation.',
+   'Default disabled — no regulatory approval recorded.',
+   'Default policy: United States is disabled for Flexa Restaurant.'),
+  ('CA', 'Canada', 'suspended', FALSE, FALSE, FALSE, FALSE, FALSE,
+   'Canadian food-service licensing varies by province. Not authorized for Flexa Restaurant.',
+   'Not reviewed for Flexa Restaurant public operation.',
+   'Default disabled — no regulatory approval recorded.',
+   'Default policy: Canada is disabled for Flexa Restaurant.'),
+  ('HT', 'Haiti', 'under_review', FALSE, FALSE, FALSE, FALSE, FALSE,
+   'Pending verification of applicable Haitian food-service / home-kitchen requirements.',
+   'Pending local regulatory verification before public activation.',
+   'Intended initial market — pending documented regulatory approval. Not publicly activated.',
+   NULL)
+ON CONFLICT (country_code) DO NOTHING;
+`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

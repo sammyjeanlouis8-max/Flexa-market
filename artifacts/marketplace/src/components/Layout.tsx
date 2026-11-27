@@ -4,7 +4,7 @@ import { useBroadcast } from "@/contexts/broadcast";
 import {
   Home, Search, Plus, MessageCircle, User,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase, Menu, LayoutGrid,
-  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award, Warehouse,
+  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award, Warehouse, UtensilsCrossed,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import LanguagePickerModal from "@/components/LanguagePickerModal";
@@ -539,6 +539,13 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               highlight: true,
             }]
           : []),
+        {
+          href: "/restaurant",
+          icon: UtensilsCrossed,
+          label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
+          key: "flexa-restaurant",
+          highlight: true,
+        },
         { href: "/search", icon: Search, label: t("nav.categories", { defaultValue: "Categories" }), key: "search" },
         { href: "/sell", icon: Plus, label: t("nav.sell"), key: "sell", highlight: true },
         { href: "/messages", icon: MessageCircle, label: t("nav.messages"), key: "messages", badge: unread },
@@ -630,7 +637,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     return location === path || location.startsWith(`${path}/`) || location.startsWith(`${path}?`);
   };
 
-  const moreActive = ["/settings", "/saved", "/my-drafts", "/bouillon", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos", "/wholesale", "/tv", "/music"].some(p =>
+  const moreActive = ["/settings", "/saved", "/my-drafts", "/bouillon", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos", "/wholesale", "/restaurant", "/tv", "/music"].some(p =>
     location.startsWith(p)
   );
   const isHomePage = location === "/";
@@ -782,6 +789,25 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
             paddingBottom: "env(safe-area-inset-bottom, 0px)",
           }}
           data-testid="wholesale-immersive-shell"
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+        </div>
+      </DeliveryMenuCountryContext.Provider>
+    );
+  }
+
+  // Flexa Restaurant — immersive shell (owns restaurant brand chrome; no Market header/sidebar).
+  const isRestaurantImmersive = /^\/restaurant(?:\/|$)/.test(location);
+  if (isRestaurantImmersive) {
+    return (
+      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
+        <div
+          className="app-shell restaurant-immersive-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col h-dvh overflow-clip bg-[hsl(152,22%,97%)] dark:bg-[hsl(152,14%,8%)]"
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
+          data-testid="restaurant-immersive-shell"
         >
           <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
         </div>

@@ -54,7 +54,7 @@ Desired lifecycle enums are **mapped** onto existing columns plus new `eligibili
 | Class | Meaning | Publication |
 |---|---|---|
 | **ALLOWED** | Ordinary compliant goods (clothing, electronics, furniture, books, household) | Auto-publish when validation passes |
-| **REQUIRES_REVIEW** | Regulated-seeming / ambiguous (food, cosmetics, medical-adjacent, vehicles, toys resembling weapons, etc.) | Pending human review — **not** auto-approved |
+| **REQUIRES_REVIEW** | High-risk / always-review categories (e.g. vehicles) and Strict-mode regulated goods | Pending human review — **not** auto-approved. Under **Balanced** Soft-review categories (cosmetics, food, etc.) may soft-publish with optional tips — see `FLEXA_AI_PRODUCT_VERIFICATION_READINESS.md` |
 | **PROHIBITED** | Illegal drugs, real weapons/ammo, explicit sexual products, live animals for sale, stolen/counterfeit indicators, hate/violence-for-hire signals | Rejected / not discoverable |
 
 ---

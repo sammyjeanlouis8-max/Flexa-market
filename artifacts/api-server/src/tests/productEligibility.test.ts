@@ -89,7 +89,7 @@ describe("product eligibility — PROHIBITED", () => {
 });
 
 describe("product eligibility — REQUIRES_REVIEW", () => {
-  it("holds regulated category goods for human review (never auto-ALLOW)", async () => {
+  it("soft-publishes cosmetics under balanced default (seller-friendly)", async () => {
     const result = await evaluateProductEligibility({
       title: "Face cream jar",
       description: "Moisturizing cream for daily use, unopened",
@@ -97,6 +97,23 @@ describe("product eligibility — REQUIRES_REVIEW", () => {
       categorySlug: "cosmetics",
       categoryName: "Cosmetics & Beauty",
       rulesOnly: true,
+    });
+    // Balanced policy softens softReview categories — tips, not hard hold.
+    expect(result.eligibilityClass).toBe("ALLOWED");
+    expect(result.decision).toBe("approved");
+    expect(result.lifecycleOnInsert).toBe("published");
+  });
+
+  it("holds cosmetics for review under strict mode", async () => {
+    const { mergeProductVerificationPolicy } = await import("../lib/productVerificationPolicy");
+    const result = await evaluateProductEligibility({
+      title: "Face cream jar",
+      description: "Moisturizing cream for daily use, unopened",
+      imageUrls: ["/objects/a.jpg", "/objects/b.jpg"],
+      categorySlug: "cosmetics",
+      categoryName: "Cosmetics & Beauty",
+      rulesOnly: true,
+      verificationPolicy: mergeProductVerificationPolicy({ mode: "strict" }),
     });
     expect(result.eligibilityClass).toBe("REQUIRES_REVIEW");
     expect(result.decision).toBe("pending");

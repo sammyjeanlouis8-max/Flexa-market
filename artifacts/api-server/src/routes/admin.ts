@@ -3738,4 +3738,52 @@ router.post("/admin/broadcast-email", requireSuperAdmin, async (req, res): Promi
   res.json({ ok: true, mode: "broadcast", total: recipients.length, sent });
 });
 
+// ─── Super Admin: Flexa AI Product Verification policy ───────────────────────
+
+router.get("/admin/product-verification-policy", requireSuperAdmin, async (_req, res): Promise<void> => {
+  const { getProductVerificationPolicy, MANDATORY_BLOCKS, DEFAULT_PRODUCT_VERIFICATION_POLICY } = await import(
+    "../lib/productVerificationPolicy"
+  );
+  const policy = await getProductVerificationPolicy();
+  res.json({
+    policy,
+    defaults: DEFAULT_PRODUCT_VERIFICATION_POLICY,
+    mandatoryBlocks: MANDATORY_BLOCKS,
+    modes: [
+      { id: "monitoring_only", label: "Monitoring Only" },
+      { id: "balanced", label: "Balanced Enforcement" },
+      { id: "strict", label: "Strict Enforcement" },
+    ],
+    intendedProductionMode: "balanced",
+  });
+});
+
+router.put("/admin/product-verification-policy", requireSuperAdmin, async (req, res): Promise<void> => {
+  const { saveProductVerificationPolicy, MANDATORY_BLOCKS } = await import("../lib/productVerificationPolicy");
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const mode = body.mode;
+  if (mode != null && !["monitoring_only", "balanced", "strict"].includes(String(mode))) {
+    res.status(400).json({ error: "mode must be monitoring_only, balanced, or strict" });
+    return;
+  }
+  const partial: Record<string, unknown> = {};
+  if (mode != null) partial.mode = mode;
+  for (const key of [
+    "substantialMismatchConfidence",
+    "prohibitedAiConfidence",
+    "fallbackAllowLowRisk",
+    "fallbackQueueForLaterAnalysis",
+    "alwaysReviewCategorySlugs",
+    "softReviewCategorySlugs",
+    "dailyAiBudget",
+    "monthlyAiBudget",
+    "falsePositiveMonitoring",
+  ] as const) {
+    if (body[key] !== undefined) partial[key] = body[key];
+  }
+  const policy = await saveProductVerificationPolicy(partial as any);
+  await log(req.userId!, "product_verification_policy", "settings", null, `Updated product verification policy mode=${policy.mode}`);
+  res.json({ policy, mandatoryBlocks: MANDATORY_BLOCKS });
+});
+
 export default router;

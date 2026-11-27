@@ -10,6 +10,12 @@
  */
 import { hasUsableListingImage } from "./listingImageUrls";
 import { moderateListing, ruleBasedModerate, type ModerationResult } from "./moderation";
+import {
+  DEFAULT_PRODUCT_VERIFICATION_POLICY,
+  categorySlugInList,
+  getProductVerificationPolicy,
+  type ProductVerificationPolicy,
+} from "./productVerificationPolicy";
 
 export type EligibilityClass = "ALLOWED" | "REQUIRES_REVIEW" | "PROHIBITED";
 
@@ -51,6 +57,15 @@ export interface EligibilityInput {
   listingCountry?: string | null;
   /** When true, skip network AI and use rules + category policy only (tests). */
   rulesOnly?: boolean;
+  /** Override Super Admin policy (tests). */
+  verificationPolicy?: ProductVerificationPolicy;
+  /** Force ANALYSIS_FAILED path (tests / AI outage). */
+  forceAnalysisFailed?: boolean;
+  /**
+   * Seller challenged an AI category recommendation and confirmed their category.
+   * Never permanently rejects solely on AI category classification.
+   */
+  categoryChallengeAcknowledged?: boolean;
 }
 
 export interface EligibilityResult {
@@ -102,7 +117,8 @@ function validateBasics(input: EligibilityInput): string | null {
   const title = (input.title ?? "").trim();
   const description = (input.description ?? "").trim();
   if (title.length < 3) return "Title must be at least 3 characters.";
-  if (description.length < 10) return "Description must be at least 10 characters.";
+  // Presence only — no arbitrary minimum length; short copy is a soft tip, not a block.
+  if (description.length < 1) return "Please add a short product description.";
   if (input.price != null && (Number.isNaN(Number(input.price)) || Number(input.price) < 0)) {
     return "Price must be zero or greater.";
   }
@@ -177,7 +193,78 @@ export function classifyFromModeration(
   };
 }
 
+/** Low AI confidence alone must never treat a listing as suspicious. */
+function softenUncertainAi(
+  classified: ReturnType<typeof classifyFromModeration>,
+  moderation: ModerationResult,
+  policy: ProductVerificationPolicy,
+  categorySlug?: string | null,
+): ReturnType<typeof classifyFromModeration> {
+  if (classified.eligibilityClass !== "REQUIRES_REVIEW") return classified;
+  if (classified.decision === "rejected") return classified;
+  const always = categorySlugInList(categorySlug, policy.alwaysReviewCategorySlugs);
+  if (always || moderation.riskLevel === "high") return classified;
+  // Uncertain AI → allow; tips may still be shown upstream. Never treat low confidence as suspicious.
+  if (moderation.confidence < 0.55) {
+    return {
+      eligibilityClass: "ALLOWED",
+      decision: "approved",
+      rejectionCode: null,
+      lifecycleOnInsert: "published",
+      publishStatus: "available",
+      reason: "AI confidence was low — published after deterministic checks (not treated as suspicious).",
+    };
+  }
+  return classified;
+}
+
+function softenReviewForPolicy(
+  classified: ReturnType<typeof classifyFromModeration>,
+  moderation: ModerationResult,
+  policy: ProductVerificationPolicy,
+  categorySlug?: string | null,
+): ReturnType<typeof classifyFromModeration> {
+  if (classified.eligibilityClass !== "REQUIRES_REVIEW") return classified;
+  if (policy.mode === "monitoring_only") {
+    return {
+      eligibilityClass: "ALLOWED",
+      decision: "approved",
+      rejectionCode: null,
+      lifecycleOnInsert: "published",
+      publishStatus: "available",
+      reason: classified.reason,
+    };
+  }
+
+  // Strict: keep REQUIRES_REVIEW as-is (no uncertain-AI soft-publish).
+  if (policy.mode === "strict") return classified;
+
+  // Balanced: low AI confidence is not suspicious; soft-review categories may publish.
+  const afterUncertainty = softenUncertainAi(classified, moderation, policy, categorySlug);
+  if (afterUncertainty.eligibilityClass === "ALLOWED") return afterUncertainty;
+
+  const always = categorySlugInList(categorySlug, policy.alwaysReviewCategorySlugs);
+  const soft = categorySlugInList(categorySlug, policy.softReviewCategorySlugs);
+  if (!always && (soft || moderation.riskLevel === "medium" || moderation.riskLevel === "low")) {
+    return {
+      eligibilityClass: "ALLOWED",
+      decision: "approved",
+      rejectionCode: null,
+      lifecycleOnInsert: "published",
+      publishStatus: "available",
+      reason: soft
+        ? "Eligible for publication with optional category compliance tips."
+        : classified.reason,
+    };
+  }
+  return classified;
+}
+
 export async function evaluateProductEligibility(input: EligibilityInput): Promise<EligibilityResult> {
+  const policy = input.verificationPolicy || (input.rulesOnly
+    ? DEFAULT_PRODUCT_VERIFICATION_POLICY
+    : await getProductVerificationPolicy());
+
   const basicError = validateBasics(input);
   if (basicError) {
     return {
@@ -199,15 +286,56 @@ export async function evaluateProductEligibility(input: EligibilityInput): Promi
   const stolen = STOLEN_RE.test(text);
   const categoryReview = categoryNeedsReview(input);
 
-  const moderation = input.rulesOnly
-    ? ruleBasedModerate(input.title, input.description, input.imageUrls?.length ?? 0)
-    : await moderateListing({
+  let moderation: ModerationResult;
+  let analysisFailed = !!input.forceAnalysisFailed;
+  if (input.rulesOnly) {
+    moderation = ruleBasedModerate(input.title, input.description, input.imageUrls?.length ?? 0);
+  } else {
+    try {
+      moderation = await moderateListing({
         title: input.title,
         description: input.description,
         imageUrls: input.imageUrls,
       });
+    } catch {
+      analysisFailed = true;
+      moderation = ruleBasedModerate(input.title, input.description, input.imageUrls?.length ?? 0);
+    }
+  }
 
-  const classified = classifyFromModeration(moderation, { categoryReview, counterfeit, stolen });
+  let classified = classifyFromModeration(moderation, { categoryReview, counterfeit, stolen });
+  classified = softenReviewForPolicy(classified, moderation, policy, input.categorySlug);
+
+  if (analysisFailed) {
+    if (policy.fallbackAllowLowRisk && moderation.riskLevel === "low" && classified.eligibilityClass === "ALLOWED") {
+      return {
+        eligibilityClass: "ALLOWED",
+        decision: "approved",
+        riskLevel: moderation.riskLevel,
+        confidence: moderation.confidence,
+        flags: [...moderation.flags, "analysis_failed"],
+        reason: "AI unavailable — published after deterministic safety checks (low risk).",
+        rejectionCode: null,
+        source: "rules",
+        lifecycleOnInsert: "published",
+        publishStatus: "available",
+      };
+    }
+    if (classified.eligibilityClass !== "PROHIBITED") {
+      return {
+        eligibilityClass: "REQUIRES_REVIEW",
+        decision: "pending",
+        riskLevel: moderation.riskLevel === "low" ? "medium" : moderation.riskLevel,
+        confidence: moderation.confidence,
+        flags: [...moderation.flags, "analysis_failed"],
+        reason: "AI analysis unavailable — held for manual review under fallback policy.",
+        rejectionCode: "REQUIRES_HUMAN_REVIEW",
+        source: "rules",
+        lifecycleOnInsert: "pending_review",
+        publishStatus: "available",
+      };
+    }
+  }
 
   return {
     eligibilityClass: classified.eligibilityClass,
@@ -219,10 +347,11 @@ export async function evaluateProductEligibility(input: EligibilityInput): Promi
       ...(counterfeit ? ["counterfeit"] : []),
       ...(stolen ? ["stolen"] : []),
       ...(categoryReview ? ["regulated_category"] : []),
+      ...(analysisFailed ? ["analysis_failed"] : []),
     ])),
     reason: classified.reason,
     rejectionCode: classified.rejectionCode,
-    source: moderation.source,
+    source: analysisFailed ? "rules" : moderation.source,
     lifecycleOnInsert: classified.lifecycleOnInsert,
     publishStatus: classified.publishStatus,
   };

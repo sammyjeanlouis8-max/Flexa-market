@@ -22,9 +22,17 @@ describe("restaurants routes smoke", () => {
       '"/restaurants/:id/identity"',
       '"/restaurants/:id/food-safety"',
       '"/admin/restaurants/identity/pending"',
+      '"/admin/restaurants/:id/application"',
     ]) {
       expect(routes).toContain(path);
     }
+  });
+
+  it("gates restaurant module behind staff preview until public launch", () => {
+    expect(routes).toContain("requireRestaurantAccess");
+    expect(routes).toContain("requireRestaurantAuthAccess");
+    expect(routes).toContain("publicLaunch: RESTAURANT_PUBLIC_LAUNCH");
+    expect(routes).toContain("At least one food image is required");
   });
 
   it("keeps delivery owner-managed and free launch flags", () => {

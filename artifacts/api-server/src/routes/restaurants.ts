@@ -24,7 +24,7 @@ import {
   restaurantModerationLogsTable,
   restaurantNotificationsTable,
 } from "@workspace/db";
-import { getRole, requireAuth, requireAdmin, optionalAuth } from "../middlewares/auth";
+import { requireAuth, requireAdmin } from "../middlewares/auth";
 import {
   FOOD_SAFETY_ARTICLE_VERSION,
   gradeFoodSafetyQuiz,
@@ -44,6 +44,13 @@ import {
   publicIdentityStatus,
   latestIdentityForRestaurant,
 } from "../lib/restaurantDocAccess";
+import {
+  RESTAURANT_PUBLIC_LAUNCH,
+  RESTAURANT_PUBLIC_LISTING_STATUSES,
+  canAccessRestaurantModule,
+  canAccessRestaurantStaff,
+  canTransitionRestaurantOrder,
+} from "../lib/restaurantAccess";
 
 const router = Router();
 
@@ -51,10 +58,58 @@ const PRIVACY_NOTICE =
   "Your identification documents and selfie are strictly confidential. They are used to verify your identity and protect the Flexa Market community. Only authorized Flexa Market security and verification personnel can access this information. Your documents and selfie will never appear on your public restaurant profile.";
 
 function isStaff(user: { isSuperAdmin?: boolean; isAdmin?: boolean; role?: string | null } | null | undefined) {
-  if (!user) return false;
-  if (user.isSuperAdmin || user.isAdmin) return true;
-  const role = String(getRole(user as any) || user.role || "").toLowerCase();
-  return role === "superadmin" || role === "admin" || role === "moderator";
+  return canAccessRestaurantStaff(user);
+}
+
+/** While public launch is false, require authenticated staff (or public launch). */
+async function requireRestaurantAccess(
+  req: Parameters<typeof requireAuth>[0],
+  res: Parameters<typeof requireAuth>[1],
+  next: Parameters<typeof requireAuth>[2],
+) {
+  if (RESTAURANT_PUBLIC_LAUNCH) {
+    next();
+    return;
+  }
+  await requireAuth(req, res, async () => {
+    if (canAccessRestaurantModule(req.user)) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: "Flexa Restaurant preview is Admin / Moderator only" });
+  });
+}
+
+async function requireRestaurantAuthAccess(
+  req: Parameters<typeof requireAuth>[0],
+  res: Parameters<typeof requireAuth>[1],
+  next: Parameters<typeof requireAuth>[2],
+) {
+  await requireAuth(req, res, async () => {
+    if (canAccessRestaurantModule(req.user)) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: "Flexa Restaurant preview is Admin / Moderator only" });
+  });
+}
+
+async function appendOrderStatusHistory(input: {
+  orderId: number;
+  fromStatus: string | null;
+  toStatus: string;
+  actorId: number;
+  note?: string;
+}) {
+  try {
+    await db.execute(sql`
+      INSERT INTO restaurant_order_status_history (order_id, from_status, to_status, actor_id, note)
+      VALUES (${input.orderId}, ${input.fromStatus}, ${input.toStatus}, ${input.actorId}, ${input.note ?? ""})
+    `);
+  } catch (err) {
+    // Table may not exist yet on a mid-deploy process; do not fail the status update.
+    console.warn("restaurant order status history insert skipped", err);
+  }
 }
 
 async function notify(userId: number, input: {
@@ -250,6 +305,7 @@ router.get("/restaurants/launch", (_req, res) => {
   res.json({
     native: true,
     freeLaunch: true,
+    publicLaunch: RESTAURANT_PUBLIC_LAUNCH,
     commission: 0,
     registrationFee: 0,
     monthlySubscriptionRequired: false,
@@ -257,14 +313,15 @@ router.get("/restaurants/launch", (_req, res) => {
     ownerManagedDeliveryOnly: true,
     usesFlexaDrivers: false,
     privacyNotice: PRIVACY_NOTICE,
+    access: RESTAURANT_PUBLIC_LAUNCH ? "public" : "staff_preview",
   });
 });
 
-router.get("/restaurants/food-safety/quiz", requireAuth, (_req, res) => {
+router.get("/restaurants/food-safety/quiz", requireRestaurantAuthAccess, (_req, res) => {
   res.json(publicQuizPayload());
 });
 
-router.get("/restaurants/identity/privacy-notice", (_req, res) => {
+router.get("/restaurants/identity/privacy-notice", requireRestaurantAccess, (_req, res) => {
   res.json({ notice: PRIVACY_NOTICE });
 });
 
@@ -272,10 +329,9 @@ router.get("/restaurants/identity/document", requireAuth, serveRestaurantIdentit
 
 /* ─── Discover ───────────────────────────────────────────────────────────── */
 
-router.get("/restaurants", async (req, res): Promise<void> => {
+router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<void> => {
   try {
     const q = String(req.query.q || "").trim();
-    const country = String(req.query.country || "").trim();
     const cuisine = String(req.query.cuisine || "").trim();
     const fulfillment = String(req.query.fulfillment || "").trim();
     const businessTypeRaw = String(req.query.businessType || req.query.type || "").trim();
@@ -290,7 +346,23 @@ router.get("/restaurants", async (req, res): Promise<void> => {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 24));
     const offset = Math.max(0, Number(req.query.offset) || 0);
 
-    const conds = [eq(restaurantsTable.status, "published")];
+    // Country: prefer query, else authenticated profile. Never cross-country leak for non-staff.
+    const queryCountry = String(req.query.country || "").trim();
+    const profileCountry = String(req.user?.country || "").trim();
+    const staff = isStaff(req.user);
+    const country = queryCountry || profileCountry;
+    if (!country && !staff) {
+      res.status(400).json({ error: "Country is required for restaurant discovery" });
+      return;
+    }
+    if (queryCountry && profileCountry && !staff && queryCountry.toLowerCase() !== profileCountry.toLowerCase()) {
+      res.status(403).json({ error: "Cannot browse restaurants outside your selected country" });
+      return;
+    }
+
+    const conds = [
+      sql`lower(${restaurantsTable.status}) IN ('published', 'approved')`,
+    ];
     if (country) conds.push(sql`lower(${restaurantsTable.country}) = lower(${country})`);
     if (businessType && businessType !== "all") {
       conds.push(sql`lower(replace(${restaurantsTable.businessType}, '-', '_')) = ${businessType}`);
@@ -392,12 +464,12 @@ router.get("/restaurants", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/restaurants/mine", requireAuth, async (req, res): Promise<void> => {
+router.get("/restaurants/mine", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const rows = await db.select().from(restaurantsTable).where(eq(restaurantsTable.ownerId, req.userId!)).orderBy(desc(restaurantsTable.updatedAt));
   res.json({ restaurants: rows.map((r: typeof restaurantsTable.$inferSelect) => shapePublicRestaurant(r)) });
 });
 
-router.get("/restaurants/me/orders", requireAuth, async (req, res): Promise<void> => {
+router.get("/restaurants/me/orders", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const orders = await db.select().from(restaurantOrdersTable)
     .where(eq(restaurantOrdersTable.customerId, req.userId!))
     .orderBy(desc(restaurantOrdersTable.createdAt))
@@ -405,7 +477,7 @@ router.get("/restaurants/me/orders", requireAuth, async (req, res): Promise<void
   res.json({ orders });
 });
 
-router.patch("/restaurants/me/orders/:orderId", requireAuth, async (req, res): Promise<void> => {
+router.patch("/restaurants/me/orders/:orderId", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const orderId = Number(req.params.orderId);
   const [order] = await db.select().from(restaurantOrdersTable).where(eq(restaurantOrdersTable.id, orderId)).limit(1);
   if (!order) { res.status(404).json({ error: "Not found" }); return; }
@@ -415,16 +487,19 @@ router.patch("/restaurants/me/orders/:orderId", requireAuth, async (req, res): P
   if (!isOwner && !isCustomer && !isStaff(req.user)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const status = String(req.body?.status || "");
-  const ownerStatuses = ["accepted", "rejected", "preparing", "ready_pickup", "out_for_delivery", "completed"];
-  const customerStatuses = ["cancelled"];
+  const ownerStatuses = [
+    "accepted", "confirmed", "rejected", "preparing",
+    "ready", "ready_for_pickup", "ready_pickup", "out_for_delivery", "delivered", "completed",
+  ];
+  const customerStatuses = ["cancelled", "canceled"];
   if (isOwner && !ownerStatuses.includes(status) && !isStaff(req.user)) {
     res.status(400).json({ error: "Invalid status" }); return;
   }
   if (isCustomer && !isOwner && !customerStatuses.includes(status)) {
     res.status(400).json({ error: "Customers may only cancel when permitted" }); return;
   }
-  if (status === "cancelled" && !["pending", "accepted"].includes(order.status)) {
-    res.status(409).json({ error: "Order can no longer be cancelled" }); return;
+  if (!isStaff(req.user) && !canTransitionRestaurantOrder(order.status, status)) {
+    res.status(409).json({ error: `Invalid status transition ${order.status} → ${status}` }); return;
   }
 
   const [updated] = await db.update(restaurantOrdersTable).set({
@@ -432,6 +507,13 @@ router.patch("/restaurants/me/orders/:orderId", requireAuth, async (req, res): P
     rejectionReason: status === "rejected" ? String(req.body?.rejectionReason || "") : order.rejectionReason,
     updatedAt: new Date(),
   }).where(eq(restaurantOrdersTable.id, orderId)).returning();
+  await appendOrderStatusHistory({
+    orderId,
+    fromStatus: order.status,
+    toStatus: status,
+    actorId: req.userId!,
+    note: status === "rejected" ? String(req.body?.rejectionReason || "") : "",
+  });
 
   const notifyUser = isOwner ? order.customerId : restaurant!.ownerId;
   await notify(notifyUser, {
@@ -485,13 +567,13 @@ router.get("/restaurants/me/notifications", requireAuth, async (req, res) => {
 });
 
 
-router.get("/restaurants/:id", optionalAuth, async (req, res): Promise<void> => {
+router.get("/restaurants/:id", requireRestaurantAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [row] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, id)).limit(1);
   if (!row) { res.status(404).json({ error: "Restaurant not found" }); return; }
   const isOwner = req.userId === row.ownerId;
-  if (row.status !== "published" && !isOwner && !isStaff(req.user)) {
+  if (!RESTAURANT_PUBLIC_LISTING_STATUSES.has(row.status) && !isOwner && !isStaff(req.user)) {
     res.status(404).json({ error: "Restaurant not found" }); return;
   }
   await db.update(restaurantsTable).set({ profileViews: sql`${restaurantsTable.profileViews} + 1` }).where(eq(restaurantsTable.id, id));
@@ -510,10 +592,15 @@ router.get("/restaurants/:id", optionalAuth, async (req, res): Promise<void> => 
   res.json({ restaurant: payload });
 });
 
-router.get("/restaurants/:id/daily-menu", optionalAuth, async (req, res): Promise<void> => {
+router.get("/restaurants/:id/daily-menu", requireRestaurantAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [restaurant] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, id)).limit(1);
-  if (!restaurant || (restaurant.status !== "published" && req.userId !== restaurant.ownerId && !isStaff(req.user))) {
+  if (!restaurant) {
+    res.status(404).json({ error: "Restaurant not found" }); return;
+  }
+  const isOwner = req.userId === restaurant.ownerId;
+  const publiclyListed = RESTAURANT_PUBLIC_LISTING_STATUSES.has(restaurant.status);
+  if (!publiclyListed && !isOwner && !isStaff(req.user)) {
     res.status(404).json({ error: "Restaurant not found" }); return;
   }
   const date = String(req.query.date || localYmd(restaurant.timezone));
@@ -523,16 +610,23 @@ router.get("/restaurants/:id/daily-menu", optionalAuth, async (req, res): Promis
   if (!menu) { res.json({ menuDate: date, items: [] }); return; }
   const items = await db.select().from(restaurantDailyMenuItemsTable)
     .where(eq(restaurantDailyMenuItemsTable.dailyMenuId, menu.id));
+  const shaped = items
+    .filter((i: typeof restaurantDailyMenuItemsTable.$inferSelect) => {
+      if (isOwner || isStaff(req.user)) return true;
+      const photos = i.photos ?? [];
+      return Array.isArray(photos) && photos.length > 0 && !i.soldOut;
+    })
+    .map((i: typeof restaurantDailyMenuItemsTable.$inferSelect) => shapeMenuItem(i, restaurant, date));
   res.json({
     menuDate: date,
     title: menu.title,
-    items: items.map((i: typeof restaurantDailyMenuItemsTable.$inferSelect) => shapeMenuItem(i, restaurant, date)),
+    items: shaped,
   });
 });
 
 /* ─── Create / update restaurant ─────────────────────────────────────────── */
 
-router.post("/restaurants", requireAuth, async (req, res): Promise<void> => {
+router.post("/restaurants", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const body = req.body ?? {};
   const name = String(body.name || "").trim().slice(0, 120);
   const country = String(body.country || "").trim();
@@ -596,7 +690,7 @@ router.post("/restaurants", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json({ restaurant: shapePublicRestaurant(created) });
 });
 
-router.patch("/restaurants/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/restaurants/:id", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const existing = await loadOwnerRestaurant(req.userId!, id);
   if (!existing && !isStaff(req.user)) { res.status(404).json({ error: "Not found" }); return; }
@@ -628,15 +722,24 @@ router.patch("/restaurants/:id", requireAuth, async (req, res): Promise<void> =>
     if (isHomeKitchenType(patch.businessType)) patch.showPublicAddress = false;
   }
 
-  if (body.publish === true) {
+  // Owners submit for review — only staff/admin can publish to public listings.
+  if (body.publish === true || body.submit === true) {
     if (row.identityStatus !== "verified") {
       res.status(400).json({ error: "Identity verification required before publishing" }); return;
     }
     if (!row.foodSafetyCompleted) {
       res.status(400).json({ error: "Food safety onboarding required before publishing" }); return;
     }
-    patch.status = "published";
-    patch.publishedAt = new Date();
+    if (isStaff(req.user) && body.publish === true && body.forcePublish === true) {
+      patch.status = "published";
+      patch.publishedAt = new Date();
+    } else {
+      patch.status = "submitted";
+      patch.publishedAt = null;
+    }
+  }
+  if (body.requestAdditionalInfo === true && isStaff(req.user)) {
+    patch.status = "additional_info_required";
   }
 
   const [updated] = await db.update(restaurantsTable).set(patch).where(eq(restaurantsTable.id, id)).returning();
@@ -912,21 +1015,27 @@ router.get("/restaurants/:id/dish-models", requireAuth, async (req, res): Promis
   res.json({ dishes });
 });
 
-router.post("/restaurants/:id/dish-models", requireAuth, async (req, res): Promise<void> => {
+router.post("/restaurants/:id/dish-models", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const restaurant = await loadOwnerRestaurant(req.userId!, id);
   if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
   const body = req.body ?? {};
   const name = String(body.name || "").trim();
   const price = Number(body.price);
+  const photos = Array.isArray(body.photos) ? body.photos.map(String).filter(Boolean).slice(0, 8) : [];
+  const defaultAvailable = body.defaultAvailable !== false;
   if (name.length < 2 || !Number.isFinite(price) || price < 0) {
     res.status(400).json({ error: "Invalid dish" }); return;
+  }
+  // Publicly orderable dishes require at least one food image.
+  if (defaultAvailable && photos.length < 1) {
+    res.status(400).json({ error: "At least one food image is required before a dish can be available" }); return;
   }
   const [dish] = await db.insert(restaurantDishModelsTable).values({
     restaurantId: id,
     name,
     description: String(body.description || ""),
-    photos: Array.isArray(body.photos) ? body.photos.map(String).slice(0, 8) : [],
+    photos,
     price,
     currency: String(body.currency || "USD"),
     category: body.category ? String(body.category) : null,
@@ -935,6 +1044,7 @@ router.post("/restaurants/:id/dish-models", requireAuth, async (req, res): Promi
     prepMinutes: Math.max(1, Number(body.prepMinutes) || 20),
     portionInfo: body.portionInfo ? String(body.portionInfo) : null,
     dietaryTags: Array.isArray(body.dietaryTags) ? body.dietaryTags.map(String) : [],
+    defaultAvailable: defaultAvailable && photos.length > 0,
   }).returning();
   res.status(201).json({ dish });
 });
@@ -1051,11 +1161,14 @@ router.post("/restaurants/:id/daily-menu/items", requireAuth, async (req, res): 
 
 /* ─── Orders (no platform payment / commission) ──────────────────────────── */
 
-router.post("/restaurants/:id/orders", requireAuth, async (req, res): Promise<void> => {
+router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [restaurant] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, id)).limit(1);
-  if (!restaurant || restaurant.status !== "published") {
+  if (!restaurant || !RESTAURANT_PUBLIC_LISTING_STATUSES.has(restaurant.status) || restaurant.status === "suspended") {
     res.status(404).json({ error: "Restaurant not found" }); return;
+  }
+  if (restaurant.vacationMode || restaurant.temporarilyClosed) {
+    res.status(409).json({ error: "Restaurant is not accepting orders right now" }); return;
   }
   if (restaurant.ownerId === req.userId) {
     res.status(400).json({ error: "Owners cannot order from their own restaurant" }); return;
@@ -1196,10 +1309,10 @@ router.get("/restaurants/:id/orders", requireAuth, async (req, res): Promise<voi
 
 /* ─── Reservations ───────────────────────────────────────────────────────── */
 
-router.post("/restaurants/:id/reservations", requireAuth, async (req, res): Promise<void> => {
+router.post("/restaurants/:id/reservations", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const [restaurant] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, id)).limit(1);
-  if (!restaurant || restaurant.status !== "published") {
+  if (!restaurant || !RESTAURANT_PUBLIC_LISTING_STATUSES.has(restaurant.status)) {
     res.status(404).json({ error: "Restaurant not found" }); return;
   }
   if (!restaurant.acceptsReservations || !restaurant.acceptsNextDayReservations) {
@@ -1413,6 +1526,64 @@ router.patch("/admin/restaurants/identity/:idvId/decide", requireAuth, requireAd
     body: rejectionReason || "You can publish after food safety onboarding.",
   });
   res.json({ ok: true });
+});
+
+router.patch("/admin/restaurants/:id/application", requireAuth, requireAdmin, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const decision = String(req.body?.decision || "").trim().toLowerCase();
+  const allowed = new Set([
+    "under_review",
+    "additional_info_required",
+    "approved",
+    "published",
+    "rejected",
+    "suspended",
+  ]);
+  if (!allowed.has(decision)) {
+    res.status(400).json({ error: "Invalid application decision" }); return;
+  }
+  const [row] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, id)).limit(1);
+  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (decision === "published" || decision === "approved") {
+    if (row.identityStatus !== "verified") {
+      res.status(400).json({ error: "Identity must be verified before approval" }); return;
+    }
+    if (!row.foodSafetyCompleted) {
+      res.status(400).json({ error: "Food safety onboarding required before approval" }); return;
+    }
+  }
+  const note = String(req.body?.note || req.body?.reason || "").slice(0, 1000);
+  const patch: Partial<typeof restaurantsTable.$inferInsert> = {
+    status: decision === "approved" ? "published" : decision,
+    updatedAt: new Date(),
+  };
+  if (decision === "published" || decision === "approved") {
+    patch.publishedAt = new Date();
+    patch.suspendedAt = null;
+    patch.suspensionReason = null;
+  }
+  if (decision === "rejected") {
+    patch.publishedAt = null;
+  }
+  if (decision === "suspended") {
+    patch.suspendedAt = new Date();
+    patch.suspensionReason = note || "Suspended by admin";
+  }
+  const [updated] = await db.update(restaurantsTable).set(patch).where(eq(restaurantsTable.id, id)).returning();
+  await db.insert(restaurantModerationLogsTable).values({
+    restaurantId: id,
+    actorId: req.userId!,
+    action: `application_${decision}`,
+    details: note || decision,
+  });
+  await notify(updated.ownerId, {
+    restaurantId: id,
+    type: "application_decision",
+    title: `Restaurant application → ${decision}`,
+    body: note || `Status updated to ${decision}`,
+    href: "/restaurant/owner",
+  });
+  res.json({ restaurant: shapePublicRestaurant(updated) });
 });
 
 router.patch("/admin/restaurants/:id/suspend", requireAuth, requireAdmin, async (req, res): Promise<void> => {

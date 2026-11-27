@@ -3887,6 +3887,25 @@ CREATE INDEX IF NOT EXISTS restaurants_identity_idx ON restaurants(identity_stat
     )`,
   });
 
+
+  migrations.push({
+    name: "restaurant_order_status_history.create",
+    sql: `CREATE TABLE IF NOT EXISTS restaurant_order_status_history (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES restaurant_orders(id) ON DELETE CASCADE,
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      actor_id INTEGER NOT NULL REFERENCES users(id),
+      note TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "restaurant_order_status_history.indexes",
+    sql: `CREATE INDEX IF NOT EXISTS restaurant_order_status_history_order_idx ON restaurant_order_status_history(order_id);
+CREATE INDEX IF NOT EXISTS restaurant_order_status_history_created_idx ON restaurant_order_status_history(created_at DESC)`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

@@ -3,7 +3,8 @@
 **PR:** https://github.com/sammyjeanlouis8-max/Flexa-market/pull/308  
 **Branch:** `cursor/restaurant-prod-ready-5a20`  
 **Feature flag:** `RESTAURANT_PUBLIC_LAUNCH=false` (Super Admin preview only)  
-**Generated:** 2026-11-27 (America/New_York)
+**Generated:** 2026-11-26 (America/New_York)  
+**Commit:** `c5202a276f2cd8e36e3e5b10034a6b3124b2d076`
 
 ## Initial issues discovered
 

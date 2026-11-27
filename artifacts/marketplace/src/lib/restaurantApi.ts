@@ -55,6 +55,8 @@ export type Restaurant = {
   ownerManagedDelivery?: boolean;
   openNow?: boolean;
   isOpenNow?: boolean;
+  /** open | closing_soon | closed | temporarily_unavailable | hours_unknown */
+  availabilityStatus?: string;
   hours?: Array<{
     weekday: number;
     isClosed: boolean;
@@ -181,6 +183,7 @@ export async function fetchRestaurants(params?: {
   featured?: boolean;
   menuPreview?: boolean;
   nearby?: boolean;
+  radiusKm?: number;
   lat?: number;
   lng?: number;
   sortBy?: "rating" | "distance" | "name";
@@ -200,6 +203,7 @@ export async function fetchRestaurants(params?: {
   if (params?.featured) qs.set("featured", "1");
   if (params?.menuPreview) qs.set("menuPreview", "1");
   if (params?.nearby) qs.set("nearby", "1");
+  if (params?.radiusKm != null) qs.set("radiusKm", String(params.radiusKm));
   if (params?.lat != null) qs.set("lat", String(params.lat));
   if (params?.lng != null) qs.set("lng", String(params.lng));
   if (params?.sortBy) qs.set("sortBy", params.sortBy);
@@ -243,13 +247,27 @@ export async function updateFoodTruckLocation(
   return data.restaurant;
 }
 
-/** Primary discover categories — bakery is a cuisine/subtype, not a top-level category. */
+/** Discover categories — photographic tiles; ids match backend businessType. */
 export const BUSINESS_TYPES = [
-  { id: "all", labelKey: "restaurant.catAll" },
-  { id: "traditional", labelKey: "restaurant.catRestaurants" },
-  { id: "food_truck", labelKey: "restaurant.catFoodTruck" },
-  { id: "home_kitchen", labelKey: "restaurant.catHomeKitchen" },
+  { id: "all", labelKey: "restaurant.catAll", photo: "/restaurant/categories/all.webp" },
+  { id: "traditional", labelKey: "restaurant.catRestaurants", photo: "/restaurant/categories/restaurants.webp" },
+  { id: "home_kitchen", labelKey: "restaurant.catHomeKitchen", photo: "/restaurant/categories/home-kitchen.webp" },
+  { id: "food_truck", labelKey: "restaurant.catFoodTruck", photo: "/restaurant/categories/food-truck.webp" },
+  { id: "bakery", labelKey: "restaurant.catBakery", photo: "/restaurant/categories/bakery.webp" },
+  { id: "catering", labelKey: "restaurant.catCatering", photo: "/restaurant/categories/catering.webp" },
 ] as const;
+
+export function restaurantAvailabilityLabel(
+  status: string | undefined,
+  openFallback?: boolean,
+): { key: string; tone: "open" | "soon" | "closed" | "neutral" } {
+  const s = String(status || (openFallback ? "open" : "closed")).toLowerCase();
+  if (s === "open") return { key: "restaurant.openNow", tone: "open" };
+  if (s === "closing_soon") return { key: "restaurant.closingSoon", tone: "soon" };
+  if (s === "temporarily_unavailable") return { key: "restaurant.temporarilyUnavailable", tone: "neutral" };
+  if (s === "hours_unknown") return { key: "restaurant.hoursUnknown", tone: "neutral" };
+  return { key: "restaurant.closed", tone: "closed" };
+}
 
 export function businessTypeLabelKey(type: string): string {
   const map: Record<string, string> = {

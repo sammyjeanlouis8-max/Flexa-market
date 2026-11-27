@@ -58,32 +58,76 @@ export function parseHm(hm: string | null | undefined): number | null {
   return h * 60 + min;
 }
 
+export type RestaurantAvailabilityStatus =
+  | "open"
+  | "closing_soon"
+  | "closed"
+  | "temporarily_unavailable"
+  | "hours_unknown";
+
 export function isRestaurantOpenNow(
   hours: OpeningHourRow[],
   timeZone: string,
   now = new Date(),
   opts?: { vacationMode?: boolean; temporarilyClosed?: boolean },
 ): boolean {
-  if (opts?.vacationMode || opts?.temporarilyClosed) return false;
+  const status = getRestaurantAvailabilityStatus(hours, timeZone, now, opts);
+  return status === "open" || status === "closing_soon";
+}
+
+/**
+ * Accurate Open / Closed / Closing Soon / Temporarily Unavailable.
+ * Unknown hours must never report as Open.
+ */
+export function getRestaurantAvailabilityStatus(
+  hours: OpeningHourRow[],
+  timeZone: string,
+  now = new Date(),
+  opts?: { vacationMode?: boolean; temporarilyClosed?: boolean; closingSoonMinutes?: number },
+): RestaurantAvailabilityStatus {
+  if (opts?.vacationMode || opts?.temporarilyClosed) return "temporarily_unavailable";
+  if (!hours?.length) return "hours_unknown";
+
+  const closingSoonMinutes = opts?.closingSoonMinutes ?? 45;
   const { weekday, minutes } = partsInTz(now, timeZone);
   const today = hours.find((h) => h.weekday === weekday);
-  if (!today || today.isClosed) {
-    // Overnight from previous day
-    const prev = hours.find((h) => h.weekday === (weekday + 6) % 7);
-    if (prev && !prev.isClosed && prev.overnight) {
-      const open = parseHm(prev.openTime);
-      const close = parseHm(prev.closeTime);
-      if (open != null && close != null && minutes < close) return true;
+  const prev = hours.find((h) => h.weekday === (weekday + 6) % 7);
+
+  const evaluateWindow = (open: number, close: number, overnight: boolean): RestaurantAvailabilityStatus | null => {
+    if (overnight) {
+      if (minutes >= open || minutes < close) {
+        // Minutes until close across midnight
+        const untilClose = minutes >= open ? (24 * 60 - minutes) + close : close - minutes;
+        return untilClose <= closingSoonMinutes ? "closing_soon" : "open";
+      }
+      return null;
     }
-    return false;
+    if (minutes >= open && minutes < close) {
+      return close - minutes <= closingSoonMinutes ? "closing_soon" : "open";
+    }
+    return null;
+  };
+
+  if (today && !today.isClosed) {
+    const open = parseHm(today.openTime);
+    const close = parseHm(today.closeTime);
+    if (open == null || close == null) return "hours_unknown";
+    const hit = evaluateWindow(open, close, !!today.overnight);
+    if (hit) return hit;
   }
-  const open = parseHm(today.openTime);
-  const close = parseHm(today.closeTime);
-  if (open == null || close == null) return false;
-  if (today.overnight) {
-    return minutes >= open || minutes < close;
+
+  // Overnight from previous day into this morning
+  if (prev && !prev.isClosed && prev.overnight) {
+    const open = parseHm(prev.openTime);
+    const close = parseHm(prev.closeTime);
+    if (open != null && close != null && minutes < close) {
+      return close - minutes <= closingSoonMinutes ? "closing_soon" : "open";
+    }
   }
-  return minutes >= open && minutes < close;
+
+  if (today?.isClosed) return "closed";
+  if (today && (parseHm(today.openTime) == null || parseHm(today.closeTime) == null)) return "hours_unknown";
+  return "closed";
 }
 
 export function localYmd(timeZone: string, now = new Date()): string {

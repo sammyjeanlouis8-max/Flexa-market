@@ -85,6 +85,7 @@ export default function RootLayout() {
                       <Stack.Screen name="music/upload" />
                       <Stack.Screen name="music/sponsored-ads" />
                       <Stack.Screen name="wholesale" />
+                      <Stack.Screen name="restaurant" />
                       <Stack.Screen name="+not-found" />
                     </Stack>
                     <MusicAdBreakHost />

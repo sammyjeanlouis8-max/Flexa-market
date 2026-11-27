@@ -1,0 +1,1 @@
+import{j as r}from"./vendor-react-Dfcb5DwK.js";import{W as t}from"./WholesaleSellerProductList-BXccEfxC.js";import"./vendor-D4CEWbyq.js";import"./WholesalePageGate-Bvk0Rkj-.js";import"./index-CpkV-w3y.js";import"./WholesaleShell-mO0zlRbk.js";import"./wholesaleApi-BoMa16Ib.js";function a(){return r.jsx(t,{view:"drafts"})}export{a as default};

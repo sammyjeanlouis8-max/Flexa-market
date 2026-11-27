@@ -1,4 +1,5 @@
 import { wholesaleFr } from "../wholesaleLocales";
+import { restaurantFr } from "../restaurantLocales";
 
 export default {
   cardCancellation: {
@@ -158,6 +159,7 @@ export default {
     myAccountSection: "Mon Compte",
     flexaServicesSection: "Services Flexa",
     flexaWholesale: "Flexa Wholesale",
+    flexaRestaurant: "Flexa Restaurant",
     preferencesSection: "Préférences",
     offersPromos: "Offres & Promotions",
     flexaPicks: "Flexa Picks",
@@ -185,6 +187,7 @@ export default {
     taglineShort: "Acheter · Vendre · Livraison",
 },
   wholesale: wholesaleFr,
+  restaurant: restaurantFr,
   videoFeed: {
     title: "Vidéos promotionnelles",
     filterAll: "Tout",

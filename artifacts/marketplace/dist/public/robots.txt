@@ -1,17 +1,29 @@
 User-agent: *
 Allow: /
+Allow: /listings/
+Allow: /categories/
 
-# Disallow admin and private areas from indexing
+# Faceted search stays crawlable for UX but is noindex in the app; prefer /categories/
+Allow: /search
+
+# Private / transactional areas — keep out of the public catalog
 Disallow: /admin
-Disallow: /admin/*
+Disallow: /admin/
 Disallow: /auth/
 Disallow: /settings
+Disallow: /settings/
 Disallow: /wallet
-Disallow: /wallet/*
+Disallow: /wallet/
 Disallow: /messages
-Disallow: /messages/*
+Disallow: /messages/
 Disallow: /notifications
 Disallow: /fintech/
-Disallow: /fintech/*
+Disallow: /cart
+Disallow: /checkout
+Disallow: /checkout/
+Disallow: /listings/create
+
+# Prefer canonical product/category URLs over internal SEO HTML endpoints
+Disallow: /api/seo/
 
 Sitemap: https://flexamarket.com/sitemap.xml

@@ -7,6 +7,7 @@ import {
   Briefcase, Globe, LogOut, X, ChevronRight, Moon, Sun, Plus, Package,
   Store, Bell, Lock, MapPinned, Sparkles, Landmark, Tag, Award, LayoutGrid, BarChart3,
   Warehouse,
+  UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
@@ -268,6 +269,13 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
               accent: "emerald" as const,
             } as NavItem]
           : []),
+        {
+          icon: UtensilsCrossed,
+          label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
+          href: "/restaurant",
+          testId: "drawer-flexa-restaurant",
+          accent: "emerald" as const,
+        } as NavItem,
         { icon: LayoutGrid, label: t("nav.categories", { defaultValue: "Categories" }), href: "/search", testId: "drawer-categories" },
         { icon: Tag, label: t("nav.offersPromos", { defaultValue: "Offers & Promotions" }), href: "/offers", testId: "drawer-offers" },
         { icon: Sparkles, label: t("nav.flexaPicks", { defaultValue: "Flexa Picks" }), href: "/search?boosted=true", testId: "drawer-flexa-picks" },

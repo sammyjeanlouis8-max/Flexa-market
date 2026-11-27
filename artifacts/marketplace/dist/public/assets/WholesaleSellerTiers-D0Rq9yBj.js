@@ -1,0 +1,1 @@
+import{j as r}from"./vendor-react-Dfcb5DwK.js";import{W as t}from"./WholesaleSellerProductList-B37pJ9tc.js";import"./vendor-BEMspV3p.js";import"./WholesalePageGate-CvHcTT3U.js";import"./index-ClJbfrWo.js";import"./WholesaleShell-CAFGmzWo.js";import"./wholesaleApi-BoMa16Ib.js";function a(){return r.jsx(t,{view:"tiers"})}export{a as default};

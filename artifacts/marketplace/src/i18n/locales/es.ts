@@ -1,4 +1,5 @@
 import { wholesaleEs } from "../wholesaleLocales";
+import { restaurantEs } from "../restaurantLocales";
 
 export default {
   footer: {
@@ -92,6 +93,7 @@ export default {
     myAccountSection: "Mi Cuenta",
     flexaServicesSection: "Servicios Flexa",
     flexaWholesale: "Flexa Wholesale",
+    flexaRestaurant: "Flexa Restaurant",
     preferencesSection: "Preferencias",
     offersPromos: "Ofertas y Promociones",
     flexaPicks: "Flexa Picks",
@@ -3449,6 +3451,7 @@ export default {
     easyReturns: "Devoluciones fáciles",
 },
   wholesale: wholesaleEs,
+  restaurant: restaurantEs,
   videoFeed: {
     title: "Videos promocionales",
     filterAll: "Todos",

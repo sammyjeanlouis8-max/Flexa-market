@@ -127,6 +127,7 @@ export type Order = {
   customerId: number;
   status: string;
   fulfillment: string;
+  deliveryMethod?: "pickup" | "merchant" | "flexa" | string;
   subtotal: number;
   deliveryFee: number;
   total: number;
@@ -137,11 +138,22 @@ export type Order = {
   rejectionReason: string | null;
   confirmationPin?: string | null;
   pinConfirmedAt?: string | null;
+  assignedStaffId?: number | null;
+  estimatedDeliveryMinutes?: number | null;
+  merchantDeliveryFeeMinor?: number;
+  flexaDeliveryFeeMinor?: number;
   items?: RestaurantOrderItem[];
   restaurantName?: string;
   createdAt: string;
   updatedAt: string;
 };
+
+export function deliveryMethodCustomerLabel(method?: string | null, fulfillment?: string | null): string {
+  const m = String(method || (fulfillment === "delivery" ? "merchant" : "pickup")).toLowerCase();
+  if (m === "merchant" || m === "restaurant") return "Delivered by Restaurant";
+  if (m === "flexa") return "Delivered by Flexa";
+  return "Customer Pickup";
+}
 
 export type Reservation = {
   id: number;
@@ -504,6 +516,7 @@ export async function placeRestaurantOrder(
   restaurantId: number,
   body: {
     fulfillment: "pickup" | "delivery";
+    deliveryMethod?: "pickup" | "merchant" | "flexa";
     items: Array<{
       dailyMenuItemId: number;
       quantity: number;
@@ -512,6 +525,8 @@ export async function placeRestaurantOrder(
     }>;
     specialInstructions?: string;
     deliveryAddress?: string;
+    deliveryLatitude?: number;
+    deliveryLongitude?: number;
     /** Stable client key — retries must reuse the same value to prevent duplicate charges/orders. */
     idempotencyKey?: string;
   },
@@ -519,7 +534,10 @@ export async function placeRestaurantOrder(
   const res = await fetch(`/api/restaurants/${restaurantId}/orders`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...body,
+      deliveryMethod: body.deliveryMethod || (body.fulfillment === "delivery" ? "merchant" : "pickup"),
+    }),
   });
   return parseJson<PlaceOrderResult>(res, "Could not place order");
 }
@@ -626,20 +644,7 @@ export async function saveRestaurantHours(
 
 export async function saveRestaurantDelivery(
   restaurantId: number,
-  body: {
-    fulfillment: "pickup" | "delivery" | "both";
-    deliveryFee?: number;
-    minOrderAmount?: number;
-    estimatedDeliveryMinutes?: number;
-    estimatedPrepMinutes?: number;
-    deliveryRadiusKm?: number;
-    freeDeliveryMin?: number;
-    deliverySuspended?: boolean;
-    deliveryAvailable?: boolean;
-    pickupAvailable?: boolean;
-    deliveryZones?: string[];
-    deliveryInstructions?: string;
-  },
+  body: Record<string, unknown>,
 ) {
   const res = await fetch(`/api/restaurants/${restaurantId}/delivery`, {
     method: "PUT",
@@ -647,6 +652,51 @@ export async function saveRestaurantDelivery(
     body: JSON.stringify(body),
   });
   return parseJson(res, "Could not save delivery settings");
+}
+
+export async function fetchRestaurantDeliveryStaff(restaurantId: number) {
+  const res = await fetch(`/api/restaurants/${restaurantId}/delivery-staff`, { headers: authHeaders() });
+  const data = await parseJson<{ staff?: Array<{ id: number; displayName: string; phone: string; active: boolean }> }>(
+    res,
+    "Could not load delivery staff",
+  );
+  return data.staff ?? [];
+}
+
+export async function createRestaurantDeliveryStaff(
+  restaurantId: number,
+  body: { displayName: string; phone?: string; notes?: string },
+) {
+  const res = await fetch(`/api/restaurants/${restaurantId}/delivery-staff`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<{ staff: { id: number; displayName: string; phone: string; active: boolean } }>(
+    res,
+    "Could not add staff",
+  );
+  return data.staff;
+}
+
+export async function assignRestaurantOrderStaff(orderId: number, staffId: number) {
+  const res = await fetch(`/api/restaurants/me/orders/${orderId}/assign-staff`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ staffId }),
+  });
+  const data = await parseJson<{ order: Order }>(res, "Could not assign staff");
+  return data.order;
+}
+
+export async function reportRestaurantFailedDelivery(orderId: number, note: string) {
+  const res = await fetch(`/api/restaurants/me/orders/${orderId}/failed-delivery`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ note }),
+  });
+  const data = await parseJson<{ order: Order }>(res, "Could not report failed delivery");
+  return data.order;
 }
 
 /** Upload a food photo via the existing Flexa Market storage (Wasabi) proxy. */

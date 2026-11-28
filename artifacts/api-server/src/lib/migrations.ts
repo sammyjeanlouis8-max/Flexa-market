@@ -4103,6 +4103,54 @@ CREATE INDEX IF NOT EXISTS conversations_restaurant_id_idx ON conversations(rest
 `,
   });
 
+  migrations.push({
+    name: "restaurant_merchant_delivery.v1",
+    sql: `
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS merchant_delivery_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS flexa_delivery_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS fee_mode TEXT NOT NULL DEFAULT 'fixed';
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS fee_per_km_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_delivery_settings ADD COLUMN IF NOT EXISTS delivery_hours JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+UPDATE restaurant_delivery_settings
+   SET merchant_delivery_enabled = TRUE
+ WHERE delivery_available = TRUE AND merchant_delivery_enabled = FALSE;
+
+CREATE TABLE IF NOT EXISTS restaurant_delivery_staff (
+  id SERIAL PRIMARY KEY,
+  restaurant_id INTEGER NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+  display_name TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS restaurant_delivery_staff_restaurant_idx ON restaurant_delivery_staff(restaurant_id);
+
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS delivery_method TEXT NOT NULL DEFAULT 'pickup';
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS delivery_latitude REAL;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS delivery_longitude REAL;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS distance_km REAL;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS assigned_staff_id INTEGER REFERENCES restaurant_delivery_staff(id) ON DELETE SET NULL;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS failed_delivery_note TEXT;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS estimated_delivery_minutes INTEGER;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS merchant_delivery_fee_minor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE restaurant_orders ADD COLUMN IF NOT EXISTS flexa_delivery_fee_minor INTEGER NOT NULL DEFAULT 0;
+
+UPDATE restaurant_orders
+   SET delivery_method = CASE
+     WHEN fulfillment = 'delivery' THEN 'merchant'
+     ELSE 'pickup'
+   END
+ WHERE delivery_method = 'pickup' AND fulfillment = 'delivery';
+
+UPDATE restaurant_orders
+   SET merchant_delivery_fee_minor = delivery_fee_minor
+ WHERE fulfillment = 'delivery' AND merchant_delivery_fee_minor = 0 AND delivery_fee_minor > 0;
+`,
+  });
+
   // ── Séduire Beauty module ───────────────────────────────────────────────
   migrations.push({
     name: "beauty_categories.create",

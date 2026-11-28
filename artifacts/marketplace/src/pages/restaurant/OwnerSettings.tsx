@@ -4,7 +4,9 @@ import { useTranslation } from "react-i18next";
 import { RestaurantPageGate } from "@/components/restaurant/RestaurantPageGate";
 import { RestaurantNotice, RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import {
+  createRestaurantDeliveryStaff,
   fetchRestaurant,
+  fetchRestaurantDeliveryStaff,
   saveRestaurantDelivery,
   saveRestaurantHours,
   updateRestaurant,
@@ -29,8 +31,13 @@ export default function OwnerSettings() {
   const [hours, setHours] = useState<HourRow[]>(
     WEEKDAYS.map((weekday) => ({ weekday, isClosed: false, openTime: "09:00", closeTime: "21:00" })),
   );
-  const [fulfillment, setFulfillment] = useState<"pickup" | "delivery" | "both">("pickup");
+  const [pickupEnabled, setPickupEnabled] = useState(true);
+  const [merchantDeliveryEnabled, setMerchantDeliveryEnabled] = useState(false);
+  const [flexaDeliveryEnabled, setFlexaDeliveryEnabled] = useState(false);
+  const [flexaFeatureOn, setFlexaFeatureOn] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState("0");
+  const [feeMode, setFeeMode] = useState<"fixed" | "distance">("fixed");
+  const [feePerKm, setFeePerKm] = useState("0");
   const [minOrder, setMinOrder] = useState("0");
   const [eta, setEta] = useState("45");
   const [prep, setPrep] = useState("30");
@@ -39,6 +46,9 @@ export default function OwnerSettings() {
   const [deliverySuspended, setDeliverySuspended] = useState(false);
   const [zones, setZones] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [staff, setStaff] = useState<Array<{ id: number; displayName: string; phone: string; active: boolean }>>([]);
+  const [staffName, setStaffName] = useState("");
+  const [staffPhone, setStaffPhone] = useState("");
   const [phone, setPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [enableWhatsapp, setEnableWhatsapp] = useState(false);
@@ -53,10 +63,13 @@ export default function OwnerSettings() {
         setPhone(r.phone || "");
         setWhatsapp(r.whatsapp || "");
         setEnableWhatsapp(Boolean(r.whatsapp));
-        if (r.fulfillment === "delivery" || r.fulfillment === "both" || r.fulfillment === "pickup") {
-          setFulfillment(r.fulfillment);
-        }
+        setPickupEnabled((r as any).pickupAvailable !== false);
+        setMerchantDeliveryEnabled(!!((r as any).merchantDeliveryEnabled ?? (r as any).deliveryAvailable));
+        setFlexaDeliveryEnabled(!!(r as any).flexaDeliveryEnabled);
+        setFlexaFeatureOn(!!(r as any).flexaDeliveryFeatureEnabled);
         if (r.deliveryFee != null) setDeliveryFee(String(r.deliveryFee));
+        if ((r as any).feeMode === "distance") setFeeMode("distance");
+        if ((r as any).feePerKm != null) setFeePerKm(String((r as any).feePerKm));
         if (r.minOrderAmount != null) setMinOrder(String(r.minOrderAmount));
         if (r.estimatedDeliveryMinutes != null) setEta(String(r.estimatedDeliveryMinutes));
         if (r.estimatedPrepMinutes != null) setPrep(String(r.estimatedPrepMinutes));
@@ -64,6 +77,7 @@ export default function OwnerSettings() {
         if ((r as any).freeDeliveryMin != null) setFreeDeliveryMin(String((r as any).freeDeliveryMin));
         if ((r as any).deliverySuspended != null) setDeliverySuspended(!!(r as any).deliverySuspended);
         if (r.deliveryZones?.length) setZones(r.deliveryZones.join(", "));
+        fetchRestaurantDeliveryStaff(restaurantId).then(setStaff).catch(() => setStaff([]));
         if (r.hours?.length) {
           setHours(
             WEEKDAYS.map((weekday) => {
@@ -112,17 +126,25 @@ export default function OwnerSettings() {
         })),
       );
       await saveRestaurantDelivery(restaurantId, {
-        fulfillment,
+        pickupAvailable: pickupEnabled,
+        merchantDeliveryEnabled,
+        flexaDeliveryEnabled: flexaFeatureOn ? flexaDeliveryEnabled : false,
         deliveryFee: Number(deliveryFee) || 0,
+        feeMode,
+        feePerKm: Number(feePerKm) || 0,
         minOrderAmount: Number(minOrder) || 0,
         estimatedDeliveryMinutes: Number(eta) || 45,
         estimatedPrepMinutes: Number(prep) || 30,
         deliveryRadiusKm: Number(radiusKm) || 5,
-        freeDeliveryMin: freeDeliveryMin === "" ? undefined : Number(freeDeliveryMin),
+        freeDeliveryMin: freeDeliveryMin === "" ? null : Number(freeDeliveryMin),
         deliverySuspended,
-        deliveryAvailable: fulfillment !== "pickup" && !deliverySuspended,
-        pickupAvailable: fulfillment !== "delivery",
         deliveryZones: zones.split(",").map((z) => z.trim()).filter(Boolean),
+        deliveryHours: hours.map((h) => ({
+          weekday: h.weekday,
+          isClosed: h.isClosed,
+          openTime: h.openTime,
+          closeTime: h.closeTime,
+        })),
         deliveryInstructions:
           instructions || t("restaurant.deliveryManagedByBusiness", { defaultValue: "Delivery is managed directly by this business." }),
       } as any);
@@ -131,6 +153,21 @@ export default function OwnerSettings() {
       setMsg(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function addStaff() {
+    if (!restaurantId || !staffName.trim()) return;
+    try {
+      const row = await createRestaurantDeliveryStaff(restaurantId, {
+        displayName: staffName.trim(),
+        phone: staffPhone.trim(),
+      });
+      setStaff((prev) => [row, ...prev]);
+      setStaffName("");
+      setStaffPhone("");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Could not add staff");
     }
   }
 
@@ -251,27 +288,62 @@ export default function OwnerSettings() {
               </ul>
             </section>
 
-            <section className="rounded-2xl border bg-white p-4 dark:bg-[hsl(152,16%,12%)]">
+            <section className="rounded-2xl border bg-white p-4 dark:bg-[hsl(152,16%,12%)]" data-testid="owner-delivery-methods">
               <h2 className="text-sm font-black uppercase tracking-wide">
-                {t("restaurant.deliverySettings", { defaultValue: "Pickup & delivery" })}
+                {t("restaurant.deliveryMethods", { defaultValue: "Delivery methods" })}
               </h2>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("restaurant.merchantDeliveryHint", {
+                  defaultValue: "Merchant delivery uses your own personnel — not Flexa drivers.",
+                })}
+              </p>
+              <div className="mt-3 space-y-2 text-sm">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pickupEnabled} onChange={(e) => setPickupEnabled(e.target.checked)} />
+                  {t("restaurant.customerPickup", { defaultValue: "Customer Pickup" })}
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={merchantDeliveryEnabled} onChange={(e) => setMerchantDeliveryEnabled(e.target.checked)} />
+                  {t("restaurant.merchantDelivery", { defaultValue: "Merchant Delivery (restaurant personnel)" })}
+                </label>
+                <label className={`flex items-center gap-2 ${flexaFeatureOn ? "" : "opacity-60"}`}>
+                  <input
+                    type="checkbox"
+                    checked={flexaDeliveryEnabled && flexaFeatureOn}
+                    disabled={!flexaFeatureOn}
+                    onChange={(e) => setFlexaDeliveryEnabled(e.target.checked)}
+                  />
+                  {t("restaurant.flexaDelivery", { defaultValue: "Flexa Delivery" })}
+                  {!flexaFeatureOn && (
+                    <span className="text-xs text-muted-foreground">
+                      ({t("restaurant.flexaDeliveryGated", { defaultValue: "not enabled for restaurant food yet" })})
+                    </span>
+                  )}
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={deliverySuspended} onChange={(e) => setDeliverySuspended(e.target.checked)} />
+                  {t("restaurant.deliverySuspended", { defaultValue: "Temporarily suspend delivery" })}
+                </label>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <label className="text-sm">
-                  <span className="mb-1 block font-semibold">{t("restaurant.fulfillment", { defaultValue: "Fulfillment" })}</span>
-                  <select
-                    value={fulfillment}
-                    onChange={(e) => setFulfillment(e.target.value as "pickup" | "delivery" | "both")}
-                    className="w-full rounded-xl border px-3 py-2"
-                  >
-                    <option value="pickup">{t("restaurant.pickup")}</option>
-                    <option value="delivery">{t("restaurant.delivery")}</option>
-                    <option value="both">{t("restaurant.both", { defaultValue: "Pickup & delivery" })}</option>
+                  <span className="mb-1 block font-semibold">{t("restaurant.feeMode", { defaultValue: "Fee model" })}</span>
+                  <select value={feeMode} onChange={(e) => setFeeMode(e.target.value as "fixed" | "distance")} className="w-full rounded-xl border px-3 py-2">
+                    <option value="fixed">{t("restaurant.feeFixed", { defaultValue: "Fixed fee" })}</option>
+                    <option value="distance">{t("restaurant.feeDistance", { defaultValue: "Distance-based" })}</option>
                   </select>
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block font-semibold">{t("restaurant.deliveryFee", { defaultValue: "Delivery fee" })}</span>
+                  <span className="mb-1 block font-semibold">{t("restaurant.deliveryFee", { defaultValue: "Base delivery fee" })}</span>
                   <input value={deliveryFee} onChange={(e) => setDeliveryFee(e.target.value)} className="w-full rounded-xl border px-3 py-2" />
                 </label>
+                {feeMode === "distance" && (
+                  <label className="text-sm">
+                    <span className="mb-1 block font-semibold">{t("restaurant.feePerKm", { defaultValue: "Fee per km" })}</span>
+                    <input value={feePerKm} onChange={(e) => setFeePerKm(e.target.value)} className="w-full rounded-xl border px-3 py-2" />
+                  </label>
+                )}
                 <label className="text-sm">
                   <span className="mb-1 block font-semibold">{t("restaurant.minOrder", { defaultValue: "Minimum order" })}</span>
                   <input value={minOrder} onChange={(e) => setMinOrder(e.target.value)} className="w-full rounded-xl border px-3 py-2" />
@@ -292,19 +364,49 @@ export default function OwnerSettings() {
                   <span className="mb-1 block font-semibold">{t("restaurant.freeDeliveryMin", { defaultValue: "Free delivery from" })}</span>
                   <input value={freeDeliveryMin} onChange={(e) => setFreeDeliveryMin(e.target.value)} className="w-full rounded-xl border px-3 py-2" placeholder="optional" />
                 </label>
-                <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                  <input type="checkbox" checked={deliverySuspended} onChange={(e) => setDeliverySuspended(e.target.checked)} />
-                  {t("restaurant.deliverySuspended", { defaultValue: "Temporarily suspend delivery" })}
-                </label>
                 <label className="text-sm sm:col-span-2">
-                  <span className="mb-1 block font-semibold">{t("restaurant.deliveryZones", { defaultValue: "Service areas (comma-separated)" })}</span>
-                  <input value={zones} onChange={(e) => setZones(e.target.value)} className="w-full rounded-xl border px-3 py-2" />
+                  <span className="mb-1 block font-semibold">{t("restaurant.deliveryZones", { defaultValue: "Delivery zones / areas (comma-separated)" })}</span>
+                  <input value={zones} onChange={(e) => setZones(e.target.value)} className="w-full rounded-xl border px-3 py-2" placeholder="Pétion-Ville, Delmas 33" />
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    {t("restaurant.zoneMapNote", {
+                      defaultValue: "Zone labels are validated against the customer address. Interactive polygon map can be added when map tiles are configured.",
+                    })}
+                  </span>
                 </label>
                 <label className="text-sm sm:col-span-2">
                   <span className="mb-1 block font-semibold">{t("restaurant.deliveryInstructions", { defaultValue: "Delivery notes" })}</span>
                   <textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} className="min-h-[80px] w-full rounded-xl border px-3 py-2" />
                 </label>
               </div>
+            </section>
+
+            <section className="rounded-2xl border bg-white p-4 dark:bg-[hsl(152,16%,12%)]" data-testid="owner-delivery-staff">
+              <h2 className="text-sm font-black uppercase tracking-wide">
+                {t("restaurant.deliveryStaff", { defaultValue: "Delivery personnel" })}
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("restaurant.deliveryStaffHint", {
+                  defaultValue: "Your couriers — no Flexa Driver registration required.",
+                })}
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input value={staffName} onChange={(e) => setStaffName(e.target.value)} placeholder={t("restaurant.staffName", { defaultValue: "Name" })} className="flex-1 rounded-xl border px-3 py-2 text-sm" />
+                <input value={staffPhone} onChange={(e) => setStaffPhone(e.target.value)} placeholder={t("restaurant.staffPhone", { defaultValue: "Phone" })} className="w-40 rounded-xl border px-3 py-2 text-sm" />
+                <button type="button" onClick={() => void addStaff()} className="rounded-full bg-[hsl(152,55%,28%)] px-4 py-2 text-xs font-bold text-white">
+                  {t("restaurant.addStaff", { defaultValue: "Add" })}
+                </button>
+              </div>
+              <ul className="mt-3 space-y-2">
+                {staff.map((s) => (
+                  <li key={s.id} className="flex items-center justify-between rounded-xl border px-3 py-2 text-sm">
+                    <span className="font-semibold">{s.displayName}{s.phone ? ` · ${s.phone}` : ""}</span>
+                    <span className="text-xs text-muted-foreground">{s.active ? "Active" : "Inactive"}</span>
+                  </li>
+                ))}
+                {staff.length === 0 && (
+                  <li className="text-xs text-muted-foreground">{t("restaurant.noStaff", { defaultValue: "No personnel added yet." })}</li>
+                )}
+              </ul>
             </section>
 
             {msg && <p className="text-sm text-muted-foreground">{msg}</p>}

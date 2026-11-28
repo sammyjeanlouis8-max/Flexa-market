@@ -50,7 +50,12 @@ export default function RestaurantCheckoutPage() {
     }
   }, []);
 
-  const totals = cartTotals(cart, restaurant?.deliveryFee || 0);
+  const totals = cartTotals(cart, restaurant?.deliveryFee || 0, {
+    freeDeliveryMin: (restaurant as any)?.freeDeliveryMin ?? null,
+    feeMode: (restaurant as any)?.feeMode,
+    feePerKm: (restaurant as any)?.feePerKm,
+    deliveryMethod: cart?.fulfillment === "delivery" ? "merchant" : "pickup",
+  });
 
   function updateMeta(patch: Partial<Pick<RestaurantCartState, "fulfillment" | "specialInstructions" | "deliveryAddress">>) {
     const next = setCartMeta(patch);
@@ -73,6 +78,7 @@ export default function RestaurantCheckoutPage() {
       if (orderLines.length) {
         const result = await placeRestaurantOrder(cart.restaurantId, {
           fulfillment: cart.fulfillment,
+          deliveryMethod: cart.fulfillment === "delivery" ? "merchant" : "pickup",
           items: orderLines.map((l) => ({
             dailyMenuItemId: l.dailyMenuItemId,
             quantity: l.quantity,
@@ -183,15 +189,23 @@ export default function RestaurantCheckoutPage() {
     );
   }
 
+  const methods = (restaurant as any)?.deliveryMethods as { pickup?: boolean; merchant?: boolean; flexa?: boolean } | undefined;
   const canDelivery =
-    (restaurant?.fulfillment === "delivery" || restaurant?.fulfillment === "both")
-    && (restaurant as any)?.deliveryAvailable !== false
-    && !(restaurant as any)?.deliverySuspended;
+    methods?.merchant
+    ?? (
+      (restaurant?.fulfillment === "delivery" || restaurant?.fulfillment === "both")
+      && (restaurant as any)?.deliveryAvailable !== false
+      && !(restaurant as any)?.deliverySuspended
+    );
   const canPickup =
-    restaurant?.fulfillment === "pickup"
-    || restaurant?.fulfillment === "both"
-    || !restaurant?.fulfillment
-    || (restaurant as any)?.pickupAvailable !== false;
+    methods?.pickup
+    ?? (
+      restaurant?.fulfillment === "pickup"
+      || restaurant?.fulfillment === "both"
+      || !restaurant?.fulfillment
+      || (restaurant as any)?.pickupAvailable !== false
+    );
+  const canFlexa = !!(methods?.flexa && (restaurant as any)?.flexaDeliveryFeatureEnabled);
 
   return (
     <RestaurantPageGate requireAuth>
@@ -216,39 +230,60 @@ export default function RestaurantCheckoutPage() {
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
               {t("restaurant.fulfillment", { defaultValue: "Pickup or Delivery" })}
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <button
                 type="button"
                 disabled={!canPickup}
                 onClick={() => updateMeta({ fulfillment: "pickup" })}
                 className={cn(
-                  "rounded-xl border px-3 py-3 text-sm font-bold disabled:opacity-40",
+                  "rounded-xl border px-3 py-3 text-left text-sm font-bold disabled:opacity-40",
                   cart.fulfillment === "pickup" ? "border-[hsl(152,55%,28%)] bg-[hsl(152,45%,95%)]" : "",
                 )}
               >
-                {t("restaurant.pickup")}
+                <span className="block">{t("restaurant.customerPickup", { defaultValue: "Customer Pickup" })}</span>
+                <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">
+                  {t("restaurant.pickupHint", { defaultValue: "Collect at the business" })}
+                </span>
               </button>
               <button
                 type="button"
                 disabled={!canDelivery}
                 onClick={() => updateMeta({ fulfillment: "delivery" })}
                 className={cn(
-                  "rounded-xl border px-3 py-3 text-sm font-bold disabled:opacity-40",
+                  "rounded-xl border px-3 py-3 text-left text-sm font-bold disabled:opacity-40",
                   cart.fulfillment === "delivery" ? "border-[hsl(152,55%,28%)] bg-[hsl(152,45%,95%)]" : "",
                 )}
+                data-testid="checkout-merchant-delivery"
               >
-                {t("restaurant.delivery")}
-                {restaurant?.deliveryFee ? ` · ${formatMoney(restaurant.deliveryFee, totals.currency)}` : ""}
+                <span className="block">{t("restaurant.deliveredByRestaurant", { defaultValue: "Delivered by Restaurant" })}</span>
+                <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">
+                  {restaurant?.estimatedDeliveryMinutes
+                    ? t("restaurant.etaShort", { defaultValue: "~{{m}} min", m: restaurant.estimatedDeliveryMinutes })
+                    : t("restaurant.merchantDelivery", { defaultValue: "Merchant delivery" })}
+                  {totals.deliveryFee > 0 ? ` · ${formatMoney(totals.deliveryFee, totals.currency)}` : ""}
+                </span>
               </button>
+              {canFlexa ? (
+                <button type="button" disabled className="rounded-xl border px-3 py-3 text-left text-sm font-bold opacity-50 sm:col-span-2">
+                  {t("restaurant.deliveredByFlexa", { defaultValue: "Delivered by Flexa" })}
+                </button>
+              ) : null}
             </div>
             {cart.fulfillment === "delivery" && (
-              <textarea
-                className="mt-3 w-full rounded-xl border px-3 py-2 text-sm"
-                rows={2}
-                placeholder={t("restaurant.deliveryAddress", { defaultValue: "Delivery address" })}
-                value={cart.deliveryAddress}
-                onChange={(e) => updateMeta({ deliveryAddress: e.target.value })}
-              />
+              <>
+                <textarea
+                  className="mt-3 w-full rounded-xl border px-3 py-2 text-sm"
+                  rows={2}
+                  placeholder={t("restaurant.deliveryAddress", { defaultValue: "Delivery address" })}
+                  value={cart.deliveryAddress}
+                  onChange={(e) => updateMeta({ deliveryAddress: e.target.value })}
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {t("restaurant.noLiveGpsUnlessAuthorized", {
+                    defaultValue: "Live courier GPS is shown only when authorized location data is available.",
+                  })}
+                </p>
+              </>
             )}
           </div>
 
@@ -274,10 +309,16 @@ export default function RestaurantCheckoutPage() {
                 <span>{formatMoney(totals.subtotal, totals.currency)}</span>
               </div>
               {cart.fulfillment === "delivery" && (
-                <div className="flex justify-between">
-                  <span>{t("restaurant.deliveryFee", { defaultValue: "Delivery fee" })}</span>
-                  <span>{formatMoney(totals.deliveryFee, totals.currency)}</span>
-                </div>
+                <>
+                  <div className="flex justify-between">
+                    <span>{t("restaurant.merchantDeliveryFee", { defaultValue: "Merchant delivery fee" })}</span>
+                    <span>{formatMoney(totals.deliveryFee, totals.currency)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{t("restaurant.flexaDriverFee", { defaultValue: "Flexa driver fee" })}</span>
+                    <span>{formatMoney(0, totals.currency)}</span>
+                  </div>
+                </>
               )}
               <div className="flex justify-between text-base font-extrabold">
                 <span>{t("restaurant.total", { defaultValue: "Total" })}</span>
@@ -285,6 +326,8 @@ export default function RestaurantCheckoutPage() {
               </div>
               <p className="text-xs text-muted-foreground">
                 {t("restaurant.commissionZero", { defaultValue: "Flexa commission: $0.00" })}
+                {" · "}
+                {t("restaurant.noFlexaDriverPayout", { defaultValue: "No Flexa driver payout for merchant delivery" })}
               </p>
             </div>
           </div>

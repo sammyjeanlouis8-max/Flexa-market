@@ -23,6 +23,7 @@ import {
   restaurantReportsTable,
   restaurantModerationLogsTable,
   restaurantNotificationsTable,
+  restaurantDeliveryStaffTable,
   conversationsTable,
 } from "@workspace/db";
 import { requireAuth, requireNotRestricted, requireSuperAdmin } from "../middlewares/auth";
@@ -74,6 +75,17 @@ import {
   canTransitionRestaurantOrder,
   normalizeRestaurantOrderStatus,
 } from "../lib/restaurantAccess";
+import {
+  RESTAURANT_FLEXA_DELIVERY_ENABLED,
+  computeMerchantDeliveryFeeMinor,
+  deliveryMethodLabel,
+  isDeliveryWindowOpen,
+  isWithinDeliveryRadius,
+  normalizeDeliveryMethod,
+  resolveEnabledMethods,
+  zoneAllowsAddress,
+  type RestaurantDeliveryMethod,
+} from "../lib/restaurantDelivery";
 import { toMinorUnits, fromMinorUnits } from "../lib/restaurantMoney";
 import {
   createRestaurantPaymentIntent,
@@ -283,6 +295,15 @@ function shapePublicRestaurant(
       ? !!(extras.delivery.deliveryAvailable && !extras.delivery.deliverySuspended)
       : false,
     deliverySuspended: extras?.delivery?.deliverySuspended ?? false,
+    merchantDeliveryEnabled: extras?.delivery?.merchantDeliveryEnabled
+      ?? !!(extras?.delivery?.deliveryAvailable && !extras?.delivery?.deliverySuspended),
+    flexaDeliveryEnabled: !!(extras?.delivery?.flexaDeliveryEnabled && RESTAURANT_FLEXA_DELIVERY_ENABLED),
+    flexaDeliveryFeatureEnabled: RESTAURANT_FLEXA_DELIVERY_ENABLED,
+    feeMode: extras?.delivery?.feeMode ?? "fixed",
+    feePerKmMinor: extras?.delivery?.feePerKmMinor ?? 0,
+    feePerKm: fromMinorUnits(extras?.delivery?.feePerKmMinor ?? 0),
+    deliveryHours: extras?.delivery?.deliveryHours ?? [],
+    deliveryMethods: resolveEnabledMethods(extras?.delivery),
     estimatedPrepMinutes: extras?.delivery?.estimatedPrepMinutes ?? prepMinutes,
     estimatedDeliveryMinutes: extras?.delivery?.estimatedDeliveryMinutes ?? null,
     deliveryZones: extras?.delivery?.deliveryZones ?? [],
@@ -602,6 +623,19 @@ router.patch("/restaurants/me/orders/:orderId", requireRestaurantAuthAccess, asy
   }
   if (!isStaff(req.user) && !canTransitionRestaurantOrder(order.status, status)) {
     res.status(409).json({ error: `Invalid status transition ${order.status} → ${status}` }); return;
+  }
+  // Delivery completion requires PIN confirmation (prevents unauthorized complete).
+  if (
+    (status === "delivered" || status === "completed")
+    && (order.fulfillment === "delivery" || order.deliveryMethod === "merchant" || order.deliveryMethod === "flexa")
+    && !order.pinConfirmedAt
+    && !isStaff(req.user)
+  ) {
+    res.status(409).json({
+      error: "PIN_REQUIRED",
+      message: "Enter the customer confirmation PIN to complete delivery.",
+    });
+    return;
   }
 
   const [updated] = await db.update(restaurantOrdersTable).set({
@@ -1209,21 +1243,37 @@ router.put("/restaurants/:id/delivery", requireRestaurantAuthAccess, async (req,
   const restaurant = await loadOwnerRestaurant(req.userId!, id);
   if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
   const body = req.body ?? {};
-  const fulfillment = String(body.fulfillment || "pickup");
+  const pickupAvailable = body.pickupAvailable != null
+    ? !!body.pickupAvailable
+    : String(body.fulfillment || "pickup") !== "delivery";
+  const merchantDeliveryEnabled = body.merchantDeliveryEnabled != null
+    ? !!body.merchantDeliveryEnabled
+    : body.deliveryAvailable != null
+      ? !!body.deliveryAvailable
+      : String(body.fulfillment || "") === "delivery" || String(body.fulfillment || "") === "both";
+  const flexaRequested = !!body.flexaDeliveryEnabled;
+  const flexaDeliveryEnabled = RESTAURANT_FLEXA_DELIVERY_ENABLED && flexaRequested;
+  const deliveryAvailable = merchantDeliveryEnabled || flexaDeliveryEnabled;
+  let fulfillment = String(body.fulfillment || "");
   if (!["pickup", "delivery", "both"].includes(fulfillment)) {
-    res.status(400).json({ error: "Invalid fulfillment" }); return;
+    if (pickupAvailable && deliveryAvailable) fulfillment = "both";
+    else if (deliveryAvailable) fulfillment = "delivery";
+    else fulfillment = "pickup";
   }
   const currency = "USD";
   const deliveryFee = Math.max(0, Number(body.deliveryFee) || 0);
   const minOrderAmount = Math.max(0, Number(body.minOrderAmount) || 0);
-  const freeDeliveryMin = body.freeDeliveryMin != null ? Math.max(0, Number(body.freeDeliveryMin)) : null;
-  const pickupAvailable = body.pickupAvailable != null ? !!body.pickupAvailable : fulfillment !== "delivery";
-  const deliveryAvailable = body.deliveryAvailable != null ? !!body.deliveryAvailable : fulfillment !== "pickup";
+  const freeDeliveryMin = body.freeDeliveryMin != null && body.freeDeliveryMin !== ""
+    ? Math.max(0, Number(body.freeDeliveryMin))
+    : null;
+  const feeMode = String(body.feeMode || "fixed").toLowerCase() === "distance" ? "distance" : "fixed";
+  const feePerKm = Math.max(0, Number(body.feePerKm) || 0);
+  const deliveryHours = Array.isArray(body.deliveryHours) ? body.deliveryHours.slice(0, 7) : [];
   const values = {
     fulfillment,
     deliveryFee,
     deliveryFeeMinor: body.deliveryFeeMinor != null ? Math.max(0, Math.floor(Number(body.deliveryFeeMinor))) : toMinorUnits(deliveryFee, currency),
-    deliveryZones: Array.isArray(body.deliveryZones) ? body.deliveryZones.map(String) : [],
+    deliveryZones: Array.isArray(body.deliveryZones) ? body.deliveryZones.map(String).map((z) => z.trim()).filter(Boolean).slice(0, 40) : [],
     deliveryRadiusKm: Math.max(0.1, Number(body.deliveryRadiusKm) || 5),
     minOrderAmount,
     minOrderAmountMinor: body.minOrderAmountMinor != null ? Math.max(0, Math.floor(Number(body.minOrderAmountMinor))) : toMinorUnits(minOrderAmount, currency),
@@ -1233,20 +1283,234 @@ router.put("/restaurants/:id/delivery", requireRestaurantAuthAccess, async (req,
     freeDeliveryMin,
     freeDeliveryMinMinor: freeDeliveryMin != null ? toMinorUnits(freeDeliveryMin, currency) : null,
     pickupAvailable,
-    deliveryAvailable,
+    deliveryAvailable: deliveryAvailable && !body.deliverySuspended,
     deliverySuspended: !!body.deliverySuspended,
     ownerManagedDelivery: true,
+    merchantDeliveryEnabled,
+    flexaDeliveryEnabled,
+    feeMode,
+    feePerKmMinor: body.feePerKmMinor != null
+      ? Math.max(0, Math.floor(Number(body.feePerKmMinor)))
+      : toMinorUnits(feePerKm, currency),
+    deliveryHours,
     updatedAt: new Date(),
   };
   await db.insert(restaurantDeliverySettingsTable).values({ restaurantId: id, ...values })
     .onConflictDoUpdate({ target: restaurantDeliverySettingsTable.restaurantId, set: values });
   res.json({
     delivery: values,
+    methods: resolveEnabledMethods(values),
+    flexaDeliveryFeatureEnabled: RESTAURANT_FLEXA_DELIVERY_ENABLED,
     disclaimer: RESTAURANT_FULFILLMENT_DISCLAIMER,
     driverPolicy: RESTAURANT_DRIVER_POLICY,
     usesFlexaDrivers: false,
     note: RESTAURANT_DRIVER_POLICY,
+    flexaNote: RESTAURANT_FLEXA_DELIVERY_ENABLED
+      ? null
+      : "Flexa Delivery for restaurant food is not enabled yet. Merchant delivery and pickup remain available.",
   });
+});
+
+/** Quote merchant delivery fee / eligibility for checkout. */
+router.post("/restaurants/:id/delivery-quote", requireRestaurantAccess, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [restaurant] = await db.select().from(restaurantsTable).where(eq(restaurantsTable.id, id)).limit(1);
+  if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
+  const [delivery] = await db.select().from(restaurantDeliverySettingsTable)
+    .where(eq(restaurantDeliverySettingsTable.restaurantId, id)).limit(1);
+  const methods = resolveEnabledMethods(delivery);
+  const method = normalizeDeliveryMethod(req.body?.deliveryMethod, req.body?.fulfillment);
+  if (method === "pickup") {
+    if (!methods.pickup) { res.status(400).json({ error: "Pickup not available" }); return; }
+    res.json({
+      ok: true,
+      method,
+      label: deliveryMethodLabel(method),
+      deliveryFeeMinor: 0,
+      deliveryFee: 0,
+      distanceKm: null,
+      estimatedDeliveryMinutes: null,
+    });
+    return;
+  }
+  if (method === "flexa") {
+    res.status(400).json({
+      error: "Flexa Delivery is not available for this restaurant order",
+      flexaDeliveryFeatureEnabled: RESTAURANT_FLEXA_DELIVERY_ENABLED,
+    });
+    return;
+  }
+  if (!methods.merchant) {
+    res.status(400).json({ error: delivery?.deliverySuspended ? "Delivery temporarily suspended" : "Merchant delivery not available" });
+    return;
+  }
+  if (!isDeliveryWindowOpen(delivery?.deliveryHours as any, new Date(), restaurant.timezone || "America/Port-au-Prince")) {
+    res.status(409).json({ error: "Outside delivery hours" }); return;
+  }
+  const address = String(req.body?.deliveryAddress || "");
+  if (!zoneAllowsAddress(delivery?.deliveryZones, address)) {
+    res.status(400).json({ error: "Address outside configured delivery zones" }); return;
+  }
+  const customerLat = req.body?.latitude != null ? Number(req.body.latitude) : null;
+  const customerLng = req.body?.longitude != null ? Number(req.body.longitude) : null;
+  const range = isWithinDeliveryRadius({
+    restaurantLat: restaurant.latitude,
+    restaurantLng: restaurant.longitude,
+    customerLat,
+    customerLng,
+    radiusKm: delivery?.deliveryRadiusKm,
+  });
+  if (!range.ok) {
+    res.status(400).json({ error: "Address outside delivery radius", distanceKm: range.distanceKm }); return;
+  }
+  const subtotalMinor = Math.max(0, Math.floor(Number(req.body?.subtotalMinor) || 0));
+  const minMinor = delivery?.minOrderAmountMinor || toMinorUnits(Number(delivery?.minOrderAmount || 0), "USD");
+  if (subtotalMinor > 0 && subtotalMinor < minMinor) {
+    res.status(400).json({ error: "Below minimum order for delivery", minOrderAmountMinor: minMinor }); return;
+  }
+  const fee = computeMerchantDeliveryFeeMinor({
+    settings: delivery,
+    subtotalMinor,
+    distanceKm: range.distanceKm,
+  });
+  res.json({
+    ok: true,
+    method: "merchant",
+    label: deliveryMethodLabel("merchant"),
+    deliveryFeeMinor: fee.feeMinor,
+    deliveryFee: fromMinorUnits(fee.feeMinor, "USD"),
+    feeMode: fee.mode,
+    waived: fee.waived,
+    distanceKm: range.distanceKm,
+    estimatedDeliveryMinutes: delivery?.estimatedDeliveryMinutes ?? 45,
+    usesFlexaDrivers: false,
+    financial: {
+      merchantDeliveryFeeMinor: fee.feeMinor,
+      flexaDeliveryFeeMinor: 0,
+      platformCommissionMinor: 0,
+    },
+  });
+});
+
+/* ─── Merchant delivery staff (not Flexa drivers) ─────────────────────────── */
+
+router.get("/restaurants/:id/delivery-staff", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const restaurant = await loadOwnerRestaurant(req.userId!, id);
+  if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
+  const staff = await db.select().from(restaurantDeliveryStaffTable)
+    .where(eq(restaurantDeliveryStaffTable.restaurantId, id))
+    .orderBy(desc(restaurantDeliveryStaffTable.createdAt));
+  res.json({ staff, note: "Merchant delivery personnel — not Flexa drivers." });
+});
+
+router.post("/restaurants/:id/delivery-staff", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const restaurant = await loadOwnerRestaurant(req.userId!, id);
+  if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
+  const displayName = String(req.body?.displayName || "").trim();
+  if (displayName.length < 2) { res.status(400).json({ error: "Name required" }); return; }
+  const [row] = await db.insert(restaurantDeliveryStaffTable).values({
+    restaurantId: id,
+    displayName: displayName.slice(0, 120),
+    phone: String(req.body?.phone || "").trim().slice(0, 40),
+    notes: String(req.body?.notes || "").trim().slice(0, 500),
+    active: req.body?.active !== false,
+  }).returning();
+  res.status(201).json({ staff: row });
+});
+
+router.patch("/restaurants/:id/delivery-staff/:staffId", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const staffId = Number(req.params.staffId);
+  const restaurant = await loadOwnerRestaurant(req.userId!, id);
+  if (!restaurant) { res.status(404).json({ error: "Not found" }); return; }
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (req.body?.displayName != null) patch.displayName = String(req.body.displayName).trim().slice(0, 120);
+  if (req.body?.phone != null) patch.phone = String(req.body.phone).trim().slice(0, 40);
+  if (req.body?.notes != null) patch.notes = String(req.body.notes).trim().slice(0, 500);
+  if (req.body?.active != null) patch.active = !!req.body.active;
+  const [row] = await db.update(restaurantDeliveryStaffTable).set(patch)
+    .where(and(
+      eq(restaurantDeliveryStaffTable.id, staffId),
+      eq(restaurantDeliveryStaffTable.restaurantId, id),
+    ))
+    .returning();
+  if (!row) { res.status(404).json({ error: "Staff not found" }); return; }
+  res.json({ staff: row });
+});
+
+router.post("/restaurants/me/orders/:orderId/assign-staff", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
+  const orderId = Number(req.params.orderId);
+  const staffId = Number(req.body?.staffId);
+  const [order] = await db.select().from(restaurantOrdersTable).where(eq(restaurantOrdersTable.id, orderId)).limit(1);
+  if (!order) { res.status(404).json({ error: "Not found" }); return; }
+  const restaurant = await loadOwnerRestaurant(req.userId!, order.restaurantId);
+  if (!restaurant && !isStaff(req.user)) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (order.deliveryMethod !== "merchant" && order.fulfillment !== "delivery") {
+    res.status(400).json({ error: "Only merchant delivery orders can be assigned to restaurant staff" }); return;
+  }
+  if (order.usesFlexaDrivers) {
+    res.status(400).json({ error: "Flexa Driver orders cannot use restaurant staff assignment" }); return;
+  }
+  const [staff] = await db.select().from(restaurantDeliveryStaffTable).where(and(
+    eq(restaurantDeliveryStaffTable.id, staffId),
+    eq(restaurantDeliveryStaffTable.restaurantId, order.restaurantId),
+    eq(restaurantDeliveryStaffTable.active, true),
+  )).limit(1);
+  if (!staff) { res.status(404).json({ error: "Active staff not found" }); return; }
+  const [updated] = await db.update(restaurantOrdersTable).set({
+    assignedStaffId: staff.id,
+    usesFlexaDrivers: false,
+    updatedAt: new Date(),
+  }).where(eq(restaurantOrdersTable.id, orderId)).returning();
+  await appendOrderStatusHistory({
+    orderId,
+    fromStatus: order.status,
+    toStatus: order.status,
+    actorId: req.userId!,
+    note: `Assigned merchant courier: ${staff.displayName}`,
+  });
+  res.json({
+    order: updated,
+    staff,
+    label: deliveryMethodLabel("merchant"),
+    usesFlexaDrivers: false,
+  });
+});
+
+router.post("/restaurants/me/orders/:orderId/failed-delivery", requireRestaurantAuthAccess, async (req, res): Promise<void> => {
+  const orderId = Number(req.params.orderId);
+  const note = String(req.body?.note || "").trim().slice(0, 1000);
+  if (note.length < 3) { res.status(400).json({ error: "Failure note required" }); return; }
+  const [order] = await db.select().from(restaurantOrdersTable).where(eq(restaurantOrdersTable.id, orderId)).limit(1);
+  if (!order) { res.status(404).json({ error: "Not found" }); return; }
+  const restaurant = await loadOwnerRestaurant(req.userId!, order.restaurantId);
+  if (!restaurant && !isStaff(req.user)) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!["out_for_delivery", "ready_for_pickup"].includes(order.status)) {
+    res.status(409).json({ error: "Order is not out for delivery" }); return;
+  }
+  const [updated] = await db.update(restaurantOrdersTable).set({
+    failedDeliveryNote: note,
+    status: "preparing",
+    usesFlexaDrivers: false,
+    updatedAt: new Date(),
+  }).where(eq(restaurantOrdersTable.id, orderId)).returning();
+  await appendOrderStatusHistory({
+    orderId,
+    fromStatus: order.status,
+    toStatus: "preparing",
+    actorId: req.userId!,
+    note: `Failed delivery attempt: ${note}`,
+  });
+  await notify(order.customerId, {
+    restaurantId: order.restaurantId,
+    type: "delivery_failed",
+    title: `Order #${orderId} delivery update`,
+    body: "The restaurant reported a delivery issue and will contact you.",
+    href: "/restaurant/my-orders",
+  });
+  res.json({ order: updated });
 });
 
 /* ─── Identity verification ──────────────────────────────────────────────── */
@@ -1643,16 +1907,55 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
     if (existing) { res.json({ order: existing, deduped: true }); return; }
   }
 
-  const fulfillment = String(body.fulfillment || "pickup");
   const [delivery] = await db.select().from(restaurantDeliverySettingsTable)
     .where(eq(restaurantDeliverySettingsTable.restaurantId, id)).limit(1);
-  if (fulfillment === "delivery") {
-    if (delivery?.fulfillment === "pickup" || delivery?.deliveryAvailable === false || delivery?.deliverySuspended) {
-      res.status(400).json({ error: "This business is pickup only right now" }); return;
-    }
-  }
-  if (fulfillment === "pickup" && (delivery?.fulfillment === "delivery" || delivery?.pickupAvailable === false)) {
+  const methods = resolveEnabledMethods(delivery);
+  const deliveryMethod: RestaurantDeliveryMethod = normalizeDeliveryMethod(
+    body.deliveryMethod,
+    String(body.fulfillment || "pickup"),
+  );
+  const fulfillment = deliveryMethod === "pickup" ? "pickup" : "delivery";
+  if (deliveryMethod === "pickup" && !methods.pickup) {
     res.status(400).json({ error: "This business is delivery only" }); return;
+  }
+  if (deliveryMethod === "merchant" && !methods.merchant) {
+    res.status(400).json({
+      error: delivery?.deliverySuspended ? "Delivery temporarily suspended" : "Merchant delivery is not available",
+    });
+    return;
+  }
+  if (deliveryMethod === "flexa") {
+    res.status(400).json({
+      error: "Flexa Delivery is not available for restaurant food orders yet",
+      flexaDeliveryFeatureEnabled: RESTAURANT_FLEXA_DELIVERY_ENABLED,
+      policy: RESTAURANT_DRIVER_POLICY,
+    });
+    return;
+  }
+
+  const deliveryAddress = fulfillment === "delivery" ? String(body.deliveryAddress || "").trim() : "";
+  if (fulfillment === "delivery" && deliveryAddress.length < 4) {
+    res.status(400).json({ error: "Delivery address required" }); return;
+  }
+  if (fulfillment === "delivery" && !zoneAllowsAddress(delivery?.deliveryZones, deliveryAddress)) {
+    res.status(400).json({ error: "Address outside configured delivery zones" }); return;
+  }
+  if (fulfillment === "delivery" && !isDeliveryWindowOpen(delivery?.deliveryHours as any, new Date(), restaurant.timezone || "America/Port-au-Prince")) {
+    res.status(409).json({ error: "Outside delivery hours" }); return;
+  }
+  const customerLat = body.deliveryLatitude != null ? Number(body.deliveryLatitude) : (body.latitude != null ? Number(body.latitude) : null);
+  const customerLng = body.deliveryLongitude != null ? Number(body.deliveryLongitude) : (body.longitude != null ? Number(body.longitude) : null);
+  const range = fulfillment === "delivery"
+    ? isWithinDeliveryRadius({
+      restaurantLat: restaurant.latitude,
+      restaurantLng: restaurant.longitude,
+      customerLat,
+      customerLng,
+      radiusKm: delivery?.deliveryRadiusKm,
+    })
+    : { ok: true, distanceKm: null as number | null };
+  if (!range.ok) {
+    res.status(400).json({ error: "Address outside delivery radius", distanceKm: range.distanceKm }); return;
   }
 
   const lines = Array.isArray(body.items) ? body.items : [];
@@ -1741,12 +2044,18 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
       }
 
       let deliveryFeeMinor = 0;
-      if (fulfillment === "delivery") {
-        deliveryFeeMinor = delivery?.deliveryFeeMinor || toMinorUnits(Number(delivery?.deliveryFee || 0), currency);
+      let merchantDeliveryFeeMinor = 0;
+      if (fulfillment === "delivery" && deliveryMethod === "merchant") {
         const minMinor = delivery?.minOrderAmountMinor || toMinorUnits(Number(delivery?.minOrderAmount || 0), currency);
         if (subtotalMinor < minMinor) throw new Error("MIN_ORDER");
-        const freeMin = delivery?.freeDeliveryMinMinor;
-        if (freeMin != null && subtotalMinor >= freeMin) deliveryFeeMinor = 0;
+        const fee = computeMerchantDeliveryFeeMinor({
+          settings: delivery,
+          subtotalMinor,
+          distanceKm: range.distanceKm,
+          currency,
+        });
+        deliveryFeeMinor = fee.feeMinor;
+        merchantDeliveryFeeMinor = fee.feeMinor;
       }
       const totalMinor = subtotalMinor + deliveryFeeMinor;
 
@@ -1755,6 +2064,7 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
         customerId: req.userId!,
         status: "pending_payment",
         fulfillment,
+        deliveryMethod,
         subtotal: fromMinorUnits(subtotalMinor, currency),
         deliveryFee: fromMinorUnits(deliveryFeeMinor, currency),
         total: fromMinorUnits(totalMinor, currency),
@@ -1763,13 +2073,21 @@ router.post("/restaurants/:id/orders", requireRestaurantAuthAccess, async (req, 
         totalMinor,
         currency,
         specialInstructions: String(body.specialInstructions || "").slice(0, 1000),
-        deliveryAddress: fulfillment === "delivery" ? String(body.deliveryAddress || "") : null,
+        deliveryAddress: fulfillment === "delivery" ? deliveryAddress : null,
+        deliveryLatitude: customerLat != null && Number.isFinite(customerLat) ? customerLat : null,
+        deliveryLongitude: customerLng != null && Number.isFinite(customerLng) ? customerLng : null,
+        distanceKm: range.distanceKm,
         idempotencyKey,
         paymentStatus: "requires_payment",
         usesFlexaDrivers: false,
         platformCommissionMinor: 0,
+        merchantDeliveryFeeMinor,
+        flexaDeliveryFeeMinor: 0,
         estimatedPrepMinutes: delivery?.estimatedPrepMinutes ?? 30,
-        paymentNote: RESTAURANT_FULFILLMENT_DISCLAIMER,
+        estimatedDeliveryMinutes: fulfillment === "delivery" ? (delivery?.estimatedDeliveryMinutes ?? 45) : null,
+        paymentNote: deliveryMethod === "merchant"
+          ? `${RESTAURANT_FULFILLMENT_DISCLAIMER} ${deliveryMethodLabel("merchant")}.`
+          : RESTAURANT_FULFILLMENT_DISCLAIMER,
       }).returning();
 
       await tx.insert(restaurantOrderItemsTable).values(
@@ -1862,14 +2180,20 @@ router.post("/restaurants/me/orders/:orderId/confirm-pin", requireRestaurantAuth
   if (!order.confirmationPin || order.confirmationPin !== pin) {
     res.status(403).json({ error: "Invalid confirmation PIN" }); return;
   }
+  if (order.pinConfirmedAt) {
+    res.status(409).json({ error: "PIN already used for this order" }); return;
+  }
   if (!["ready_for_pickup", "out_for_delivery", "delivered"].includes(order.status) && !isOwner) {
     res.status(409).json({ error: "Order is not ready for confirmation" }); return;
   }
-  const nextStatus = order.fulfillment === "delivery" ? "delivered" : "completed";
+  const nextStatus = order.fulfillment === "delivery" || order.deliveryMethod === "merchant" || order.deliveryMethod === "flexa"
+    ? "delivered"
+    : "completed";
   const [updated] = await db.update(restaurantOrdersTable).set({
     status: nextStatus,
     pinConfirmedAt: new Date(),
     usesFlexaDrivers: false,
+    flexaDeliveryFeeMinor: 0,
     updatedAt: new Date(),
   }).where(eq(restaurantOrdersTable.id, orderId)).returning();
   await appendOrderStatusHistory({

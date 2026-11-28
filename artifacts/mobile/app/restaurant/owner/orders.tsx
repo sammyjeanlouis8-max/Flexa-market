@@ -15,11 +15,15 @@ import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import {
+  assignRestaurantOrderStaff,
   confirmRestaurantOrderPin,
+  deliveryMethodCustomerLabel,
+  fetchRestaurantDeliveryStaff,
   fetchRestaurantOrders,
   formatMoney,
   patchOrderStatus,
   refundRestaurantOrder,
+  reportRestaurantFailedDelivery,
   statusLabel,
   type Order,
 } from "@/lib/restaurantApi";
@@ -31,8 +35,8 @@ const NEXT: Record<string, string[]> = {
   pending: ["confirmed", "rejected", "canceled"],
   confirmed: ["preparing", "canceled"],
   preparing: ["ready_for_pickup", "out_for_delivery"],
-  ready_for_pickup: ["completed"],
-  out_for_delivery: ["delivered", "completed"],
+  ready_for_pickup: ["out_for_delivery"],
+  out_for_delivery: [],
   delivered: ["completed"],
   completed: [],
   rejected: [],
@@ -51,12 +55,14 @@ export default function OwnerOrdersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pinByOrder, setPinByOrder] = useState<Record<number, string>>({});
+  const [staff, setStaff] = useState<Array<{ id: number; displayName: string; phone: string; active: boolean }>>([]);
 
   const load = useCallback(async () => {
     if (!restaurantId) return;
     setError(null);
     try {
       setOrders(await fetchRestaurantOrders({ restaurantId }, { token }));
+      setStaff(await fetchRestaurantDeliveryStaff(restaurantId, { token }).catch(() => []));
     } catch (e: any) {
       setError(e?.message || t("restaurant_loadError"));
     }
@@ -126,18 +132,50 @@ export default function OwnerOrdersScreen() {
                 <Text style={styles.badge}>{statusLabel(o.status)}</Text>
               </View>
               <Text style={styles.muted}>
-                {formatMoney(o.total, o.currency)} · {o.fulfillment}
+                {formatMoney(o.total, o.currency)} · {deliveryMethodCustomerLabel(o.deliveryMethod, o.fulfillment)}
                 {o.paymentStatus ? ` · ${o.paymentStatus}` : ""}
               </Text>
               <Text style={styles.muted}>{new Date(o.createdAt).toLocaleString()}</Text>
               <View style={styles.row}>
-                {(NEXT[o.status] || []).map((s) => (
-                  <Pressable key={s} style={styles.mini} onPress={() => void setStatus(o.id, s)}>
-                    <Text style={styles.miniText}>{statusLabel(s)}</Text>
+                {(NEXT[o.status] || [])
+                  .filter((s) => {
+                    if (s === "out_for_delivery" && o.fulfillment !== "delivery") return false;
+                    if ((s === "delivered" || s === "completed") && o.fulfillment === "delivery" && !o.pinConfirmedAt) {
+                      return false;
+                    }
+                    return true;
+                  })
+                  .map((s) => (
+                    <Pressable key={s} style={styles.mini} onPress={() => void setStatus(o.id, s)}>
+                      <Text style={styles.miniText}>{statusLabel(s)}</Text>
+                    </Pressable>
+                  ))}
+                {o.fulfillment === "pickup" && o.status === "ready_for_pickup" ? (
+                  <Pressable style={styles.mini} onPress={() => void setStatus(o.id, "completed")}>
+                    <Text style={styles.miniText}>{statusLabel("completed")}</Text>
                   </Pressable>
-                ))}
+                ) : null}
               </View>
-              {["ready_for_pickup", "out_for_delivery", "delivered"].includes(o.status) ? (
+              {staff.length > 0
+                && ["confirmed", "preparing", "ready_for_pickup", "out_for_delivery"].includes(o.status)
+                && o.fulfillment === "delivery" ? (
+                <View style={styles.row}>
+                  {staff.filter((s) => s.active).map((s) => (
+                    <Pressable
+                      key={s.id}
+                      style={styles.mini}
+                      onPress={() => {
+                        void assignRestaurantOrderStaff(o.id, s.id, { token: token! })
+                          .then((updated) => setOrders((prev) => prev.map((x) => (x.id === o.id ? updated : x))))
+                          .catch((e: any) => setError(e?.message || "Assign failed"));
+                      }}
+                    >
+                      <Text style={styles.miniText}>Assign {s.displayName}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {["ready_for_pickup", "out_for_delivery"].includes(o.status) ? (
                 <View style={styles.pinRow}>
                   <TextInput
                     value={pinByOrder[o.id] || ""}
@@ -150,6 +188,18 @@ export default function OwnerOrdersScreen() {
                   <Pressable style={styles.btn} onPress={() => void confirmPin(o.id)}>
                     <Text style={styles.btnText}>PIN</Text>
                   </Pressable>
+                  {o.fulfillment === "delivery" ? (
+                    <Pressable
+                      style={styles.mini}
+                      onPress={() => {
+                        void reportRestaurantFailedDelivery(o.id, "Failed delivery attempt", { token: token! })
+                          .then((updated) => setOrders((prev) => prev.map((x) => (x.id === o.id ? updated : x))))
+                          .catch((e: any) => setError(e?.message || "Report failed"));
+                      }}
+                    >
+                      <Text style={styles.miniText}>Failed</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
               {["completed", "delivered", "order_placed", "confirmed"].includes(o.status) ? (

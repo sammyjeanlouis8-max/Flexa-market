@@ -16,7 +16,7 @@ const LINKS = [
 export default function WholesaleSellerDashboard() {
   const { t } = useTranslation();
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell
         title={t("wholesale.sellerDashTitle", { defaultValue: "Seller dashboard" })}
         subtitle={t("wholesale.sellerDashSubtitle", { defaultValue: "Monitor depot stock and chat deals — no cart orders." })}

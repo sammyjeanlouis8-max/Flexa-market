@@ -83,7 +83,7 @@ export default function WholesaleSellerWarehouse() {
   };
 
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell
         title={t("wholesale.myDepotTitle", { defaultValue: "My warehouse" })}
         subtitle={t("wholesale.myDepotSubtitle", {

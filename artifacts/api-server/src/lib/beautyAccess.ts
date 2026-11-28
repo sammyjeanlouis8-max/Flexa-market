@@ -5,7 +5,7 @@
  * While false: Super Admin ONLY (not regular Admin / Moderator).
  * Intentionally avoids importing auth middleware (SESSION_SECRET side effects).
  */
-export const BEAUTY_PUBLIC_LAUNCH = false;
+export const BEAUTY_PUBLIC_LAUNCH = true;
 
 function roleOf(user: { role?: string | null } | null | undefined): string {
   return String(user?.role || "").trim().toLowerCase().replace(/[\s-_]+/g, "");

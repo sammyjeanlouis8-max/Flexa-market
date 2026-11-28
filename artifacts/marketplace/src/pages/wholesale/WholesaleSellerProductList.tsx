@@ -41,5 +41,5 @@ function ProductList({ view }: { view: View }) {
 }
 
 export default function WholesaleSellerProductList({ view }: { view: View }) {
-  return <WholesalePageGate><ProductList view={view} /></WholesalePageGate>;
+  return <WholesalePageGate requireAuth><ProductList view={view} /></WholesalePageGate>;
 }

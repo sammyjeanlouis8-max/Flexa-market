@@ -9,23 +9,21 @@ import {
 } from "../lib/restaurantAccess";
 
 describe("restaurantAccess gate", () => {
-  it("keeps public launch disabled until Super Admin approval", () => {
-    expect(RESTAURANT_PUBLIC_LAUNCH).toBe(false);
+  it("enables public launch for all users including guests", () => {
+    expect(RESTAURANT_PUBLIC_LAUNCH).toBe(true);
+    expect(canAccessRestaurantModule(null)).toBe(true);
+    expect(canAccessRestaurantModule({ role: "user" })).toBe(true);
+    expect(canAccessRestaurantModule({ isAdmin: true })).toBe(true);
+    expect(canAccessRestaurantModule({ isSuperAdmin: true })).toBe(true);
   });
 
-  it("allows Super Admin only while public launch is false", () => {
+  it("keeps staff helper Super Admin–only for elevated ops", () => {
     expect(canAccessRestaurantStaff({ isSuperAdmin: true })).toBe(true);
     expect(canAccessRestaurantStaff({ isAdmin: true })).toBe(false);
     expect(canAccessRestaurantStaff({ role: "moderator" })).toBe(false);
     expect(canAccessRestaurantStaff({ role: "admin" })).toBe(false);
     expect(canAccessRestaurantStaff({ role: "user" })).toBe(false);
     expect(canAccessRestaurantStaff(null)).toBe(false);
-  });
-
-  it("denies regular users and non–super-admin staff while public launch is false", () => {
-    expect(canAccessRestaurantModule({ role: "user" })).toBe(false);
-    expect(canAccessRestaurantModule({ isAdmin: true })).toBe(false);
-    expect(canAccessRestaurantModule({ isSuperAdmin: true })).toBe(true);
   });
 });
 

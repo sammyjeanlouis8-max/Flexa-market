@@ -50,7 +50,7 @@ describe("GET /api/wholesale/launch", () => {
         url: null,
         label: "Flexa Wholesale",
         native: true,
-        publicLaunch: false,
+        publicLaunch: true,
       });
     });
   });

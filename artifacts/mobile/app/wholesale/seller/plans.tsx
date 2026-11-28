@@ -6,9 +6,12 @@ import { WholesaleShell } from "@/components/wholesale/WholesaleShell";
 export default function Screen() {
   const { t } = useLanguage();
   return (
-    <WholesaleGate>
+    <WholesaleGate requireAuth>
       <WholesaleShell title={t("wholesale_plansTitle")}>
-        <Text>{t("wholesale_plansSubtitle")}</Text>
+        <Text testID="wholesale-plans-free">
+          {t("wholesale_plansFreeLaunch")
+            || "Flexa Wholesale is free during the initial public launch. No subscription charges are active."}
+        </Text>
       </WholesaleShell>
     </WholesaleGate>
   );

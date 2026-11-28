@@ -4,7 +4,7 @@ import { useBroadcast } from "@/contexts/broadcast";
 import {
   Home, Search, Plus, MessageCircle, User,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase, Menu, LayoutGrid,
-  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award, Warehouse, UtensilsCrossed,
+  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award, Warehouse, UtensilsCrossed, Scissors,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import LanguagePickerModal from "@/components/LanguagePickerModal";
@@ -43,6 +43,7 @@ import AdminShell from "@/components/admin/AdminShell";
 import { cn } from "@/lib/utils";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
 import { canAccessRestaurant } from "@/lib/restaurantAccess";
+import { canAccessBeauty } from "@/lib/beautyAccess";
 import { useGetCategories } from "@workspace/api-client-react";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
@@ -516,6 +517,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const canSeeLoan = !isNativeMobileApp() && !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
   const canSeeWholesale = canAccessWholesale(user);
   const canSeeRestaurant = canAccessRestaurant(user);
+  const canSeeBeauty = canAccessBeauty(user);
 
   type SidebarItem = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; key: string; highlight?: boolean; adminHighlight?: boolean; badge?: number };
   type SidebarSection = { heading?: string; highlight?: boolean; items: SidebarItem[] };
@@ -547,6 +549,15 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               icon: UtensilsCrossed,
               label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
               key: "flexa-restaurant",
+              highlight: true,
+            }]
+          : []),
+        ...(canSeeBeauty
+          ? [{
+              href: "/beauty",
+              icon: Scissors,
+              label: t("nav.seduireBeauty", { defaultValue: "Séduire Beauty" }),
+              key: "seduire-beauty",
               highlight: true,
             }]
           : []),

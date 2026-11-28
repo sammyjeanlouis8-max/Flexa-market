@@ -1,27 +1,27 @@
 import type { ScopeUser } from "@/lib/adminCountryAccess";
 
 /**
- * Flexa Wholesale rollout gate.
+ * Flexa Wholesale public launch gate.
  *
- * false  → authenticated staff only: Super Admin, Admin, Moderator
- * true   → visible to everyone (flip this when wholesale is ready to launch)
+ * true  → browse available to everyone (including guests)
+ * false → authenticated staff only: Super Admin, Admin, Moderator
  *
- * Regular users / sellers / support must not see the Flexa Wholesale menu
- * or open /wholesale while this flag is false.
+ * Keep in sync with mobile + api-server `WHOLESALE_PUBLIC_LAUNCH`.
+ * Seller writes still require authentication + ownership checks on the API.
  */
-export const WHOLESALE_PUBLIC_LAUNCH = false;
+export const WHOLESALE_PUBLIC_LAUNCH = true;
 
 function staffRole(user: ScopeUser): string {
   return String(user?.role ?? "").trim().toLowerCase();
 }
 
 /**
- * Menu + /wholesale access during the Market-native rebuild.
- * Uses the same staff signals as the Admin badge / admin drawer chrome.
+ * Menu + /wholesale module access.
+ * When public launch is on, guests and regular users may browse.
  */
 export function canAccessWholesale(user: ScopeUser | null | undefined): boolean {
-  if (!user) return false;
   if (WHOLESALE_PUBLIC_LAUNCH) return true;
+  if (!user) return false;
   if (user.isSuperAdmin || user.isAdmin) return true;
   const role = staffRole(user);
   return role === "superadmin" || role === "admin" || role === "moderator";

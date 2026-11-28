@@ -12,7 +12,7 @@ const LINKS = [
 export default function WholesaleAdmin() {
   const { t } = useTranslation();
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell
         title={t("wholesale.adminTitle", { defaultValue: "Wholesale admin" })}
         subtitle={t("wholesale.adminSubtitle")}

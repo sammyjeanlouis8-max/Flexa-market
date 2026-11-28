@@ -14,8 +14,8 @@ describe("beauty routes smoke", () => {
     expect(index).toContain("router.use(beautyRouter)");
   });
 
-  it("keeps public launch false (Super Admin preview)", () => {
-    expect(access).toContain("export const BEAUTY_PUBLIC_LAUNCH = false");
+  it("enables public launch while keeping auth write gates", () => {
+    expect(access).toContain("export const BEAUTY_PUBLIC_LAUNCH = true");
     expect(routes).toContain("requireBeautyAccess");
     expect(routes).toContain("requireBeautyAuthAccess");
     expect(routes).toContain("publicLaunch: BEAUTY_PUBLIC_LAUNCH");
@@ -131,7 +131,7 @@ describe("beauty access sync", () => {
     const apiFlag = /export const BEAUTY_PUBLIC_LAUNCH = (true|false)/.exec(api)?.[1];
     const marketFlag = /export const BEAUTY_PUBLIC_LAUNCH = (true|false)/.exec(market)?.[1];
     const mobileFlag = /export const BEAUTY_PUBLIC_LAUNCH = (true|false)/.exec(mobile)?.[1];
-    expect(apiFlag).toBe("false");
+    expect(apiFlag).toBe("true");
     expect(marketFlag).toBe(apiFlag);
     expect(mobileFlag).toBe(apiFlag);
   });

@@ -5,7 +5,7 @@ import { WholesaleListCard, WholesaleShell, WholesaleStat } from "@/components/w
 export default function WholesaleSellerEarnings() {
   const { t } = useTranslation();
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell
         title={t("wholesale.earningsTitle", { defaultValue: "Earnings" })}
         subtitle={t("wholesale.earningsSubtitle")}

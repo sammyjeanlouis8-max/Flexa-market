@@ -26,9 +26,15 @@ export default function OwnerSettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [fulfillment, setFulfillment] = useState<"pickup" | "delivery" | "both">("pickup");
+  const [pickupEnabled, setPickupEnabled] = useState(true);
+  const [merchantDeliveryEnabled, setMerchantDeliveryEnabled] = useState(false);
+  const [flexaDeliveryEnabled, setFlexaDeliveryEnabled] = useState(false);
+  const [flexaFeatureOn, setFlexaFeatureOn] = useState(false);
+  const [feeMode, setFeeMode] = useState<"fixed" | "distance">("fixed");
   const [deliveryFee, setDeliveryFee] = useState("0");
+  const [feePerKm, setFeePerKm] = useState("0");
   const [minOrder, setMinOrder] = useState("0");
+  const [freeDeliveryMin, setFreeDeliveryMin] = useState("");
   const [eta, setEta] = useState("45");
   const [prep, setPrep] = useState("30");
   const [radiusKm, setRadiusKm] = useState("5");
@@ -50,11 +56,15 @@ export default function OwnerSettingsScreen() {
         setPhone(r.phone || "");
         setWhatsapp(r.whatsapp || "");
         setEnableWhatsapp(Boolean(r.whatsapp));
-        if (r.fulfillment === "delivery" || r.fulfillment === "both" || r.fulfillment === "pickup") {
-          setFulfillment(r.fulfillment);
-        }
+        setPickupEnabled(r.pickupAvailable !== false);
+        setMerchantDeliveryEnabled(!!((r as any).merchantDeliveryEnabled ?? r.deliveryAvailable));
+        setFlexaDeliveryEnabled(!!(r as any).flexaDeliveryEnabled);
+        setFlexaFeatureOn(!!(r as any).flexaDeliveryFeatureEnabled);
+        if ((r as any).feeMode === "distance") setFeeMode("distance");
         if (r.deliveryFee != null) setDeliveryFee(String(r.deliveryFee));
+        if ((r as any).feePerKm != null) setFeePerKm(String((r as any).feePerKm));
         if (r.minOrderAmount != null) setMinOrder(String(r.minOrderAmount));
+        if ((r as any).freeDeliveryMin != null) setFreeDeliveryMin(String((r as any).freeDeliveryMin));
         if (r.estimatedDeliveryMinutes != null) setEta(String(r.estimatedDeliveryMinutes));
         if (r.estimatedPrepMinutes != null) setPrep(String(r.estimatedPrepMinutes));
         if ((r as any).deliveryRadiusKm != null) setRadiusKm(String((r as any).deliveryRadiusKm));
@@ -91,6 +101,12 @@ export default function OwnerSettingsScreen() {
     setSaving(true);
     setMsg(null);
     try {
+      const fulfillment =
+        pickupEnabled && merchantDeliveryEnabled
+          ? "both"
+          : merchantDeliveryEnabled
+            ? "delivery"
+            : "pickup";
       await updateRestaurant(
         restaurantId,
         {
@@ -104,10 +120,16 @@ export default function OwnerSettingsScreen() {
         restaurantId,
         {
           fulfillment,
+          pickupAvailable: pickupEnabled,
+          merchantDeliveryEnabled,
+          flexaDeliveryEnabled: flexaFeatureOn ? flexaDeliveryEnabled : false,
           ownerManagedDelivery: true,
           usesFlexaDrivers: false,
+          feeMode,
           deliveryFee: Number(deliveryFee) || 0,
+          feePerKm: Number(feePerKm) || 0,
           minOrderAmount: Number(minOrder) || 0,
+          freeDeliveryMin: freeDeliveryMin.trim() ? Number(freeDeliveryMin) : null,
           estimatedDeliveryMinutes: Number(eta) || 45,
           estimatedPrepMinutes: Number(prep) || 30,
           deliveryRadiusKm: Number(radiusKm) || 5,
@@ -147,26 +169,47 @@ export default function OwnerSettingsScreen() {
           </Pressable>
           {enableWhatsapp ? <Field label="WhatsApp number" value={whatsapp} onChange={setWhatsapp} /> : null}
 
-          <Text style={styles.label}>{t("restaurant_fulfillment") || "Fulfillment"}</Text>
-          <View style={styles.row}>
-            {(["pickup", "delivery", "both"] as const).map((f) => (
-              <Pressable key={f} style={[styles.chip, fulfillment === f && styles.chipOn]} onPress={() => setFulfillment(f)}>
-                <Text style={[styles.chipText, fulfillment === f && styles.chipTextOn]}>{f}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Field label="Delivery fee" value={deliveryFee} onChange={setDeliveryFee} />
-          <Field label="Minimum order" value={minOrder} onChange={setMinOrder} />
-          <Field label="Prep minutes" value={prep} onChange={setPrep} />
-          <Field label="Delivery ETA (min)" value={eta} onChange={setEta} />
-          <Field label="Delivery radius (km)" value={radiusKm} onChange={setRadiusKm} />
-          <Field label="Delivery zones (comma-separated)" value={zones} onChange={setZones} />
-
+          <Text style={styles.label}>Delivery methods</Text>
+          <Pressable style={styles.row} onPress={() => setPickupEnabled((v) => !v)}>
+            <Text style={{ fontSize: 18 }}>{pickupEnabled ? "☑" : "☐"}</Text>
+            <Text style={styles.p}>Customer Pickup</Text>
+          </Pressable>
+          <Pressable style={styles.row} onPress={() => setMerchantDeliveryEnabled((v) => !v)}>
+            <Text style={{ fontSize: 18 }}>{merchantDeliveryEnabled ? "☑" : "☐"}</Text>
+            <Text style={styles.p}>Merchant Delivery (restaurant personnel)</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.row, !flexaFeatureOn && { opacity: 0.5 }]}
+            disabled={!flexaFeatureOn}
+            onPress={() => setFlexaDeliveryEnabled((v) => !v)}
+          >
+            <Text style={{ fontSize: 18 }}>{flexaDeliveryEnabled && flexaFeatureOn ? "☑" : "☐"}</Text>
+            <Text style={styles.p}>
+              Flexa Delivery{!flexaFeatureOn ? " (not enabled for restaurant food yet)" : ""}
+            </Text>
+          </Pressable>
           <Pressable style={styles.row} onPress={() => setDeliverySuspended((v) => !v)}>
             <Text style={{ fontSize: 18 }}>{deliverySuspended ? "☑" : "☐"}</Text>
             <Text style={styles.p}>{t("restaurant_suspendDelivery") || "Temporarily suspend delivery"}</Text>
           </Pressable>
+
+          <Text style={styles.label}>Fee model</Text>
+          <View style={styles.row}>
+            {(["fixed", "distance"] as const).map((m) => (
+              <Pressable key={m} style={[styles.chip, feeMode === m && styles.chipOn]} onPress={() => setFeeMode(m)}>
+                <Text style={[styles.chipText, feeMode === m && styles.chipTextOn]}>{m}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Field label="Base delivery fee" value={deliveryFee} onChange={setDeliveryFee} />
+          {feeMode === "distance" ? <Field label="Fee per km" value={feePerKm} onChange={setFeePerKm} /> : null}
+          <Field label="Minimum order" value={minOrder} onChange={setMinOrder} />
+          <Field label="Free delivery from (optional)" value={freeDeliveryMin} onChange={setFreeDeliveryMin} />
+          <Field label="Prep minutes" value={prep} onChange={setPrep} />
+          <Field label="Delivery ETA (min)" value={eta} onChange={setEta} />
+          <Field label="Delivery radius (km)" value={radiusKm} onChange={setRadiusKm} />
+          <Field label="Delivery zones (comma-separated)" value={zones} onChange={setZones} />
 
           <Text style={styles.label}>{t("restaurant_businessHours") || "Business hours"}</Text>
           {hours.map((h, i) => (
@@ -218,49 +261,48 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 const styles = StyleSheet.create({
   note: { fontSize: 12, color: T.accent, marginBottom: 6, lineHeight: 17 },
   policy: { fontSize: 12, color: T.muted, marginBottom: 12, lineHeight: 17 },
-  label: { fontSize: 11, fontWeight: "800", color: T.muted, marginBottom: 4, textTransform: "uppercase" },
-  input: {
-    backgroundColor: T.white,
-    borderRadius: 12,
-    padding: 12,
-    color: T.ink,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: T.line,
-  },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12, alignItems: "center" },
+  label: { fontSize: 12, fontWeight: "800", color: T.ink, marginTop: 10, marginBottom: 4 },
+  p: { flex: 1, fontSize: 14, color: T.ink },
+  row: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
   chip: {
-    backgroundColor: T.white,
-    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: T.line,
+    borderRadius: 999,
+    backgroundColor: "rgba(26,107,71,0.08)",
   },
-  chipOn: { backgroundColor: T.accent, borderColor: T.accent },
-  chipText: { fontSize: 12, fontWeight: "800", color: T.ink },
-  chipTextOn: { color: T.white },
-  p: { flex: 1, color: T.ink, fontSize: 14 },
-  hourRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
-  day: { width: 72, fontWeight: "800", color: T.ink },
-  time: {
-    width: 72,
-    backgroundColor: T.white,
-    borderRadius: 8,
-    padding: 8,
+  chipOn: { backgroundColor: T.accent },
+  chipText: { fontSize: 12, fontWeight: "800", color: T.accent, textTransform: "capitalize" },
+  chipTextOn: { color: "#fff" },
+  input: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: T.line,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: T.ink,
+    backgroundColor: T.white,
+  },
+  hourRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  day: { width: 72, fontWeight: "700", color: T.ink },
+  time: {
+    width: 64,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: T.line,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     color: T.ink,
     textAlign: "center",
   },
   muted: { color: T.muted },
   btn: {
-    marginTop: 12,
+    marginTop: 16,
     backgroundColor: T.accent,
-    borderRadius: 16,
+    borderRadius: 999,
     paddingVertical: 14,
     alignItems: "center",
   },
-  btnText: { color: T.white, fontWeight: "900" },
+  btnText: { color: "#fff", fontWeight: "900" },
   msg: { marginTop: 10, color: T.accent, fontWeight: "700" },
   err: { color: "#b91c1c" },
 });

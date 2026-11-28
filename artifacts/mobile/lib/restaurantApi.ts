@@ -104,6 +104,7 @@ export type Order = {
   customerId: number;
   status: string;
   fulfillment: string;
+  deliveryMethod?: "pickup" | "merchant" | "flexa" | string;
   subtotal: number;
   deliveryFee: number;
   total: number;
@@ -112,11 +113,24 @@ export type Order = {
   deliveryAddress: string | null;
   paymentNote?: string;
   paymentStatus?: string;
+  confirmationPin?: string | null;
+  pinConfirmedAt?: string | null;
+  assignedStaffId?: number | null;
+  estimatedDeliveryMinutes?: number | null;
+  merchantDeliveryFeeMinor?: number;
+  flexaDeliveryFeeMinor?: number;
   restaurantName?: string;
   createdAt: string;
   updatedAt: string;
   items?: Array<{ id: number; name: string; quantity: number; unitPrice: number; lineTotal: number }>;
 };
+
+export function deliveryMethodCustomerLabel(method?: string | null, fulfillment?: string | null): string {
+  const m = String(method || (fulfillment === "delivery" ? "merchant" : "pickup")).toLowerCase();
+  if (m === "merchant" || m === "restaurant") return "Delivered by Restaurant";
+  if (m === "flexa") return "Delivered by Flexa";
+  return "Customer Pickup";
+}
 
 export type DishModel = {
   id: number;
@@ -432,6 +446,7 @@ export async function placeRestaurantOrder(
   restaurantId: number,
   body: {
     fulfillment: "pickup" | "delivery";
+    deliveryMethod?: "pickup" | "merchant" | "flexa";
     items: Array<{ dailyMenuItemId: number; quantity: number; notes?: string; optionIds?: number[] }>;
     specialInstructions?: string;
     deliveryAddress?: string;
@@ -442,13 +457,50 @@ export async function placeRestaurantOrder(
   const res = await fetch(`${getApiBase()}/restaurants/${restaurantId}/orders`, {
     method: "POST",
     headers: headers(opts.token),
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...body,
+      deliveryMethod: body.deliveryMethod || (body.fulfillment === "delivery" ? "merchant" : "pickup"),
+    }),
     signal: opts.signal,
   });
   return parseJson<{
     order: Order;
     payment?: { clientSecret?: string | null; paymentIntentId?: string | null; message?: string };
   }>(res, "Could not place order");
+}
+
+export async function fetchRestaurantDeliveryStaff(restaurantId: number, opts: AuthOpts) {
+  const res = await fetch(`${getApiBase()}/restaurants/${restaurantId}/delivery-staff`, {
+    headers: headers(opts.token),
+    signal: opts.signal,
+  });
+  const data = await parseJson<{ staff?: Array<{ id: number; displayName: string; phone: string; active: boolean }> }>(
+    res,
+    "Could not load delivery staff",
+  );
+  return data.staff ?? [];
+}
+
+export async function assignRestaurantOrderStaff(orderId: number, staffId: number, opts: AuthOpts): Promise<Order> {
+  const res = await fetch(`${getApiBase()}/restaurants/me/orders/${orderId}/assign-staff`, {
+    method: "POST",
+    headers: headers(opts.token),
+    body: JSON.stringify({ staffId }),
+    signal: opts.signal,
+  });
+  const data = await parseJson<{ order: Order }>(res, "Could not assign staff");
+  return data.order;
+}
+
+export async function reportRestaurantFailedDelivery(orderId: number, note: string, opts: AuthOpts): Promise<Order> {
+  const res = await fetch(`${getApiBase()}/restaurants/me/orders/${orderId}/failed-delivery`, {
+    method: "POST",
+    headers: headers(opts.token),
+    body: JSON.stringify({ note }),
+    signal: opts.signal,
+  });
+  const data = await parseJson<{ order: Order }>(res, "Could not report failed delivery");
+  return data.order;
 }
 
 export async function fetchDishModels(restaurantId: number, opts: AuthOpts): Promise<DishModel[]> {

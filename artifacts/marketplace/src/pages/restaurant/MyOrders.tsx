@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { RestaurantPageGate } from "@/components/restaurant/RestaurantPageGate";
 import { RestaurantEmpty, RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import {
+  deliveryMethodCustomerLabel,
   fetchRestaurantOrders,
   formatMoney,
   rateRestaurant,
@@ -88,8 +89,35 @@ export default function MyOrders() {
                         {formatMoney(o.total, o.currency)} · #{o.id}
                       </p>
                       <p className="mt-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                        {t(`restaurant.${statusLabelKey("order", o.status)}`)} · {o.fulfillment}
+                        {t(`restaurant.${statusLabelKey("order", o.status)}`)} ·{" "}
+                        {deliveryMethodCustomerLabel(o.deliveryMethod, o.fulfillment)}
                       </p>
+                      {o.fulfillment === "delivery" && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {t("restaurant.merchantDeliveryFee", { defaultValue: "Merchant delivery fee" })}:{" "}
+                          {formatMoney(
+                            o.merchantDeliveryFeeMinor != null
+                              ? o.merchantDeliveryFeeMinor / 100
+                              : Number(o.deliveryFee) || 0,
+                            o.currency,
+                          )}
+                          {o.estimatedDeliveryMinutes != null
+                            ? ` · ${t("restaurant.etaShort", { defaultValue: "~{{m}} min", m: o.estimatedDeliveryMinutes })}`
+                            : ""}
+                        </p>
+                      )}
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {t("restaurant.noLiveGpsUnlessAuthorized", {
+                          defaultValue: "Live courier GPS is shown only when authorized location data is available.",
+                        })}
+                      </p>
+                      <a
+                        href={`/restaurant/${o.restaurantId}`}
+                        className="mt-2 inline-flex text-xs font-bold text-[hsl(152,55%,28%)] underline-offset-2 hover:underline"
+                        data-testid="order-restaurant-contact"
+                      >
+                        {t("restaurant.contactRestaurant", { defaultValue: "Restaurant contact" })}
+                      </a>
                     </div>
                     {showPin && (
                       <div

@@ -116,10 +116,35 @@ export function setCartMeta(
   return next;
 }
 
-export function cartTotals(cart: RestaurantCartState | null, deliveryFee = 0) {
+export function cartTotals(
+  cart: RestaurantCartState | null,
+  deliveryFee = 0,
+  opts?: {
+    freeDeliveryMin?: number | null;
+    feeMode?: string;
+    feePerKm?: number;
+    distanceKm?: number | null;
+    deliveryMethod?: "pickup" | "merchant" | "flexa";
+  },
+) {
   if (!cart) return { itemCount: 0, subtotal: 0, deliveryFee: 0, total: 0, currency: "USD" };
   const subtotal = cart.lines.reduce((s, l) => s + l.price * l.quantity, 0);
-  const fee = cart.fulfillment === "delivery" ? deliveryFee : 0;
+  const method = opts?.deliveryMethod
+    || (cart.fulfillment === "delivery" ? "merchant" : "pickup");
+  let fee = 0;
+  if (method !== "pickup" && cart.fulfillment === "delivery") {
+    fee = Math.max(0, Number(deliveryFee) || 0);
+    if (String(opts?.feeMode || "").toLowerCase() === "distance") {
+      fee += Math.max(0, Number(opts?.feePerKm) || 0) * Math.max(0, Number(opts?.distanceKm) || 0);
+    }
+    if (
+      opts?.freeDeliveryMin != null
+      && Number.isFinite(opts.freeDeliveryMin)
+      && subtotal >= Number(opts.freeDeliveryMin)
+    ) {
+      fee = 0;
+    }
+  }
   const currency = cart.lines[0]?.currency || "USD";
   return {
     itemCount: cart.lines.reduce((s, l) => s + l.quantity, 0),

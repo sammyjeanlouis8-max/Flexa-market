@@ -4,11 +4,15 @@ import { useTranslation } from "react-i18next";
 import { RestaurantPageGate } from "@/components/restaurant/RestaurantPageGate";
 import { RestaurantEmpty, RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import {
+  assignRestaurantOrderStaff,
   confirmRestaurantOrderPin,
+  deliveryMethodCustomerLabel,
+  fetchRestaurantDeliveryStaff,
   fetchRestaurantOrders,
   formatMoney,
   patchOrderStatus,
   refundRestaurantOrder,
+  reportRestaurantFailedDelivery,
   statusLabelKey,
   type Order,
 } from "@/lib/restaurantApi";
@@ -35,12 +39,16 @@ export default function RestaurantOrders() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
   const [pinDraft, setPinDraft] = useState<Record<number, string>>({});
+  const [staff, setStaff] = useState<Array<{ id: number; displayName: string; phone: string; active: boolean }>>([]);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRestaurantOrders({ restaurantId: restaurantId || undefined })
       .then(setOrders)
       .finally(() => setLoading(false));
+    if (restaurantId) {
+      fetchRestaurantDeliveryStaff(restaurantId).then(setStaff).catch(() => setStaff([]));
+    }
   }, [restaurantId]);
 
   const visible = useMemo(() => {
@@ -125,8 +133,13 @@ export default function RestaurantOrders() {
                   </span>
                 </div>
                 <p className="mt-2 text-sm font-semibold">
-                  {formatMoney(o.total, o.currency)} · {o.fulfillment}
+                  {formatMoney(o.total, o.currency)} · {deliveryMethodCustomerLabel(o.deliveryMethod, o.fulfillment)}
                 </p>
+                {o.estimatedDeliveryMinutes != null && o.fulfillment === "delivery" && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("restaurant.etaShort", { defaultValue: "~{{m}} min", m: o.estimatedDeliveryMinutes })}
+                  </p>
+                )}
                 {o.specialInstructions && (
                   <p className="mt-1 text-xs text-muted-foreground">{o.specialInstructions}</p>
                 )}
@@ -153,6 +166,26 @@ export default function RestaurantOrders() {
                       )}
                     </>
                   )}
+                  {["confirmed", "preparing", "ready_for_pickup", "out_for_delivery"].includes(o.status)
+                    && (o.fulfillment === "delivery" || o.deliveryMethod === "merchant")
+                    && staff.length > 0 && (
+                    <select
+                      className="rounded-full border px-3 py-1.5 text-xs"
+                      defaultValue=""
+                      onChange={(e) => {
+                        const staffId = Number(e.target.value);
+                        if (!staffId) return;
+                        void assignRestaurantOrderStaff(o.id, staffId)
+                          .then((updated) => setOrders((prev) => prev.map((x) => (x.id === o.id ? updated : x))))
+                          .catch((err) => setMsg(err instanceof Error ? err.message : "Assign failed"));
+                      }}
+                    >
+                      <option value="">{t("restaurant.assignCourier", { defaultValue: "Assign courier…" })}</option>
+                      {staff.filter((s) => s.active).map((s) => (
+                        <option key={s.id} value={s.id}>{s.displayName}</option>
+                      ))}
+                    </select>
+                  )}
                   {["ready_for_pickup", "out_for_delivery"].includes(o.status) && (
                     <div className="flex w-full flex-wrap items-center gap-2">
                       <input
@@ -163,10 +196,24 @@ export default function RestaurantOrders() {
                         inputMode="numeric"
                       />
                       <Action onClick={() => confirmPin(o.id)} label={t("restaurant.confirmWithPin", { defaultValue: "Confirm PIN" })} primary />
-                      <Action
-                        onClick={() => setStatus(o.id, o.fulfillment === "delivery" ? "delivered" : "completed")}
-                        label={t("restaurant.orderCompleted")}
-                      />
+                      {o.fulfillment === "pickup" && (
+                        <Action onClick={() => setStatus(o.id, "completed")} label={t("restaurant.orderCompleted")} />
+                      )}
+                      {o.fulfillment === "delivery" && (
+                        <Action
+                          onClick={() => {
+                            const note = window.prompt(
+                              t("restaurant.failedDeliveryPrompt", { defaultValue: "Describe the failed delivery attempt" }),
+                            );
+                            if (!note) return;
+                            void reportRestaurantFailedDelivery(o.id, note)
+                              .then((updated) => setOrders((prev) => prev.map((x) => (x.id === o.id ? updated : x))))
+                              .catch((err) => setMsg(err instanceof Error ? err.message : "Report failed"));
+                          }}
+                          label={t("restaurant.failedDelivery", { defaultValue: "Failed attempt" })}
+                          danger
+                        />
+                      )}
                     </div>
                   )}
                   {o.status === "delivered" && (

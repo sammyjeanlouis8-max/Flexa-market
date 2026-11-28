@@ -123,7 +123,7 @@ export const restaurantOpeningHoursTable = pgTable("restaurant_opening_hours", {
 
 export const restaurantDeliverySettingsTable = pgTable("restaurant_delivery_settings", {
   restaurantId: integer("restaurant_id").primaryKey().references(() => restaurantsTable.id, { onDelete: "cascade" }),
-  /** pickup | delivery | both */
+  /** pickup | delivery | both — legacy aggregate of method toggles */
   fulfillment: text("fulfillment").notNull().default("pickup"),
   deliveryFee: real("delivery_fee").notNull().default(0),
   /** Integer minor units (preferred). Legacy float columns kept for back-compat. */
@@ -144,8 +144,38 @@ export const restaurantDeliverySettingsTable = pgTable("restaurant_delivery_sett
   deliverySuspended: boolean("delivery_suspended").notNull().default(false),
   /** Owner-managed delivery — never Flexa Market / Flexa Driver. */
   ownerManagedDelivery: boolean("owner_managed_delivery").notNull().default(true),
+  /** Independent method toggles (merchant delivery = restaurant personnel). */
+  merchantDeliveryEnabled: boolean("merchant_delivery_enabled").notNull().default(false),
+  /** Flexa Delivery opt-in — still gated by RESTAURANT_FLEXA_DELIVERY_ENABLED. */
+  flexaDeliveryEnabled: boolean("flexa_delivery_enabled").notNull().default(false),
+  /** fixed | distance */
+  feeMode: text("fee_mode").notNull().default("fixed"),
+  /** Extra fee per km when feeMode=distance (minor units). */
+  feePerKmMinor: integer("fee_per_km_minor").notNull().default(0),
+  /**
+   * Optional delivery-window overrides per weekday:
+   * [{ weekday, isClosed, openTime, closeTime }]
+   */
+  deliveryHours: jsonb("delivery_hours").$type<Array<Record<string, unknown>>>().notNull().default([]),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
+
+/**
+ * Merchant delivery personnel — restaurant staff, NOT Flexa drivers.
+ * No Flexa Driver registration required.
+ */
+export const restaurantDeliveryStaffTable = pgTable("restaurant_delivery_staff", {
+  id: serial("id").primaryKey(),
+  restaurantId: integer("restaurant_id").notNull().references(() => restaurantsTable.id, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull(),
+  phone: text("phone").notNull().default(""),
+  active: boolean("active").notNull().default(true),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  restaurantIdx: index("restaurant_delivery_staff_restaurant_idx").on(t.restaurantId),
+}));
 
 export const restaurantFoodSafetyAssessmentsTable = pgTable("restaurant_food_safety_assessments", {
   id: serial("id").primaryKey(),
@@ -263,6 +293,8 @@ export const restaurantOrdersTable = pgTable("restaurant_orders", {
    */
   status: text("status").notNull().default("pending_payment"),
   fulfillment: text("fulfillment").notNull().default("pickup"),
+  /** pickup | merchant | flexa — who fulfills delivery */
+  deliveryMethod: text("delivery_method").notNull().default("pickup"),
   subtotal: real("subtotal").notNull().default(0),
   deliveryFee: real("delivery_fee").notNull().default(0),
   total: real("total").notNull().default(0),
@@ -272,6 +304,11 @@ export const restaurantOrdersTable = pgTable("restaurant_orders", {
   currency: text("currency").notNull().default("USD"),
   specialInstructions: text("special_instructions").notNull().default(""),
   deliveryAddress: text("delivery_address"),
+  deliveryLatitude: real("delivery_latitude"),
+  deliveryLongitude: real("delivery_longitude"),
+  distanceKm: real("distance_km"),
+  assignedStaffId: integer("assigned_staff_id").references(() => restaurantDeliveryStaffTable.id, { onDelete: "set null" }),
+  failedDeliveryNote: text("failed_delivery_note"),
   idempotencyKey: text("idempotency_key"),
   /** Stripe PaymentIntent id when checkout is used. */
   stripePaymentIntentId: text("stripe_payment_intent_id"),
@@ -281,9 +318,14 @@ export const restaurantOrdersTable = pgTable("restaurant_orders", {
   confirmationPin: text("confirmation_pin"),
   pinConfirmedAt: timestamp("pin_confirmed_at", { withTimezone: true }),
   estimatedPrepMinutes: integer("estimated_prep_minutes"),
-  /** Always business-managed — Flexa Driver must never transport these orders. */
+  estimatedDeliveryMinutes: integer("estimated_delivery_minutes"),
+  /** Always false for merchant delivery — Flexa Driver must never transport these orders. */
   usesFlexaDrivers: boolean("uses_flexa_drivers").notNull().default(false),
   platformCommissionMinor: integer("platform_commission_minor").notNull().default(0),
+  /** Merchant delivery fee portion of total (same as deliveryFeeMinor for merchant path). */
+  merchantDeliveryFeeMinor: integer("merchant_delivery_fee_minor").notNull().default(0),
+  /** Flexa driver fee portion — always 0 while restaurant Flexa Delivery is gated off. */
+  flexaDeliveryFeeMinor: integer("flexa_delivery_fee_minor").notNull().default(0),
   paymentNote: text("payment_note").notNull().default("Delivery is managed directly by this business. Flexa charges no commission at launch."),
   rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

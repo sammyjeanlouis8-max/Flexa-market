@@ -1288,6 +1288,14 @@ router.put("/beauty/my-businesses/:id/hours", requireBeautyAuthAccess, async (re
   res.json({ hours: saved });
 });
 
+function isValidPublicImageUrl(raw: unknown): boolean {
+  const u = String(raw || "").trim();
+  if (!u) return false;
+  if (!/^https?:\/\//i.test(u)) return false;
+  if (/^(data:|blob:|file:)/i.test(u)) return false;
+  return true;
+}
+
 router.post("/beauty/my-businesses/:id/services", requireBeautyAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const business = await loadOwnerBusiness(req.userId!, id);
@@ -1298,12 +1306,18 @@ router.post("/beauty/my-businesses/:id/services", requireBeautyAuthAccess, async
   if (!name || !Number.isFinite(priceMinor)) {
     res.status(400).json({ error: "name and priceMinor are required" }); return;
   }
+  const status = String(body.status || "active");
+  const imageUrl = body.imageUrl ? String(body.imageUrl).trim() : "";
+  if (status === "active" && !isValidPublicImageUrl(imageUrl)) {
+    res.status(400).json({ error: "A valid service image is required before publishing" });
+    return;
+  }
   const [created] = await db.insert(beautyServicesTable).values({
     businessId: id,
     categoryId: body.categoryId != null ? Number(body.categoryId) : null,
     name,
     description: String(body.description || "").slice(0, 4000),
-    imageUrl: body.imageUrl ? String(body.imageUrl) : null,
+    imageUrl: imageUrl || null,
     priceType: String(body.priceType || "fixed"),
     priceMinor,
     currency: String(body.currency || business.currency || "USD").toUpperCase().slice(0, 3),
@@ -1317,7 +1331,7 @@ router.post("/beauty/my-businesses/:id/services", requireBeautyAuthAccess, async
     depositType: String(body.depositType || "fixed"),
     preparationInstructions: String(body.preparationInstructions || ""),
     cancellationPolicy: String(body.cancellationPolicy || ""),
-    status: String(body.status || "active"),
+    status,
     sortOrder: Math.floor(Number(body.sortOrder) || 0),
   }).returning();
 
@@ -1348,7 +1362,14 @@ router.patch("/beauty/my-businesses/:id/services/:serviceId", requireBeautyAuthA
   const patch: Partial<typeof beautyServicesTable.$inferInsert> = { updatedAt: new Date() };
   if (body.name != null) patch.name = String(body.name).slice(0, 160);
   if (body.description != null) patch.description = String(body.description).slice(0, 4000);
-  if (body.imageUrl !== undefined) patch.imageUrl = body.imageUrl ? String(body.imageUrl) : null;
+  if (body.imageUrl !== undefined) {
+    const nextImage = body.imageUrl ? String(body.imageUrl).trim() : "";
+    if (nextImage && !isValidPublicImageUrl(nextImage)) {
+      res.status(400).json({ error: "Invalid service image URL" });
+      return;
+    }
+    patch.imageUrl = nextImage || null;
+  }
   if (body.priceType != null) patch.priceType = String(body.priceType);
   if (body.priceMinor != null) patch.priceMinor = Math.max(0, Math.floor(Number(body.priceMinor)));
   if (body.currency != null) patch.currency = String(body.currency).toUpperCase().slice(0, 3);
@@ -1365,6 +1386,13 @@ router.patch("/beauty/my-businesses/:id/services/:serviceId", requireBeautyAuthA
   if (body.status != null) patch.status = String(body.status);
   if (body.sortOrder != null) patch.sortOrder = Math.floor(Number(body.sortOrder));
   if (body.categoryId !== undefined) patch.categoryId = body.categoryId != null ? Number(body.categoryId) : null;
+
+  const nextStatus = patch.status ?? svc.status;
+  const nextImage = patch.imageUrl !== undefined ? patch.imageUrl : svc.imageUrl;
+  if (nextStatus === "active" && !isValidPublicImageUrl(nextImage)) {
+    res.status(400).json({ error: "A valid service image is required before activating" });
+    return;
+  }
 
   const [updated] = await db.update(beautyServicesTable).set(patch)
     .where(eq(beautyServicesTable.id, serviceId)).returning();
@@ -1449,6 +1477,10 @@ router.post("/beauty/my-businesses/:id/portfolio", requireBeautyAuthAccess, asyn
   const body = req.body ?? {};
   const mediaUrl = String(body.mediaUrl || "").trim();
   if (!mediaUrl) { res.status(400).json({ error: "mediaUrl is required" }); return; }
+  if (String(body.mediaType || "photo") === "photo" && !isValidPublicImageUrl(mediaUrl)) {
+    res.status(400).json({ error: "A valid mediaUrl is required for portfolio photos" });
+    return;
+  }
 
   const [created] = await db.insert(beautyPortfolioItemsTable).values({
     businessId: id,

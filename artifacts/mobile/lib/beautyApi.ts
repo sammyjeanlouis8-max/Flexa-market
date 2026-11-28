@@ -388,6 +388,33 @@ export async function updateBeautyProfessional(
   return data.professional;
 }
 
+export async function createBeautyPortfolioItem(
+  businessId: number,
+  body: Record<string, unknown>,
+  opts: AuthOpts,
+) {
+  const res = await fetch(`${getApiBase()}/beauty/my-businesses/${businessId}/portfolio`, {
+    method: "POST",
+    headers: headers(opts.token),
+    body: JSON.stringify(body),
+    signal: opts.signal,
+  });
+  return parseJson<{ item: Record<string, unknown> }>(res, "Could not publish portfolio item");
+}
+
+export async function deleteBeautyPortfolioItem(
+  businessId: number,
+  itemId: number,
+  opts: AuthOpts,
+) {
+  const res = await fetch(`${getApiBase()}/beauty/my-businesses/${businessId}/portfolio/${itemId}`, {
+    method: "DELETE",
+    headers: headers(opts.token),
+    signal: opts.signal,
+  });
+  return parseJson<{ ok: boolean }>(res, "Could not delete portfolio item");
+}
+
 export async function createBeautyAppointment(
   body: {
     businessId: number;

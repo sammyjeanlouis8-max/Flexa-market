@@ -2,6 +2,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { BeautyShell } from "@/components/beauty/BeautyShell";
+import { NativePhotoField } from "@/components/media/NativePhotoField";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import {
@@ -20,6 +22,7 @@ import {
   updateBeautyService,
   type BeautyService,
 } from "@/lib/beautyApi";
+import { isHttpsImageUrl } from "@/lib/nativePhotoPicker";
 import { beautyTheme as T } from "@/lib/beautyTheme";
 
 export default function BeautyCenterServicesScreen() {
@@ -37,7 +40,12 @@ export default function BeautyCenterServicesScreen() {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [duration, setDuration] = useState("60");
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [imageError, setImageError] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editImages, setEditImages] = useState<string[]>([]);
+  const [editImageError, setEditImageError] = useState(false);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(businessId) || businessId <= 0) {
@@ -66,8 +74,15 @@ export default function BeautyCenterServicesScreen() {
       setError(t("beauty_invalidPrice"));
       return;
     }
+    const imageUrl = imageUrls.find(isHttpsImageUrl) || "";
+    if (!imageUrl) {
+      setImageError(true);
+      setError(t("beauty_serviceImageRequired") || "A service image is required before publishing.");
+      return;
+    }
     setSaving(true);
     setError(null);
+    setImageError(false);
     try {
       const created = await createBeautyService(
         businessId,
@@ -76,6 +91,8 @@ export default function BeautyCenterServicesScreen() {
           priceMinor: Math.round(dollars * 100),
           durationMinutes: Math.max(5, Math.floor(Number(duration) || 60)),
           currency,
+          imageUrl,
+          status: "active",
         },
         { token },
       );
@@ -83,6 +100,7 @@ export default function BeautyCenterServicesScreen() {
       setName("");
       setPrice("");
       setDuration("60");
+      setImageUrls([]);
     } catch (e: any) {
       setError(e?.message || t("beauty_saveFailed"));
     } finally {
@@ -94,10 +112,48 @@ export default function BeautyCenterServicesScreen() {
     if (!token) return;
     try {
       const next = svc.status === "active" ? "inactive" : "active";
+      if (next === "active" && !isHttpsImageUrl(svc.imageUrl)) {
+        setError(t("beauty_serviceImageRequired") || "Add a valid image before activating this service.");
+        startEdit(svc);
+        return;
+      }
       const updated = await updateBeautyService(businessId, svc.id, { status: next }, { token });
       setServices((prev) => prev.map((s) => (s.id === svc.id ? updated : s)));
     } catch (e: any) {
       setError(e?.message || t("beauty_saveFailed"));
+    }
+  }
+
+  function startEdit(svc: BeautyService) {
+    setEditingId(svc.id);
+    setEditImages(svc.imageUrl && isHttpsImageUrl(svc.imageUrl) ? [svc.imageUrl] : []);
+    setEditImageError(false);
+  }
+
+  async function saveEdit() {
+    if (!token || !editingId) return;
+    const imageUrl = editImages.find(isHttpsImageUrl) || "";
+    if (!imageUrl) {
+      setEditImageError(true);
+      setError(t("beauty_serviceImageRequired") || "A service image is required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await updateBeautyService(
+        businessId,
+        editingId,
+        { imageUrl, status: "active" },
+        { token },
+      );
+      setServices((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      setEditingId(null);
+      setEditImages([]);
+    } catch (e: any) {
+      setError(e?.message || t("beauty_saveFailed"));
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -157,6 +213,22 @@ export default function BeautyCenterServicesScreen() {
               keyboardType="number-pad"
             />
           </View>
+          <NativePhotoField
+            token={token}
+            value={imageUrls}
+            onChange={(urls) => {
+              setImageUrls(urls);
+              if (urls.length) setImageError(false);
+            }}
+            max={1}
+            allowsEditing
+            aspect={[1, 1]}
+            required
+            showError={imageError}
+            label={t("beauty_serviceImage") || "Service / model photo"}
+            helpText={t("beauty_serviceImageHelp") || "Hairstyle or service photo required."}
+            testID="beauty-service-photo"
+          />
           <Pressable style={[styles.btn, saving && { opacity: 0.6 }]} disabled={saving} onPress={() => void addService()}>
             {saving ? <ActivityIndicator color={T.white} /> : <Text style={styles.btnText}>{t("beauty_save")}</Text>}
           </Pressable>
@@ -172,11 +244,19 @@ export default function BeautyCenterServicesScreen() {
           services.map((svc) => (
             <View key={svc.id} style={styles.card}>
               <View style={styles.rowBetween}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>{svc.name}</Text>
-                  <Text style={styles.muted}>
-                    {formatBeautyMoney(svc.price, svc.currency)} · {svc.durationMinutes} min · {svc.status}
-                  </Text>
+                <View style={{ flexDirection: "row", gap: 10, flex: 1, alignItems: "center" }}>
+                  {svc.imageUrl ? (
+                    <Image source={{ uri: svc.imageUrl }} style={styles.thumb} />
+                  ) : (
+                    <View style={[styles.thumb, styles.thumbEmpty]} />
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.title}>{svc.name}</Text>
+                    <Text style={styles.muted}>
+                      {formatBeautyMoney(svc.price, svc.currency)} · {svc.durationMinutes} min · {svc.status}
+                      {!svc.imageUrl ? ` · ${t("restaurant_missingImage") || "missing image"}` : ""}
+                    </Text>
+                  </View>
                 </View>
                 <Pressable style={styles.outlineBtn} onPress={() => void toggleActive(svc)}>
                   <Text style={styles.outlineBtnText}>
@@ -184,6 +264,37 @@ export default function BeautyCenterServicesScreen() {
                   </Text>
                 </Pressable>
               </View>
+              {editingId === svc.id ? (
+                <View style={{ marginTop: 10 }}>
+                  <NativePhotoField
+                    token={token}
+                    value={editImages}
+                    onChange={(urls) => {
+                      setEditImages(urls);
+                      if (urls.length) setEditImageError(false);
+                    }}
+                    max={1}
+                    allowsEditing
+                    aspect={[1, 1]}
+                    required
+                    showError={editImageError}
+                    label={t("beauty_editServiceImage") || "Edit service photo"}
+                    testID={`beauty-service-edit-${svc.id}`}
+                  />
+                  <View style={styles.row}>
+                    <Pressable style={[styles.btn, { flex: 1 }, saving && { opacity: 0.6 }]} disabled={saving} onPress={() => void saveEdit()}>
+                      <Text style={styles.btnText}>{t("beauty_save")}</Text>
+                    </Pressable>
+                    <Pressable style={styles.outlineBtn} onPress={() => setEditingId(null)}>
+                      <Text style={styles.outlineBtnText}>{t("nativePhoto_cancel") || "Cancel"}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable style={[styles.outlineBtn, { marginTop: 8, alignSelf: "flex-start" }]} onPress={() => startEdit(svc)}>
+                  <Text style={styles.outlineBtnText}>{t("beauty_editPhoto") || "Edit photo"}</Text>
+                </Pressable>
+              )}
             </View>
           ))
         )}
@@ -203,6 +314,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: { fontWeight: "800", color: T.ink, fontSize: 14 },
+  thumb: { width: 48, height: 48, borderRadius: 10, backgroundColor: T.blushSoft },
+  thumbEmpty: { borderWidth: StyleSheet.hairlineWidth, borderColor: T.line },
   input: {
     backgroundColor: T.blushSoft,
     borderRadius: 12,

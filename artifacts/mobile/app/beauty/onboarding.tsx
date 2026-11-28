@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { BeautyShell } from "@/components/beauty/BeautyShell";
+import { NativePhotoField } from "@/components/media/NativePhotoField";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { createBeautyBusiness, updateMyBeautyBusiness } from "@/lib/beautyApi";
@@ -35,6 +36,8 @@ export default function BeautyOnboardingScreen() {
   const [city, setCity] = useState("");
   const [country, setCountry] = useState(user?.country || "Haiti");
   const [phone, setPhone] = useState("");
+  const [logoUrls, setLogoUrls] = useState<string[]>([]);
+  const [coverUrls, setCoverUrls] = useState<string[]>([]);
   const [terms, setTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,13 +63,23 @@ export default function BeautyOnboardingScreen() {
           city: city.trim(),
           country: country.trim(),
           phone: phone.trim() || undefined,
+          logoUrl: logoUrls[0] || undefined,
+          coverUrl: coverUrls[0] || undefined,
           termsAccepted: true,
           onboardingStep: 1,
         },
         { token },
       );
-      if (phone.trim()) {
-        await updateMyBeautyBusiness(created.id, { phone: phone.trim() }, { token }).catch(() => undefined);
+      if (phone.trim() || logoUrls[0] || coverUrls[0]) {
+        await updateMyBeautyBusiness(
+          created.id,
+          {
+            phone: phone.trim() || undefined,
+            logoUrl: logoUrls[0] || undefined,
+            coverUrl: coverUrls[0] || undefined,
+          },
+          { token },
+        ).catch(() => undefined);
       }
       router.replace({ pathname: "/beauty/center", params: { businessId: String(created.id) } } as any);
     } catch (e: any) {
@@ -142,6 +155,27 @@ export default function BeautyOnboardingScreen() {
           placeholder="+509…"
           placeholderTextColor={T.muted}
           keyboardType="phone-pad"
+        />
+
+        <NativePhotoField
+          token={token}
+          value={logoUrls}
+          onChange={setLogoUrls}
+          max={1}
+          allowsEditing
+          aspect={[1, 1]}
+          label={t("beauty_logo") || "Studio / barbershop logo"}
+          testID="beauty-onboarding-logo"
+        />
+        <NativePhotoField
+          token={token}
+          value={coverUrls}
+          onChange={setCoverUrls}
+          max={1}
+          allowsEditing
+          aspect={[16, 9]}
+          label={t("beauty_cover") || "Cover photo"}
+          testID="beauty-onboarding-cover"
         />
 
         <Pressable style={styles.termsRow} onPress={() => setTerms((v) => !v)}>

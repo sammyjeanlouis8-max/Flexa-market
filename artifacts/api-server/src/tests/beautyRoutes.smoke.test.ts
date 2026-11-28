@@ -59,6 +59,13 @@ describe("beauty routes smoke", () => {
     expect(access).toContain("cancelled_by_customer");
     expect(access).toContain("cancelled_by_business");
   });
+
+  it("requires a valid service image before publishing/activating", () => {
+    expect(routes).toContain("isValidPublicImageUrl");
+    expect(routes).toContain("A valid service image is required before publishing");
+    expect(routes).toContain("A valid service image is required before activating");
+    expect(routes).toContain('"/beauty/my-businesses/:id/portfolio"');
+  });
 });
 
 describe("beauty startup migrations", () => {

@@ -1,15 +1,17 @@
-/** Flexa Music redesign tokens — forest green / charcoal / orange. */
+/** Flexa Music premium tokens — charcoal / emerald / Flexa orange. */
 export const MUSIC = {
-  charcoal: "#121212",
-  charcoalElevated: "#1A1A1A",
-  forest: "#0B3022",
-  forestSoft: "#0F3D2C",
-  forestBar: "rgba(11,48,34,0.94)",
-  orange: "#FF6B00",
-  orangeHot: "#FF7A21",
-  ink: "#FFFFFF",
-  muted: "#A3A3A3",
-  line: "rgba(255,255,255,0.10)",
+  charcoal: "#101714",
+  charcoalElevated: "#1C2C24",
+  secondary: "#17241E",
+  forest: "#0B3D2B",
+  forestSoft: "#17241E",
+  forestBar: "rgba(11,61,43,0.94)",
+  emerald: "#159A68",
+  orange: "#FF7900",
+  orangeHot: "#FF7900",
+  ink: "#F5F7F6",
+  muted: "#9CAEA4",
+  line: "#293B32",
   progressTrack: "rgba(255,255,255,0.18)",
 } as const;
 

@@ -103,6 +103,15 @@ export async function fetchMusicStreamUrl(
   return absoluteMusicUrl(url) ?? url;
 }
 
+/** Authenticated liked-tracks library (Favorites). */
+export async function fetchMusicLibrary(opts: FetchOpts & { token: string }): Promise<MusicTrack[]> {
+  const res = await musicFetch("/music/library", opts);
+  if (res.status === 401 || res.status === 403) return [];
+  const data = await readJson(res);
+  if (!res.ok) throw new Error(data.error || `Library failed (${res.status})`);
+  return Array.isArray(data.tracks) ? data.tracks : [];
+}
+
 export async function fetchPlaylists(opts: FetchOpts = {}): Promise<MusicPlaylist[]> {
   const res = await musicFetch("/music/playlists", opts);
   if (res.status === 404) return [];

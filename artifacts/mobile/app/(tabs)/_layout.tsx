@@ -113,6 +113,8 @@ export default function TabLayout() {
         name="music"
         options={{
           title: t("tabMusic"),
+          // Music owns its chrome — hide Market tabs while Music is focused.
+          tabBarStyle: { display: "none" },
           tabBarIcon: ({ color, size }) => (
             <Feather name="music" color={color} size={size} />
           ),

@@ -939,15 +939,16 @@ main {
 
 /* Flexa Music — midnight navy premium listening room. */
 .flexa-music-shell {
-  --music-ink: #FFFFFF;
-  --music-muted: #A3A3A3;
-  --music-line: rgba(255,255,255,.10);
-  --music-orange: #FF6B00;
-  --music-orange-hot: #FF7A21;
-  --music-forest: #0B3022;
-  --music-forest-soft: #0F3D2C;
-  --music-charcoal: #121212;
-  --music-elevated: #1A1A1A;
+  --music-ink: #F5F7F6;
+  --music-muted: #9CAEA4;
+  --music-line: #293B32;
+  --music-orange: #FF7900;
+  --music-orange-hot: #FF7900;
+  --music-forest: #0B3D2B;
+  --music-forest-soft: #17241E;
+  --music-charcoal: #101714;
+  --music-elevated: #1C2C24;
+  --music-emerald: #159A68;
   /* Legacy aliases → new palette (keeps older inline styles on-brand) */
   --music-cyan: #FF6B00;
   --music-purple: #FF7A21;
@@ -1083,7 +1084,7 @@ main {
 .flexa-music-shell .music-brand-mark .eq span:nth-child(2){height:12px}
 .flexa-music-shell .music-brand-mark .eq span:nth-child(3){height:16px}
 .flexa-music-shell .music-brand-mark .eq span:nth-child(4){height:10px}
-.flexa-music-shell .music-brand-mark .name-music { color: var(--music-orange); }
+.flexa-music-shell .music-brand-mark .name-music { color: var(--music-emerald, #159A68); }
 @media (max-width: 380px) {
   .flexa-music-shell .music-vinyl-stage { min-height:240px; }
   .flexa-music-shell .music-vinyl { width:240px; height:240px; }

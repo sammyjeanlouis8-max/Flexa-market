@@ -1,12 +1,23 @@
-/** Flexa Music redesign tokens — forest green / charcoal / orange */
+/** Flexa Music premium tokens — charcoal / emerald / Flexa orange */
 export const musicTheme = {
-  forest: "#0B3022",
+  bg: "#101714",
+  secondary: "#17241E",
+  card: "#1C2C24",
+  emerald: "#159A68",
+  forest: "#0B3D2B",
   forestLight: "#134C38",
-  charcoal: "#121212",
-  surface: "#1A1A1A",
-  line: "rgba(255,255,255,0.12)",
-  orange: "#FF6B00",
-  white: "#FFFFFF",
-  muted: "#A8B5AD",
+  orange: "#FF7900",
+  text: "#F5F7F6",
+  muted: "#9CAEA4",
+  border: "#293B32",
+  white: "#F5F7F6",
   danger: "#EF4444",
+  /** @deprecated use bg */
+  charcoal: "#101714",
+  /** @deprecated use card */
+  surface: "#1C2C24",
+  line: "#293B32",
 } as const;
+
+/** Music module bottom nav content height (excluding safe-area inset). */
+export const MUSIC_TAB_BAR_CONTENT = 56;

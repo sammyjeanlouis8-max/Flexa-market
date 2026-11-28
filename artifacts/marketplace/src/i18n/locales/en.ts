@@ -1,5 +1,6 @@
 import { wholesaleEn } from "../wholesaleLocales";
 import { restaurantEn } from "../restaurantLocales";
+import { beautyEn } from "../beautyLocales";
 
 export default {
   cardCancellation: {
@@ -160,6 +161,7 @@ export default {
     flexaServicesSection: "Flexa Services",
     flexaWholesale: "Flexa Wholesale",
     flexaRestaurant: "Flexa Restaurant",
+    seduireBeauty: "Séduire Beauty",
     preferencesSection: "Preferences",
     offersPromos: "Offers & Promotions",
     flexaPicks: "Flexa Picks",
@@ -188,6 +190,7 @@ export default {
   },
   wholesale: wholesaleEn,
   restaurant: restaurantEn,
+  beauty: beautyEn,
   videoFeed: {
     title: "Promotional Videos",
     filterAll: "All",
@@ -4933,6 +4936,7 @@ export default {
     revenue: "Revenue",
     tv: "Flexa TV",
     music: "Flexa Music",
+    beauty: "Séduire Beauty",
     broadcast: "Email broadcast",
     push: "Push notifications",
     fraud: "Fraud",

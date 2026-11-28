@@ -1,5 +1,6 @@
 import { wholesaleEs } from "../wholesaleLocales";
 import { restaurantEs } from "../restaurantLocales";
+import { beautyEs } from "../beautyLocales";
 
 export default {
   footer: {
@@ -94,6 +95,7 @@ export default {
     flexaServicesSection: "Servicios Flexa",
     flexaWholesale: "Flexa Wholesale",
     flexaRestaurant: "Flexa Restaurant",
+    seduireBeauty: "Séduire Beauty",
     preferencesSection: "Preferencias",
     offersPromos: "Ofertas y Promociones",
     flexaPicks: "Flexa Picks",
@@ -3271,6 +3273,7 @@ export default {
     revenue: "Revenue",
     tv: "Flexa TV",
     music: "Flexa Music",
+    beauty: "Séduire Beauty",
     broadcast: "Email broadcast",
     push: "Push notifications",
     fraud: "Fraud",
@@ -3452,6 +3455,7 @@ export default {
 },
   wholesale: wholesaleEs,
   restaurant: restaurantEs,
+  beauty: beautyEs,
   videoFeed: {
     title: "Videos promocionales",
     filterAll: "Todos",

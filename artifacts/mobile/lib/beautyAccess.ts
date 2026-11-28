@@ -1,8 +1,9 @@
 /**
  * Séduire Beauty public launch gate.
  * Keep in sync with api-server + marketplace `BEAUTY_PUBLIC_LAUNCH`.
+ * true → public browse; false → Super Admin ONLY.
  */
-export const BEAUTY_PUBLIC_LAUNCH = false;
+export const BEAUTY_PUBLIC_LAUNCH = true;
 
 type ScopeUser = {
   isSuperAdmin?: boolean;

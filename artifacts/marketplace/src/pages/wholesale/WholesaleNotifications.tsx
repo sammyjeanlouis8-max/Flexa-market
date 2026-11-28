@@ -10,7 +10,7 @@ const NOTES = [
 export default function WholesaleNotifications() {
   const { t } = useTranslation();
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell title={t("wholesale.notificationsTitle", { defaultValue: "Wholesale alerts" })}>
         <div className="space-y-2">
           {NOTES.map((n) => (

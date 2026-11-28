@@ -51,7 +51,7 @@ export default function WholesaleSellerAnalytics() {
   const topDepot = depots[0];
 
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell title={t("wholesale.analyticsTitle")} subtitle={t("wholesale.analyticsSubtitle")}>
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
           <WholesaleStat label={t("wholesale.listings")} value={loading ? "…" : products.length} />

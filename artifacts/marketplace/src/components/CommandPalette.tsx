@@ -20,6 +20,7 @@ import {
   Calculator,
   UtensilsCrossed,
   Warehouse,
+  Scissors,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -36,14 +37,14 @@ import { useAuth } from "@/contexts/auth";
 import { prefetchRoute } from "@/lib/prefetchRoutes";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
 import { canAccessRestaurant } from "@/lib/restaurantAccess";
+import { canAccessBeauty } from "@/lib/beautyAccess";
 
 type CommandEntry = {
   href: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
   keywords?: string;
-  superAdminOnly?: boolean;
-  restaurantStaffOnly?: boolean;
+  moduleAccess?: "wholesale" | "restaurant" | "beauty";
   auth?: boolean;
 };
 
@@ -81,13 +82,20 @@ export function CommandPalette() {
       { href: "/offers", label: t("nav.offers", { defaultValue: "Offers" }), icon: Tag, auth: true },
       { href: "/subscription", label: t("nav.subscription", { defaultValue: "Subscription" }), icon: Crown, auth: true },
       { href: "/videos", label: t("nav.videos", { defaultValue: "Videos" }), icon: Film },
-      { href: "/wholesale", label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), icon: Warehouse, keywords: "wholesale bulk b2b", superAdminOnly: true },
+      { href: "/wholesale", label: t("nav.flexaWholesale", { defaultValue: "Flexa Wholesale" }), icon: Warehouse, keywords: "wholesale bulk b2b", moduleAccess: "wholesale" },
       {
         href: "/restaurant",
         label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
         icon: UtensilsCrossed,
         keywords: "food restaurant kitchen truck",
-        restaurantStaffOnly: true,
+        moduleAccess: "restaurant",
+      },
+      {
+        href: "/beauty",
+        label: t("nav.seduireBeauty", { defaultValue: "Séduire Beauty" }),
+        icon: Scissors,
+        keywords: "beauty salon barber spa nails",
+        moduleAccess: "beauty",
       },
       { href: "/tv", label: "Flexa TV", icon: Tv },
       { href: "/music", label: "Flexa Music", icon: Music2 },
@@ -98,8 +106,9 @@ export function CommandPalette() {
     ];
     return base.filter((e) => {
       if (e.auth && !user) return false;
-      if (e.superAdminOnly && !canAccessWholesale(user)) return false;
-      if (e.restaurantStaffOnly && !canAccessRestaurant(user)) return false;
+      if (e.moduleAccess === "wholesale" && !canAccessWholesale(user)) return false;
+      if (e.moduleAccess === "restaurant" && !canAccessRestaurant(user)) return false;
+      if (e.moduleAccess === "beauty" && !canAccessBeauty(user)) return false;
       return true;
     });
   }, [t, user]);

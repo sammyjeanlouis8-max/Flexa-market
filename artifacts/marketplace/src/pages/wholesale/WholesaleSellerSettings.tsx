@@ -58,5 +58,5 @@ function SettingsForm({ userId }: { userId: number }) {
 
 export default function WholesaleSellerSettings() {
   const { user } = useAuth();
-  return <WholesalePageGate>{user && <SettingsForm key={user.id} userId={user.id} />}</WholesalePageGate>;
+  return <WholesalePageGate requireAuth>{user && <SettingsForm key={user.id} userId={user.id} />}</WholesalePageGate>;
 }

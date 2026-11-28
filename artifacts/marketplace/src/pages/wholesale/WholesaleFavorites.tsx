@@ -11,7 +11,7 @@ const SAVED = [
 export default function WholesaleFavorites() {
   const { t } = useTranslation();
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell
         title={t("wholesale.favoritesTitle", { defaultValue: "Saved wholesale" })}
         subtitle={t("wholesale.favoritesSubtitle", { defaultValue: "Products you saved to chat about later." })}

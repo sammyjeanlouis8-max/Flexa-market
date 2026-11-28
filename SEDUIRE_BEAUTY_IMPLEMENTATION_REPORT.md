@@ -88,9 +88,14 @@ Full production screenshots require a running API with `DATABASE_URL` and Super 
 
 ## Deployment
 
+- Merged to `main` as PR #316 (`055549e9`)
+- DigitalOcean deployment triggered: `0df0228d-f319-4215-b3df-b08d84c19c63`
+- GitHub Actions deploy workflow: success (`46091757701`)
+- Production verified (~3 min after trigger):
+  - `GET https://flexamarket.com/api/beauty/launch` → `200` with `publicLaunch: false`, `access: "super_admin_preview"`
+  - `GET /api/healthz` → ok
+  - Restaurant launch still healthy
 - **Do not** set `BEAUTY_PUBLIC_LAUNCH=true` without explicit authorization
-- Run startup migrations on boot (creates beauty tables if missing)
-- Verify `/api/beauty/launch` returns `publicLaunch: false` and SA access works
 - Enable countries via Super Admin → Séduire Beauty → Countries after validation
 
 ## Known limitations / next steps

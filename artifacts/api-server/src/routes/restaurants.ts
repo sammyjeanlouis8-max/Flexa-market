@@ -1178,16 +1178,17 @@ router.get("/restaurants/:id/owner-stats", requireAuth, async (req, res): Promis
     status: restaurantReservationsTable.status,
   }).from(restaurantReservationsTable).where(eq(restaurantReservationsTable.restaurantId, id));
   const countStatus = (rows: Array<{ status: string }>, statuses: string[]) =>
-    rows.filter((r) => statuses.includes(r.status)).length;
+    rows.filter((r) => statuses.includes(normalizeRestaurantOrderStatus(r.status))).length;
   res.json({
     restaurantId: id,
     orders: {
-      new: countStatus(orders, ["pending"]),
-      preparing: countStatus(orders, ["accepted", "preparing"]),
-      ready: countStatus(orders, ["ready_pickup"]),
+      // Paid/new queue uses order_placed (legacy "pending"/"placed" normalize here).
+      new: countStatus(orders, ["order_placed", "pending_payment"]),
+      preparing: countStatus(orders, ["confirmed", "preparing"]),
+      ready: countStatus(orders, ["ready_for_pickup"]),
       outForDelivery: countStatus(orders, ["out_for_delivery"]),
-      completed: countStatus(orders, ["completed"]),
-      cancelled: countStatus(orders, ["cancelled", "rejected"]),
+      completed: countStatus(orders, ["completed", "delivered"]),
+      cancelled: countStatus(orders, ["canceled", "rejected", "refunded", "refund_pending"]),
       total: orders.length,
     },
     reservations: {
@@ -1524,6 +1525,13 @@ router.post("/restaurants/:id/daily-menu/items", requireAuth, async (req, res): 
       }
     }
     if (!name || !Number.isFinite(price)) continue;
+    if (photos.length < 1) {
+      res.status(400).json({
+        error: "FOOD_PHOTO_REQUIRED",
+        message: "Each daily menu item needs at least one food photo before it can be listed.",
+      });
+      return;
+    }
     const [item] = await db.insert(restaurantDailyMenuItemsTable).values({
       dailyMenuId: menu.id,
       restaurantId: id,

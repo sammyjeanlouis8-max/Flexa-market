@@ -4,6 +4,8 @@ import {
   canAccessRestaurantModule,
   canAccessRestaurantStaff,
   canTransitionRestaurantOrder,
+  isRestaurantIncomingOrderStatus,
+  normalizeRestaurantOrderStatus,
 } from "../lib/restaurantAccess";
 
 describe("restaurantAccess gate", () => {
@@ -33,5 +35,16 @@ describe("restaurant order transitions", () => {
     expect(canTransitionRestaurantOrder("pending_payment", "completed")).toBe(false);
     expect(canTransitionRestaurantOrder("preparing", "ready_for_pickup")).toBe(true);
     expect(canTransitionRestaurantOrder("completed", "order_placed")).toBe(false);
+  });
+
+  it("treats paid order_placed as incoming (not legacy pending-only)", () => {
+    expect(isRestaurantIncomingOrderStatus("order_placed")).toBe(true);
+    expect(isRestaurantIncomingOrderStatus("pending")).toBe(true);
+    expect(isRestaurantIncomingOrderStatus("pending_payment")).toBe(true);
+    expect(isRestaurantIncomingOrderStatus("confirmed")).toBe(false);
+    expect(isRestaurantIncomingOrderStatus("preparing")).toBe(false);
+    expect(normalizeRestaurantOrderStatus("pending")).toBe("order_placed");
+    expect(normalizeRestaurantOrderStatus("accepted")).toBe("confirmed");
+    expect(normalizeRestaurantOrderStatus("ready_pickup")).toBe("ready_for_pickup");
   });
 });

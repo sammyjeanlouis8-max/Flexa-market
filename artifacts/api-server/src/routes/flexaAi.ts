@@ -15,6 +15,7 @@ import {
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import {
   completeChat,
+  completeText,
   isCapabilityEnabled,
   publicAiStatus,
   type FlexaAiCapability,
@@ -43,6 +44,16 @@ const DESCRIPTION_SYSTEM = `You write marketplace product descriptions for FLEXA
 Return only the description text (no title, no markdown fences).
 Keep it under 900 characters. Be factual, buyer-friendly, and multilingual-aware:
 match the requested language. Do not invent certifications, brands, or condition claims not provided.`;
+
+const RESTAURANT_MENU_SYSTEM = `You assist Flexa Restaurant owners on FLEXA MARKET.
+Return JSON only with keys: description (string), categorySuggestions (string[] max 5), notes (string[] max 5).
+Rules:
+- Match the requested language.
+- Never invent ingredients, allergens, nutrition facts, prices, or certifications.
+- Keep description under 400 characters, appetizing but factual from the provided dish name/notes only.
+- categorySuggestions must be common menu categories (Breakfast, Lunch, Dinner, Appetizers, Main Dishes, Desserts, Drinks, Specials, Combos) when relevant.
+- notes are optional quality tips (photo lighting, allergen disclosure) — never auto-apply changes.
+- If information is insufficient, say so in notes rather than inventing facts.`;
 
 const TRANSLATION_SYSTEM = `You are a translation engine for FLEXA MARKET.
 Translate the user text into the requested target language.
@@ -218,6 +229,109 @@ router.post("/flexa-ai/product-assist", requireAuth, flexaAiLimiter, async (req,
     suggestions: unique.map((s) => ({ ...s, optional: true })),
     note: "Suggestions are optional. You can keep any reasonable category.",
   });
+});
+
+/**
+ * Flexa Restaurant menu assist — suggestions only.
+ * Never silently modifies restaurant or menu data.
+ */
+router.post("/flexa-ai/restaurant-assist", requireAuth, flexaAiLimiter, async (req, res): Promise<void> => {
+  const name = clampText(req.body?.name, 200);
+  if (!name) {
+    res.status(400).json({ error: "name required" });
+    return;
+  }
+  const category = clampText(req.body?.category, 120);
+  const cuisineTags = clampText(req.body?.cuisineTags, 200);
+  const language = clampText(req.body?.language || "en", 16) || "en";
+  const details = clampText(req.body?.details, 1200);
+
+  const fallbackCategories = [
+    "Breakfast",
+    "Lunch",
+    "Dinner",
+    "Appetizers",
+    "Main Dishes",
+    "Desserts",
+    "Drinks",
+    "Specials",
+    "Combos",
+  ].filter((c) => !category || c.toLowerCase() !== category.toLowerCase()).slice(0, 4);
+
+  const userPrompt = [
+    `Language: ${language}`,
+    `Dish name: ${name}`,
+    category ? `Category hint: ${category}` : "",
+    cuisineTags ? `Cuisine tags: ${cuisineTags}` : "",
+    details ? `Owner notes (do not invent beyond these): ${details}` : "Owner notes: none — do not invent ingredients.",
+    "Respond with JSON only.",
+  ].filter(Boolean).join("\n");
+
+  try {
+    await assertWithinDailyQuota({
+      userId: req.userId!,
+      capability: "descriptions",
+      isAdmin: Boolean((req.user as { isAdmin?: boolean; isSuperAdmin?: boolean } | undefined)?.isAdmin
+        || (req.user as { isSuperAdmin?: boolean } | undefined)?.isSuperAdmin),
+    });
+  } catch (err: any) {
+    res.status(429).json({ error: err?.message || "AI quota exceeded" });
+    return;
+  }
+
+  if (!isCapabilityEnabled("descriptions")) {
+    res.json({
+      description: "",
+      categorySuggestions: fallbackCategories,
+      notes: ["Flexa AI descriptions are disabled. Category suggestions are rules-based only."],
+      analysisSource: "rules",
+      editable: true,
+    });
+    return;
+  }
+
+  try {
+    const result = await completeText(RESTAURANT_MENU_SYSTEM, userPrompt, { maxTokens: 500, temperature: 0.3 });
+    const raw = String(result.text || "");
+    await recordAiUsage({
+      userId: req.userId!,
+      capability: "descriptions",
+      model: result.model,
+      provider: result.provider,
+      inputChars: userPrompt.length,
+      outputChars: raw.length,
+    });
+    let parsed: { description?: string; categorySuggestions?: string[]; notes?: string[] } = {};
+    try {
+      const start = raw.indexOf("{");
+      const end = raw.lastIndexOf("}");
+      parsed = JSON.parse(start >= 0 && end > start ? raw.slice(start, end + 1) : raw);
+    } catch {
+      parsed = { description: raw.replace(/^["']|["']$/g, "").slice(0, 400), notes: ["Parsed as plain text"] };
+    }
+    res.json({
+      description: String(parsed.description || "").slice(0, 400),
+      categorySuggestions: Array.isArray(parsed.categorySuggestions)
+        ? parsed.categorySuggestions.map(String).slice(0, 5)
+        : fallbackCategories,
+      notes: Array.isArray(parsed.notes) ? parsed.notes.map(String).slice(0, 5) : [],
+      analysisSource: "ai",
+      editable: true,
+      note: "Suggestions are optional. Nothing was saved automatically.",
+    });
+  } catch (err: any) {
+    logger.warn({ err }, "restaurant-assist failed");
+    res.json({
+      description: "",
+      categorySuggestions: fallbackCategories,
+      notes: [
+        "AI assist temporarily unavailable. Suggestions below are rules-based only.",
+        "Do not invent allergens or ingredients without owner confirmation.",
+      ],
+      analysisSource: "rules",
+      editable: true,
+    });
+  }
 });
 
 /** AI product descriptions for sellers. */

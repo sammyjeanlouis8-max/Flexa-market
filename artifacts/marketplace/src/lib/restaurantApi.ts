@@ -135,6 +135,8 @@ export type Order = {
   deliveryAddress: string | null;
   paymentNote: string;
   rejectionReason: string | null;
+  confirmationPin?: string | null;
+  pinConfirmedAt?: string | null;
   items?: RestaurantOrderItem[];
   restaurantName?: string;
   createdAt: string;
@@ -396,6 +398,34 @@ export async function patchOrderStatus(orderId: number, status: string, rejectio
   });
   const data = await parseJson<{ order: Order }>(res, "Could not update order");
   return data.order;
+}
+
+export async function rateRestaurant(
+  restaurantId: number,
+  body: { orderId: number; stars: number; comment?: string },
+): Promise<void> {
+  const res = await fetch(`/api/restaurants/${restaurantId}/ratings`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  await parseJson(res, "Could not submit rating");
+}
+
+/** Optional Flexa AI menu/description assist — suggestions only; never auto-applied. */
+export async function suggestRestaurantMenuCopy(body: {
+  name: string;
+  category?: string;
+  cuisineTags?: string;
+  language?: string;
+  details?: string;
+}): Promise<{ description: string; categorySuggestions: string[]; notes: string[] }> {
+  const res = await fetch("/api/flexa-ai/restaurant-assist", {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  return parseJson(res, "Flexa AI assist unavailable");
 }
 
 export async function fetchReservations(params?: {

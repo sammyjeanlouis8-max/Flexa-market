@@ -10,6 +10,7 @@ import {
   fetchDishModels,
   fetchDishOptions,
   formatMoney,
+  suggestRestaurantMenuCopy,
   uploadRestaurantFoodImage,
   type DishModel,
   type DishOptionGroup,
@@ -23,10 +24,13 @@ export default function DishModels() {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
   const [allergens, setAllergens] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNotes, setAiNotes] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editingDishId, setEditingDishId] = useState<number | null>(null);
   const [groups, setGroups] = useState<DishOptionGroup[]>([]);
@@ -64,6 +68,36 @@ export default function DishModels() {
     }
   }
 
+  async function onAiSuggest() {
+    if (!name.trim()) {
+      setError(t("restaurant.nameRequired", { defaultValue: "Enter a dish name before asking Flexa AI." }));
+      return;
+    }
+    setAiBusy(true);
+    setError(null);
+    try {
+      const result = await suggestRestaurantMenuCopy({
+        name: name.trim(),
+        details: allergens.trim() ? `Allergens note from owner: ${allergens.trim()}` : undefined,
+        language: "en",
+      });
+      if (result.description) setDescription(result.description);
+      setAiNotes([
+        ...(result.categorySuggestions?.length
+          ? [`Categories: ${result.categorySuggestions.join(", ")}`]
+          : []),
+        ...(result.notes || []),
+        t("restaurant.aiEditableNote", {
+          defaultValue: "AI suggestions are editable and were not saved automatically.",
+        }),
+      ]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Flexa AI unavailable");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   async function onAdd() {
     if (!restaurantId || !name.trim()) return;
     if (!photoUrl) {
@@ -76,7 +110,7 @@ export default function DishModels() {
       const dish = await createDishModel(restaurantId, {
         name: name.trim(),
         price: Number(price) || 0,
-        description: "",
+        description: description.trim(),
         photos: [photoUrl],
         allergens: allergens.trim(),
         defaultAvailable: true,
@@ -84,8 +118,10 @@ export default function DishModels() {
       setDishes((d) => [dish, ...d]);
       setName("");
       setPrice("");
+      setDescription("");
       setAllergens("");
       setPhotoUrl(null);
+      setAiNotes([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create dish");
     } finally {
@@ -131,6 +167,13 @@ export default function DishModels() {
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("restaurant.createDish")} className="flex-1 rounded-xl border px-3 py-2 text-sm" />
                 <input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" className="w-28 rounded-xl border px-3 py-2 text-sm" />
               </div>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t("restaurant.dishDescription", { defaultValue: "Description (editable)" })}
+                className="min-h-[72px] w-full rounded-xl border px-3 py-2 text-sm"
+                data-testid="dish-description"
+              />
               <input
                 value={allergens}
                 onChange={(e) => setAllergens(e.target.value)}
@@ -152,10 +195,28 @@ export default function DishModels() {
                 {photoUrl && (
                   <img src={photoUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />
                 )}
+                <button
+                  type="button"
+                  disabled={aiBusy || !name.trim()}
+                  onClick={() => void onAiSuggest()}
+                  className="rounded-full border border-[hsl(152,40%,70%)] px-3 py-1.5 text-xs font-bold text-[hsl(152,55%,28%)] disabled:opacity-60"
+                  data-testid="dish-ai-suggest"
+                >
+                  {aiBusy
+                    ? t("common.loading")
+                    : t("restaurant.aiSuggest", { defaultValue: "Flexa AI suggest" })}
+                </button>
                 <button type="button" disabled={saving || uploading} onClick={() => void onAdd()} className="rounded-full bg-[hsl(152,55%,28%)] px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
                   {t("restaurant.createDish")}
                 </button>
               </div>
+              {aiNotes.length > 0 && (
+                <ul className="space-y-1 text-xs text-muted-foreground" data-testid="dish-ai-notes">
+                  {aiNotes.map((n) => (
+                    <li key={n}>• {n}</li>
+                  ))}
+                </ul>
+              )}
               {error && <p className="text-sm text-destructive">{error}</p>}
             </div>
             {loading ? (

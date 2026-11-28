@@ -1,4 +1,5 @@
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import * as Location from "expo-location";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -112,16 +113,32 @@ export default function RestaurantOwnerScreen() {
     if (active) fetchOwnerStats(active.id, { token }).then(setStats).catch(() => undefined);
   }
 
-  async function publishTruckLocation() {
+  async function publishTruckLocation(withGps = false) {
     if (!active || !token || !truckLabel.trim()) return;
     try {
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+      if (withGps) {
+        const perm = await Location.requestForegroundPermissionsAsync();
+        if (perm.status !== "granted") {
+          setMsg(t("restaurant_locationPermissionDenied") || "Location permission denied");
+          return;
+        }
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        latitude = pos.coords.latitude;
+        longitude = pos.coords.longitude;
+      }
       const updated = await updateFoodTruckLocation(
         active.id,
-        { locationLabel: truckLabel.trim() },
+        { locationLabel: truckLabel.trim(), latitude, longitude },
         { token },
       );
       setMine((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-      setMsg(t("restaurant_locationUpdated") || "Operating location published");
+      setMsg(
+        latitude != null
+          ? t("restaurant_locationUpdatedGps") || "Operating location published with GPS"
+          : t("restaurant_locationUpdated") || "Operating location published",
+      );
     } catch (e: any) {
       setMsg(e?.message || "Location update failed");
     }
@@ -220,9 +237,14 @@ export default function RestaurantOwnerScreen() {
                   placeholderTextColor={T.muted}
                   style={styles.input}
                 />
-                <Pressable style={styles.btn} onPress={() => void publishTruckLocation()}>
-                  <Text style={styles.btnText}>{t("restaurant_publishLocation") || "Publish location"}</Text>
-                </Pressable>
+                <View style={styles.row}>
+                  <Pressable style={styles.secondary} onPress={() => void publishTruckLocation(false)}>
+                    <Text style={styles.secondaryText}>{t("restaurant_publishLocation") || "Publish label"}</Text>
+                  </Pressable>
+                  <Pressable style={styles.btn} onPress={() => void publishTruckLocation(true)}>
+                    <Text style={styles.btnText}>{t("restaurant_publishLocationGps") || "Publish + GPS"}</Text>
+                  </Pressable>
+                </View>
               </View>
             ) : null}
 

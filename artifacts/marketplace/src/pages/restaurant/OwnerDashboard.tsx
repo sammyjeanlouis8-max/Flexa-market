@@ -82,12 +82,40 @@ export default function OwnerDashboard() {
     if (active) fetchOwnerStats(active.id).then(setStats).catch(() => undefined);
   }
 
-  async function publishTruckLocation() {
+  function isIncoming(status: string) {
+    const s = String(status || "").toLowerCase();
+    return ["order_placed", "pending", "placed", "pending_payment"].includes(s);
+  }
+
+  async function publishTruckLocation(opts?: { withGps?: boolean }) {
     if (!active || !truckLabel.trim()) return;
     try {
-      const updated = await updateFoodTruckLocation(active.id, { locationLabel: truckLabel.trim() });
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+      if (opts?.withGps && typeof navigator !== "undefined" && navigator.geolocation) {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 12000,
+            maximumAge: 30_000,
+          });
+        });
+        latitude = pos.coords.latitude;
+        longitude = pos.coords.longitude;
+      }
+      const updated = await updateFoodTruckLocation(active.id, {
+        locationLabel: truckLabel.trim(),
+        latitude,
+        longitude,
+      });
       setMine((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
-      setMsg(t("restaurant.locationUpdated", { defaultValue: "Operating location published" }));
+      setMsg(
+        t("restaurant.locationUpdated", {
+          defaultValue: latitude != null
+            ? "Operating location published with GPS pin"
+            : "Operating location published",
+        }),
+      );
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Location update failed");
     }
@@ -179,20 +207,30 @@ export default function OwnerDashboard() {
                     defaultValue: "Publish where you are serving now. Flexa does not continuously track private GPS.",
                   })}
                 </p>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                   <input
                     value={truckLabel}
                     onChange={(e) => setTruckLabel(e.target.value)}
                     className="flex-1 rounded-xl border px-3 py-2 text-sm"
                     placeholder={t("restaurant.locationPlaceholder", { defaultValue: "e.g. Near City Hall, WPB" })}
                   />
-                  <button
-                    type="button"
-                    onClick={() => void publishTruckLocation()}
-                    className="rounded-xl bg-[hsl(152,55%,28%)] px-3 py-2 text-xs font-bold text-white"
-                  >
-                    {t("restaurant.publish", { defaultValue: "Publish" })}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void publishTruckLocation()}
+                      className="rounded-xl border border-[hsl(152,40%,70%)] px-3 py-2 text-xs font-bold text-[hsl(152,55%,28%)]"
+                    >
+                      {t("restaurant.publishLabel", { defaultValue: "Publish label" })}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void publishTruckLocation({ withGps: true })}
+                      className="rounded-xl bg-[hsl(152,55%,28%)] px-3 py-2 text-xs font-bold text-white"
+                      data-testid="truck-publish-gps"
+                    >
+                      {t("restaurant.publishWithGps", { defaultValue: "Publish + GPS" })}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -204,11 +242,11 @@ export default function OwnerDashboard() {
                   {t("restaurant.seeAll", { defaultValue: "See all" })}
                 </Link>
               </div>
-              {orders.filter((o) => o.status === "pending").length === 0 ? (
+              {orders.filter((o) => isIncoming(o.status)).length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t("restaurant.noOrders")}</p>
               ) : (
                 <ul className="space-y-2">
-                  {orders.filter((o) => o.status === "pending").slice(0, 5).map((o) => (
+                  {orders.filter((o) => isIncoming(o.status)).slice(0, 5).map((o) => (
                     <li key={o.id} className="rounded-2xl border border-black/5 bg-white p-3 shadow-sm">
                       <div className="flex items-start justify-between gap-2">
                         <div>
@@ -228,7 +266,7 @@ export default function OwnerDashboard() {
                       <div className="mt-3 flex gap-2">
                         <button
                           type="button"
-                          onClick={() => void setStatus(o.id, "accepted")}
+                          onClick={() => void setStatus(o.id, "confirmed")}
                           className="rounded-full bg-[hsl(152,55%,28%)] px-3 py-1.5 text-xs font-bold text-white"
                         >
                           {t("restaurant.accept", { defaultValue: "Accept" })}

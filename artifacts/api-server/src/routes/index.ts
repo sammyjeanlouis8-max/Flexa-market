@@ -87,6 +87,7 @@ import storeManagerRouter from "./storeManager";
 import bridgeRouter from "./bridge";
 import wholesaleRouter from "./wholesale";
 import restaurantsRouter from "./restaurants";
+import beautyRouter from "./beauty";
 import { extractToken, verifyToken } from "../lib/auth";
 import { loadAuthUser } from "../middlewares/auth";
 
@@ -94,6 +95,7 @@ const router: IRouter = Router();
 router.use(bridgeRouter);
 router.use(wholesaleRouter);
 router.use(restaurantsRouter);
+router.use(beautyRouter);
 
 // ─── Rate Limiters ────────────────────────────────────────────────────────────
 

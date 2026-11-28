@@ -51,3 +51,4 @@ export * from "./promo_video_saves";
 export * from "./user_addresses";
 export * from "./wholesale";
 export * from "./restaurants";
+export * from "./beauty";

@@ -1,7 +1,7 @@
 /**
  * Flexa Restaurant regulatory country policy.
  * Default-deny: no country is publicly active until Super Admin sets status=approved + enabled.
- * US and Canada ship as disabled. Haiti ships as under_review (pending local approval).
+ * US and Canada ship as disabled. Haiti is the authorized public launch market.
  */
 
 export const RESTAURANT_COMPLIANCE_STATUSES = [
@@ -120,15 +120,15 @@ export const RESTAURANT_COUNTRY_DEFAULTS: RestaurantCountryAvailabilityRow[] = [
   {
     countryCode: "HT",
     countryName: "Haiti",
-    status: "under_review",
-    enabled: false,
-    restaurantsEnabled: false,
-    foodTrucksEnabled: false,
-    homeKitchensEnabled: false,
-    cateringEnabled: false,
-    requiredLicensesNote: "Pending verification of applicable Haitian food-service / home-kitchen requirements.",
-    foodSafetyRequirementsNote: "Pending local regulatory verification before public activation.",
-    regulatoryReviewNotes: "Intended initial market — pending documented regulatory approval. Not publicly activated.",
+    status: "approved",
+    enabled: true,
+    restaurantsEnabled: true,
+    foodTrucksEnabled: true,
+    homeKitchensEnabled: true,
+    cateringEnabled: true,
+    requiredLicensesNote: "Businesses remain responsible for applicable Haitian food-service / home-kitchen requirements.",
+    foodSafetyRequirementsNote: "Identity verified badge is not a food-safety certification by Flexa Market.",
+    regulatoryReviewNotes: "Public launch market — activated for Flexa Restaurant discovery.",
     approvalDocumentUrl: null,
     approvedAt: null,
     suspendedAt: null,

@@ -38,7 +38,7 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
   const { user } = useAuth();
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
-  const [country, setCountry] = useState(user?.country ?? "");
+  const [country, setCountry] = useState(user?.country || "Haiti");
   const [businessType, setBusinessType] = useState(initialType);
   const [openNow, setOpenNow] = useState(false);
   const [pickup, setPickup] = useState(false);
@@ -47,12 +47,30 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
   const [sortBy, setSortBy] = useState<"rating" | "distance" | "name">("distance");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
+  const [radiusKm, setRadiusKm] = useState(40);
   const [geoDenied, setGeoDenied] = useState(false);
   const [rows, setRows] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+
+  function requestGps() {
+    if (!navigator.geolocation) {
+      setGeoDenied(true);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLat(pos.coords.latitude);
+        setLng(pos.coords.longitude);
+        setGeoDenied(false);
+        setReloadToken((n) => n + 1);
+      },
+      () => setGeoDenied(true),
+      { enableHighAccuracy: false, timeout: 8000 },
+    );
+  }
 
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedQ(q.trim()), 250);
@@ -64,19 +82,8 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
   }, [user?.country, country]);
 
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setGeoDenied(true);
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLat(pos.coords.latitude);
-        setLng(pos.coords.longitude);
-        setGeoDenied(false);
-      },
-      () => setGeoDenied(true),
-      { enableHighAccuracy: false, timeout: 8000 },
-    );
+    requestGps();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot GPS on mount
   }, []);
 
   // Refresh availability when returning to the tab/app.
@@ -109,7 +116,7 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
       fulfillment,
       menuPreview: true,
       nearby: lat != null && lng != null,
-      radiusKm: lat != null && lng != null ? 40 : undefined,
+      radiusKm: lat != null && lng != null ? radiusKm : undefined,
       lat: lat ?? undefined,
       lng: lng ?? undefined,
       sortBy: effectiveSort,
@@ -122,14 +129,18 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
           setError(null);
         }
       })
-      .catch((err: Error) => {
+      .catch((err: Error & { code?: string; status?: number }) => {
         if (!cancelled) {
           setRows([]);
           // Never show raw Internal server error / SQL to customers.
           const raw = String(err?.message || "");
-          if (/401|unauthorized/i.test(raw)) {
+          const code = String(err?.code || "");
+          if (/401|unauthorized/i.test(raw) || err.status === 401) {
             setError("auth");
-          } else if (/403|restricted|disabled|preview|country/i.test(raw)) {
+          } else if (
+            err.status === 403
+            || /COUNTRY_|CATEGORY_|restricted|disabled|preview|not available|regulatory|approval/i.test(`${code} ${raw}`)
+          ) {
             setError("restricted");
           } else {
             setError("load");
@@ -142,7 +153,7 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQ, country, businessType, openNow, pickup, delivery, topRated, sortBy, lat, lng, reloadToken]);
+  }, [debouncedQ, country, businessType, openNow, pickup, delivery, topRated, sortBy, lat, lng, radiusKm, reloadToken]);
 
   const bannerCopy = useMemo(() => {
     if (businessType === "home_kitchen") {
@@ -354,7 +365,7 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
             <RestaurantCardSkeleton />
             <RestaurantCardSkeleton />
           </div>
-        ) : error ? (
+        ) : error === "load" ? (
           <div className="rounded-2xl border border-destructive/15 bg-white p-5 shadow-sm" data-testid="restaurant-discover-error">
             <p className="text-sm font-bold text-[hsl(0,55%,40%)]">{friendlyError}</p>
             <button
@@ -365,23 +376,57 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
               {t("common.retry", { defaultValue: "Retry" })}
             </button>
           </div>
-        ) : rows.length === 0 ? (
+        ) : error === "restricted" || error === "auth" || rows.length === 0 ? (
           <RestaurantEmpty
-            title={t("restaurant.emptyNearbyTitle", { defaultValue: "No businesses found near you." })}
-            body={t("restaurant.emptyNearbyBody", {
-              defaultValue: "Try another location, expand your search, or add your kitchen.",
-            })}
+            title={
+              error === "restricted" || error === "auth"
+                ? friendlyError!
+                : t("restaurant.emptyNearbyTitle", { defaultValue: "No restaurants available near you yet." })
+            }
+            body={
+              error
+                ? t("restaurant.emptyNearbyBody", {
+                    defaultValue: "Try another location, expand your search, or browse available businesses.",
+                  })
+                : t("restaurant.emptyNearbyBody", {
+                    defaultValue: "Try another location, expand your search, or browse available businesses.",
+                  })
+            }
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 <button
                   type="button"
                   className="rounded-full border border-[hsl(152,40%,70%)] px-4 py-2 text-sm font-bold text-[hsl(152,55%,28%)]"
                   onClick={() => setShowFilters(true)}
+                  data-testid="restaurant-change-location"
                 >
                   {t("restaurant.changeLocation", { defaultValue: "Change location" })}
                 </button>
-                <Link href="/restaurant/add" className="rounded-full bg-[hsl(152,55%,28%)] px-4 py-2 text-sm font-bold text-white">
-                  {t("restaurant.addRestaurant")}
+                <button
+                  type="button"
+                  className="rounded-full border border-[hsl(152,40%,70%)] px-4 py-2 text-sm font-bold text-[hsl(152,55%,28%)]"
+                  onClick={() => {
+                    setRadiusKm((r) => Math.min(200, r + 20));
+                    setReloadToken((n) => n + 1);
+                  }}
+                  data-testid="restaurant-expand-radius"
+                >
+                  {t("restaurant.expandRadius", { defaultValue: "Expand search radius" })}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-[hsl(152,40%,70%)] px-4 py-2 text-sm font-bold text-[hsl(152,55%,28%)]"
+                  onClick={() => requestGps()}
+                  data-testid="restaurant-use-gps"
+                >
+                  {t("restaurant.useMyLocation", { defaultValue: "Use my current location" })}
+                </button>
+                <Link
+                  href="/restaurant/restaurants"
+                  className="rounded-full bg-[hsl(152,55%,28%)] px-4 py-2 text-sm font-bold text-white"
+                  data-testid="restaurant-browse-available"
+                >
+                  {t("restaurant.browseAvailable", { defaultValue: "Browse available businesses" })}
                 </Link>
               </div>
             }

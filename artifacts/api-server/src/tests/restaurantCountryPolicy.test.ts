@@ -16,14 +16,15 @@ describe("restaurantCountryPolicy", () => {
     expect(normalizeRestaurantCountryCode("usa")).toBe("US");
   });
 
-  it("defaults US and CA to disabled/suspended and Haiti to under_review", () => {
+  it("defaults US and CA to disabled/suspended and Haiti to public launch", () => {
     const us = RESTAURANT_COUNTRY_DEFAULTS.find((c) => c.countryCode === "US")!;
     const ca = RESTAURANT_COUNTRY_DEFAULTS.find((c) => c.countryCode === "CA")!;
     const ht = RESTAURANT_COUNTRY_DEFAULTS.find((c) => c.countryCode === "HT")!;
     expect(isCountryPubliclyActive(us)).toBe(false);
     expect(isCountryPubliclyActive(ca)).toBe(false);
-    expect(isCountryPubliclyActive(ht)).toBe(false);
-    expect(ht.status).toBe("under_review");
+    expect(isCountryPubliclyActive(ht)).toBe(true);
+    expect(ht.status).toBe("approved");
+    expect(ht.enabled).toBe(true);
     expect(us.enabled).toBe(false);
     expect(ca.enabled).toBe(false);
   });

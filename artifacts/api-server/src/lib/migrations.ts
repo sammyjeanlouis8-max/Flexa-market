@@ -4103,6 +4103,41 @@ CREATE INDEX IF NOT EXISTS conversations_restaurant_id_idx ON conversations(rest
 `,
   });
 
+  // Public launch: activate Haiti for Flexa Restaurant discovery (US/CA stay suspended).
+  migrations.push({
+    name: "restaurant_country_ht_public_launch.v1",
+    sql: `
+INSERT INTO restaurant_country_availability (
+  country_code, country_name, status, enabled,
+  restaurants_enabled, food_trucks_enabled, home_kitchens_enabled, catering_enabled,
+  required_licenses_note, food_safety_requirements_note, regulatory_review_notes,
+  approved_at, suspension_reason
+) VALUES (
+  'HT', 'Haiti', 'approved', TRUE,
+  TRUE, TRUE, TRUE, TRUE,
+  'Businesses remain responsible for applicable Haitian food-service / home-kitchen requirements.',
+  'Identity verified badge is not a food-safety certification by Flexa Market.',
+  'Public launch market — activated for Flexa Restaurant discovery.',
+  NOW(), NULL
+)
+ON CONFLICT (country_code) DO UPDATE SET
+  country_name = EXCLUDED.country_name,
+  status = 'approved',
+  enabled = TRUE,
+  restaurants_enabled = TRUE,
+  food_trucks_enabled = TRUE,
+  home_kitchens_enabled = TRUE,
+  catering_enabled = TRUE,
+  required_licenses_note = EXCLUDED.required_licenses_note,
+  food_safety_requirements_note = EXCLUDED.food_safety_requirements_note,
+  regulatory_review_notes = EXCLUDED.regulatory_review_notes,
+  approved_at = COALESCE(restaurant_country_availability.approved_at, NOW()),
+  suspended_at = NULL,
+  suspension_reason = NULL,
+  updated_at = NOW();
+`,
+  });
+
   migrations.push({
     name: "restaurant_merchant_delivery.v1",
     sql: `
@@ -4588,6 +4623,19 @@ CREATE INDEX IF NOT EXISTS beauty_promotions_status_idx ON beauty_promotions(sta
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 CREATE UNIQUE INDEX IF NOT EXISTS beauty_country_avail_uniq ON beauty_country_availability(country_code)`,
+  });
+
+  migrations.push({
+    name: "beauty_country_ht_public_launch.v1",
+    sql: `
+INSERT INTO beauty_country_availability (country_code, enabled, status, notes)
+VALUES ('HT', TRUE, 'approved', 'Public launch market for Séduire Beauty')
+ON CONFLICT (country_code) DO UPDATE SET
+  enabled = TRUE,
+  status = 'approved',
+  notes = COALESCE(NULLIF(beauty_country_availability.notes, ''), EXCLUDED.notes),
+  updated_at = NOW();
+`,
   });
 
   migrations.push({

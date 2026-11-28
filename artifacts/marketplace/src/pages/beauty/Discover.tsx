@@ -58,7 +58,7 @@ function DiscoverBody({
 
   const [q, setQ] = useState(qs.get("q") || "");
   const [debouncedQ, setDebouncedQ] = useState(q);
-  const [country, setCountry] = useState(qs.get("country") || user?.country || "");
+  const [country, setCountry] = useState(qs.get("country") || user?.country || "Haiti");
   const [businessType, setBusinessType] = useState(initialType);
   const [categorySlug] = useState(initialCategorySlug || qs.get("categorySlug") || "");
   const [openNow, setOpenNow] = useState(false);
@@ -138,13 +138,18 @@ function DiscoverBody({
           setError(null);
         }
       })
-      .catch((err: Error) => {
+      .catch((err: Error & { code?: string; status?: number }) => {
         if (!cancelled) {
           setRows([]);
           const raw = String(err?.message || "");
-          if (/401|unauthorized/i.test(raw)) setError("auth");
-          else if (/403|restricted|preview|country/i.test(raw)) setError("restricted");
-          else setError("load");
+          const code = String(err?.code || "");
+          if (/401|unauthorized/i.test(raw) || err.status === 401) setError("auth");
+          else if (
+            err.status === 403
+            || /COUNTRY_|CATEGORY_|restricted|preview|not available|regulatory|approval/i.test(`${code} ${raw}`)
+          ) {
+            setError("restricted");
+          } else setError("load");
         }
       })
       .finally(() => {
@@ -320,9 +325,20 @@ function DiscoverBody({
         )}
       </div>
 
-      {friendlyError && (
+      {friendlyError && error === "load" && (
         <div className="rounded-2xl border border-destructive/15 bg-white p-4 text-sm font-semibold text-[hsl(0,55%,40%)]">
           {friendlyError}
+          <button
+            type="button"
+            className="mt-3 block rounded-full bg-[hsl(350,45%,40%)] px-4 py-2 text-xs font-bold text-white"
+            onClick={() => {
+              setError(null);
+              setLoading(true);
+              setRadiusKm((r) => r);
+            }}
+          >
+            {t("common.retry", { defaultValue: "Retry" })}
+          </button>
         </div>
       )}
 
@@ -344,14 +360,34 @@ function DiscoverBody({
           <BeautyCardSkeleton />
           <BeautyCardSkeleton />
         </div>
-      ) : rows.length === 0 ? (
+      ) : error === "load" ? null : rows.length === 0 || error === "restricted" || error === "auth" ? (
         <BeautyEmpty
-          title={t("beauty.emptyTitle")}
+          title={
+            error === "restricted" || error === "auth"
+              ? friendlyError!
+              : t("beauty.emptyNearbyTitle", { defaultValue: "No beauty businesses available near you yet." })
+          }
           body={t("beauty.emptyBody")}
           action={
-            <Link href="/beauty" className="text-sm font-semibold text-[hsl(350,45%,40%)]">
-              {t("beauty.back")}
-            </Link>
+            <div className="flex flex-wrap justify-center gap-2">
+              <button
+                type="button"
+                className="rounded-full border border-[hsl(350,30%,75%)] px-4 py-2 text-sm font-bold text-[hsl(350,45%,40%)]"
+                onClick={() => setShowFilters(true)}
+              >
+                {t("beauty.changeLocation", { defaultValue: "Change location" })}
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-[hsl(350,30%,75%)] px-4 py-2 text-sm font-bold text-[hsl(350,45%,40%)]"
+                onClick={() => setRadiusKm((r) => Math.min(200, r + 20))}
+              >
+                {t("beauty.expandRadius", { defaultValue: "Expand search radius" })}
+              </button>
+              <Link href="/beauty" className="rounded-full bg-[hsl(350,45%,40%)] px-4 py-2 text-sm font-bold text-white">
+                {t("beauty.browseAvailable", { defaultValue: "Browse categories" })}
+              </Link>
+            </div>
           }
         />
       ) : (

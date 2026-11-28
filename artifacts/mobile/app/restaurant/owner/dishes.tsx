@@ -2,6 +2,7 @@ import { useLocalSearchParams } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,9 +12,11 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
+import { NativePhotoField } from "@/components/media/NativePhotoField";
 import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { isHttpsImageUrl } from "@/lib/nativePhotoPicker";
 import {
   createDishModel,
   createDishOption,
@@ -21,6 +24,7 @@ import {
   fetchDishModels,
   fetchDishOptions,
   formatMoney,
+  updateDishModel,
   type DishModel,
   type DishOptionGroup,
 } from "@/lib/restaurantApi";
@@ -38,9 +42,13 @@ export default function OwnerDishesScreen() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [photoError, setPhotoError] = useState(false);
   const [allergens, setAllergens] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editPhotos, setEditPhotos] = useState<string[]>([]);
+  const [editPhotoError, setEditPhotoError] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [groups, setGroups] = useState<DishOptionGroup[]>([]);
   const [groupName, setGroupName] = useState("Size");
@@ -66,12 +74,19 @@ export default function OwnerDishesScreen() {
 
   async function create() {
     if (!token) return;
-    if (!photoUrl.trim()) {
-      setError(t("restaurant_foodImageRequired") || "A food image URL is required.");
+    const validPhotos = photos.filter(isHttpsImageUrl);
+    if (validPhotos.length < 1) {
+      setPhotoError(true);
+      setError(t("restaurant_foodImageRequired") || "A food image is required before publishing.");
+      return;
+    }
+    if (!name.trim()) {
+      setError(t("restaurant_dishNameRequired") || "Dish name is required.");
       return;
     }
     setSaving(true);
     setError(null);
+    setPhotoError(false);
     try {
       await createDishModel(
         restaurantId,
@@ -79,7 +94,7 @@ export default function OwnerDishesScreen() {
           name: name.trim(),
           description: description.trim(),
           price: Number(price) || 0,
-          photos: [photoUrl.trim()],
+          photos: validPhotos.slice(0, 8),
           allergens: allergens.trim(),
           defaultAvailable: true,
         },
@@ -88,11 +103,45 @@ export default function OwnerDishesScreen() {
       setName("");
       setDescription("");
       setPrice("");
-      setPhotoUrl("");
+      setPhotos([]);
       setAllergens("");
       await load();
     } catch (e: any) {
       setError(e?.message || "Could not create dish");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function startEdit(dish: DishModel) {
+    setEditingId(dish.id);
+    setEditPhotos((dish.photos || []).filter(isHttpsImageUrl));
+    setEditPhotoError(false);
+    setError(null);
+  }
+
+  async function saveEdit() {
+    if (!token || !editingId) return;
+    const validPhotos = editPhotos.filter(isHttpsImageUrl);
+    if (validPhotos.length < 1) {
+      setEditPhotoError(true);
+      setError(t("restaurant_foodImageRequired") || "A food image is required before publishing.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await updateDishModel(
+        restaurantId,
+        editingId,
+        { photos: validPhotos.slice(0, 8), defaultAvailable: true },
+        { token },
+      );
+      setEditingId(null);
+      setEditPhotos([]);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || "Could not update dish photos");
     } finally {
       setSaving(false);
     }
@@ -158,7 +207,21 @@ export default function OwnerDishesScreen() {
           <TextInput value={name} onChangeText={setName} placeholder="Name" placeholderTextColor={T.muted} style={styles.input} />
           <TextInput value={description} onChangeText={setDescription} placeholder="Description" placeholderTextColor={T.muted} style={styles.input} multiline />
           <TextInput value={price} onChangeText={setPrice} placeholder="Price" placeholderTextColor={T.muted} style={styles.input} keyboardType="decimal-pad" />
-          <TextInput value={photoUrl} onChangeText={setPhotoUrl} placeholder="Food image URL (required)" placeholderTextColor={T.muted} style={styles.input} autoCapitalize="none" />
+          <NativePhotoField
+            token={token}
+            value={photos}
+            onChange={(urls) => {
+              setPhotos(urls);
+              if (urls.length) setPhotoError(false);
+            }}
+            max={5}
+            multiple
+            required
+            showError={photoError}
+            label={t("restaurant_foodPhotos") || "Food photos"}
+            helpText={t("restaurant_foodPhotosHelp") || "Gallery or camera. At least one photo required."}
+            testID="restaurant-dish-photos"
+          />
           <TextInput value={allergens} onChangeText={setAllergens} placeholder="Allergens" placeholderTextColor={T.muted} style={styles.input} />
           <Pressable style={[styles.btn, saving && { opacity: 0.6 }]} disabled={saving} onPress={() => void create()}>
             <Text style={styles.btnText}>{t("restaurant_saveDish") || "Save dish"}</Text>
@@ -171,12 +234,53 @@ export default function OwnerDishesScreen() {
           dishes.map((d) => (
             <View key={d.id} style={styles.card}>
               <Pressable onPress={() => void openOptions(d.id)}>
-                <Text style={styles.title}>{d.name}</Text>
-                <Text style={styles.muted}>
-                  {formatMoney(d.price, d.currency)}
-                  {!d.photos?.length ? " · missing image" : ` · ${d.photos.length} photo(s)`}
-                </Text>
+                <View style={styles.dishHead}>
+                  {d.photos?.[0] ? (
+                    <Image source={{ uri: d.photos[0] }} style={styles.dishThumb} />
+                  ) : (
+                    <View style={[styles.dishThumb, styles.dishThumbEmpty]} />
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.title}>{d.name}</Text>
+                    <Text style={styles.muted}>
+                      {formatMoney(d.price, d.currency)}
+                      {!d.photos?.length
+                        ? ` · ${t("restaurant_missingImage") || "missing image"}`
+                        : ` · ${d.photos.length} photo(s)`}
+                    </Text>
+                  </View>
+                </View>
               </Pressable>
+              {editingId === d.id ? (
+                <View style={{ marginTop: 10 }}>
+                  <NativePhotoField
+                    token={token}
+                    value={editPhotos}
+                    onChange={(urls) => {
+                      setEditPhotos(urls);
+                      if (urls.length) setEditPhotoError(false);
+                    }}
+                    max={5}
+                    multiple
+                    required
+                    showError={editPhotoError}
+                    label={t("restaurant_editFoodPhotos") || "Edit food photos"}
+                    testID={`restaurant-dish-edit-${d.id}`}
+                  />
+                  <View style={styles.row}>
+                    <Pressable style={[styles.btn, { flex: 1 }, saving && { opacity: 0.6 }]} disabled={saving} onPress={() => void saveEdit()}>
+                      <Text style={styles.btnText}>{t("restaurant_savePhotos") || "Save photos"}</Text>
+                    </Pressable>
+                    <Pressable style={styles.secondary} onPress={() => setEditingId(null)}>
+                      <Text style={styles.secondaryText}>{t("nativePhoto_cancel") || "Cancel"}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable style={[styles.secondary, { marginTop: 8 }]} onPress={() => startEdit(d)}>
+                  <Text style={styles.secondaryText}>{t("restaurant_editPhotos") || "Edit photos"}</Text>
+                </Pressable>
+              )}
               {expanded === d.id ? (
                 <View style={{ marginTop: 10 }}>
                   <Text style={styles.section}>{t("restaurant_variants") || "Variants / toppings"}</Text>
@@ -239,6 +343,9 @@ const styles = StyleSheet.create({
   section: { fontSize: 14, fontWeight: "800", color: T.ink, marginBottom: 8 },
   title: { fontWeight: "800", color: T.ink },
   muted: { marginTop: 4, fontSize: 12, color: T.muted },
+  dishHead: { flexDirection: "row", gap: 10, alignItems: "center" },
+  dishThumb: { width: 56, height: 56, borderRadius: 10, backgroundColor: T.mintSoft },
+  dishThumbEmpty: { borderWidth: StyleSheet.hairlineWidth, borderColor: T.line },
   input: {
     backgroundColor: T.mintSoft,
     borderRadius: 12,

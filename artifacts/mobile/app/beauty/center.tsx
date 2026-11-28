@@ -29,6 +29,7 @@ import { beautyTheme as T } from "@/lib/beautyTheme";
 const LINKS = [
   { path: "/beauty/center-services", titleKey: "beauty_services", bodyKey: "beauty_servicesManage" },
   { path: "/beauty/center-staff", titleKey: "beauty_staff", bodyKey: "beauty_staffManage" },
+  { path: "/beauty/center-portfolio", titleKey: "beauty_portfolio", bodyKey: "beauty_portfolioManage" },
   { path: "/beauty/center-calendar", titleKey: "beauty_calendar", bodyKey: "beauty_calendarSubtitle" },
 ] as const;
 

@@ -16,6 +16,8 @@ const TABS = [
       || p.startsWith("/beauty/discover")
       || p.startsWith("/beauty/studio")
       || p.startsWith("/beauty/barbershop")
+      || p.startsWith("/beauty/categories")
+      || p.startsWith("/beauty/c/")
       || p.startsWith("/beauty/map")
       || p.startsWith("/beauty/service/")
       || p.startsWith("/beauty/pro/")

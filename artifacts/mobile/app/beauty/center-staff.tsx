@@ -2,6 +2,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { BeautyShell } from "@/components/beauty/BeautyShell";
+import { NativePhotoField } from "@/components/media/NativePhotoField";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import {
@@ -34,6 +36,7 @@ export default function BeautyCenterStaffScreen() {
   const [error, setError] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState("staff");
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -62,12 +65,17 @@ export default function BeautyCenterStaffScreen() {
     try {
       const created = await createBeautyProfessional(
         businessId,
-        { fullName: fullName.trim(), role: role.trim() || "staff" },
+        {
+          fullName: fullName.trim(),
+          role: role.trim() || "staff",
+          photoUrl: photoUrls[0] || undefined,
+        },
         { token },
       );
       setStaff((prev) => [...prev, created]);
       setFullName("");
       setRole("staff");
+      setPhotoUrls([]);
     } catch (e: any) {
       setError(e?.message || t("beauty_saveFailed"));
     } finally {
@@ -135,6 +143,16 @@ export default function BeautyCenterStaffScreen() {
             placeholder={t("beauty_staffRole")}
             placeholderTextColor={T.muted}
           />
+          <NativePhotoField
+            token={token}
+            value={photoUrls}
+            onChange={setPhotoUrls}
+            max={1}
+            allowsEditing
+            aspect={[1, 1]}
+            label={t("beauty_staffPhoto") || "Profile photo"}
+            testID="beauty-staff-photo"
+          />
           <Pressable style={[styles.btn, saving && { opacity: 0.6 }]} disabled={saving} onPress={() => void addStaff()}>
             {saving ? <ActivityIndicator color={T.white} /> : <Text style={styles.btnText}>{t("beauty_save")}</Text>}
           </Pressable>
@@ -150,13 +168,20 @@ export default function BeautyCenterStaffScreen() {
           staff.map((pro) => (
             <View key={pro.id} style={styles.card}>
               <View style={styles.rowBetween}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>{pro.fullName}</Text>
-                  <Text style={styles.muted}>
-                    {[pro.role, pro.isActive === false ? t("beauty_inactive") : t("beauty_active")]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </Text>
+                <View style={{ flex: 1, flexDirection: "row", gap: 10, alignItems: "center" }}>
+                  {pro.photoUrl ? (
+                    <Image source={{ uri: pro.photoUrl }} style={styles.avatar} />
+                  ) : (
+                    <View style={[styles.avatar, styles.avatarEmpty]} />
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.title}>{pro.fullName}</Text>
+                    <Text style={styles.muted}>
+                      {[pro.role, pro.isActive === false ? t("beauty_inactive") : t("beauty_active")]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                  </View>
                 </View>
                 <Pressable style={styles.outlineBtn} onPress={() => void toggleActive(pro)}>
                   <Text style={styles.outlineBtnText}>
@@ -183,6 +208,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: { fontWeight: "800", color: T.ink, fontSize: 14 },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: T.blushSoft },
+  avatarEmpty: { borderWidth: StyleSheet.hairlineWidth, borderColor: T.line },
   input: {
     backgroundColor: T.blushSoft,
     borderRadius: 12,

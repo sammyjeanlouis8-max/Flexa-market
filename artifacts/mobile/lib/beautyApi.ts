@@ -202,6 +202,8 @@ export async function fetchBeautyBusinesses(
     openNow?: boolean;
     homeService?: boolean;
     featured?: boolean;
+    minRating?: number;
+    maxPriceMinor?: number;
     nearby?: boolean;
     radiusKm?: number;
     lat?: number;
@@ -221,6 +223,8 @@ export async function fetchBeautyBusinesses(
   if (params.openNow) qs.set("openNow", "1");
   if (params.homeService) qs.set("homeService", "1");
   if (params.featured) qs.set("featured", "1");
+  if (params.minRating != null) qs.set("minRating", String(params.minRating));
+  if (params.maxPriceMinor != null) qs.set("maxPriceMinor", String(params.maxPriceMinor));
   if (params.nearby) qs.set("nearby", "1");
   if (params.radiusKm != null) qs.set("radiusKm", String(params.radiusKm));
   if (params.lat != null) qs.set("lat", String(params.lat));
@@ -386,6 +390,33 @@ export async function updateBeautyProfessional(
   });
   const data = await parseJson<{ professional: BeautyProfessional }>(res, "Could not update professional");
   return data.professional;
+}
+
+export async function createBeautyPortfolioItem(
+  businessId: number,
+  body: Record<string, unknown>,
+  opts: AuthOpts,
+) {
+  const res = await fetch(`${getApiBase()}/beauty/my-businesses/${businessId}/portfolio`, {
+    method: "POST",
+    headers: headers(opts.token),
+    body: JSON.stringify(body),
+    signal: opts.signal,
+  });
+  return parseJson<{ item: Record<string, unknown> }>(res, "Could not publish portfolio item");
+}
+
+export async function deleteBeautyPortfolioItem(
+  businessId: number,
+  itemId: number,
+  opts: AuthOpts,
+) {
+  const res = await fetch(`${getApiBase()}/beauty/my-businesses/${businessId}/portfolio/${itemId}`, {
+    method: "DELETE",
+    headers: headers(opts.token),
+    signal: opts.signal,
+  });
+  return parseJson<{ ok: boolean }>(res, "Could not delete portfolio item");
 }
 
 export async function createBeautyAppointment(

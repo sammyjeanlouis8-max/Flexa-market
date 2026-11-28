@@ -59,6 +59,39 @@ describe("beauty routes smoke", () => {
     expect(access).toContain("cancelled_by_customer");
     expect(access).toContain("cancelled_by_business");
   });
+
+  it("requires a valid service image before publishing/activating", () => {
+    expect(routes).toContain("isValidPublicImageUrl");
+    expect(routes).toContain("A valid service image is required before publishing");
+    expect(routes).toContain("A valid service image is required before activating");
+    expect(routes).toContain('"/beauty/my-businesses/:id/portfolio"');
+  });
+
+  it("seeds and discovers the 12 primary beauty categories", () => {
+    const catalog = readFileSync(
+      resolve(__dirname, "../lib/beautyCategoriesCatalog.ts"),
+      "utf8",
+    );
+    for (const slug of [
+      "beauty-studio",
+      "barbershop",
+      "nail-studio",
+      "makeup-studio",
+      "braids-locs",
+      "spa-massage",
+      "lashes-brows",
+      "skin-care",
+      "wigs-extensions",
+      "bridal-beauty",
+      "waxing-studio",
+      "mobile-beauty",
+    ]) {
+      expect(catalog).toContain(`slug: "${slug}"`);
+    }
+    expect(routes).toContain("BEAUTY_PRIMARY_CATEGORIES");
+    expect(routes).toContain("categorySlugs");
+    expect(routes).toContain("mobileDelivery");
+  });
 });
 
 describe("beauty startup migrations", () => {

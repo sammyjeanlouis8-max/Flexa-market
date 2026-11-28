@@ -1,5 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -14,10 +13,10 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NativePhotoField } from "@/components/media/NativePhotoField";
 import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
-import { uploadLocalFile } from "@/lib/mediaUpload";
 import {
   createRestaurant,
   saveRestaurantDelivery,
@@ -112,7 +111,6 @@ export default function RestaurantAddScreen() {
   const [step, setStep] = useState(0);
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState<"logo" | "cover" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>({
     restaurantId: null,
@@ -203,39 +201,6 @@ export default function RestaurantAddScreen() {
     if (step === 3) return form.identityAck && form.legalName.trim().length >= 2;
     if (step === 4) return form.foodAck && form.termsAck;
     return true;
-  }
-
-  async function pickImage(kind: "logo" | "cover") {
-    if (!token) {
-      setError("Sign in required");
-      return;
-    }
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      setError("Photo library permission required");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-      allowsEditing: true,
-      aspect: kind === "logo" ? [1, 1] : [16, 9],
-    });
-    if (result.canceled || !result.assets?.[0]?.uri) return;
-    setUploading(kind);
-    setError(null);
-    try {
-      const uploaded = await uploadLocalFile(result.assets[0].uri, {
-        token,
-        contentType: "image/jpeg",
-        fileName: kind === "logo" ? "logo.jpg" : "cover.jpg",
-      });
-      setForm((f) => ({ ...f, [kind === "logo" ? "logoUrl" : "coverUrl"]: uploaded.url }));
-    } catch (e: any) {
-      setError(e?.message || "Upload failed");
-    } finally {
-      setUploading(null);
-    }
   }
 
   async function useCurrentLocation() {
@@ -401,23 +366,31 @@ export default function RestaurantAddScreen() {
           <Input label="Business phone *" value={form.phone} onChange={(v) => setForm((f) => ({ ...f, phone: v }))} error={showErr && !form.phone.trim()} />
           <Input label="Business email (optional)" value={form.email} onChange={(v) => setForm((f) => ({ ...f, email: v }))} />
 
-          <Text style={styles.label}>Business logo (1:1)</Text>
-          <View style={styles.row}>
-            <Pressable style={styles.chip} onPress={() => void pickImage("logo")} disabled={!!uploading}>
-              <Text style={styles.chipText}>{uploading === "logo" ? "Uploading…" : form.logoUrl ? "Replace logo" : "Upload logo"}</Text>
-            </Pressable>
-            {form.logoUrl ? <Image source={{ uri: form.logoUrl }} style={styles.preview} /> : null}
-          </View>
-          <Text style={styles.label}>Cover photo (16:9)</Text>
-          <View style={styles.row}>
-            <Pressable style={styles.chip} onPress={() => void pickImage("cover")} disabled={!!uploading}>
-              <Text style={styles.chipText}>{uploading === "cover" ? "Uploading…" : form.coverUrl ? "Replace cover" : "Upload cover"}</Text>
-            </Pressable>
-            {form.coverUrl ? <Image source={{ uri: form.coverUrl }} style={styles.previewWide} /> : null}
-          </View>
-          {showErr && !form.logoUrl && !form.coverUrl ? (
-            <Text style={styles.err}>Add a logo or cover photo</Text>
-          ) : null}
+          <NativePhotoField
+            token={token}
+            value={form.logoUrl ? [form.logoUrl] : []}
+            onChange={(urls) => setForm((f) => ({ ...f, logoUrl: urls[0] || "" }))}
+            max={1}
+            allowsEditing
+            aspect={[1, 1]}
+            required
+            showError={showErr && !form.logoUrl && !form.coverUrl}
+            label={t("restaurant_logo") || "Business logo (1:1)"}
+            helpText={t("nativePhoto_galleryOrCamera") || "Choose from Gallery or Take Photo"}
+            testID="restaurant-add-logo"
+          />
+          <NativePhotoField
+            token={token}
+            value={form.coverUrl ? [form.coverUrl] : []}
+            onChange={(urls) => setForm((f) => ({ ...f, coverUrl: urls[0] || "" }))}
+            max={1}
+            allowsEditing
+            aspect={[16, 9]}
+            required
+            showError={showErr && !form.logoUrl && !form.coverUrl}
+            label={t("restaurant_cover") || "Cover photo (16:9)"}
+            testID="restaurant-add-cover"
+          />
         </View>
       )}
 

@@ -46,7 +46,7 @@ function Section({
 function HubBody() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [country, setCountry] = useState(user?.country ?? "");
+  const [country, setCountry] = useState(user?.country || "Haiti");
   const [q, setQ] = useState("");
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);

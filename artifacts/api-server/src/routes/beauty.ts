@@ -663,8 +663,16 @@ router.get("/beauty/businesses", requireBeautyAccess, async (req, res): Promise<
     const profileCountry = String(req.user?.country || "").trim();
     const staff = isStaff(req.user);
     const country = queryCountry || profileCountry;
+    // Guests without a country: empty success so the UI can prompt for location
+    // instead of treating discovery as a hard failure.
     if (!country && !staff) {
-      res.status(400).json({ error: "Country is required for beauty discovery" });
+      res.json({
+        businesses: [],
+        total: 0,
+        code: "COUNTRY_REQUIRED",
+        message: "Select a country or city to browse nearby beauty businesses.",
+        platformFees: { commission: 0 },
+      });
       return;
     }
     if (queryCountry && profileCountry && !staff

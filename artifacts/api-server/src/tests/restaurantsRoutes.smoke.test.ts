@@ -60,6 +60,11 @@ describe("restaurants routes smoke", () => {
     expect(routes).toContain("countryPolicy");
   });
 
+  it("returns soft empty discovery when country is missing", () => {
+    expect(routes).toContain('code: "COUNTRY_REQUIRED"');
+    expect(routes).toContain("Select a country or city to browse nearby businesses.");
+  });
+
   it("supports category discovery, menu preview, and food-truck location", () => {
     expect(routes).toContain("businessType");
     expect(routes).toContain("menuPreview");

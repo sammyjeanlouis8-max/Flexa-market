@@ -40,6 +40,9 @@ export default function RestaurantDiscoverScreen() {
   const [error, setError] = useState<"auth" | "restricted" | "load" | null>(null);
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
+  const [radiusKm, setRadiusKm] = useState(40);
+  const [country, setCountry] = useState(user?.country || "Haiti");
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,13 +72,13 @@ export default function RestaurantDiscoverScreen() {
         await fetchRestaurants(
           {
             q: q.trim() || undefined,
-            country: user?.country,
+            country: country || undefined,
             businessType: businessType === "all" ? undefined : businessType,
             openNow: openNow || undefined,
             menuPreview: true,
             status: "published",
             nearby: lat != null && lng != null,
-            radiusKm: lat != null && lng != null ? 40 : undefined,
+            radiusKm: lat != null && lng != null ? radiusKm : undefined,
             lat: lat ?? undefined,
             lng: lng ?? undefined,
             sortBy: lat != null && lng != null ? "distance" : "rating",
@@ -96,7 +99,23 @@ export default function RestaurantDiscoverScreen() {
     } finally {
       setLoading(false);
     }
-  }, [token, user?.country, q, businessType, openNow, lat, lng]);
+  }, [token, country, q, businessType, openNow, lat, lng, radiusKm]);
+
+  useEffect(() => {
+    if (user?.country) setCountry(user.country);
+  }, [user?.country]);
+
+  async function useMyLocation() {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") return;
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setLat(pos.coords.latitude);
+      setLng(pos.coords.longitude);
+    } catch {
+      /* keep manual country browse */
+    }
+  }
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -172,17 +191,59 @@ export default function RestaurantDiscoverScreen() {
             </Pressable>
           </View>
         ) : error || rows.length === 0 ? (
-          <View>
-            <Text style={styles.muted}>
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>
               {error === "restricted"
                 ? t("restaurant_countryDisabled") || "Flexa Restaurant is not available for this location."
                 : error === "auth"
                   ? "Sign in to browse Flexa Restaurant (staff preview)."
                   : t("restaurant_emptyTitle") || "No restaurants available near you yet."}
             </Text>
-            <Pressable style={styles.retry} onPress={() => void load()}>
-              <Text style={styles.retryText}>{t("common_retry") || "Retry"}</Text>
-            </Pressable>
+            <Text style={styles.muted}>
+              {t("restaurant_emptyBody") ||
+                "Try another location, expand your search, or browse available businesses."}
+            </Text>
+            {showLocationPicker ? (
+              <View style={styles.row}>
+                {["Haiti", "United States", "Canada", "Dominican Republic"].map((c) => (
+                  <Pressable
+                    key={c}
+                    style={[styles.chip, country === c && styles.chipOn]}
+                    onPress={() => {
+                      setCountry(c);
+                      setShowLocationPicker(false);
+                    }}
+                  >
+                    <Text style={[styles.chipText, country === c && styles.chipTextOn]}>{c}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            <View style={styles.emptyActions}>
+              <Pressable style={styles.secondaryBtn} onPress={() => setShowLocationPicker(true)}>
+                <Text style={styles.secondaryBtnText}>
+                  {t("restaurant_changeLocation") || "Change location"}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.secondaryBtn}
+                onPress={() => setRadiusKm((r) => Math.min(200, r + 20))}
+              >
+                <Text style={styles.secondaryBtnText}>
+                  {t("restaurant_expandRadius") || "Expand search radius"}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.secondaryBtn} onPress={() => void useMyLocation()}>
+                <Text style={styles.secondaryBtnText}>
+                  {t("restaurant_useMyLocation") || "Use my current location"}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.retry} onPress={() => router.push("/restaurant" as any)}>
+                <Text style={styles.retryText}>
+                  {t("restaurant_browseAvailable") || "Browse available businesses"}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         ) : (
           rows.map((r) => (
@@ -295,13 +356,25 @@ const styles = StyleSheet.create({
   },
   badgeOpen: { backgroundColor: "rgba(26,107,71,0.12)", color: T.accent },
   err: { color: "#b91c1c", marginTop: 12, fontWeight: "800" },
+  emptyBox: { marginTop: 8, gap: 8 },
+  emptyTitle: { color: T.ink, fontWeight: "900", fontSize: 15 },
+  emptyActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
+  secondaryBtn: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: T.accent,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: T.white,
+  },
+  secondaryBtnText: { color: T.accent, fontWeight: "800", fontSize: 12 },
   retry: {
-    marginTop: 12,
+    marginTop: 0,
     alignSelf: "flex-start",
     backgroundColor: T.accent,
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  retryText: { color: T.white, fontWeight: "900" },
+  retryText: { color: T.white, fontWeight: "900", fontSize: 12 },
 });

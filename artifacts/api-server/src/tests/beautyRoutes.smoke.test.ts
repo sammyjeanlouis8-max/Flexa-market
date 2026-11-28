@@ -40,6 +40,12 @@ describe("beauty routes smoke", () => {
     }
   });
 
+  it("returns soft empty discovery when country is missing", () => {
+    expect(routes).toContain('code: "COUNTRY_REQUIRED"');
+    expect(routes).toContain("Select a country or city to browse nearby beauty businesses.");
+    expect(routes).not.toContain('res.status(400).json({ error: "Country is required for beauty discovery" })');
+  });
+
   it("never trusts client prices and snapshots service details", () => {
     expect(routes).toContain("priceMinorSnapshot");
     expect(routes).toContain("serviceNameSnapshot");

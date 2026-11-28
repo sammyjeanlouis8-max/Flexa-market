@@ -384,8 +384,25 @@ function DiscoverBody({
               >
                 {t("beauty.expandRadius", { defaultValue: "Expand search radius" })}
               </button>
+              <button
+                type="button"
+                className="rounded-full border border-[hsl(350,30%,75%)] px-4 py-2 text-sm font-bold text-[hsl(350,45%,40%)]"
+                onClick={() => {
+                  if (!navigator.geolocation) return;
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                      setLat(pos.coords.latitude);
+                      setLng(pos.coords.longitude);
+                    },
+                    () => undefined,
+                    { enableHighAccuracy: false, timeout: 8000 },
+                  );
+                }}
+              >
+                {t("beauty.useMyLocation", { defaultValue: "Use my current location" })}
+              </button>
               <Link href="/beauty" className="rounded-full bg-[hsl(350,45%,40%)] px-4 py-2 text-sm font-bold text-white">
-                {t("beauty.browseAvailable", { defaultValue: "Browse categories" })}
+                {t("beauty.browseAvailable", { defaultValue: "Browse available businesses" })}
               </Link>
             </div>
           }

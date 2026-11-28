@@ -5,6 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   Compass,
   Heart,
   Home,
@@ -101,7 +102,7 @@ function Cover({
         width: size,
         height: size,
         borderRadius: radius,
-        background: "linear-gradient(135deg,#0B3022,#1A1A1A)",
+        background: "linear-gradient(135deg,#0B3D2B,#1C2C24)",
       }}
     >
       {(title?.[0] || "♪").toUpperCase()}
@@ -267,8 +268,22 @@ export default function MusicHome({
   return (
     <div className="music-view-root" style={{ minHeight: "100vh", paddingBottom: 130 }} data-testid="music-home-redesign">
       {/* Brand header */}
-      <div className="music-topbar sticky top-0 z-30 flex items-center justify-between px-4 py-3">
-        <BrandMark />
+      <div className="music-topbar sticky top-0 z-30 flex items-center justify-between px-4 py-3 gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              // SPA navigate keeps GlobalMusicPlayer mounted (playback continues).
+              setLocation("/");
+            }}
+            className="music-icon-button w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+            aria-label={t("common.back", { defaultValue: "Back to Flexa Market" })}
+            data-testid="music-back"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <BrandMark />
+        </div>
         <div className="flex items-center gap-2">
           {artistToolsAvailable && (
             <button

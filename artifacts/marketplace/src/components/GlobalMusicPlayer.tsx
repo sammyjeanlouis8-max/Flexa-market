@@ -238,12 +238,12 @@ export default function GlobalMusicPlayer() {
       className="fixed left-0 right-0 mx-3 z-[60] rounded-2xl select-none"
       style={{
         bottom: "calc(4rem + env(safe-area-inset-bottom, 0px) + 8px)",
-        background: "linear-gradient(135deg, rgba(11,48,34,0.96), rgba(15,61,44,0.98))",
+        background: "linear-gradient(135deg, rgba(23,36,30,0.98), rgba(11,61,43,0.98))",
         border: isDragging
-          ? "1.5px solid rgba(255,107,0,0.7)"
-          : "1px solid rgba(255,107,0,0.28)",
+          ? "1.5px solid rgba(255,121,0,0.7)"
+          : "1px solid rgba(41,59,50,0.95)",
         boxShadow: isDragging
-          ? "0 0 0 4px rgba(255,107,0,0.18), 0 16px 40px rgba(0,0,0,0.7)"
+          ? "0 0 0 4px rgba(255,121,0,0.18), 0 16px 40px rgba(0,0,0,0.7)"
           : "0 8px 28px rgba(0,0,0,0.45)",
         backdropFilter: "blur(18px)",
         transform,

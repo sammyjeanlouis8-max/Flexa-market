@@ -81,7 +81,7 @@ export default function MusicSearchScreen() {
   };
 
   return (
-    <MusicShell title="Explore" showNav={false}>
+    <MusicShell showNav showSearch={false}>
       <View style={styles.searchRow}>
         <Feather name="search" size={18} color={musicTheme.muted} />
         <TextInput

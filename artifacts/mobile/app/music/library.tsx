@@ -13,7 +13,7 @@ import {
 import { MusicShell } from "@/components/music/MusicShell";
 import { TrackListRow } from "@/components/music/TrackRow";
 import { useAuth } from "@/context/AuthContext";
-import { fetchMusicCatalog, fetchMusicTrack, type MusicTrack } from "@/lib/musicApi";
+import { fetchMusicLibrary, fetchMusicTrack, type MusicTrack } from "@/lib/musicApi";
 import {
   clearUnseenSponsoredAdCount,
   readUnseenSponsoredAdCount,
@@ -43,20 +43,24 @@ export default function MusicLibraryScreen() {
       const likedIds: number[] = likedRaw ? JSON.parse(likedRaw) : [];
       const recentList: MusicTrack[] = recentRaw ? JSON.parse(recentRaw) : [];
       setRecent(recentList);
-      const fetched: MusicTrack[] = [];
-      for (const id of likedIds.slice(0, 40)) {
+      let fetched: MusicTrack[] = [];
+      if (token) {
         try {
-          fetched.push(await fetchMusicTrack(id, { token }));
+          fetched = await fetchMusicLibrary({ token });
         } catch {
-          /* skip stale */
+          fetched = [];
         }
       }
-      if (!fetched.length && token) {
-        const catalog = await fetchMusicCatalog({ limit: 20 }, { token });
-        setLiked(catalog.slice(0, 8));
-      } else {
-        setLiked(fetched);
+      if (!fetched.length) {
+        for (const id of likedIds.slice(0, 40)) {
+          try {
+            fetched.push(await fetchMusicTrack(id, { token }));
+          } catch {
+            /* skip stale */
+          }
+        }
       }
+      setLiked(fetched);
     } catch {
       setLiked([]);
     } finally {
@@ -86,7 +90,7 @@ export default function MusicLibraryScreen() {
   };
 
   return (
-    <MusicShell title="Library" showNav={false}>
+    <MusicShell showNav>
       {loading ? (
         <ActivityIndicator color={musicTheme.orange} style={{ marginTop: 32 }} />
       ) : (

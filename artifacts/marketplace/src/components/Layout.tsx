@@ -771,7 +771,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
           style={{
             paddingTop: "env(safe-area-inset-top, 0px)",
             paddingBottom: "env(safe-area-inset-bottom, 0px)",
-            background: "#121212",
+            background: "#101714",
           }}
           data-testid="music-immersive-shell"
         >

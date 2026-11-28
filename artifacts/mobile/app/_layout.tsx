@@ -83,6 +83,7 @@ export default function RootLayout() {
                       <Stack.Screen name="music/playlist/[id]" />
                       <Stack.Screen name="music/now-playing" />
                       <Stack.Screen name="music/upload" />
+                      <Stack.Screen name="music/profile" />
                       <Stack.Screen name="music/sponsored-ads" />
                       <Stack.Screen name="wholesale" />
                       <Stack.Screen name="restaurant" />

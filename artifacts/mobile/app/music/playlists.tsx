@@ -58,7 +58,7 @@ export default function MusicPlaylistsScreen() {
   };
 
   return (
-    <MusicShell title="Playlists" showNav={false}>
+    <MusicShell showNav>
       {loading ? (
         <ActivityIndicator color={musicTheme.orange} style={{ marginTop: 32 }} />
       ) : (

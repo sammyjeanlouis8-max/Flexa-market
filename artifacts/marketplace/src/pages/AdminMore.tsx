@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
-import { ChevronRight, Users, ClipboardList, Crown, AlertTriangle, Shield, UtensilsCrossed } from "lucide-react";
+import { ChevronRight, Users, ClipboardList, Crown, AlertTriangle, Shield, UtensilsCrossed, Scissors } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { isAdminUser, isSuperAdminUser } from "@/lib/adminCountryAccess";
 
@@ -62,6 +62,13 @@ export default function AdminMore() {
       desc: t("adminUsers.restaurantsDesc", { defaultValue: "Identity review and restaurant suspension" }),
       icon: UtensilsCrossed,
       adminOnly: true,
+    },
+    {
+      href: "/admin/beauty",
+      title: t("adminNav.beauty", { defaultValue: "Séduire Beauty" }),
+      desc: t("adminUsers.beautyDesc", { defaultValue: "Applications, categories, and country rollout" }),
+      icon: Scissors,
+      superAdminOnly: true,
     },
   ];
 

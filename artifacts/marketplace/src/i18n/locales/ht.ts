@@ -1,5 +1,6 @@
 import { wholesaleHt } from "../wholesaleLocales";
 import { restaurantHt } from "../restaurantLocales";
+import { beautyHt } from "../beautyLocales";
 
 export default {
   cardCancellation: {
@@ -109,6 +110,7 @@ export default {
     driverSuspended: "⚠️ Kont Suspann",
   
     cart: "Panye",
+    music: "Mizik",
     categories: "Kategori",
     all: "Tout",
     helpCenter: "Sant Èd",
@@ -120,6 +122,7 @@ export default {
     flexaServicesSection: "Sèvis Flexa",
     flexaWholesale: "Flexa Wholesale",
     flexaRestaurant: "Flexa Restaurant",
+    seduireBeauty: "Séduire Beauty",
     preferencesSection: "Preferans",
     offersPromos: "Ofri & Pwomosyon",
     flexaPicks: "Flexa Picks",
@@ -148,6 +151,7 @@ export default {
   },
   wholesale: wholesaleHt,
   restaurant: restaurantHt,
+  beauty: beautyHt,
   videoFeed: {
     title: "Videyo Pwomosyon",
     filterAll: "Tout",
@@ -4834,6 +4838,7 @@ export default {
     revenue: "Revni",
     tv: "Flexa TV",
     music: "Flexa Music",
+    beauty: "Séduire Beauty",
     broadcast: "Broadcast email",
     push: "Notifikasyon push",
     fraud: "Fwod",

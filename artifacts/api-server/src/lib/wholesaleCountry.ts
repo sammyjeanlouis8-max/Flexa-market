@@ -16,10 +16,11 @@ export function countriesMatch(a: string | null | undefined, b: string | null | 
 }
 
 /**
- * Buyer visibility country comes from the authenticated account only.
- * Query `country` cannot override buyer marketplace (prevents spoofing).
- * Sellers (`mine`) may optionally filter their multi-country depots via query.
- * Super Admin may browse all countries, or filter with query `country`.
+ * Buyer visibility country:
+ * - Authenticated buyers: locked to profile country (query cannot spoof).
+ * - Guests (no profile): may pass query `country` (shopping-location browse).
+ * - Sellers (`mine`) may optionally filter their multi-country depots via query.
+ * - Super Admin may browse all countries, or filter with query `country`.
  */
 export function resolveBuyerCountry(opts: {
   queryCountry?: string | null;
@@ -34,14 +35,18 @@ export function resolveBuyerCountry(opts: {
   if (opts.mine) {
     return { country: normalizeWholesaleCountry(opts.queryCountry) };
   }
-  const country = normalizeWholesaleCountry(opts.profileCountry);
-  if (!country) {
-    return {
-      country: null,
-      error: "Your account country is required to browse Flexa Wholesale. Update your profile country.",
-    };
+  const profile = normalizeWholesaleCountry(opts.profileCountry);
+  if (profile) {
+    return { country: profile };
   }
-  return { country };
+  const queried = normalizeWholesaleCountry(opts.queryCountry);
+  if (queried) {
+    return { country: queried };
+  }
+  return {
+    country: null,
+    error: "Your account country is required to browse Flexa Wholesale. Update your profile country.",
+  };
 }
 
 /** Warehouse must be active + verified and match product country + seller ownership. */

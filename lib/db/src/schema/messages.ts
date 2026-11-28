@@ -9,6 +9,8 @@ export const conversationsTable = pgTable("conversations", {
   listingId: integer("listing_id").references(() => listingsTable.id),
   /** Flexa Restaurant business chat — optional; listingId stays null. */
   restaurantId: integer("restaurant_id"),
+  /** Séduire Beauty business chat — optional; listingId stays null. */
+  beautyBusinessId: integer("beauty_business_id"),
   buyerId: integer("buyer_id").notNull().references(() => usersTable.id),
   sellerId: integer("seller_id").notNull().references(() => usersTable.id),
   conversationType: text("conversation_type").notNull().default("listing"),
@@ -18,6 +20,7 @@ export const conversationsTable = pgTable("conversations", {
 }, (t) => ({
   conversationsListingIdx: index("conversations_listing_id_idx").on(t.listingId),
   conversationsRestaurantIdx: index("conversations_restaurant_id_idx").on(t.restaurantId),
+  conversationsBeautyBusinessIdx: index("conversations_beauty_business_id_idx").on(t.beautyBusinessId),
   conversationsBuyerIdx: index("conversations_buyer_id_idx").on(t.buyerId),
   conversationsSellerIdx: index("conversations_seller_id_idx").on(t.sellerId),
   conversationsLastMessageIdx: index("conversations_last_message_at_idx").on(t.lastMessageAt),

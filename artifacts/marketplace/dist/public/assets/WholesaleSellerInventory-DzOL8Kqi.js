@@ -1,0 +1,1 @@
+import{j as r}from"./vendor-react-Dfcb5DwK.js";import{W as o}from"./WholesaleSellerProductList-Kp8_vmdA.js";import"./vendor-Cn_kfbel.js";import"./WholesalePageGate-CFj6Mxyh.js";import"./index-ByRsTmiR.js";import"./WholesaleShell-BAKM7jUO.js";import"./wholesaleApi-BoMa16Ib.js";function n(){return r.jsx(o,{view:"inventory"})}export{n as default};

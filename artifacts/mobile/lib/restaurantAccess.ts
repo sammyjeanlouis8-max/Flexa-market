@@ -1,9 +1,9 @@
 /**
  * Flexa Restaurant public launch gate (mobile).
  * Keep in sync with marketplace + api-server `RESTAURANT_PUBLIC_LAUNCH`.
- * While false: Super Admin ONLY.
+ * true → public browse; false → Super Admin ONLY.
  */
-export const RESTAURANT_PUBLIC_LAUNCH = false;
+export const RESTAURANT_PUBLIC_LAUNCH = true;
 
 type AccessUser = {
   isSuperAdmin?: boolean;

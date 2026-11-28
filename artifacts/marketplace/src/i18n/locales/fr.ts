@@ -1,5 +1,6 @@
 import { wholesaleFr } from "../wholesaleLocales";
 import { restaurantFr } from "../restaurantLocales";
+import { beautyFr } from "../beautyLocales";
 
 export default {
   cardCancellation: {
@@ -149,6 +150,7 @@ export default {
     driverSuspended: "⚠️ Compte Suspendu",
   
     cart: "Panier",
+    music: "Musique",
     categories: "Catégories",
     all: "Tout",
     helpCenter: "Centre d'aide",
@@ -160,6 +162,7 @@ export default {
     flexaServicesSection: "Services Flexa",
     flexaWholesale: "Flexa Wholesale",
     flexaRestaurant: "Flexa Restaurant",
+    seduireBeauty: "Séduire Beauty",
     preferencesSection: "Préférences",
     offersPromos: "Offres & Promotions",
     flexaPicks: "Flexa Picks",
@@ -188,6 +191,7 @@ export default {
 },
   wholesale: wholesaleFr,
   restaurant: restaurantFr,
+  beauty: beautyFr,
   videoFeed: {
     title: "Vidéos promotionnelles",
     filterAll: "Tout",
@@ -4628,6 +4632,7 @@ export default {
     revenue: "Revenue",
     tv: "Flexa TV",
     music: "Flexa Music",
+    beauty: "Séduire Beauty",
     broadcast: "Email broadcast",
     push: "Push notifications",
     fraud: "Fraud",

@@ -36,6 +36,7 @@ export default {
     more: "Altro",
     menu: "Menu",
     account: "Il mio account",
+    music: "Musica",
     discover: "Scopri",
     videos: "Video",
     saved: "Salvati",

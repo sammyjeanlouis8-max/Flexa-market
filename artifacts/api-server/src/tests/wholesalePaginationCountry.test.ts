@@ -21,7 +21,7 @@ describe("wholesale country helpers", () => {
     expect(countriesMatch("Haiti", null)).toBe(false);
   });
 
-  it("uses account country only for buyers (query cannot spoof)", () => {
+  it("locks authenticated buyers to profile country; guests may use query country", () => {
     expect(
       resolveBuyerCountry({
         queryCountry: null,
@@ -29,6 +29,14 @@ describe("wholesale country helpers", () => {
         mine: false,
       }).error,
     ).toMatch(/account country/i);
+
+    expect(
+      resolveBuyerCountry({
+        queryCountry: "Haiti",
+        profileCountry: null,
+        mine: false,
+      }).country,
+    ).toBe("Haiti");
 
     expect(
       resolveBuyerCountry({

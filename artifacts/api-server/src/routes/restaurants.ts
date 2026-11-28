@@ -1677,7 +1677,13 @@ router.post("/restaurants/:id/dish-models", requireRestaurantAuthAccess, async (
   const body = req.body ?? {};
   const name = String(body.name || "").trim();
   const price = Number(body.price);
-  const photos = Array.isArray(body.photos) ? body.photos.map(String).filter(Boolean).slice(0, 8) : [];
+  const photos = Array.isArray(body.photos)
+    ? body.photos
+        .map(String)
+        .map((u: string) => u.trim())
+        .filter((u: string) => /^https?:\/\//i.test(u) && !/^(data:|blob:|file:)/i.test(u))
+        .slice(0, 8)
+    : [];
   const defaultAvailable = body.defaultAvailable !== false;
   if (name.length < 2 || !Number.isFinite(price) || price < 0) {
     res.status(400).json({ error: "Invalid dish" }); return;
@@ -1737,8 +1743,31 @@ router.patch("/restaurants/:id/dish-models/:dishId", requireAuth, async (req, re
   }
   if (body.price != null) patch.price = Number(body.price);
   if (body.prepMinutes != null) patch.prepMinutes = Number(body.prepMinutes);
-  if (Array.isArray(body.photos)) patch.photos = body.photos.map(String).slice(0, 8);
+  if (Array.isArray(body.photos)) {
+    const photos = body.photos
+      .map(String)
+      .map((u: string) => u.trim())
+      .filter((u: string) => /^https?:\/\//i.test(u) && !/^(data:|blob:|file:)/i.test(u))
+      .slice(0, 8);
+    patch.photos = photos;
+  }
   if (Array.isArray(body.dietaryTags)) patch.dietaryTags = body.dietaryTags.map(String);
+  if (typeof body.defaultAvailable === "boolean") {
+    const nextPhotos = Array.isArray(patch.photos)
+      ? (patch.photos as string[])
+      : undefined;
+    if (body.defaultAvailable) {
+      const [existing] = await db.select().from(restaurantDishModelsTable)
+        .where(and(eq(restaurantDishModelsTable.id, dishId), eq(restaurantDishModelsTable.restaurantId, id)))
+        .limit(1);
+      const photos = nextPhotos ?? (existing?.photos as string[] | undefined) ?? [];
+      if (!photos.length) {
+        res.status(400).json({ error: "At least one food image is required before a dish can be available" });
+        return;
+      }
+    }
+    patch.defaultAvailable = body.defaultAvailable;
+  }
   const [dish] = await db.update(restaurantDishModelsTable).set(patch as any)
     .where(and(eq(restaurantDishModelsTable.id, dishId), eq(restaurantDishModelsTable.restaurantId, id)))
     .returning();

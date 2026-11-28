@@ -527,6 +527,22 @@ export async function createDishModel(
   return data.dish;
 }
 
+export async function updateDishModel(
+  restaurantId: number,
+  dishId: number,
+  body: Record<string, unknown>,
+  opts: AuthOpts,
+): Promise<DishModel> {
+  const res = await fetch(`${getApiBase()}/restaurants/${restaurantId}/dish-models/${dishId}`, {
+    method: "PATCH",
+    headers: headers(opts.token),
+    body: JSON.stringify(body),
+    signal: opts.signal,
+  });
+  const data = await parseJson<{ dish: DishModel }>(res, "Could not update dish");
+  return data.dish;
+}
+
 export async function createDishOptionGroup(
   restaurantId: number,
   dishId: number,

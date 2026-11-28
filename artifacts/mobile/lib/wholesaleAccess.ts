@@ -1,9 +1,9 @@
 /**
- * Flexa Wholesale rollout gate — keep in sync with marketplace + API server.
- * false → Super Admin, Admin, Moderator; true → public launch.
- * Regular users, sellers, and support are excluded while launch is false.
+ * Flexa Wholesale public launch gate — keep in sync with marketplace + API server.
+ * true → public browse; false → Super Admin / Admin / Moderator only.
+ * Seller writes still require auth + ownership on the API.
  */
-export const WHOLESALE_PUBLIC_LAUNCH = false;
+export const WHOLESALE_PUBLIC_LAUNCH = true;
 
 export type WholesaleUser = {
   isSuperAdmin?: boolean;
@@ -12,8 +12,8 @@ export type WholesaleUser = {
 } | null | undefined;
 
 export function canAccessWholesale(user: WholesaleUser): boolean {
-  if (!user) return false;
   if (WHOLESALE_PUBLIC_LAUNCH) return true;
+  if (!user) return false;
   if (user.isSuperAdmin || user.isAdmin) return true;
   const role = String(user.role ?? "").trim().toLowerCase();
   return role === "superadmin" || role === "admin" || role === "moderator";

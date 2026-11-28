@@ -11,7 +11,7 @@ const STEPS = [
 export default function WholesaleOnboarding() {
   const { t } = useTranslation();
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell
         title={t("wholesale.onboardingTitle", { defaultValue: "Seller onboarding" })}
         subtitle={t("wholesale.onboardingSubtitle")}

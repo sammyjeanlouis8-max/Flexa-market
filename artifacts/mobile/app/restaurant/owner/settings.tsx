@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { NativePhotoField } from "@/components/media/NativePhotoField";
 import { RestaurantShell } from "@/components/restaurant/RestaurantShell";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
@@ -43,6 +44,8 @@ export default function OwnerSettingsScreen() {
   const [phone, setPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [enableWhatsapp, setEnableWhatsapp] = useState(false);
+  const [logoUrl, setLogoUrl] = useState("");
+  const [coverUrl, setCoverUrl] = useState("");
   const [hours, setHours] = useState(
     WEEKDAYS.map((weekday) => ({ weekday, isClosed: false, openTime: "09:00", closeTime: "21:00" })),
   );
@@ -56,6 +59,8 @@ export default function OwnerSettingsScreen() {
         setPhone(r.phone || "");
         setWhatsapp(r.whatsapp || "");
         setEnableWhatsapp(Boolean(r.whatsapp));
+        setLogoUrl(r.logoUrl || "");
+        setCoverUrl(r.coverUrl || "");
         setPickupEnabled(r.pickupAvailable !== false);
         setMerchantDeliveryEnabled(!!((r as any).merchantDeliveryEnabled ?? r.deliveryAvailable));
         setFlexaDeliveryEnabled(!!(r as any).flexaDeliveryEnabled);
@@ -112,6 +117,8 @@ export default function OwnerSettingsScreen() {
         {
           phone: phone.trim(),
           whatsapp: enableWhatsapp && whatsapp.trim() ? whatsapp.trim() : null,
+          logoUrl: logoUrl || null,
+          coverUrl: coverUrl || null,
         },
         { token },
       );
@@ -157,6 +164,28 @@ export default function OwnerSettingsScreen() {
         <>
           <Text style={styles.note}>{t("restaurant_deliveryManagedByBusiness")}</Text>
           <Text style={styles.policy}>{t("restaurant_driverPolicyNote")}</Text>
+
+          <Text style={styles.label}>{t("restaurant_brandPhotos") || "Logo & cover"}</Text>
+          <NativePhotoField
+            token={token}
+            value={logoUrl ? [logoUrl] : []}
+            onChange={(urls) => setLogoUrl(urls[0] || "")}
+            max={1}
+            allowsEditing
+            aspect={[1, 1]}
+            label={t("restaurant_logo") || "Business logo"}
+            testID="restaurant-settings-logo"
+          />
+          <NativePhotoField
+            token={token}
+            value={coverUrl ? [coverUrl] : []}
+            onChange={(urls) => setCoverUrl(urls[0] || "")}
+            max={1}
+            allowsEditing
+            aspect={[16, 9]}
+            label={t("restaurant_cover") || "Cover photo"}
+            testID="restaurant-settings-cover"
+          />
 
           <Text style={styles.label}>{t("restaurant_publicContact") || "Public contact"}</Text>
           <Text style={styles.policy}>

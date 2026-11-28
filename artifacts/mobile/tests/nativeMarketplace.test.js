@@ -20,7 +20,8 @@ test("core marketplace tabs are native (no WebView)", () => {
     "app/(tabs)/inbox.tsx",
     "app/listing/[id].tsx",
     "app/settings.tsx",
-    "app/cart.tsx",
+    "app/(tabs)/cart.tsx",
+    "app/(tabs)/music.tsx",
   ]) {
     const source = read(rel);
     assert.equal(source.includes("SafeWebView"), false, rel);
@@ -50,7 +51,7 @@ test("API helpers target Flexa production ingress", () => {
 });
 
 test("cart is a real native screen wired to checkout APIs", () => {
-  const cart = read("app/cart.tsx");
+  const cart = read("app/(tabs)/cart.tsx");
   assert.equal(cart.includes("NativePlaceholder"), false);
   assert.match(cart, /useCart/);
   assert.match(read("lib/checkoutApi.ts"), /\/cart\/checkout/);

@@ -4151,6 +4151,522 @@ UPDATE restaurant_orders
 `,
   });
 
+  // ── Séduire Beauty module ───────────────────────────────────────────────
+  migrations.push({
+    name: "beauty_categories.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_categories (
+      id SERIAL PRIMARY KEY,
+      kind TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      name_en TEXT NOT NULL,
+      name_fr TEXT,
+      name_ht TEXT,
+      name_es TEXT,
+      description_en TEXT NOT NULL DEFAULT '',
+      image_url TEXT,
+      parent_id INTEGER,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_categories_slug_uniq ON beauty_categories(slug);
+CREATE INDEX IF NOT EXISTS beauty_categories_kind_idx ON beauty_categories(kind);
+CREATE INDEX IF NOT EXISTS beauty_categories_parent_idx ON beauty_categories(parent_id)`,
+  });
+
+  migrations.push({
+    name: "beauty_businesses.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_businesses (
+      id SERIAL PRIMARY KEY,
+      owner_id INTEGER NOT NULL REFERENCES users(id),
+      business_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT,
+      description TEXT NOT NULL DEFAULT '',
+      logo_url TEXT,
+      cover_url TEXT,
+      phone TEXT,
+      email TEXT,
+      whatsapp TEXT,
+      country TEXT NOT NULL,
+      region TEXT,
+      city TEXT NOT NULL,
+      street_address TEXT NOT NULL DEFAULT '',
+      postal_code TEXT,
+      latitude REAL,
+      longitude REAL,
+      timezone TEXT NOT NULL DEFAULT 'America/Port-au-Prince',
+      private_residential_address TEXT,
+      public_address TEXT,
+      show_public_address BOOLEAN NOT NULL DEFAULT TRUE,
+      service_location_mode TEXT NOT NULL DEFAULT 'at_business',
+      home_service_available BOOLEAN NOT NULL DEFAULT FALSE,
+      service_radius_km REAL NOT NULL DEFAULT 10,
+      travel_fee_minor INTEGER NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      status TEXT NOT NULL DEFAULT 'draft',
+      identity_status TEXT NOT NULL DEFAULT 'unverified',
+      identity_rejection_reason TEXT,
+      admin_notes TEXT,
+      terms_accepted_at TIMESTAMPTZ,
+      onboarding_step INTEGER NOT NULL DEFAULT 1,
+      featured BOOLEAN NOT NULL DEFAULT FALSE,
+      featured_until TIMESTAMPTZ,
+      subscription_plan TEXT NOT NULL DEFAULT 'free',
+      subscription_enforced BOOLEAN NOT NULL DEFAULT FALSE,
+      vacation_mode BOOLEAN NOT NULL DEFAULT FALSE,
+      temporarily_closed BOOLEAN NOT NULL DEFAULT FALSE,
+      booking_lead_minutes INTEGER NOT NULL DEFAULT 60,
+      avg_rating REAL NOT NULL DEFAULT 0,
+      rating_count INTEGER NOT NULL DEFAULT 0,
+      profile_views INTEGER NOT NULL DEFAULT 0,
+      published_at TIMESTAMPTZ,
+      suspended_at TIMESTAMPTZ,
+      suspension_reason TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_businesses_owner_idx ON beauty_businesses(owner_id);
+CREATE INDEX IF NOT EXISTS beauty_businesses_country_idx ON beauty_businesses(country);
+CREATE INDEX IF NOT EXISTS beauty_businesses_status_idx ON beauty_businesses(status);
+CREATE INDEX IF NOT EXISTS beauty_businesses_city_idx ON beauty_businesses(city);
+CREATE INDEX IF NOT EXISTS beauty_businesses_type_idx ON beauty_businesses(business_type);
+CREATE INDEX IF NOT EXISTS beauty_businesses_identity_idx ON beauty_businesses(identity_status);
+CREATE INDEX IF NOT EXISTS beauty_businesses_featured_idx ON beauty_businesses(featured)`,
+  });
+
+  migrations.push({
+    name: "beauty_business_categories.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_business_categories (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      category_id INTEGER NOT NULL REFERENCES beauty_categories(id) ON DELETE CASCADE
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_biz_cat_uniq ON beauty_business_categories(business_id, category_id)`,
+  });
+
+  migrations.push({
+    name: "beauty_identity_verifications.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_identity_verifications (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      legal_name TEXT NOT NULL,
+      country_of_residence TEXT NOT NULL,
+      document_issuing_country TEXT NOT NULL,
+      document_type TEXT NOT NULL,
+      document_front_key TEXT NOT NULL,
+      document_back_key TEXT,
+      selfie_key TEXT NOT NULL,
+      business_doc_key TEXT,
+      privacy_notice_accepted_at TIMESTAMPTZ NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending_review',
+      rejection_reason TEXT,
+      reviewed_by INTEGER REFERENCES users(id),
+      reviewed_at TIMESTAMPTZ,
+      reused_market_kyc BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_idv_business_idx ON beauty_identity_verifications(business_id);
+CREATE INDEX IF NOT EXISTS beauty_idv_user_idx ON beauty_identity_verifications(user_id);
+CREATE INDEX IF NOT EXISTS beauty_idv_status_idx ON beauty_identity_verifications(status)`,
+  });
+
+  migrations.push({
+    name: "beauty_professionals.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_professionals (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id),
+      full_name TEXT NOT NULL,
+      photo_url TEXT,
+      biography TEXT NOT NULL DEFAULT '',
+      years_experience INTEGER NOT NULL DEFAULT 0,
+      specializations TEXT[] NOT NULL DEFAULT '{}',
+      certifications TEXT[] NOT NULL DEFAULT '{}',
+      role TEXT NOT NULL DEFAULT 'owner',
+      invite_status TEXT NOT NULL DEFAULT 'active',
+      invite_token TEXT,
+      invite_email TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      avg_rating REAL NOT NULL DEFAULT 0,
+      rating_count INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_professionals_business_idx ON beauty_professionals(business_id);
+CREATE INDEX IF NOT EXISTS beauty_professionals_user_idx ON beauty_professionals(user_id);
+CREATE INDEX IF NOT EXISTS beauty_professionals_active_idx ON beauty_professionals(is_active)`,
+  });
+
+  migrations.push({
+    name: "beauty_services.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_services (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      category_id INTEGER REFERENCES beauty_categories(id),
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      image_url TEXT,
+      price_type TEXT NOT NULL DEFAULT 'fixed',
+      price_minor INTEGER NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      duration_minutes INTEGER NOT NULL DEFAULT 60,
+      prep_minutes INTEGER NOT NULL DEFAULT 0,
+      cleanup_minutes INTEGER NOT NULL DEFAULT 0,
+      service_location TEXT NOT NULL DEFAULT 'at_business',
+      travel_fee_minor INTEGER NOT NULL DEFAULT 0,
+      deposit_required BOOLEAN NOT NULL DEFAULT FALSE,
+      deposit_minor INTEGER NOT NULL DEFAULT 0,
+      deposit_type TEXT NOT NULL DEFAULT 'fixed',
+      preparation_instructions TEXT NOT NULL DEFAULT '',
+      cancellation_policy TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_services_business_idx ON beauty_services(business_id);
+CREATE INDEX IF NOT EXISTS beauty_services_category_idx ON beauty_services(category_id);
+CREATE INDEX IF NOT EXISTS beauty_services_status_idx ON beauty_services(status)`,
+  });
+
+  migrations.push({
+    name: "beauty_service_assignments.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_service_assignments (
+      id SERIAL PRIMARY KEY,
+      service_id INTEGER NOT NULL REFERENCES beauty_services(id) ON DELETE CASCADE,
+      professional_id INTEGER NOT NULL REFERENCES beauty_professionals(id) ON DELETE CASCADE
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_service_assign_uniq ON beauty_service_assignments(service_id, professional_id)`,
+  });
+
+  migrations.push({
+    name: "beauty_working_hours.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_working_hours (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      professional_id INTEGER REFERENCES beauty_professionals(id) ON DELETE CASCADE,
+      weekday INTEGER NOT NULL,
+      is_closed BOOLEAN NOT NULL DEFAULT FALSE,
+      open_time TEXT,
+      close_time TEXT,
+      break_start TEXT,
+      break_end TEXT
+    );
+CREATE INDEX IF NOT EXISTS beauty_hours_biz_weekday_idx ON beauty_working_hours(business_id, weekday);
+CREATE INDEX IF NOT EXISTS beauty_hours_pro_weekday_idx ON beauty_working_hours(professional_id, weekday)`,
+  });
+
+  migrations.push({
+    name: "beauty_availability_exceptions.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_availability_exceptions (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      professional_id INTEGER REFERENCES beauty_professionals(id) ON DELETE CASCADE,
+      exception_type TEXT NOT NULL,
+      start_at TIMESTAMPTZ NOT NULL,
+      end_at TIMESTAMPTZ NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      created_by INTEGER REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_avail_exc_biz_idx ON beauty_availability_exceptions(business_id);
+CREATE INDEX IF NOT EXISTS beauty_avail_exc_pro_idx ON beauty_availability_exceptions(professional_id);
+CREATE INDEX IF NOT EXISTS beauty_avail_exc_range_idx ON beauty_availability_exceptions(start_at, end_at)`,
+  });
+
+  migrations.push({
+    name: "beauty_appointments.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_appointments (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id),
+      customer_id INTEGER NOT NULL REFERENCES users(id),
+      professional_id INTEGER REFERENCES beauty_professionals(id),
+      service_id INTEGER NOT NULL REFERENCES beauty_services(id),
+      status TEXT NOT NULL DEFAULT 'pending_confirmation',
+      payment_status TEXT NOT NULL DEFAULT 'unpaid',
+      service_location TEXT NOT NULL DEFAULT 'at_business',
+      starts_at TIMESTAMPTZ NOT NULL,
+      ends_at TIMESTAMPTZ NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'America/Port-au-Prince',
+      service_name_snapshot TEXT NOT NULL,
+      duration_minutes_snapshot INTEGER NOT NULL,
+      price_minor_snapshot INTEGER NOT NULL,
+      travel_fee_minor_snapshot INTEGER NOT NULL DEFAULT 0,
+      deposit_minor_snapshot INTEGER NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      total_minor INTEGER NOT NULL,
+      customer_name TEXT,
+      customer_phone TEXT,
+      customer_notes TEXT NOT NULL DEFAULT '',
+      customer_address TEXT,
+      customer_address_instructions TEXT,
+      customer_latitude REAL,
+      customer_longitude REAL,
+      estimated_travel_minutes INTEGER,
+      stripe_payment_intent_id TEXT,
+      idempotency_key TEXT,
+      reservation_expires_at TIMESTAMPTZ,
+      cancelled_at TIMESTAMPTZ,
+      cancellation_reason TEXT,
+      cancellation_fee_minor INTEGER NOT NULL DEFAULT 0,
+      completed_at TIMESTAMPTZ,
+      arrived_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_appointments_business_idx ON beauty_appointments(business_id);
+CREATE INDEX IF NOT EXISTS beauty_appointments_customer_idx ON beauty_appointments(customer_id);
+CREATE INDEX IF NOT EXISTS beauty_appointments_professional_idx ON beauty_appointments(professional_id);
+CREATE INDEX IF NOT EXISTS beauty_appointments_status_idx ON beauty_appointments(status);
+CREATE INDEX IF NOT EXISTS beauty_appointments_starts_idx ON beauty_appointments(starts_at);
+CREATE INDEX IF NOT EXISTS beauty_appointments_payment_idx ON beauty_appointments(payment_status);
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_appointments_idempotency_uniq ON beauty_appointments(idempotency_key) WHERE idempotency_key IS NOT NULL;
+-- Overlap exclusion via EXCLUDE would need COALESCE(professional_id, ...) + btree_gist and can fail on nulls;
+-- rely on transaction-time checks and this lookup index instead.
+CREATE INDEX IF NOT EXISTS beauty_appointments_pro_starts_idx ON beauty_appointments(professional_id, starts_at)`,
+  });
+
+  migrations.push({
+    name: "beauty_appointment_history.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_appointment_history (
+      id SERIAL PRIMARY KEY,
+      appointment_id INTEGER NOT NULL REFERENCES beauty_appointments(id) ON DELETE CASCADE,
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      actor_id INTEGER REFERENCES users(id),
+      note TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_appt_history_appt_idx ON beauty_appointment_history(appointment_id)`,
+  });
+
+  migrations.push({
+    name: "beauty_appointment_reservations.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_appointment_reservations (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      professional_id INTEGER REFERENCES beauty_professionals(id) ON DELETE CASCADE,
+      service_id INTEGER NOT NULL REFERENCES beauty_services(id) ON DELETE CASCADE,
+      customer_id INTEGER NOT NULL REFERENCES users(id),
+      starts_at TIMESTAMPTZ NOT NULL,
+      ends_at TIMESTAMPTZ NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      idempotency_key TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_appt_res_range_idx ON beauty_appointment_reservations(starts_at, ends_at);
+CREATE INDEX IF NOT EXISTS beauty_appt_res_expires_idx ON beauty_appointment_reservations(expires_at);
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_appt_res_idempotency_uniq ON beauty_appointment_reservations(idempotency_key) WHERE idempotency_key IS NOT NULL`,
+  });
+
+  migrations.push({
+    name: "beauty_portfolio_items.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_portfolio_items (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      professional_id INTEGER REFERENCES beauty_professionals(id) ON DELETE SET NULL,
+      category_id INTEGER REFERENCES beauty_categories(id),
+      title TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      media_type TEXT NOT NULL DEFAULT 'photo',
+      media_url TEXT NOT NULL,
+      thumbnail_url TEXT,
+      before_url TEXT,
+      after_url TEXT,
+      price_reference_minor INTEGER,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      like_count INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'published',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_portfolio_business_idx ON beauty_portfolio_items(business_id);
+CREATE INDEX IF NOT EXISTS beauty_portfolio_professional_idx ON beauty_portfolio_items(professional_id);
+CREATE INDEX IF NOT EXISTS beauty_portfolio_status_idx ON beauty_portfolio_items(status)`,
+  });
+
+  migrations.push({
+    name: "beauty_favorites.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_favorites (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      business_id INTEGER REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      professional_id INTEGER REFERENCES beauty_professionals(id) ON DELETE CASCADE,
+      portfolio_item_id INTEGER REFERENCES beauty_portfolio_items(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_fav_user_biz_uniq ON beauty_favorites(user_id, business_id);
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_fav_user_pro_uniq ON beauty_favorites(user_id, professional_id);
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_fav_user_portfolio_uniq ON beauty_favorites(user_id, portfolio_item_id);
+CREATE INDEX IF NOT EXISTS beauty_fav_user_idx ON beauty_favorites(user_id)`,
+  });
+
+  migrations.push({
+    name: "beauty_reviews.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_reviews (
+      id SERIAL PRIMARY KEY,
+      appointment_id INTEGER NOT NULL REFERENCES beauty_appointments(id),
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id),
+      professional_id INTEGER REFERENCES beauty_professionals(id),
+      customer_id INTEGER NOT NULL REFERENCES users(id),
+      overall_rating INTEGER NOT NULL,
+      service_quality INTEGER,
+      professionalism INTEGER,
+      punctuality INTEGER,
+      cleanliness INTEGER,
+      comment TEXT NOT NULL DEFAULT '',
+      photos TEXT[] NOT NULL DEFAULT '{}',
+      owner_reply TEXT,
+      owner_replied_at TIMESTAMPTZ,
+      status TEXT NOT NULL DEFAULT 'published',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_reviews_appointment_uniq ON beauty_reviews(appointment_id);
+CREATE INDEX IF NOT EXISTS beauty_reviews_business_idx ON beauty_reviews(business_id);
+CREATE INDEX IF NOT EXISTS beauty_reviews_customer_idx ON beauty_reviews(customer_id);
+CREATE INDEX IF NOT EXISTS beauty_reviews_status_idx ON beauty_reviews(status)`,
+  });
+
+  migrations.push({
+    name: "beauty_reports.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_reports (
+      id SERIAL PRIMARY KEY,
+      reporter_id INTEGER NOT NULL REFERENCES users(id),
+      business_id INTEGER REFERENCES beauty_businesses(id),
+      professional_id INTEGER REFERENCES beauty_professionals(id),
+      review_id INTEGER REFERENCES beauty_reviews(id),
+      portfolio_item_id INTEGER REFERENCES beauty_portfolio_items(id),
+      appointment_id INTEGER REFERENCES beauty_appointments(id),
+      reason TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      resolved_by INTEGER REFERENCES users(id),
+      resolved_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_reports_status_idx ON beauty_reports(status);
+CREATE INDEX IF NOT EXISTS beauty_reports_reporter_idx ON beauty_reports(reporter_id)`,
+  });
+
+  migrations.push({
+    name: "beauty_promotions.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_promotions (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      promo_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      discount_percent INTEGER,
+      discount_minor INTEGER,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      starts_at TIMESTAMPTZ,
+      ends_at TIMESTAMPTZ,
+      status TEXT NOT NULL DEFAULT 'disabled',
+      is_sponsored BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_promotions_business_idx ON beauty_promotions(business_id);
+CREATE INDEX IF NOT EXISTS beauty_promotions_status_idx ON beauty_promotions(status)`,
+  });
+
+  migrations.push({
+    name: "beauty_country_availability.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_country_availability (
+      id SERIAL PRIMARY KEY,
+      country_code TEXT NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      status TEXT NOT NULL DEFAULT 'under_review',
+      notes TEXT NOT NULL DEFAULT '',
+      updated_by INTEGER REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_country_avail_uniq ON beauty_country_availability(country_code)`,
+  });
+
+  migrations.push({
+    name: "beauty_settings.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_settings (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      value JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_settings_biz_key_uniq ON beauty_settings(business_id, key)`,
+  });
+
+  migrations.push({
+    name: "beauty_audit_logs.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_audit_logs (
+      id SERIAL PRIMARY KEY,
+      actor_id INTEGER REFERENCES users(id),
+      business_id INTEGER REFERENCES beauty_businesses(id),
+      action TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id INTEGER,
+      meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_audit_actor_idx ON beauty_audit_logs(actor_id);
+CREATE INDEX IF NOT EXISTS beauty_audit_business_idx ON beauty_audit_logs(business_id);
+CREATE INDEX IF NOT EXISTS beauty_audit_action_idx ON beauty_audit_logs(action)`,
+  });
+
+  migrations.push({
+    name: "beauty_notifications.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_notifications (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      business_id INTEGER REFERENCES beauty_businesses(id) ON DELETE SET NULL,
+      appointment_id INTEGER REFERENCES beauty_appointments(id) ON DELETE SET NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      href TEXT,
+      is_read BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE INDEX IF NOT EXISTS beauty_notif_user_idx ON beauty_notifications(user_id);
+CREATE INDEX IF NOT EXISTS beauty_notif_unread_idx ON beauty_notifications(user_id, is_read)`,
+  });
+
+  migrations.push({
+    name: "beauty_recently_viewed.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_recently_viewed (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      business_id INTEGER NOT NULL REFERENCES beauty_businesses(id) ON DELETE CASCADE,
+      viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+CREATE UNIQUE INDEX IF NOT EXISTS beauty_recent_user_biz_uniq ON beauty_recently_viewed(user_id, business_id);
+CREATE INDEX IF NOT EXISTS beauty_recent_user_idx ON beauty_recently_viewed(user_id)`,
+  });
+
+  migrations.push({
+    name: "beauty_conversation_links.create",
+    sql: `CREATE TABLE IF NOT EXISTS beauty_conversation_links (
+      conversation_id INTEGER PRIMARY KEY,
+      business_id INTEGER REFERENCES beauty_businesses(id),
+      appointment_id INTEGER,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+  });
+
+  migrations.push({
+    name: "conversations.beauty_business_id.v1",
+    sql: `
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS beauty_business_id INTEGER;
+CREATE INDEX IF NOT EXISTS conversations_beauty_business_id_idx ON conversations(beauty_business_id);
+`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

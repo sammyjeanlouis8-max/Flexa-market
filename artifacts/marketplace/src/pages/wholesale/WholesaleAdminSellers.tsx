@@ -5,7 +5,7 @@ import { WholesaleListCard, WholesaleShell } from "@/components/wholesale/Wholes
 export default function WholesaleAdminSellers() {
   const { t } = useTranslation();
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell title={t("wholesale.adminSellers", { defaultValue: "Admin · sellers" })}>
         <div className="space-y-2">
           <WholesaleListCard href="/wholesale/stores/1" title="Caribbean Bulk Co" meta="2 depots · Haiti · Growth" badge="Verified" />

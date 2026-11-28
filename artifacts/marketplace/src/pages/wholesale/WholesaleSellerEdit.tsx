@@ -71,5 +71,5 @@ function ProductEditor({ id }: { id: number }) {
 export default function WholesaleSellerEdit() {
   const [, params] = useRoute("/wholesale/seller/products/:id/edit");
   const { user } = useAuth();
-  return <WholesalePageGate><ProductEditor key={`${user?.id}/${params?.id}`} id={Number(params?.id)} /></WholesalePageGate>;
+  return <WholesalePageGate requireAuth><ProductEditor key={`${user?.id}/${params?.id}`} id={Number(params?.id)} /></WholesalePageGate>;
 }

@@ -244,6 +244,30 @@ const MusicPublicPlayer              = lazy(() => import("@/pages/MusicPublicPla
 const AdminMusic                     = lazy(() => import("@/pages/AdminMusic"));
 const AdminRestaurants               = lazy(() => import("@/pages/AdminRestaurants"));
 const AdminRestaurantCountries       = lazy(() => import("@/pages/AdminRestaurantCountries"));
+const SedureBeauty                   = lazy(() => import("@/pages/SedureBeauty"));
+const BeautyDiscover                 = lazy(() => import("@/pages/beauty/Discover").then((m) => ({ default: m.BeautyDiscoverPage })));
+const BeautyStudioCategoryPage       = lazy(() => import("@/pages/beauty/CategoryDiscover").then((m) => ({ default: m.BeautyStudioCategoryPage })));
+const BarbershopCategoryPage         = lazy(() => import("@/pages/beauty/CategoryDiscover").then((m) => ({ default: m.BarbershopCategoryPage })));
+const BeautyCategoryBySlugPage       = lazy(() => import("@/pages/beauty/CategoryDiscover").then((m) => ({ default: m.BeautyCategoryBySlugPage })));
+const BeautyCategoriesPage           = lazy(() => import("@/pages/beauty/Categories"));
+const BeautyMapPage                  = lazy(() => import("@/pages/beauty/Map"));
+const BeautyBusinessDetail           = lazy(() => import("@/pages/beauty/BusinessDetail"));
+const BeautyProfessionalDetail       = lazy(() => import("@/pages/beauty/ProfessionalDetail"));
+const BeautyServiceDetail            = lazy(() => import("@/pages/beauty/ServiceDetail"));
+const BeautyBook                     = lazy(() => import("@/pages/beauty/Book"));
+const BeautyBookingConfirmation      = lazy(() => import("@/pages/beauty/BookingConfirmation"));
+const BeautyMyAppointments           = lazy(() => import("@/pages/beauty/MyAppointments"));
+const BeautyFavorites                = lazy(() => import("@/pages/beauty/Favorites"));
+const BeautyOnboarding               = lazy(() => import("@/pages/beauty/Onboarding"));
+const BeautyCenterDashboard          = lazy(() => import("@/pages/beauty/center/Dashboard"));
+const BeautyCenterServices           = lazy(() => import("@/pages/beauty/center/Services"));
+const BeautyCenterStaff              = lazy(() => import("@/pages/beauty/center/Staff"));
+const BeautyCenterCalendar           = lazy(() => import("@/pages/beauty/center/Calendar"));
+const BeautyCenterPortfolio          = lazy(() => import("@/pages/beauty/center/Portfolio"));
+const BeautyCenterRevenue            = lazy(() => import("@/pages/beauty/center/Revenue"));
+const BeautyCenterReviews            = lazy(() => import("@/pages/beauty/center/Reviews"));
+const BeautyCenterSettings           = lazy(() => import("@/pages/beauty/center/Settings"));
+const AdminBeauty                    = lazy(() => import("@/pages/AdminBeauty"));
 const AdminTransactions              = lazy(() => import("@/pages/AdminTransactions"));
 const AdminStripeTransactions        = lazy(() => import("@/pages/AdminStripeTransactions"));
 const AdminHaitiTransactions         = lazy(() => import("@/pages/AdminHaitiTransactions"));
@@ -549,6 +573,30 @@ function LayoutRoutes() {
           <Route path="/restaurant/catering" component={CateringCategoryPage} />
           <Route path="/restaurant/:id" component={RestaurantDetail} />
           <Route path="/restaurant" component={FlexaRestaurant} />
+          <Route path="/beauty/center/:businessId/services" component={BeautyCenterServices} />
+          <Route path="/beauty/center/:businessId/staff" component={BeautyCenterStaff} />
+          <Route path="/beauty/center/:businessId/calendar" component={BeautyCenterCalendar} />
+          <Route path="/beauty/center/:businessId/portfolio" component={BeautyCenterPortfolio} />
+          <Route path="/beauty/center/:businessId/revenue" component={BeautyCenterRevenue} />
+          <Route path="/beauty/center/:businessId/reviews" component={BeautyCenterReviews} />
+          <Route path="/beauty/center/:businessId/settings" component={BeautyCenterSettings} />
+          <Route path="/beauty/center/:businessId" component={BeautyCenterDashboard} />
+          <Route path="/beauty/center" component={BeautyCenterDashboard} />
+          <Route path="/beauty/onboarding" component={BeautyOnboarding} />
+          <Route path="/beauty/my-appointments" component={BeautyMyAppointments} />
+          <Route path="/beauty/favorites" component={BeautyFavorites} />
+          <Route path="/beauty/booking/:id" component={BeautyBookingConfirmation} />
+          <Route path="/beauty/book/:id" component={BeautyBook} />
+          <Route path="/beauty/service/:id" component={BeautyServiceDetail} />
+          <Route path="/beauty/pro/:id" component={BeautyProfessionalDetail} />
+          <Route path="/beauty/discover" component={BeautyDiscover} />
+          <Route path="/beauty/map" component={BeautyMapPage} />
+          <Route path="/beauty/categories" component={BeautyCategoriesPage} />
+          <Route path="/beauty/c/:slug" component={BeautyCategoryBySlugPage} />
+          <Route path="/beauty/studio" component={BeautyStudioCategoryPage} />
+          <Route path="/beauty/barbershop" component={BarbershopCategoryPage} />
+          <Route path="/beauty/:id" component={BeautyBusinessDetail} />
+          <Route path="/beauty" component={SedureBeauty} />
           <Route path="/tv" component={FlexaTV} />
           <Route path="/music" component={FlexaMusic} />
           <Route path="/music/sponsored-ads" component={MusicSponsoredAds} />
@@ -557,6 +605,7 @@ function LayoutRoutes() {
           <Route path="/admin/music" component={AdminMusic} />
           <Route path="/admin/restaurants/countries" component={AdminRestaurantCountries} />
           <Route path="/admin/restaurants" component={AdminRestaurants} />
+          <Route path="/admin/beauty" component={AdminBeauty} />
           <Route path="/admin/transactions" component={AdminTransactions} />
           <Route path="/admin/stripe-transactions" component={AdminStripeTransactions} />
           <Route path="/admin/moncash-transactions" component={AdminHaitiTransactions} />

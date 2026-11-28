@@ -4,7 +4,7 @@ import { useBroadcast } from "@/contexts/broadcast";
 import {
   Home, Search, Plus, MessageCircle, User,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase, Menu, LayoutGrid,
-  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award, Warehouse, UtensilsCrossed,
+  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, FileVideo, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award, Warehouse, UtensilsCrossed, Scissors,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import LanguagePickerModal from "@/components/LanguagePickerModal";
@@ -43,6 +43,7 @@ import AdminShell from "@/components/admin/AdminShell";
 import { cn } from "@/lib/utils";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
 import { canAccessRestaurant } from "@/lib/restaurantAccess";
+import { canAccessBeauty } from "@/lib/beautyAccess";
 import { useGetCategories } from "@workspace/api-client-react";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
@@ -402,7 +403,6 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const [deliveryMenuCountry, setDeliveryMenuCountry] = useState<string | null | undefined>(undefined);
   const { user, logout, showLanguageModal, dismissLanguageModal } = useAuth();
   const { t } = useTranslation();
-  const { count: cartCount } = useCart();
   const unread = useUnreadMessageCount();
   const boostAd = useBoostAdTrigger();
   const bs = useBroadcast();
@@ -500,12 +500,13 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
   const profileHref = user ? "/settings" : "/auth/login";
 
-  // 5 fixed bottom tabs — Menu opens from top-left hamburger only (not bottom)
+  // 5 fixed bottom tabs — Menu opens from top-left hamburger only (not bottom).
+  // Cart stays in the top header (CartIconButton); Music opens Flexa Music.
   const tabs = [
     { href: "/",         icon: Home,           label: t("nav.home"),       key: "home" },
     { href: "/search",   icon: LayoutGrid,     label: t("nav.categories", { defaultValue: "Categories" }), key: "categories" },
     { href: "/messages", icon: MessageCircle,  label: t("nav.messages"),   key: "messages", badge: unread },
-    { href: "/cart",     icon: ShoppingCart,   label: t("nav.cart", { defaultValue: "Cart" }), key: "cart", badge: cartCount },
+    { href: "/music",    icon: Music2,         label: t("nav.music", { defaultValue: "Music" }), key: "music" },
     { href: profileHref, icon: User,           label: t("nav.account", { defaultValue: "Account" }), key: "account" },
   ] as const;
 
@@ -516,6 +517,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const canSeeLoan = !isNativeMobileApp() && !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
   const canSeeWholesale = canAccessWholesale(user);
   const canSeeRestaurant = canAccessRestaurant(user);
+  const canSeeBeauty = canAccessBeauty(user);
 
   type SidebarItem = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; key: string; highlight?: boolean; adminHighlight?: boolean; badge?: number };
   type SidebarSection = { heading?: string; highlight?: boolean; items: SidebarItem[] };
@@ -547,6 +549,15 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               icon: UtensilsCrossed,
               label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
               key: "flexa-restaurant",
+              highlight: true,
+            }]
+          : []),
+        ...(canSeeBeauty
+          ? [{
+              href: "/beauty",
+              icon: Scissors,
+              label: t("nav.seduireBeauty", { defaultValue: "Séduire Beauty" }),
+              key: "seduire-beauty",
               highlight: true,
             }]
           : []),
@@ -706,6 +717,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/admin\/moncash-transactions\/?$/,
     /^\/music(\/|$)/,
     /^\/music\/upload$/,
+    /^\/beauty(?:\/|$)/,
   ].some(rx => rx.test(location));
 
   // Immersive admin shell — do not nest marketplace header/nav around it.
@@ -771,7 +783,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
           style={{
             paddingTop: "env(safe-area-inset-top, 0px)",
             paddingBottom: "env(safe-area-inset-bottom, 0px)",
-            background: "#121212",
+            background: "#101714",
           }}
           data-testid="music-immersive-shell"
         >
@@ -812,6 +824,25 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
             paddingBottom: "env(safe-area-inset-bottom, 0px)",
           }}
           data-testid="restaurant-immersive-shell"
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+        </div>
+      </DeliveryMenuCountryContext.Provider>
+    );
+  }
+
+  // Séduire Beauty — immersive shell (owns beauty brand chrome; no Market header/footer/bottom nav).
+  const isBeautyImmersive = /^\/beauty(?:\/|$)/.test(location);
+  if (isBeautyImmersive) {
+    return (
+      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
+        <div
+          className="app-shell beauty-immersive-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col h-dvh overflow-clip bg-[hsl(350,42%,96%)] dark:bg-[hsl(350,14%,8%)]"
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
+          data-testid="beauty-immersive-shell"
         >
           <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
         </div>
@@ -1046,7 +1077,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isPromoVideosSection || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) || /^\/music(?:\/|$)/.test(location) ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isPromoVideosSection || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) || /^\/music(?:\/|$)/.test(location) || /^\/beauty(?:\/|$)/.test(location) ? "hidden" : ""}`}
         aria-label="Main navigation"
         data-testid="mobile-bottom-nav"
       >

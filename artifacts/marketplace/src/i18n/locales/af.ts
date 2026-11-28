@@ -36,6 +36,7 @@ export default {
     more: "Meer",
     menu: "Kieslys",
     account: "My Rekening",
+    music: "Musiek",
     discover: "Ontdek",
     videos: "Video's",
     saved: "Gestoor",

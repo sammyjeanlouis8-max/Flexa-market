@@ -13,7 +13,7 @@ function read(rel) {
 
 test("cart and checkout screens are native (no WebView)", () => {
   for (const rel of [
-    "app/cart.tsx",
+    "app/(tabs)/cart.tsx",
     "app/checkout.tsx",
     "app/checkout-success.tsx",
     "context/CartContext.tsx",
@@ -53,7 +53,12 @@ test("root layout wires CartProvider and checkout routes", () => {
   assert.match(layout, /CartProvider/);
   assert.match(layout, /name="checkout"/);
   assert.match(layout, /name="checkout-success"/);
-  assert.match(layout, /name="cart"/);
+  const tabs = read("app/(tabs)/_layout.tsx");
+  assert.match(tabs, /name="cart"/);
+  assert.match(tabs, /href:\s*null/);
+  const header = read("components/shell/AppHeader.tsx");
+  assert.match(header, /nav-cart/);
+  assert.match(header, /shopping-cart/);
 });
 
 test("listing detail supports Add to Cart", () => {
@@ -65,7 +70,7 @@ test("listing detail supports Add to Cart", () => {
 });
 
 test("cart screen is no longer a placeholder", () => {
-  const cart = read("app/cart.tsx");
+  const cart = read("app/(tabs)/cart.tsx");
   assert.equal(cart.includes("NativePlaceholder"), false);
   assert.match(cart, /Checkout/);
   assert.match(cart, /updateQuantity|Qty/);

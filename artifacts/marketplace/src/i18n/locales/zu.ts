@@ -36,6 +36,7 @@ export default {
     more: "Okuningi",
     menu: "Imenyu",
     account: "I-Akhawunti yami",
+    music: "Umculo",
     discover: "Thola",
     videos: "Amavidiyo",
     saved: "Kusilindile",

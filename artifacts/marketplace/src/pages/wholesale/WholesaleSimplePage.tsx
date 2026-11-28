@@ -91,7 +91,7 @@ export function WholesaleFormPage({
     : submitLabel || t("wholesale.save", { defaultValue: "Save" });
 
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell title={resolvedTitle} subtitle={resolvedSubtitle}>
         <form
           className="space-y-3 rounded-2xl border border-border/70 bg-white p-4 dark:bg-[hsl(152,16%,12%)]"

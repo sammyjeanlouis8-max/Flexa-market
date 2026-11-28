@@ -6,7 +6,7 @@ import { WHOLESALE_INQUIRIES } from "@/lib/wholesaleDemo";
 export default function WholesaleSellerInquiries() {
   const { t } = useTranslation();
   return (
-    <WholesalePageGate>
+    <WholesalePageGate requireAuth>
       <WholesaleShell
         title={t("wholesale.sellerInquiriesTitle", { defaultValue: "Inbound chats" })}
         subtitle={t("wholesale.sellerInquiriesSubtitle")}

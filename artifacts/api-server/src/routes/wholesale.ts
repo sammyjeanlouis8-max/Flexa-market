@@ -13,7 +13,7 @@ import {
   wholesaleFavoritesTable,
   wholesaleInquiriesTable,
 } from "@workspace/db";
-import { getRole, requireAuth } from "../middlewares/auth";
+import { getRole, requireAuth, optionalAuth } from "../middlewares/auth";
 import {
   countriesMatch,
   isWarehouseBuyerVisible,
@@ -33,8 +33,8 @@ import { publicDisplayName } from "../lib/publicDisplayName";
 
 const router = Router();
 
-/** Keep in sync with marketplace `WHOLESALE_PUBLIC_LAUNCH` until public launch. */
-const WHOLESALE_PUBLIC_LAUNCH = false;
+/** Keep in sync with marketplace `WHOLESALE_PUBLIC_LAUNCH`. */
+const WHOLESALE_PUBLIC_LAUNCH = true;
 
 /** Super Admin — used for elevated wholesale ops (verify depot, SA self-chat, etc.). */
 function isWholesaleSuperAdmin(user: { isSuperAdmin?: boolean; role?: string | null } | null | undefined): boolean {
@@ -84,7 +84,28 @@ async function loadProductWithWarehouse(productId: number) {
   return row ?? null;
 }
 
+/**
+ * Module access:
+ * - Public launch ON → optional auth (guests may browse; token still attaches profile).
+ * - Public launch OFF → authenticated staff only.
+ * Seller/admin write routes use requireWholesaleAuthAccess.
+ */
 async function requireWholesaleAccess(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1], next: Parameters<typeof requireAuth>[2]) {
+  if (WHOLESALE_PUBLIC_LAUNCH) {
+    await optionalAuth(req, res, next);
+    return;
+  }
+  await requireAuth(req, res, async () => {
+    if (canAccessWholesaleStaff(req.user)) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: "Wholesale preview is Admin / Moderator only" });
+  });
+}
+
+/** Authenticated wholesale actions (favorites, inquiries, seller tools). */
+async function requireWholesaleAuthAccess(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1], next: Parameters<typeof requireAuth>[2]) {
   await requireAuth(req, res, async () => {
     if (WHOLESALE_PUBLIC_LAUNCH || canAccessWholesaleStaff(req.user)) {
       next();
@@ -94,13 +115,13 @@ async function requireWholesaleAccess(req: Parameters<typeof requireAuth>[0], re
   });
 }
 
-router.get("/wholesale/seller/settings", requireWholesaleAccess, async (req, res) => {
+router.get("/wholesale/seller/settings", requireWholesaleAuthAccess, async (req, res) => {
   const [settings] = await db.select().from(wholesaleSellerSettingsTable)
     .where(eq(wholesaleSellerSettingsTable.sellerId, req.userId!));
   res.json({ settings: settings ?? { company: "", chatAuto: true, showStock: true } });
 });
 
-router.put("/wholesale/seller/settings", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.put("/wholesale/seller/settings", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const { company, chatAuto, showStock } = req.body ?? {};
   if (typeof company !== "string" || company.trim().length > 160 ||
       typeof chatAuto !== "boolean" || typeof showStock !== "boolean") {
@@ -205,6 +226,10 @@ router.get("/wholesale/warehouses", requireWholesaleAccess, async (req, res): Pr
   const mine = String(req.query.mine ?? "") === "1";
   const verifiedOnly = String(req.query.verified ?? "1") !== "0";
   const adminAll = !!req.user?.isSuperAdmin && (String(req.query.admin ?? "") === "1" || !mine);
+  if ((mine || adminAll) && !req.userId) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
   const userId = req.userId!;
   const { limit, offset } = parsePagination(req.query);
 
@@ -270,7 +295,7 @@ router.get("/wholesale/warehouses", requireWholesaleAccess, async (req, res): Pr
   });
 });
 
-router.post("/wholesale/warehouses", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.post("/wholesale/warehouses", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const body = req.body ?? {};
   const name = String(body.name ?? "").trim().slice(0, 120);
@@ -313,7 +338,7 @@ router.post("/wholesale/warehouses", requireWholesaleAccess, async (req, res): P
   res.status(201).json({ warehouse: shapeWarehouse(created) });
 });
 
-router.patch("/wholesale/warehouses/:id", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.patch("/wholesale/warehouses/:id", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const userId = req.userId!;
   if (!Number.isFinite(id) || id <= 0) {
@@ -398,6 +423,10 @@ router.get("/wholesale/products", requireWholesaleAccess, async (req, res): Prom
   const statusFilter = String(req.query.status ?? "").trim();
   const mine = String(req.query.mine ?? "") === "1";
   const isAdmin = !!req.user?.isSuperAdmin;
+  if (mine && !req.userId) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
   const userId = req.userId!;
   const { limit, offset } = parsePagination(req.query);
 
@@ -573,7 +602,7 @@ router.get("/wholesale/products/:id", requireWholesaleAccess, async (req, res): 
   });
 });
 
-router.post("/wholesale/products", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.post("/wholesale/products", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const body = req.body ?? {};
   const title = String(body.title ?? "").trim().slice(0, 160);
@@ -708,7 +737,7 @@ router.post("/wholesale/products", requireWholesaleAccess, async (req, res): Pro
   res.status(201).json({ product: shapeProduct(created, seller ?? null, tiers, warehouse) });
 });
 
-router.patch("/wholesale/products/:id", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.patch("/wholesale/products/:id", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const userId = req.userId!;
   if (!Number.isFinite(id) || id <= 0) {
@@ -844,7 +873,7 @@ router.patch("/wholesale/products/:id", requireWholesaleAccess, async (req, res)
 
 /* ─── Inventory ──────────────────────────────────────────────────────────── */
 
-router.get("/wholesale/inventory", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.get("/wholesale/inventory", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const warehouseId = req.query.warehouseId != null ? Number(req.query.warehouseId) : null;
 
@@ -889,7 +918,7 @@ router.get("/wholesale/inventory", requireWholesaleAccess, async (req, res): Pro
   });
 });
 
-router.patch("/wholesale/inventory/:id", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.patch("/wholesale/inventory/:id", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const userId = req.userId!;
   const stockQuantity = Math.max(0, Math.floor(Number(req.body?.stockQuantity) || 0));
@@ -937,7 +966,7 @@ router.patch("/wholesale/inventory/:id", requireWholesaleAccess, async (req, res
 
 /* ─── Favorites ──────────────────────────────────────────────────────────── */
 
-router.get("/wholesale/favorites", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.get("/wholesale/favorites", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const { limit, offset } = parsePagination(req.query);
   const isAdmin = !!req.user?.isSuperAdmin;
@@ -1013,7 +1042,7 @@ router.get("/wholesale/favorites", requireWholesaleAccess, async (req, res): Pro
   });
 });
 
-router.post("/wholesale/favorites", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.post("/wholesale/favorites", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const productId = Number(req.body?.productId);
   if (!Number.isFinite(productId) || productId <= 0) {
@@ -1059,7 +1088,7 @@ router.post("/wholesale/favorites", requireWholesaleAccess, async (req, res): Pr
   res.status(201).json({ favorite: created });
 });
 
-router.delete("/wholesale/favorites/:productId", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.delete("/wholesale/favorites/:productId", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const productId = Number(req.params.productId);
   if (!Number.isFinite(productId)) {
@@ -1074,7 +1103,7 @@ router.delete("/wholesale/favorites/:productId", requireWholesaleAccess, async (
 
 /* ─── Inquiries / quotes ─────────────────────────────────────────────────── */
 
-router.get("/wholesale/inquiries", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.get("/wholesale/inquiries", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const role = String(req.query.role ?? "buyer");
   const isSeller = role === "seller";
@@ -1125,7 +1154,7 @@ router.get("/wholesale/inquiries", requireWholesaleAccess, async (req, res): Pro
   });
 });
 
-router.post("/wholesale/inquiries", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.post("/wholesale/inquiries", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const buyerId = req.userId!;
   const sellerId = Number(req.body?.sellerId);
   const productId = req.body?.productId != null ? Number(req.body.productId) : null;
@@ -1187,7 +1216,7 @@ router.post("/wholesale/inquiries", requireWholesaleAccess, async (req, res): Pr
 
 /* ─── Seller dashboard stats ─────────────────────────────────────────────── */
 
-router.get("/wholesale/seller/stats", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.get("/wholesale/seller/stats", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const userId = req.userId!;
 
   const [listingCounts] = await db
@@ -1243,7 +1272,7 @@ router.get("/wholesale/seller/stats", requireWholesaleAccess, async (req, res): 
  * and seeds a durable product card (visible to buyer + seller). Dedupes by
  * clientMessageId so reopening Chat does not spam duplicate cards.
  */
-router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.post("/wholesale/conversations", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   const buyerId = req.userId!;
   const sellerId = Number(req.body?.sellerId);
   const productId = Number(req.body?.productId);
@@ -1255,7 +1284,7 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
     return;
   }
   // Super Admin may open a preview thread on their own listing while wholesale
-  // is still SA-gated (WHOLESALE_PUBLIC_LAUNCH=false). Regular users cannot.
+  // Self-chat remains Super Admin–only. Regular users cannot.
   if (buyerId === sellerId && !isWholesaleSuperAdmin(req.user)) {
     res.status(400).json({ error: "Cannot chat with yourself" });
     return;
@@ -1457,7 +1486,7 @@ router.post("/wholesale/conversations", requireWholesaleAccess, async (req, res)
 
 /* ─── Admin overview ─────────────────────────────────────────────────────── */
 
-router.get("/wholesale/admin/overview", requireWholesaleAccess, async (req, res): Promise<void> => {
+router.get("/wholesale/admin/overview", requireWholesaleAuthAccess, async (req, res): Promise<void> => {
   if (!req.user?.isSuperAdmin) {
     res.status(403).json({ error: "Super Admin only" });
     return;

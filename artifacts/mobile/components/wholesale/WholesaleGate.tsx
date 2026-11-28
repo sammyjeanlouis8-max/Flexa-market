@@ -1,25 +1,40 @@
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import React, { useEffect, type ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "@/context/AuthContext";
-import { canAccessWholesale } from "@/lib/wholesaleAccess";
+import { canAccessWholesale, WHOLESALE_PUBLIC_LAUNCH } from "@/lib/wholesaleAccess";
 import { wholesaleTheme as T } from "@/lib/wholesaleTheme";
 import { WholesaleShell } from "./WholesaleShell";
 
-/** Super Admin gate until WHOLESALE_PUBLIC_LAUNCH. Shared Market auth session. */
-export function WholesaleGate({ children }: { children: ReactNode }) {
+/** Public browse when WHOLESALE_PUBLIC_LAUNCH; seller/admin paths still require login. */
+export function WholesaleGate({
+  children,
+  requireAuth = false,
+}: {
+  children: ReactNode;
+  requireAuth?: boolean;
+}) {
   const { user, token, isLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname() || "";
   const allowed = canAccessWholesale(user);
+  const pathNeedsAuth =
+    pathname.includes("/seller") ||
+    pathname.includes("/admin") ||
+    pathname.includes("/favorites") ||
+    pathname.includes("/inquiries") ||
+    pathname.includes("/quotes") ||
+    pathname.includes("/verification");
+  const needsAuth = requireAuth || pathNeedsAuth || !WHOLESALE_PUBLIC_LAUNCH;
 
   useEffect(() => {
     if (isLoading) return;
-    if (!token) {
+    if (needsAuth && !token) {
       router.replace("/auth/login");
     }
-  }, [isLoading, token, router]);
+  }, [isLoading, needsAuth, token, router]);
 
-  if (isLoading || !token) {
+  if (isLoading || (needsAuth && !token)) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={T.accent} />
@@ -31,10 +46,9 @@ export function WholesaleGate({ children }: { children: ReactNode }) {
     return (
       <WholesaleShell title="Flexa Wholesale" subtitle="Preview access restricted">
         <View style={styles.card}>
-          <Text style={styles.title}>Super Admin only</Text>
+          <Text style={styles.title}>Staff preview only</Text>
           <Text style={styles.body}>
-            Flexa Wholesale is in preview on the shared Market database. Flip
-            WHOLESALE_PUBLIC_LAUNCH when ready for all users.
+            Flexa Wholesale is not publicly available yet.
           </Text>
         </View>
       </WholesaleShell>

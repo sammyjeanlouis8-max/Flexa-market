@@ -13,6 +13,7 @@ import {
   updateMyBeautyBusiness,
   type BeautyBusiness,
 } from "@/lib/beautyApi";
+import { BEAUTY_PRIMARY_CATEGORIES } from "@/lib/beautyCategoriesCatalog";
 import { SUPPORTED_COUNTRIES } from "@/lib/countries";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +35,7 @@ type Draft = {
   streetAddress: string;
   showPublicAddress: boolean;
   homeServiceAvailable: boolean;
+  categorySlugs: string[];
   termsAccepted: boolean;
   serviceName: string;
   servicePrice: string;
@@ -55,6 +57,7 @@ const emptyDraft = (country = ""): Draft => ({
   streetAddress: "",
   showPublicAddress: true,
   homeServiceAvailable: false,
+  categorySlugs: ["beauty-studio"],
   termsAccepted: false,
   serviceName: "",
   servicePrice: "",
@@ -119,6 +122,10 @@ function OnboardingBody() {
         if (draft.name.trim().length < 2 || !draft.country || !draft.city) {
           throw new Error(t("beauty.completeRequiredFields", { defaultValue: "Please complete required fields." }));
         }
+        const offersMobile =
+          draft.homeServiceAvailable
+          || draft.categorySlugs.includes("mobile-beauty")
+          || draft.businessType.startsWith("mobile_");
         const created = await createBeautyBusiness({
           name: draft.name.trim(),
           businessType: draft.businessType,
@@ -131,13 +138,19 @@ function OnboardingBody() {
           city: draft.city,
           streetAddress: draft.streetAddress,
           showPublicAddress: draft.showPublicAddress,
-          homeServiceAvailable: draft.homeServiceAvailable,
+          homeServiceAvailable: offersMobile,
+          serviceLocationMode: offersMobile ? "both" : "at_business",
+          categorySlugs: draft.categorySlugs,
           onboardingStep: draft.step,
           termsAccepted: draft.termsAccepted,
         });
         businessId = created.id;
         patch({ businessId });
       } else {
+        const offersMobile =
+          draft.homeServiceAvailable
+          || draft.categorySlugs.includes("mobile-beauty")
+          || draft.businessType.startsWith("mobile_");
         await updateMyBeautyBusiness(businessId, {
           name: draft.name.trim(),
           businessType: draft.businessType,
@@ -150,7 +163,9 @@ function OnboardingBody() {
           city: draft.city,
           streetAddress: draft.streetAddress,
           showPublicAddress: draft.showPublicAddress,
-          homeServiceAvailable: draft.homeServiceAvailable,
+          homeServiceAvailable: offersMobile,
+          serviceLocationMode: offersMobile ? "both" : "at_business",
+          categorySlugs: draft.categorySlugs,
           onboardingStep: draft.step,
           termsAccepted: draft.termsAccepted,
         });
@@ -295,10 +310,46 @@ function OnboardingBody() {
               <option value="barbershop">{t("beauty.catBarbershop")}</option>
               <option value="independent_beauty">{t("beauty.catIndependent")}</option>
               <option value="independent_barber">{t("beauty.catIndependentBarber", { defaultValue: "Independent Barber" })}</option>
-              <option value="mobile_beauty">{t("beauty.catMobile")}</option>
+              <option value="mobile_beauty">{t("beauty.catMobileBeauty", { defaultValue: "Mobile Beauty" })}</option>
               <option value="mobile_barber">{t("beauty.catMobileBarber", { defaultValue: "Mobile Barber" })}</option>
             </select>
           </label>
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">
+              {t("beauty.categoriesSelect", { defaultValue: "Categories (select all that apply)" })}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {BEAUTY_PRIMARY_CATEGORIES.map((cat) => {
+                const active = draft.categorySlugs.includes(cat.slug);
+                return (
+                  <button
+                    key={cat.slug}
+                    type="button"
+                    onClick={() => {
+                      const next = active
+                        ? draft.categorySlugs.filter((s) => s !== cat.slug)
+                        : [...draft.categorySlugs, cat.slug];
+                      patch({
+                        categorySlugs: next.length ? next.slice(0, 12) : draft.categorySlugs,
+                        homeServiceAvailable:
+                          cat.slug === "mobile-beauty" && !active
+                            ? true
+                            : draft.homeServiceAvailable,
+                      });
+                    }}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-bold",
+                      active
+                        ? "border-[hsl(350,45%,38%)] bg-[hsl(350,45%,38%)] text-white"
+                        : "border-[hsl(350,20%,88%)] bg-white text-[hsl(350,20%,20%)]",
+                    )}
+                  >
+                    {t(cat.labelKey, { defaultValue: cat.slug })}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <Field label={t("beauty.description")} value={draft.description} onChange={(v) => patch({ description: v })} multiline />
           <Field label={t("beauty.phone")} value={draft.phone} onChange={(v) => patch({ phone: v })} />
           <Field label={t("beauty.whatsapp")} value={draft.whatsapp} onChange={(v) => patch({ whatsapp: v })} />

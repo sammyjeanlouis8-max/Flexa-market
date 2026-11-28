@@ -48,6 +48,10 @@ import {
   localYmd,
   type BeautyHourRow,
 } from "../lib/beautySchedule";
+import {
+  BEAUTY_PRIMARY_CATEGORIES,
+  beautyCategoryBySlug,
+} from "../lib/beautyCategoriesCatalog";
 import { fromMinorUnits } from "../lib/beautyMoney";
 import { createBeautyPaymentIntent } from "../lib/beautyStripe";
 
@@ -523,37 +527,54 @@ const BARBER_SERVICES = [
   { slug: "grooming_packages", nameEn: "Grooming Packages" },
 ] as const;
 
-const STUDIO_IMAGE =
-  "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=80";
-const BARBER_IMAGE =
-  "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&w=1200&q=80";
-
 async function ensureDefaultCategories() {
-  const existing = await db.select({ id: beautyCategoriesTable.id })
-    .from(beautyCategoriesTable).limit(1);
-  if (existing.length) return;
+  // Upsert the 12 primary marketplace categories (safe on existing installs).
+  for (const cat of BEAUTY_PRIMARY_CATEGORIES) {
+    const [row] = await db.select({ id: beautyCategoriesTable.id })
+      .from(beautyCategoriesTable)
+      .where(eq(beautyCategoriesTable.slug, cat.slug))
+      .limit(1);
+    if (row) {
+      await db.update(beautyCategoriesTable).set({
+        kind: cat.kind,
+        nameEn: cat.nameEn,
+        nameFr: cat.nameFr,
+        nameHt: cat.nameHt,
+        nameEs: cat.nameEs,
+        descriptionEn: cat.descriptionEn,
+        imageUrl: cat.imageUrl,
+        sortOrder: cat.sortOrder,
+        isActive: true,
+        updatedAt: new Date(),
+      }).where(eq(beautyCategoriesTable.id, row.id));
+    } else {
+      await db.insert(beautyCategoriesTable).values({
+        kind: cat.kind,
+        slug: cat.slug,
+        nameEn: cat.nameEn,
+        nameFr: cat.nameFr,
+        nameHt: cat.nameHt,
+        nameEs: cat.nameEs,
+        descriptionEn: cat.descriptionEn,
+        imageUrl: cat.imageUrl,
+        sortOrder: cat.sortOrder,
+        isActive: true,
+      });
+    }
+  }
 
-  const [studio] = await db.insert(beautyCategoriesTable).values({
-    kind: "beauty_studio",
-    slug: "beauty-studio",
-    nameEn: "Beauty Studio",
-    nameFr: "Studio de beauté",
-    descriptionEn: "Salons and beauty studios for hair, makeup, nails, and more.",
-    imageUrl: STUDIO_IMAGE,
-    sortOrder: 1,
-    isActive: true,
-  }).returning();
+  // Service-type children under Beauty Studio / Barbershop (first install only).
+  const [studio] = await db.select().from(beautyCategoriesTable)
+    .where(eq(beautyCategoriesTable.slug, "beauty-studio")).limit(1);
+  const [barber] = await db.select().from(beautyCategoriesTable)
+    .where(eq(beautyCategoriesTable.slug, "barbershop")).limit(1);
+  if (!studio || !barber) return;
 
-  const [barber] = await db.insert(beautyCategoriesTable).values({
-    kind: "barbershop",
-    slug: "barbershop",
-    nameEn: "Barbershop",
-    nameFr: "Barbier",
-    descriptionEn: "Barbershops for cuts, beards, shaves, and grooming.",
-    imageUrl: BARBER_IMAGE,
-    sortOrder: 2,
-    isActive: true,
-  }).returning();
+  const existingService = await db.select({ id: beautyCategoriesTable.id })
+    .from(beautyCategoriesTable)
+    .where(eq(beautyCategoriesTable.kind, "service"))
+    .limit(1);
+  if (existingService.length) return;
 
   await db.insert(beautyCategoriesTable).values([
     ...STUDIO_SERVICES.map((s, i) => ({
@@ -680,13 +701,32 @@ router.get("/beauty/businesses", requireBeautyAccess, async (req, res): Promise<
       )!);
     }
     if (categorySlug) {
-      conds.push(sql`EXISTS (
+      const catDef = beautyCategoryBySlug(categorySlug);
+      const typeFallbacks = (catDef?.businessTypes || [])
+        .map((t) => t.toLowerCase().replace(/-/g, "_"));
+      const linkMatch = sql`EXISTS (
         SELECT 1 FROM beauty_business_categories bbc
         JOIN beauty_categories bc ON bc.id = bbc.category_id
         WHERE bbc.business_id = ${beautyBusinessesTable.id}
           AND bc.slug = ${categorySlug}
           AND bc.is_active = TRUE
-      )`);
+      )`;
+      if (catDef?.mobileDelivery) {
+        conds.push(or(
+          linkMatch,
+          eq(beautyBusinessesTable.homeServiceAvailable, true),
+          sql`lower(replace(${beautyBusinessesTable.businessType}, '-', '_')) IN ('mobile_beauty', 'mobile_barber')`,
+          sql`lower(${beautyBusinessesTable.serviceLocationMode}) IN ('at_customer', 'both')`,
+        )!);
+      } else if (typeFallbacks.length) {
+        const inList = typeFallbacks.map((t) => `'${t.replace(/'/g, "")}'`).join(", ");
+        conds.push(or(
+          linkMatch,
+          sql`lower(replace(${beautyBusinessesTable.businessType}, '-', '_')) IN (${sql.raw(inList)})`,
+        )!);
+      } else {
+        conds.push(linkMatch);
+      }
     }
     if (maxPriceMinor != null && Number.isFinite(maxPriceMinor)) {
       conds.push(sql`EXISTS (
@@ -1115,6 +1155,26 @@ router.post("/beauty/businesses", requireBeautyAuthAccess, requireNotRestricted,
     isActive: true,
   });
 
+  // Link one or more primary marketplace categories (max 12).
+  let categoryIds = Array.isArray(body.categoryIds)
+    ? body.categoryIds.map(Number).filter(Number.isFinite).slice(0, 12)
+    : [];
+  if (!categoryIds.length && Array.isArray(body.categorySlugs)) {
+    await ensureDefaultCategories();
+    const slugs = body.categorySlugs.map(String).filter(Boolean).slice(0, 12);
+    if (slugs.length) {
+      const rows = await db.select({ id: beautyCategoriesTable.id, slug: beautyCategoriesTable.slug })
+        .from(beautyCategoriesTable)
+        .where(inArray(beautyCategoriesTable.slug, slugs));
+      categoryIds = rows.map((r) => r.id);
+    }
+  }
+  if (categoryIds.length) {
+    await db.insert(beautyBusinessCategoriesTable).values(
+      categoryIds.map((categoryId: number) => ({ businessId: created.id, categoryId })),
+    );
+  }
+
   await writeAudit({
     actorId: req.userId!,
     businessId: created.id,
@@ -1224,10 +1284,25 @@ router.patch("/beauty/my-businesses/:id", requireBeautyAuthAccess, async (req, r
   const [updated] = await db.update(beautyBusinessesTable).set(patch)
     .where(eq(beautyBusinessesTable.id, id)).returning();
 
+  let patchCategoryIds: number[] | null = null;
   if (Array.isArray(body.categoryIds)) {
+    patchCategoryIds = body.categoryIds.map(Number).filter(Number.isFinite).slice(0, 12);
+  } else if (Array.isArray(body.categorySlugs)) {
+    await ensureDefaultCategories();
+    const slugs = body.categorySlugs.map(String).filter(Boolean).slice(0, 12);
+    if (slugs.length) {
+      const rows = await db.select({ id: beautyCategoriesTable.id })
+        .from(beautyCategoriesTable)
+        .where(inArray(beautyCategoriesTable.slug, slugs));
+      patchCategoryIds = rows.map((r) => r.id);
+    } else {
+      patchCategoryIds = [];
+    }
+  }
+  if (patchCategoryIds) {
     await db.delete(beautyBusinessCategoriesTable)
       .where(eq(beautyBusinessCategoriesTable.businessId, id));
-    const ids = body.categoryIds.map(Number).filter(Number.isFinite).slice(0, 20);
+    const ids = patchCategoryIds;
     if (ids.length) {
       await db.insert(beautyBusinessCategoriesTable).values(
         ids.map((categoryId: number) => ({ businessId: id, categoryId })),

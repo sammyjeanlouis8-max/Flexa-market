@@ -236,18 +236,27 @@ export type BeautyAdminOverview = {
   publicLaunch: boolean;
 };
 
+export {
+  BEAUTY_PRIMARY_CATEGORIES,
+  BEAUTY_HOME_CATEGORIES,
+  beautyCategoryBySlug,
+} from "./beautyCategoriesCatalog";
+
+/** @deprecated Prefer BEAUTY_HOME_CATEGORIES — kept for older imports. */
 export const BEAUTY_CATEGORY_TILES = [
   {
     id: "beauty_studio",
     labelKey: "beauty.catBeautyStudio",
-    href: "/beauty/studio",
-    photo: "https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&q=80",
+    href: "/beauty/c/beauty-studio",
+    photo:
+      "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=900&q=80",
   },
   {
     id: "barbershop",
     labelKey: "beauty.catBarbershop",
-    href: "/beauty/barbershop",
-    photo: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=800&q=80",
+    href: "/beauty/c/barbershop",
+    photo:
+      "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=900&q=80",
   },
 ] as const;
 

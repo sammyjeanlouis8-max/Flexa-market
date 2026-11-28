@@ -13,15 +13,19 @@ import { cn } from "@/lib/utils";
 export default function BeautyDiscover({
   embedded,
   initialType = "all",
+  initialCategorySlug,
   title,
   subtitle,
 }: {
   embedded?: boolean;
   initialType?: string;
+  initialCategorySlug?: string;
   title?: string;
   subtitle?: string;
 } = {}) {
-  const body = <DiscoverBody initialType={initialType} />;
+  const body = (
+    <DiscoverBody initialType={initialType} initialCategorySlug={initialCategorySlug} />
+  );
   if (embedded) return body;
   return (
     <BeautyPageGate>
@@ -32,7 +36,18 @@ export default function BeautyDiscover({
   );
 }
 
-function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
+/** Route entry for `/beauty/discover` (no custom props from wouter). */
+export function BeautyDiscoverPage() {
+  return <BeautyDiscover />;
+}
+
+function DiscoverBody({
+  initialType = "all",
+  initialCategorySlug,
+}: {
+  initialType?: string;
+  initialCategorySlug?: string;
+}) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const search = useSearch();
@@ -45,8 +60,11 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
   const [debouncedQ, setDebouncedQ] = useState(q);
   const [country, setCountry] = useState(qs.get("country") || user?.country || "");
   const [businessType, setBusinessType] = useState(initialType);
+  const [categorySlug] = useState(initialCategorySlug || qs.get("categorySlug") || "");
   const [openNow, setOpenNow] = useState(false);
-  const [homeService, setHomeService] = useState(false);
+  const [homeService, setHomeService] = useState(
+    !!initialCategorySlug && initialCategorySlug === "mobile-beauty",
+  );
   const [minRating, setMinRating] = useState(qs.get("minRating") ? Number(qs.get("minRating")) : 0);
   const [maxPrice, setMaxPrice] = useState("");
   const [radiusKm, setRadiusKm] = useState(40);
@@ -96,7 +114,12 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
     fetchBeautyBusinesses({
       q: debouncedQ || undefined,
       country: country || undefined,
-      businessType: businessType === "all" ? undefined : businessType,
+      businessType: categorySlug
+        ? undefined
+        : businessType === "all"
+          ? undefined
+          : businessType,
+      categorySlug: categorySlug || undefined,
       openNow: openNow || undefined,
       homeService: homeService || undefined,
       featured: featuredOnly || undefined,
@@ -134,6 +157,7 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
     debouncedQ,
     country,
     businessType,
+    categorySlug,
     openNow,
     homeService,
     minRating,

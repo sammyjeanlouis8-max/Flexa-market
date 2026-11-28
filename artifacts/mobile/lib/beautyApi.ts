@@ -202,6 +202,8 @@ export async function fetchBeautyBusinesses(
     openNow?: boolean;
     homeService?: boolean;
     featured?: boolean;
+    minRating?: number;
+    maxPriceMinor?: number;
     nearby?: boolean;
     radiusKm?: number;
     lat?: number;
@@ -221,6 +223,8 @@ export async function fetchBeautyBusinesses(
   if (params.openNow) qs.set("openNow", "1");
   if (params.homeService) qs.set("homeService", "1");
   if (params.featured) qs.set("featured", "1");
+  if (params.minRating != null) qs.set("minRating", String(params.minRating));
+  if (params.maxPriceMinor != null) qs.set("maxPriceMinor", String(params.maxPriceMinor));
   if (params.nearby) qs.set("nearby", "1");
   if (params.radiusKm != null) qs.set("radiusKm", String(params.radiusKm));
   if (params.lat != null) qs.set("lat", String(params.lat));

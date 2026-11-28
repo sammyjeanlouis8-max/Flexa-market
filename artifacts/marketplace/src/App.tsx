@@ -245,9 +245,11 @@ const AdminMusic                     = lazy(() => import("@/pages/AdminMusic"));
 const AdminRestaurants               = lazy(() => import("@/pages/AdminRestaurants"));
 const AdminRestaurantCountries       = lazy(() => import("@/pages/AdminRestaurantCountries"));
 const SedureBeauty                   = lazy(() => import("@/pages/SedureBeauty"));
-const BeautyDiscover                 = lazy(() => import("@/pages/beauty/Discover"));
+const BeautyDiscover                 = lazy(() => import("@/pages/beauty/Discover").then((m) => ({ default: m.BeautyDiscoverPage })));
 const BeautyStudioCategoryPage       = lazy(() => import("@/pages/beauty/CategoryDiscover").then((m) => ({ default: m.BeautyStudioCategoryPage })));
 const BarbershopCategoryPage         = lazy(() => import("@/pages/beauty/CategoryDiscover").then((m) => ({ default: m.BarbershopCategoryPage })));
+const BeautyCategoryBySlugPage       = lazy(() => import("@/pages/beauty/CategoryDiscover").then((m) => ({ default: m.BeautyCategoryBySlugPage })));
+const BeautyCategoriesPage           = lazy(() => import("@/pages/beauty/Categories"));
 const BeautyMapPage                  = lazy(() => import("@/pages/beauty/Map"));
 const BeautyBusinessDetail           = lazy(() => import("@/pages/beauty/BusinessDetail"));
 const BeautyProfessionalDetail       = lazy(() => import("@/pages/beauty/ProfessionalDetail"));
@@ -589,6 +591,8 @@ function LayoutRoutes() {
           <Route path="/beauty/pro/:id" component={BeautyProfessionalDetail} />
           <Route path="/beauty/discover" component={BeautyDiscover} />
           <Route path="/beauty/map" component={BeautyMapPage} />
+          <Route path="/beauty/categories" component={BeautyCategoriesPage} />
+          <Route path="/beauty/c/:slug" component={BeautyCategoryBySlugPage} />
           <Route path="/beauty/studio" component={BeautyStudioCategoryPage} />
           <Route path="/beauty/barbershop" component={BarbershopCategoryPage} />
           <Route path="/beauty/:id" component={BeautyBusinessDetail} />

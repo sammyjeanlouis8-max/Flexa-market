@@ -1,12 +1,12 @@
-/** Séduire Beauty chrome — deep rose / blush, distinct from restaurant forest green. */
+/** Séduire Beauty chrome — burgundy / warm white (reference design). */
 export const beautyTheme = {
-  rose: "#6B2D3C",
-  roseDark: "#3F1A24",
+  rose: "#7A1F3D",
+  roseDark: "#5C152C",
   blushSoft: "#FBF6F7",
-  accent: "#8B4557",
+  accent: "#8B2E4A",
   ink: "#1A1214",
   muted: "#7A656A",
   white: "#ffffff",
-  line: "rgba(107, 45, 60, 0.14)",
+  line: "rgba(122, 31, 61, 0.14)",
   gold: "#C4A484",
 };

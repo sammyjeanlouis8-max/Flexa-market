@@ -8,12 +8,12 @@ import { BeautyEmpty, BeautyNotice, BeautyShell } from "@/components/beauty/Beau
 import { BeautyCard, BeautyCardSkeleton } from "@/components/beauty/BeautyCard";
 import { BeautyCategoryCard } from "@/components/beauty/BeautyCategoryCard";
 import {
-  BEAUTY_CATEGORY_TILES,
   fetchBeautyBusinesses,
   fetchBeautyFavorites,
   fetchBeautyRecentlyViewed,
   type BeautyBusiness,
 } from "@/lib/beautyApi";
+import { BEAUTY_HOME_CATEGORIES, BEAUTY_PRIMARY_CATEGORIES } from "@/lib/beautyCategoriesCatalog";
 import { SUPPORTED_COUNTRIES } from "@/lib/countries";
 
 function Section({
@@ -187,17 +187,42 @@ function HubBody() {
         </form>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        {BEAUTY_CATEGORY_TILES.map((tile) => (
-          <BeautyCategoryCard
-            key={tile.id}
-            href={tile.href}
-            labelKey={tile.labelKey}
-            fallback={tile.id === "beauty_studio" ? "Beauty Studio" : "Barbershop"}
-            photo={tile.photo}
-          />
-        ))}
-      </div>
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-2">
+          <h2 className="text-base font-extrabold tracking-tight text-[hsl(350,20%,14%)]">
+            {t("beauty.categoriesTitle", { defaultValue: "Beauty Categories" })}
+          </h2>
+          <Link
+            href="/beauty/categories"
+            className="text-xs font-semibold text-[hsl(350,45%,40%)]"
+          >
+            {t("beauty.seeAllCount", {
+              defaultValue: "See all ({{count}})",
+              count: BEAUTY_PRIMARY_CATEGORIES.length,
+            })}
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {BEAUTY_HOME_CATEGORIES.map((tile) => (
+            <BeautyCategoryCard
+              key={tile.slug}
+              href={tile.href}
+              labelKey={tile.labelKey}
+              fallback={tile.slug}
+              photo={tile.photo}
+              icon={tile.icon}
+            />
+          ))}
+        </div>
+        <Link
+          href="/beauty/categories"
+          className="flex w-full items-center justify-center gap-2 rounded-full border-2 border-[hsl(350,45%,38%)] bg-white px-4 py-3 text-sm font-bold text-[hsl(350,45%,32%)]"
+          data-testid="beauty-view-all-categories"
+        >
+          {t("beauty.viewAllCategories", { defaultValue: "View All Categories" })}
+          <span aria-hidden>→</span>
+        </Link>
+      </section>
 
       {friendlyError && (
         <div className="rounded-2xl border border-destructive/15 bg-white p-4 text-sm font-semibold text-[hsl(0,55%,40%)]">

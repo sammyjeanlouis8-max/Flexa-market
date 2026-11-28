@@ -13,15 +13,16 @@ import { BeautyShell } from "@/components/beauty/BeautyShell";
 import { NativePhotoField } from "@/components/media/NativePhotoField";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
+import { BEAUTY_PRIMARY_CATEGORIES } from "@/lib/beautyCategoriesCatalog";
 import { createBeautyBusiness, updateMyBeautyBusiness } from "@/lib/beautyApi";
 import { beautyTheme as T } from "@/lib/beautyTheme";
 
 const TYPES = [
-  { id: "beauty_studio", labelKey: "beauty_catStudio" },
+  { id: "beauty_studio", labelKey: "beauty_catBeautyStudio" },
   { id: "barbershop", labelKey: "beauty_catBarbershop" },
   { id: "independent_beauty", labelKey: "beauty_catIndependent" },
   { id: "independent_barber", labelKey: "beauty_catIndependentBarber" },
-  { id: "mobile_beauty", labelKey: "beauty_catMobile" },
+  { id: "mobile_beauty", labelKey: "beauty_catMobileBeauty" },
   { id: "mobile_barber", labelKey: "beauty_catMobileBarber" },
 ] as const;
 
@@ -32,6 +33,8 @@ export default function BeautyOnboardingScreen() {
 
   const [name, setName] = useState("");
   const [businessType, setBusinessType] = useState("beauty_studio");
+  const [categorySlugs, setCategorySlugs] = useState<string[]>(["beauty-studio"]);
+  const [homeService, setHomeService] = useState(false);
   const [description, setDescription] = useState("");
   const [city, setCity] = useState("");
   const [country, setCountry] = useState(user?.country || "Haiti");
@@ -42,11 +45,26 @@ export default function BeautyOnboardingScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function toggleCategory(slug: string) {
+    setCategorySlugs((prev) => {
+      if (prev.includes(slug)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((s) => s !== slug);
+      }
+      return [...prev, slug].slice(0, 12);
+    });
+    if (slug === "mobile-beauty") setHomeService(true);
+  }
+
   async function submit() {
     if (!token) return;
     setError(null);
     if (name.trim().length < 2 || !city.trim() || !country.trim()) {
       setError(t("beauty_onboardingRequired"));
+      return;
+    }
+    if (!categorySlugs.length) {
+      setError(t("beauty_categoriesRequired") || "Select at least one category.");
       return;
     }
     if (!terms) {
@@ -55,6 +73,7 @@ export default function BeautyOnboardingScreen() {
     }
     setSubmitting(true);
     try {
+      const offersMobile = homeService || categorySlugs.includes("mobile-beauty") || businessType.startsWith("mobile_");
       const created = await createBeautyBusiness(
         {
           name: name.trim(),
@@ -65,18 +84,24 @@ export default function BeautyOnboardingScreen() {
           phone: phone.trim() || undefined,
           logoUrl: logoUrls[0] || undefined,
           coverUrl: coverUrls[0] || undefined,
+          categorySlugs,
+          homeServiceAvailable: offersMobile,
+          serviceLocationMode: offersMobile ? "both" : "at_business",
           termsAccepted: true,
           onboardingStep: 1,
         },
         { token },
       );
-      if (phone.trim() || logoUrls[0] || coverUrls[0]) {
+      if (phone.trim() || logoUrls[0] || coverUrls[0] || categorySlugs.length) {
         await updateMyBeautyBusiness(
           created.id,
           {
             phone: phone.trim() || undefined,
             logoUrl: logoUrls[0] || undefined,
             coverUrl: coverUrls[0] || undefined,
+            categorySlugs,
+            homeServiceAvailable: offersMobile,
+            serviceLocationMode: offersMobile ? "both" : "at_business",
           },
           { token },
         ).catch(() => undefined);
@@ -111,13 +136,41 @@ export default function BeautyOnboardingScreen() {
               <Pressable
                 key={type.id}
                 style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setBusinessType(type.id)}
+                onPress={() => {
+                  setBusinessType(type.id);
+                  if (type.id.startsWith("mobile_")) setHomeService(true);
+                }}
               >
                 <Text style={[styles.chipText, active && styles.chipTextActive]}>{t(type.labelKey)}</Text>
               </Pressable>
             );
           })}
         </View>
+
+        <Text style={styles.label}>{t("beauty_categoriesSelect") || "Categories (select all that apply)"}</Text>
+        <View style={styles.wrap}>
+          {BEAUTY_PRIMARY_CATEGORIES.map((cat) => {
+            const active = categorySlugs.includes(cat.slug);
+            return (
+              <Pressable
+                key={cat.slug}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => toggleCategory(cat.slug)}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                  {t(cat.labelKey) || cat.slug}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Pressable style={styles.termsRow} onPress={() => setHomeService((v) => !v)}>
+          <View style={[styles.checkbox, homeService && styles.checkboxOn]} />
+          <Text style={styles.termsText}>
+            {t("beauty_offerMobile") || "Also offer mobile / home service delivery"}
+          </Text>
+        </Pressable>
 
         <Text style={styles.label}>{t("beauty_description")}</Text>
         <TextInput

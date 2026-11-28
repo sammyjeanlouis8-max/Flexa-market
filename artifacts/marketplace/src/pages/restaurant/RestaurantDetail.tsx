@@ -34,6 +34,7 @@ import {
   type Restaurant,
 } from "@/lib/restaurantApi";
 import { cartTotals, getRestaurantCart, upsertCartLine, type RestaurantCartState } from "@/lib/restaurantCart";
+import { isRestaurantFavorite, toggleRestaurantFavorite } from "@/lib/restaurantFavorites";
 import { useAuth } from "@/contexts/auth";
 import { addDaysYmd } from "@/lib/restaurantScheduleClient";
 import { cn } from "@/lib/utils";
@@ -60,11 +61,16 @@ export default function RestaurantDetail() {
   const [optionGroups, setOptionGroups] = useState<DishOptionGroup[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<Record<number, number[]>>({});
   const [customizeNotes, setCustomizeNotes] = useState("");
-
+  const [saved, setSaved] = useState(false);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
 
   useEffect(() => {
     setCart(getRestaurantCart());
   }, []);
+
+  useEffect(() => {
+    if (Number.isFinite(id)) setSaved(isRestaurantFavorite(id));
+  }, [id]);
 
   useEffect(() => {
     if (!Number.isFinite(id)) return;
@@ -318,13 +324,49 @@ export default function RestaurantDetail() {
               </span>
             </div>
             <div className="absolute right-3 top-3 flex gap-2">
-              <button type="button" className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur" aria-label="Share">
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur"
+                aria-label={t("restaurant.share", { defaultValue: "Share" })}
+                data-testid="restaurant-share"
+                onClick={async () => {
+                  setShareMsg(null);
+                  const url = typeof window !== "undefined" ? window.location.href : "";
+                  const title = restaurant?.name || "Flexa Restaurant";
+                  try {
+                    if (navigator.share) {
+                      await navigator.share({ title, url });
+                    } else if (navigator.clipboard?.writeText) {
+                      await navigator.clipboard.writeText(url);
+                      setShareMsg(t("restaurant.linkCopied", { defaultValue: "Link copied" }));
+                    }
+                  } catch {
+                    /* user cancelled share */
+                  }
+                }}
+              >
                 <Share2 className="h-4 w-4" />
               </button>
-              <button type="button" className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur" aria-label="Favorite">
-                <Heart className="h-4 w-4" />
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur"
+                aria-label={t("restaurant.save", { defaultValue: "Save" })}
+                aria-pressed={saved}
+                data-testid="restaurant-favorite-header"
+                onClick={() => {
+                  if (!Number.isFinite(id)) return;
+                  const next = toggleRestaurantFavorite(id);
+                  setSaved(next.includes(id));
+                }}
+              >
+                <Heart className={cn("h-4 w-4", saved && "fill-red-400 text-red-400")} />
               </button>
             </div>
+            {shareMsg && (
+              <p className="absolute bottom-3 right-3 rounded-full bg-black/55 px-3 py-1 text-[11px] font-semibold text-white">
+                {shareMsg}
+              </p>
+            )}
           </div>
 
           {/* Overlapping info card */}

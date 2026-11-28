@@ -232,6 +232,7 @@ const RestaurantMyOrders             = lazy(() => import("@/pages/restaurant/MyO
 const RestaurantMyReservations       = lazy(() => import("@/pages/restaurant/MyReservations"));
 const RestaurantCart                 = lazy(() => import("@/pages/restaurant/Cart"));
 const RestaurantCheckout             = lazy(() => import("@/pages/restaurant/Checkout"));
+const RestaurantFavorites            = lazy(() => import("@/pages/restaurant/Favorites"));
 const WholesaleAdminCategories       = lazy(() => import("@/pages/wholesale/WholesaleAdminCategories"));
 const WholesaleAdminCountries        = lazy(() => import("@/pages/wholesale/WholesaleAdminCountries"));
 const WholesaleAdminChats            = lazy(() => import("@/pages/wholesale/WholesaleAdminChats"));
@@ -538,6 +539,7 @@ function LayoutRoutes() {
           <Route path="/restaurant/my-orders" component={RestaurantMyOrders} />
           <Route path="/restaurant/checkout" component={RestaurantCheckout} />
           <Route path="/restaurant/cart" component={RestaurantCart} />
+          <Route path="/restaurant/favorites" component={RestaurantFavorites} />
           <Route path="/restaurant/discover" component={RestaurantDiscover} />
           <Route path="/restaurant/map" component={RestaurantMapPage} />
           <Route path="/restaurant/restaurants" component={RestaurantCategoryPage} />

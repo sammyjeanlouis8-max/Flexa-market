@@ -329,14 +329,23 @@ function DiscoverBody({ initialType = "all" }: { initialType?: string }) {
               <span className="ml-1.5 text-sm font-semibold text-muted-foreground">({rows.length})</span>
             ) : null}
           </h2>
-          <Link
-            href={`/restaurant/map${country ? `?country=${encodeURIComponent(country)}` : ""}`}
-            className="inline-flex items-center gap-1 text-xs font-bold text-[hsl(152,55%,28%)]"
-            data-testid="restaurant-view-map"
-          >
-            <MapPin className="h-3.5 w-3.5" />
-            {t("restaurant.viewMap", { defaultValue: "View Map" })}
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/restaurant/favorites"
+              className="inline-flex items-center gap-1 text-xs font-bold text-[hsl(152,55%,28%)]"
+              data-testid="restaurant-view-favorites"
+            >
+              {t("restaurant.favorites", { defaultValue: "Favorites" })}
+            </Link>
+            <Link
+              href={`/restaurant/map${country ? `?country=${encodeURIComponent(country)}` : ""}`}
+              className="inline-flex items-center gap-1 text-xs font-bold text-[hsl(152,55%,28%)]"
+              data-testid="restaurant-view-map"
+            >
+              <MapPin className="h-3.5 w-3.5" />
+              {t("restaurant.viewMap", { defaultValue: "View Map" })}
+            </Link>
+          </div>
         </div>
 
         {loading ? (

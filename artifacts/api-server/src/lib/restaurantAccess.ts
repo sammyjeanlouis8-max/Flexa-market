@@ -89,6 +89,20 @@ export function normalizeRestaurantOrderStatus(status: string): string {
   return map[s] || s;
 }
 
+/** Incoming queue: paid/new orders waiting for owner accept. */
+export const RESTAURANT_INCOMING_ORDER_STATUSES = new Set([
+  "order_placed",
+  "pending",
+  "placed",
+  "pending_payment",
+]);
+
+export function isRestaurantIncomingOrderStatus(status: string): boolean {
+  const raw = String(status || "").trim().toLowerCase();
+  if (RESTAURANT_INCOMING_ORDER_STATUSES.has(raw)) return true;
+  return normalizeRestaurantOrderStatus(raw) === "order_placed";
+}
+
 export const RESTAURANT_FULFILLMENT_DISCLAIMER =
   "Delivery is managed directly by this business.";
 

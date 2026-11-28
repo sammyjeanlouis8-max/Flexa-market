@@ -1,7 +1,7 @@
 # Flexa Restaurant — Merchant-Managed Delivery
 
 **Branch:** `cursor/restaurant-merchant-delivery-5a20`  
-**Public launch gate:** `RESTAURANT_PUBLIC_LAUNCH=false` (unchanged)  
+**Public launch gate:** `RESTAURANT_PUBLIC_LAUNCH=true` (visible to everyone; already on `main` via #321)  
 **Flexa Delivery for food:** gated by `RESTAURANT_FLEXA_DELIVERY_ENABLED` (default off)
 
 ## Summary
@@ -68,5 +68,5 @@ Local UI walkthrough screenshots (public launch remains gated):
 
 ## Deployment status
 
-- **Not deployed to DigitalOcean yet** — awaiting PR merge to `main` and green CI.
-- `RESTAURANT_PUBLIC_LAUNCH` remains `false`.
+- Merging #315 to `main` triggers `.github/workflows/deploy.yml` → DigitalOcean App Platform.
+- Restaurant module is publicly visible (`RESTAURANT_PUBLIC_LAUNCH=true`).

@@ -355,7 +355,7 @@ const T: Record<Lang, Record<string, string>> = {
     beauty_notFound: "Business not found",
     beauty_freeLaunchNote: "Free at launch — Flexa charges no commission on Séduire Beauty.",
     beauty_staffPreviewOnly: "Séduire Beauty is in Super Admin preview only.",
-    tabHome: "Home", tabSearch: "Search", tabSell: "Sell", tabMessages: "Messages", tabProfile: "Profile",
+    tabHome: "Home", tabCategories: "Categories", tabSearch: "Search", tabSell: "Sell", tabMessages: "Messages", tabMusic: "Music", tabCart: "Cart", tabAccount: "My Account", tabProfile: "Profile",
     back: "Back", loading: "Loading...", cancel: "Cancel", save: "Save", ok: "OK", greeting: "Hello",
     allCategories: "All", noListings: "No listings",
     sponsored: "Sponsored", description: "Description", seller: "Seller", profile: "Profile",
@@ -756,7 +756,7 @@ const T: Record<Lang, Record<string, string>> = {
     beauty_notFound: "Biznis pa jwenn",
     beauty_freeLaunchNote: "Gratis nan lansman — pa gen komisyon sou Séduire Beauty.",
     beauty_staffPreviewOnly: "Séduire Beauty se preview Super Admin sèlman.",
-    tabHome: "Akèy", tabSearch: "Chèche", tabSell: "Vann", tabMessages: "Mesaj", tabProfile: "Pwofil",
+    tabHome: "Akèy", tabCategories: "Kategori", tabSearch: "Chèche", tabSell: "Vann", tabMessages: "Mesaj", tabMusic: "Mizik", tabCart: "Panye", tabAccount: "Kont mwen", tabProfile: "Pwofil",
     back: "Retounen", loading: "Ap chaje...", cancel: "Anile", save: "Sove", ok: "OK", greeting: "Bonjou",
     allCategories: "Tout", noListings: "Pa gen annons",
     sponsored: "Sponsorisé", description: "Deskripsyon", seller: "Vandè", profile: "Pwofil",
@@ -1146,7 +1146,7 @@ const T: Record<Lang, Record<string, string>> = {
     beauty_notFound: "Établissement introuvable",
     beauty_freeLaunchNote: "Gratuit au lancement — aucune commission Séduire Beauty.",
     beauty_staffPreviewOnly: "Séduire Beauty est en aperçu Super Admin uniquement.",
-    tabHome: "Accueil", tabSearch: "Rechercher", tabSell: "Vendre", tabMessages: "Messages", tabProfile: "Profil",
+    tabHome: "Accueil", tabCategories: "Catégories", tabSearch: "Rechercher", tabSell: "Vendre", tabMessages: "Messages", tabMusic: "Musique", tabCart: "Panier", tabAccount: "Mon compte", tabProfile: "Profil",
     back: "Retour", loading: "Chargement...", cancel: "Annuler", save: "Enregistrer", ok: "OK", greeting: "Bonjour",
     allCategories: "Tout", noListings: "Aucune annonce",
     sponsored: "Sponsorisé", description: "Description", seller: "Vendeur", profile: "Profil",
@@ -1536,7 +1536,7 @@ const T: Record<Lang, Record<string, string>> = {
     beauty_notFound: "Negocio no encontrado",
     beauty_freeLaunchNote: "Gratis en el lanzamiento — sin comisión Séduire Beauty.",
     beauty_staffPreviewOnly: "Séduire Beauty está en vista previa solo para Super Admin.",
-    tabHome: "Inicio", tabSearch: "Buscar", tabSell: "Vender", tabMessages: "Mensajes", tabProfile: "Perfil",
+    tabHome: "Inicio", tabCategories: "Categorías", tabSearch: "Buscar", tabSell: "Vender", tabMessages: "Mensajes", tabMusic: "Música", tabCart: "Carrito", tabAccount: "Mi cuenta", tabProfile: "Perfil",
     back: "Atrás", loading: "Cargando...", cancel: "Cancelar", save: "Guardar", ok: "OK", greeting: "Hola",
     allCategories: "Todo", noListings: "Sin anuncios",
     sponsored: "Patrocinado", description: "Descripción", seller: "Vendedor", profile: "Perfil",
@@ -1614,7 +1614,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   pt: {
-    tabHome: "Início", tabSearch: "Pesquisar", tabSell: "Vender", tabMessages: "Mensagens", tabProfile: "Perfil",
+    tabHome: "Início", tabCategories: "Categorias", tabSearch: "Pesquisar", tabSell: "Vender", tabMessages: "Mensagens", tabMusic: "Música", tabCart: "Carrinho", tabAccount: "Minha conta", tabProfile: "Perfil",
     back: "Voltar", loading: "Carregando...", cancel: "Cancelar", save: "Salvar", ok: "OK", greeting: "Olá",
     allCategories: "Tudo", noListings: "Sem anúncios",
     sponsored: "Patrocinado", description: "Descrição", seller: "Vendedor", profile: "Perfil",
@@ -1692,7 +1692,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   de: {
-    tabHome: "Startseite", tabSearch: "Suchen", tabSell: "Verkaufen", tabMessages: "Nachrichten", tabProfile: "Profil",
+    tabHome: "Startseite", tabCategories: "Kategorien", tabSearch: "Suchen", tabSell: "Verkaufen", tabMessages: "Nachrichten", tabMusic: "Musik", tabCart: "Warenkorb", tabAccount: "Mein Konto", tabProfile: "Profil",
     back: "Zurück", loading: "Laden...", cancel: "Abbrechen", save: "Speichern", ok: "OK", greeting: "Hallo",
     allCategories: "Alle", noListings: "Keine Anzeigen",
     sponsored: "Gesponsert", description: "Beschreibung", seller: "Verkäufer", profile: "Profil",
@@ -1770,7 +1770,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   hi: {
-    tabHome: "होम", tabSearch: "खोजें", tabSell: "बेचें", tabMessages: "संदेश", tabProfile: "प्रोफाइल",
+    tabHome: "होम", tabCategories: "श्रेणियाँ", tabSearch: "खोजें", tabSell: "बेचें", tabMessages: "संदेश", tabMusic: "संगीत", tabCart: "कार्ट", tabAccount: "मेरा खाता", tabProfile: "प्रोफाइल",
     back: "वापस", loading: "लोड हो रहा है...", cancel: "रद्द करें", save: "सहेजें", ok: "ठीक है", greeting: "नमस्ते",
     allCategories: "सभी", noListings: "कोई लिस्टिंग नहीं",
     sponsored: "प्रायोजित", description: "विवरण", seller: "विक्रेता", profile: "प्रोफाइल",
@@ -1848,7 +1848,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   fil: {
-    tabHome: "Tahanan", tabSearch: "Maghanap", tabSell: "Ibenta", tabMessages: "Mga Mensahe", tabProfile: "Profile",
+    tabHome: "Tahanan", tabCategories: "Mga Kategorya", tabSearch: "Maghanap", tabSell: "Ibenta", tabMessages: "Mga Mensahe", tabMusic: "Musika", tabCart: "Cart", tabAccount: "Aking Account", tabProfile: "Profile",
     back: "Bumalik", loading: "Naglo-load...", cancel: "Kanselahin", save: "I-save", ok: "OK", greeting: "Kumusta",
     allCategories: "Lahat", noListings: "Walang listahan",
     sponsored: "Sponsor", description: "Paglalarawan", seller: "Nagbebenta", profile: "Profile",
@@ -1926,7 +1926,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   ha: {
-    tabHome: "Gida", tabSearch: "Bincika", tabSell: "Siyar", tabMessages: "Saƙonni", tabProfile: "Bayani",
+    tabHome: "Gida", tabCategories: "Rukuni", tabSearch: "Bincika", tabSell: "Siyar", tabMessages: "Saƙonni", tabMusic: "Waƙa", tabCart: "Kati", tabAccount: "Asusu Na", tabProfile: "Bayani",
     back: "Komawa", loading: "Ana lodawa...", cancel: "Soke", save: "Ajiye", ok: "Yawwa", greeting: "Sannu",
     allCategories: "Duka", noListings: "Babu tallace-tallace",
     sponsored: "Mai tallafi", description: "Bayanai", seller: "Mai siyarwa", profile: "Bayani",
@@ -2004,7 +2004,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   zu: {
-    tabHome: "Ikhaya", tabSearch: "Sesha", tabSell: "Thengisa", tabMessages: "Imiyalezo", tabProfile: "Iphrofayili",
+    tabHome: "Ikhaya", tabCategories: "Izigaba", tabSearch: "Sesha", tabSell: "Thengisa", tabMessages: "Imiyalezo", tabMusic: "Umculo", tabCart: "Inqola", tabAccount: "I-akhawunti Yami", tabProfile: "Iphrofayili",
     back: "Emuva", loading: "Iyalayisha...", cancel: "Khansela", save: "Londoloza", ok: "KULUNGILE", greeting: "Sawubona",
     allCategories: "Konke", noListings: "Ayikho imikhangiso",
     sponsored: "Ukukhuthazwa", description: "Incazelo", seller: "Umthengisi", profile: "Iphrofayili",
@@ -2082,7 +2082,7 @@ const T: Record<Lang, Record<string, string>> = {
   },
 
   af: {
-    tabHome: "Tuis", tabSearch: "Soek", tabSell: "Verkoop", tabMessages: "Boodskappe", tabProfile: "Profiel",
+    tabHome: "Tuis", tabCategories: "Kategorieë", tabSearch: "Soek", tabSell: "Verkoop", tabMessages: "Boodskappe", tabMusic: "Musiek", tabCart: "Mandjie", tabAccount: "My rekening", tabProfile: "Profiel",
     back: "Terug", loading: "Laai...", cancel: "Kanselleer", save: "Stoor", ok: "OK", greeting: "Hallo",
     allCategories: "Almal", noListings: "Geen lyste",
     sponsored: "Geborg", description: "Beskrywing", seller: "Verkoper", profile: "Profiel",

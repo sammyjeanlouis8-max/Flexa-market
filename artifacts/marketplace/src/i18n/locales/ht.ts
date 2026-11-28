@@ -110,6 +110,7 @@ export default {
     driverSuspended: "⚠️ Kont Suspann",
   
     cart: "Panye",
+    music: "Mizik",
     categories: "Kategori",
     all: "Tout",
     helpCenter: "Sant Èd",

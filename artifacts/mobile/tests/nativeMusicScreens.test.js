@@ -43,3 +43,16 @@ test("music API helpers target /music endpoints", () => {
   assert.match(api, /\/music/);
   assert.match(api, /getApiBase/);
 });
+
+test("Music tab is in bottom nav and mini-player clears the tab bar", () => {
+  const tabs = read("app/(tabs)/_layout.tsx");
+  assert.match(tabs, /name="music"/);
+  assert.match(tabs, /t\("tabMusic"\)/);
+  assert.match(tabs, /Feather name="music"/);
+  assert.match(tabs, /name="cart"[\s\S]*href:\s*null/);
+  const musicTab = read("app/(tabs)/music.tsx");
+  assert.match(musicTab, /showNav=\{false\}/);
+  const mini = read("components/music/MusicMiniPlayer.tsx");
+  assert.match(mini, /useTabBarHeight/);
+  assert.match(mini, /bottom:\s*tabBarHeight\s*\+\s*8/);
+});

@@ -36,6 +36,7 @@ export default {
     more: "Ƙari",
     menu: "Menu",
     account: "Asusuna",
+    music: "Waƙa",
     discover: "Gano",
     videos: "Bidiyo",
     saved: "An adana",

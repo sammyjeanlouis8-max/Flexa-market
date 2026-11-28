@@ -36,6 +36,7 @@ export default {
     more: "Zaidi",
     menu: "Menyu",
     account: "Akaunti yangu",
+    music: "Muziki",
     discover: "Gundua",
     videos: "Video",
     saved: "Zilizohifadhiwa",

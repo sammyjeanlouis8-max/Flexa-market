@@ -150,6 +150,7 @@ export default {
     driverSuspended: "⚠️ Compte Suspendu",
   
     cart: "Panier",
+    music: "Musique",
     categories: "Catégories",
     all: "Tout",
     helpCenter: "Centre d'aide",

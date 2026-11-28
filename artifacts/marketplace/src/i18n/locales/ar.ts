@@ -36,6 +36,7 @@ export default {
     more: "المزيد",
     menu: "القائمة",
     account: "حسابي",
+    music: "موسيقى",
     discover: "اكتشف",
     videos: "الفيديوهات",
     saved: "المحفوظات",

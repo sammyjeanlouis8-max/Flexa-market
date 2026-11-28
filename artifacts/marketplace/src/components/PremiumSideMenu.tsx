@@ -8,6 +8,7 @@ import {
   Store, Bell, Lock, MapPinned, Sparkles, Landmark, Tag, Award, LayoutGrid, BarChart3,
   Warehouse,
   UtensilsCrossed,
+  Scissors,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
@@ -19,6 +20,7 @@ import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { cn } from "@/lib/utils";
 import { canAccessWholesale } from "@/lib/wholesaleAccess";
 import { canAccessRestaurant } from "@/lib/restaurantAccess";
+import { canAccessBeauty } from "@/lib/beautyAccess";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function DarkModeToggle({ className }: { className?: string }) {
@@ -247,6 +249,7 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
   const canSeeSellerTools = !!user;
   const canSeeWholesale = canAccessWholesale(user);
   const canSeeRestaurant = canAccessRestaurant(user);
+  const canSeeBeauty = canAccessBeauty(user);
 
   const applyLabel =
     driverStatus === "approved" ? t("nav.driverApproved") :
@@ -277,6 +280,15 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
               label: t("nav.flexaRestaurant", { defaultValue: "Flexa Restaurant" }),
               href: "/restaurant",
               testId: "drawer-flexa-restaurant",
+              accent: "emerald" as const,
+            } as NavItem]
+          : []),
+        ...(canSeeBeauty
+          ? [{
+              icon: Scissors,
+              label: t("nav.seduireBeauty", { defaultValue: "Séduire Beauty" }),
+              href: "/beauty",
+              testId: "drawer-seduire-beauty",
               accent: "emerald" as const,
             } as NavItem]
           : []),

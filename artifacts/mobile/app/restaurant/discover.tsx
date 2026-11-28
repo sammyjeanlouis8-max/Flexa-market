@@ -85,9 +85,13 @@ export default function RestaurantDiscoverScreen() {
       );
     } catch (e: any) {
       const raw = String(e?.message || "");
+      const code = String(e?.code || "");
       if (/401|unauthorized/i.test(raw)) setError("auth");
-      else if (/403|restricted|disabled|preview|country/i.test(raw)) setError("restricted");
-      else setError("load");
+      else if (
+        /403|COUNTRY_|CATEGORY_|restricted|disabled|preview|not available|regulatory|approval/i.test(`${code} ${raw}`)
+      ) {
+        setError("restricted");
+      } else setError("load");
       setRows([]);
     } finally {
       setLoading(false);
@@ -160,21 +164,26 @@ export default function RestaurantDiscoverScreen() {
 
         {loading ? (
           <ActivityIndicator color={T.accent} style={{ marginTop: 24 }} />
-        ) : error ? (
+        ) : error === "load" ? (
           <View>
-            <Text style={styles.err}>
+            <Text style={styles.err}>Unable to load nearby businesses. Please try again.</Text>
+            <Pressable style={styles.retry} onPress={() => void load()}>
+              <Text style={styles.retryText}>{t("common_retry") || "Retry"}</Text>
+            </Pressable>
+          </View>
+        ) : error || rows.length === 0 ? (
+          <View>
+            <Text style={styles.muted}>
               {error === "restricted"
                 ? t("restaurant_countryDisabled") || "Flexa Restaurant is not available for this location."
                 : error === "auth"
                   ? "Sign in to browse Flexa Restaurant (staff preview)."
-                  : "Unable to load nearby businesses. Please try again."}
+                  : t("restaurant_emptyTitle") || "No restaurants available near you yet."}
             </Text>
             <Pressable style={styles.retry} onPress={() => void load()}>
               <Text style={styles.retryText}>{t("common_retry") || "Retry"}</Text>
             </Pressable>
           </View>
-        ) : rows.length === 0 ? (
-          <Text style={styles.muted}>{t("restaurant_emptyTitle") || "No businesses found near you."}</Text>
         ) : (
           rows.map((r) => (
             <Pressable key={r.id} style={styles.card} onPress={() => router.push(`/restaurant/${r.id}` as any)}>

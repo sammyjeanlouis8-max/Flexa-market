@@ -441,8 +441,17 @@ router.get("/restaurants", requireRestaurantAccess, async (req, res): Promise<vo
     const profileCountry = String(req.user?.country || "").trim();
     const staff = isStaff(req.user);
     const country = queryCountry || profileCountry;
+    // Guests without a country: return empty success (not a hard error) so the UI
+    // can show "choose location" instead of a red failure banner.
     if (!country && !staff) {
-      res.status(400).json({ error: "Country is required for restaurant discovery" });
+      res.json({
+        restaurants: [],
+        total: 0,
+        freeLaunch: true,
+        code: "COUNTRY_REQUIRED",
+        message: "Select a country or city to browse nearby businesses.",
+        platformFees: { commission: 0, registrationFee: 0, monthlySubscription: 0 },
+      });
       return;
     }
     if (queryCountry && profileCountry && !staff && queryCountry.toLowerCase() !== profileCountry.toLowerCase()) {

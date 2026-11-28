@@ -182,7 +182,13 @@ function authHeaders(): HeadersInit {
 
 async function parseJson<T>(res: Response, fallbackMsg: string): Promise<T> {
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as { error?: string }).error || fallbackMsg);
+  if (!res.ok) {
+    const body = data as { error?: string; code?: string; message?: string };
+    const err = new Error(body.error || body.message || fallbackMsg) as Error & { code?: string; status?: number };
+    err.code = body.code;
+    err.status = res.status;
+    throw err;
+  }
   return data as T;
 }
 

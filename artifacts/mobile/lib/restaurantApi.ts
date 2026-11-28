@@ -164,7 +164,13 @@ function headers(token?: string | null): Record<string, string> {
 
 async function parseJson<T>(res: Response, fallback: string): Promise<T> {
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as { error?: string }).error || fallback);
+  if (!res.ok) {
+    const body = data as { error?: string; code?: string; message?: string };
+    const err = new Error(body.error || body.message || fallback) as Error & { code?: string; status?: number };
+    err.code = body.code;
+    err.status = res.status;
+    throw err;
+  }
   return data as T;
 }
 

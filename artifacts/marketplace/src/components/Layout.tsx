@@ -402,7 +402,6 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const [deliveryMenuCountry, setDeliveryMenuCountry] = useState<string | null | undefined>(undefined);
   const { user, logout, showLanguageModal, dismissLanguageModal } = useAuth();
   const { t } = useTranslation();
-  const { count: cartCount } = useCart();
   const unread = useUnreadMessageCount();
   const boostAd = useBoostAdTrigger();
   const bs = useBroadcast();
@@ -500,12 +499,13 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
   const profileHref = user ? "/settings" : "/auth/login";
 
-  // 5 fixed bottom tabs — Menu opens from top-left hamburger only (not bottom)
+  // 5 fixed bottom tabs — Menu opens from top-left hamburger only (not bottom).
+  // Cart stays in the top header (CartIconButton); Music opens Flexa Music.
   const tabs = [
     { href: "/",         icon: Home,           label: t("nav.home"),       key: "home" },
     { href: "/search",   icon: LayoutGrid,     label: t("nav.categories", { defaultValue: "Categories" }), key: "categories" },
     { href: "/messages", icon: MessageCircle,  label: t("nav.messages"),   key: "messages", badge: unread },
-    { href: "/cart",     icon: ShoppingCart,   label: t("nav.cart", { defaultValue: "Cart" }), key: "cart", badge: cartCount },
+    { href: "/music",    icon: Music2,         label: t("nav.music", { defaultValue: "Music" }), key: "music" },
     { href: profileHref, icon: User,           label: t("nav.account", { defaultValue: "Account" }), key: "account" },
   ] as const;
 

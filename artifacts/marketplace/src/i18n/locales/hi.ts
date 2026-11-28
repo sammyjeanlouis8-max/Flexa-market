@@ -36,6 +36,7 @@ export default {
     more: "अधिक",
     menu: "मेनू",
     account: "मेरा खाता",
+    music: "संगीत",
     discover: "खोजें",
     videos: "वीडियो",
     saved: "सहेजे गए",

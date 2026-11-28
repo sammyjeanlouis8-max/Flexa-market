@@ -122,8 +122,11 @@ export default function MusicTab() {
 
   const cover = featured ? absoluteMusicUrl(featured.cover_url) : null;
 
+  // Global bottom tabs stay visible on this screen — hide MusicShell's own nav
+  // so we keep a single marketplace tab bar (Explore/Library live on stack routes).
   return (
     <MusicShell
+      showNav={false}
       headerRight={
         <Pressable onPress={() => router.push("/music/search")} hitSlop={12}>
           <Feather name="search" size={22} color={musicTheme.white} />
@@ -198,9 +201,14 @@ export default function MusicTab() {
 
           <View style={styles.sectionHead}>
             <Text style={styles.sectionLabel}>New releases</Text>
-            <Pressable onPress={() => router.push("/music/playlists")}>
-              <Text style={styles.link}>Playlists</Text>
-            </Pressable>
+            <View style={styles.sectionLinks}>
+              <Pressable onPress={() => router.push("/music/library")}>
+                <Text style={styles.link}>Library</Text>
+              </Pressable>
+              <Pressable onPress={() => router.push("/music/playlists")}>
+                <Text style={styles.link}>Playlists</Text>
+              </Pressable>
+            </View>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hStrip}>
             {newReleases.map((t) => (
@@ -234,6 +242,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  sectionLinks: { flexDirection: "row", alignItems: "center", gap: 14 },
   link: { color: musicTheme.orange, fontWeight: "700", fontSize: 13 },
   hero: {
     backgroundColor: musicTheme.forest,

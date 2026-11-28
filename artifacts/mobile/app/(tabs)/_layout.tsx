@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import colors from "@/constants/colors";
 import { useAuth } from "@/context/AuthContext";
-import { useCart } from "@/context/CartContext";
+import { useLanguage } from "@/context/LanguageContext";
 import {
   TAB_BAR_CONTENT_HEIGHT,
   TAB_BAR_TOP_PAD,
@@ -14,7 +14,7 @@ import { fetchUnreadCount } from "@/lib/chatApi";
 
 export default function TabLayout() {
   const { token } = useAuth();
-  const { count: cartCount } = useCart();
+  const { t } = useLanguage();
   const [unread, setUnread] = useState(0);
 
   const tabBarPaddingBottom = useBottomSafeInset();
@@ -76,7 +76,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: t("tabHome"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="home" color={color} size={size} />
           ),
@@ -85,7 +85,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{
-          title: "Categories",
+          title: t("tabCategories"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="grid" color={color} size={size} />
           ),
@@ -94,7 +94,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="inbox"
         options={{
-          title: "Messages",
+          title: t("tabMessages"),
           tabBarBadge: unread > 0 ? (unread > 99 ? "99+" : unread) : undefined,
           tabBarBadgeStyle: {
             backgroundColor: colors.flexaOrange,
@@ -110,43 +110,36 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="cart"
+        name="music"
         options={{
-          title: "Cart",
-          tabBarBadge: cartCount > 0 ? (cartCount > 99 ? "99+" : cartCount) : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: colors.flexaOrange,
-            color: "#FFFFFF",
-            fontSize: 10,
-            fontWeight: "800",
-          },
+          title: t("tabMusic"),
           tabBarIcon: ({ color, size }) => (
-            <Feather name="shopping-cart" color={color} size={size} />
+            <Feather name="music" color={color} size={size} />
           ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: "My Account",
+          title: t("tabAccount"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="user" color={color} size={size} />
           ),
         }}
       />
-      {/* Keep Music / Sell routes reachable (drawer, deep links) without a tab icon. */}
+      {/* Cart stays reachable from AppHeader (and deep links) — not a bottom tab. */}
       <Tabs.Screen
-        name="music"
+        name="cart"
         options={{
           href: null,
-          title: "Music",
+          title: t("tabCart"),
         }}
       />
       <Tabs.Screen
         name="sell"
         options={{
           href: null,
-          title: "Sell",
+          title: t("tabSell"),
         }}
       />
     </Tabs>

@@ -19,14 +19,16 @@ test("tab bar applies bottom safe-area inset once (no hardcoded Android padding)
   assert.doesNotMatch(src, /height:\s*Platform\.OS\s*===\s*"ios"\s*\?\s*88\s*:\s*64/);
 });
 
-test("bottom nav matches WebView: Home · Categories · Messages · Cart · My Account", () => {
+test("bottom nav matches WebView: Home · Categories · Messages · Music · My Account", () => {
   const src = read("app/(tabs)/_layout.tsx");
-  assert.match(src, /title:\s*"Home"/);
-  assert.match(src, /title:\s*"Categories"/);
-  assert.match(src, /title:\s*"Messages"/);
-  assert.match(src, /title:\s*"Cart"/);
-  assert.match(src, /title:\s*"My Account"/);
-  assert.match(src, /name="music"[\s\S]*href:\s*null/);
+  assert.match(src, /t\("tabHome"\)/);
+  assert.match(src, /t\("tabCategories"\)/);
+  assert.match(src, /t\("tabMessages"\)/);
+  assert.match(src, /t\("tabMusic"\)/);
+  assert.match(src, /t\("tabAccount"\)/);
+  assert.match(src, /name="music"/);
+  assert.match(src, /Feather name="music"/);
+  assert.match(src, /name="cart"[\s\S]*href:\s*null/);
   assert.match(src, /name="sell"[\s\S]*href:\s*null/);
 });
 

@@ -717,6 +717,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/admin\/moncash-transactions\/?$/,
     /^\/music(\/|$)/,
     /^\/music\/upload$/,
+    /^\/beauty(?:\/|$)/,
   ].some(rx => rx.test(location));
 
   // Immersive admin shell — do not nest marketplace header/nav around it.
@@ -823,6 +824,25 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
             paddingBottom: "env(safe-area-inset-bottom, 0px)",
           }}
           data-testid="restaurant-immersive-shell"
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+        </div>
+      </DeliveryMenuCountryContext.Provider>
+    );
+  }
+
+  // Séduire Beauty — immersive shell (owns beauty brand chrome; no Market header/footer/bottom nav).
+  const isBeautyImmersive = /^\/beauty(?:\/|$)/.test(location);
+  if (isBeautyImmersive) {
+    return (
+      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
+        <div
+          className="app-shell beauty-immersive-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col h-dvh overflow-clip bg-[hsl(350,42%,96%)] dark:bg-[hsl(350,14%,8%)]"
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
+          data-testid="beauty-immersive-shell"
         >
           <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
         </div>
@@ -1057,7 +1077,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isPromoVideosSection || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) || /^\/music(?:\/|$)/.test(location) ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isPromoVideosSection || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || /^\/support(?:\/|$)/.test(location) || /^\/chatbot(?:\/|$)/.test(location) || /^\/music(?:\/|$)/.test(location) || /^\/beauty(?:\/|$)/.test(location) ? "hidden" : ""}`}
         aria-label="Main navigation"
         data-testid="mobile-bottom-nav"
       >

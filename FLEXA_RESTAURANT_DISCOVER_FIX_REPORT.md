@@ -1,68 +1,51 @@
 # Flexa Restaurant — Discover production error fix
 
-## Root cause (production evidence)
+## Root cause
 
-`GET https://flexamarket.com/api/restaurants?country=HT` returned **HTTP 403**:
+`GET https://flexamarket.com/api/restaurants?country=HT` returned **HTTP 403** `COUNTRY_DISABLED` because Neon `restaurant_country_availability` for Haiti was still `under_review` / `enabled=false`, even though `RESTAURANT_PUBLIC_LAUNCH` was already true.
 
-```json
-{
-  "error": "Flexa Restaurant is not available in Haiti. Regulatory approval has not been granted.",
-  "code": "COUNTRY_DISABLED",
-  "countryPolicy": {
-    "countryCode": "HT",
-    "status": "under_review",
-    "enabled": false,
-    "restaurantsEnabled": false
-  },
-  "restaurants": []
-}
-```
+The Discover UI treated that 403 as a generic load failure → red banner “Unable to load nearby businesses. Please try again.”
 
-`RESTAURANT_PUBLIC_LAUNCH` was already `true`, but **Haiti country policy** in Neon remained `under_review` / `enabled=false`.
+Secondary issue: `GET /restaurant/` returned **nginx 403** because static assets live under `dist/public/restaurant/categories/`, so `/restaurant/` was served as a directory listing.
 
-The Discover UI then misclassified that 403 as a generic load failure and showed the red banner:
-“Unable to load nearby businesses. Please try again.”
+## Corrected files
 
-## Secondary production issue (homepage route)
+### PR #323 → merge `84c358cb`
+- `artifacts/api-server/src/lib/migrations.ts` — `restaurant_country_ht_public_launch.v1`, `beauty_country_ht_public_launch.v1`
+- `artifacts/api-server/src/lib/restaurantCountryPolicy.ts` — Haiti defaults approved
+- `artifacts/api-server/src/routes/restaurants.ts` — soft `COUNTRY_REQUIRED` 200 empty
+- Marketplace + mobile Discover empty-state / error classification
 
-`GET https://flexamarket.com/restaurant/` returned **HTTP 403** from nginx because a physical static folder `dist/public/restaurant/categories/` made `/restaurant/` resolve as a directory listing (denied).  
-`/restaurant/discover` and `/restaurant/index.html` were already **200**.
+### PR #324 → merge `4c7f92a4` (tip commit `7edb53ec`)
+- `artifacts/marketplace/nginx.seo.conf` — `/restaurant` + `/restaurant/` → SPA
+- `artifacts/api-server/src/routes/beauty.ts` — soft `COUNTRY_REQUIRED` 200 empty
+- Locales / Beauty hub / mobile empty actions
 
-## Fixes
-
-### PR #323 (merged → deploy SHA `84c358cb`)
-
-1. Migration `restaurant_country_ht_public_launch.v1` — approve/enable Haiti for restaurants, food trucks, home kitchens, catering (US/CA stay suspended).
-2. Migration `beauty_country_ht_public_launch.v1` — approve/enable Haiti for Séduire Beauty.
-3. Defaults in `restaurantCountryPolicy.ts` updated so Haiti seeds as public.
-4. Discover without country → **200 empty** with `COUNTRY_REQUIRED` (not 400).
-5. Web + mobile Discover: classify `COUNTRY_*` / regulatory 403 as soft empty/restricted — not red load error.
-6. Empty state actions: Change location / Expand radius / Use GPS / Browse.
-
-### Follow-up (this branch)
-
-1. nginx: exact `/restaurant` + `/restaurant/` → SPA `index.html`; keep `/restaurant/categories/*` as static assets; disable absolute/port redirects.
-2. Beauty discover without country → **200 empty** with `COUNTRY_REQUIRED` (parity with restaurants).
-3. Locale copy aligned to “No restaurants/beauty businesses available near you yet.”
-4. Mobile restaurant empty-state actions + default country Haiti.
-
-## Post-deploy production API evidence (after #323)
+## Production API evidence (live)
 
 ```json
 GET /api/restaurants?country=HT → 200
-{ "restaurants": [], "total": 0, "freeLaunch": true, "platformFees": { "commission": 0 } }
+{ "restaurants": [], "total": 0, "freeLaunch": true }
 
-GET /api/restaurants/launch → HT publiclyActive: true, status: approved, enabled: true
+GET /api/restaurants/launch → HT status=approved, enabled=true, publiclyActive=true
 
 GET /api/beauty/businesses?country=HT → 200
 { "businesses": [], "total": 0 }
 
-GET /api/beauty/countries → HT enabled/approved/publiclyActive: true
+GET /api/beauty/businesses (no country) → 200
+{ "businesses": [], "total": 0, "code": "COUNTRY_REQUIRED" }
+
+GET /restaurant/ → 200 SPA shell
 ```
 
 ## UI validation
 
-- Restaurant Near You (Haiti): empty state **without** red error; actions present.
-- Beauty Near you (Haiti): empty state **without** red error.
-- Before: user screenshot of red “Unable to load nearby businesses.”
-- After screenshots: `/opt/cursor/artifacts/prod-restaurant-near-you-haiti.png`, `/opt/cursor/artifacts/prod-beauty-near-you-haiti.png`
+- Restaurant Near You: “No restaurants available near you yet.” + Change location / Expand radius / Use my current location / Browse available businesses. No red error.
+- Beauty Near you: “No beauty businesses available near you yet.” No red error.
+- Empty collections are successful API responses (zero published businesses in HT), not failures.
+
+## Deploy status
+
+- #323 Deploy to DigitalOcean: success (`84c358cb`)
+- #324 Deploy to DigitalOcean: success (`4c7f92a4`) — https://github.com/sammyjeanlouis8-max/Flexa-market/actions/runs/46152993097
+- Tests: api-server restaurant/beauty smoke + country policy — 27 passed
